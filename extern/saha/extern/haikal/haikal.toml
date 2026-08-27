@@ -1,0 +1,7 @@
+[core]
+metapath = "src/meta/"
+[meta]
+hkArray = []
+hkNode = []
+hkQueue = []
+hkList = []

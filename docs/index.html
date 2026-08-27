@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>I Compiler Docs</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="I compiler docs home">
+      <span class="brand-mark">I</span>
+      <span class="brand-copy">
+        <strong>I Compiler</strong>
+        <span>C-shaped systems language</span>
+      </span>
+    </a>
+    <nav class="nav" aria-label="Primary navigation">
+      <a href="#quickstart">Quickstart</a>
+      <a href="#syntax">Syntax</a>
+      <a href="#compiler">Compiler</a>
+      <a href="#std">Std</a>
+      <a href="#debug">Debug</a>
+    </nav>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Transpiles to C</p>
+        <h1>I compiler</h1>
+        <p class="lede">
+          I is a focused C front-end: direct declarations, monomorphized generics,
+          automatic reflection, typed formatting, and generated C that the native
+          toolchain compiles normally.
+        </p>
+        <div class="actions">
+          <a class="button primary" href="#quickstart">Build it</a>
+          <a class="button" href="#syntax">See syntax</a>
+        </div>
+      </div>
+      <div class="hero-visual" aria-label="Compiler pipeline visualization">
+        <canvas id="pipelineCanvas" width="640" height="420"></canvas>
+        <div class="pipeline-labels" aria-hidden="true">
+          <span>.i source</span>
+          <span>I.exe</span>
+          <span>C output</span>
+          <span>native exe</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="quickstart" class="band">
+      <div class="section-head">
+        <p class="eyebrow">Quickstart</p>
+        <h2>Compiler repo and package flow</h2>
+      </div>
+      <div class="command-grid">
+        <article class="command">
+          <div>
+            <h3>Build compiler</h3>
+            <p>Builds <code>I.exe</code>, <code>ibind.exe</code>, and the packaged standard library.</p>
+          </div>
+          <pre><code>python bunyan.py build debug</code></pre>
+        </article>
+        <article class="command">
+          <div>
+            <h3>Package output</h3>
+            <p>The build copies the compiler and <code>src\std</code> into a folder that can live on PATH.</p>
+          </div>
+          <pre><code>C:\devel\i-windows-x64\
+    I.exe
+    ibind.exe
+    std\</code></pre>
+        </article>
+        <article class="command">
+          <div>
+            <h3>Compile an I file</h3>
+            <p>The compiler finds the sibling <code>std</code> folder automatically.</p>
+          </div>
+          <pre><code>I.exe compile src\main.i -o build\i_gen\main.c --header build\i_gen\main.h</code></pre>
+        </article>
+        <article class="command">
+          <div>
+            <h3>Check only</h3>
+            <p>Used by editor tooling and diagnostics without producing build artifacts.</p>
+          </div>
+          <pre><code>I.exe check src\main.i --diagnostics=json</code></pre>
+        </article>
+      </div>
+    </section>
+
+    <section id="features" class="split">
+      <div class="section-head sticky-head">
+        <p class="eyebrow">Shape</p>
+        <h2>Small syntax, explicit output</h2>
+        <p>The language stays close to C. The compiler owns the type system, generics, reflection, diagnostics, and C emission.</p>
+      </div>
+      <div class="feature-list">
+        <article>
+          <h3>Declaration-first syntax</h3>
+          <p><code>name: type</code> is used for locals, globals, fields, structs, enums, aliases, and procedures.</p>
+        </article>
+        <article>
+          <h3>Native monomorphization</h3>
+          <p><code>Array&lt;payload&gt;</code> and <code>sum&lt;payload&gt;</code> emit concrete C structs and procs.</p>
+        </article>
+        <article>
+          <h3>Typed operations</h3>
+          <p>Generic algorithms can call typed implementations such as <code>add&lt;T&gt;</code> and resolve per concrete type.</p>
+        </article>
+        <article>
+          <h3>Automatic reflection</h3>
+          <p><code>Payload&lt;&gt;</code> lowers to immutable metadata for field names, offsets, sizes, enum values, and type facts.</p>
+        </article>
+        <article>
+          <h3>Compiler-driven formatting</h3>
+          <p><code>printfmt("{}"</code> resolves argument types and lowers to concrete <code>print&lt;T&gt;</code> calls.</p>
+        </article>
+        <article>
+          <h3>C interop remains direct</h3>
+          <p><code>cinclude</code>, <code>external</code>, and <code>external_emit</code> keep C APIs visible without wrapping everything.</p>
+        </article>
+        <article>
+          <h3>Line mapped generated C</h3>
+          <p>Generated C uses <code>#line</code> so native compiler errors and debugger stepping can point back to I source.</p>
+        </article>
+        <article>
+          <h3>Editor path</h3>
+          <p>The LSP shell can call <code>I.exe check --diagnostics=json</code> and publish compiler-owned diagnostics.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="syntax" class="band">
+      <div class="section-head">
+        <p class="eyebrow">Syntax</p>
+        <h2>Current language examples</h2>
+      </div>
+      <div class="tabs" role="tablist" aria-label="Syntax examples">
+        <button class="tab active" data-example="basics" type="button">Basics</button>
+        <button class="tab" data-example="generics" type="button">Generics</button>
+        <button class="tab" data-example="control" type="button">Control flow</button>
+        <button class="tab" data-example="types" type="button">Types</button>
+      </div>
+      <div class="code-panel">
+        <div class="code-toolbar">
+          <span id="exampleTitle">Basics</span>
+          <button id="copyCode" type="button">Copy</button>
+        </div>
+        <pre><code id="exampleCode"></code></pre>
+      </div>
+      <div class="reference-grid">
+        <article>
+          <h3>Unified forms</h3>
+          <ul>
+            <li><code>value: T = expr;</code></li>
+            <li><code>Name: struct = { field: T; }</code></li>
+            <li><code>name: proc(args)-&gt;T = { ... }</code></li>
+            <li><code>Generic: struct&lt;T&gt; = { ... }</code></li>
+          </ul>
+        </article>
+        <article>
+          <h3>Metaprogramming</h3>
+          <ul>
+            <li><code>Payload&lt;&gt;.field_count</code></li>
+            <li><code>Array&lt;T&gt;</code> native generic types</li>
+            <li><code>print: proc&lt;Payload&gt;(...)</code> typed operation specialization</li>
+            <li><code>printfmt("{}\n", value)</code> compiler lowered formatting</li>
+          </ul>
+        </article>
+        <article>
+          <h3>Interop</h3>
+          <ul>
+            <li><code>cinclude "stdio.h"</code></li>
+            <li><code>define("FLAG")</code></li>
+            <li><code>proc[WINCALL](...)</code></li>
+            <li><code>external</code> and <code>external_emit</code></li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="compiler" class="split reverse">
+      <div class="section-head sticky-head">
+        <p class="eyebrow">Compiler</p>
+        <h2>One merged generated unit</h2>
+        <p>I imports are resolved by the compiler, then emitted as C in a deterministic order.</p>
+      </div>
+      <div class="interop-grid">
+        <article>
+          <h3>Default project compile</h3>
+          <pre><code>I.exe compile src\main.i -o build\i_gen\main.c</code></pre>
+          <p>If no header path is given, the compiler can derive the companion header path from the C output path.</p>
+        </article>
+        <article>
+          <h3>Generated files</h3>
+          <pre><code>build\i_gen\
+    main.c
+    main.h
+    Array_payload.h
+    Array_payload.c</code></pre>
+          <p>Generated native monomorph headers stay build-local. Authored code remains <code>.i</code>.</p>
+        </article>
+        <article>
+          <h3>Diagnostics</h3>
+          <pre><code>I.exe check src\main.i --diagnostics=json --stdin-path src\main.i</code></pre>
+          <p>The compiler is the source of truth for errors; the LSP should stay a thin transport layer.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="std" class="band">
+      <div class="section-head">
+        <p class="eyebrow">Standard Library</p>
+        <h2>Small runtime, arena-shaped</h2>
+      </div>
+      <div class="reference-grid">
+        <article>
+          <h3>Containers</h3>
+          <p><code>Array.i</code>, <code>Vec.i</code>, <code>Node.i</code>, <code>List.i</code>, <code>Map.i</code>, <code>Option.i</code>, and <code>Result.i</code> are I-native runtime modules.</p>
+        </article>
+        <article>
+          <h3>Strings and paths</h3>
+          <p><code>string8</code> owns arena memory, <code>string8slice</code> borrows, and path helpers normalize slash handling at the I level.</p>
+        </article>
+        <article>
+          <h3>Printing</h3>
+          <p><code>Print.i</code> provides concrete printers; <code>printfmt</code> uses compiler type information to pick the right printer.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="debug" class="band">
+      <div class="section-head">
+        <p class="eyebrow">Debug</p>
+        <h2>Use the native toolchain</h2>
+      </div>
+      <ol class="flow">
+        <li><span>1</span><p>I source is translated to C with <code>#line</code> directives.</p></li>
+        <li><span>2</span><p>clang-cl compiles the C into normal debug info.</p></li>
+        <li><span>3</span><p>Visual Studio can step the I source while native disassembly stays available.</p></li>
+        <li><span>4</span><p>If the generated C matters, it is still visible under <code>build\i_gen</code>.</p></li>
+      </ol>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>I compiler docs.</span>
+    <a href="#top">Back to top</a>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
