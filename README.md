@@ -77,14 +77,15 @@ caught in Rin instead of silently becoming a preprocessor directive in the gener
 
 ## Language Sketch
 ```rust
+// this is a work in progress syntax for rin
 import "stdio.h"
 define("SAHA_IMPLEMENTATION")
 
 // variable
-num:i32 = 7;
+num: i32 = 7;
 
 // struct type
-vec2:struct = { x:f32; y:f32; }
+vec2: struct = { x: f32; y: f32; }
 
 // enum type
 Color: enum = { Red, Green, Blue }
@@ -94,31 +95,31 @@ Status: enum = { Failed = -1, Idle = 0, Busy = 1 }
 
 // generic struct type
 array: struct<T> = {
-    length:u64;
-    border:u64;
-    data:*T;
+    length: u64;
+    border: u64;
+    data: *T;
 }
 
 // proc
-make: proc(x:i32) -> i32 = { return x; }
+make: proc(x: i32) -> i32 = { return x; }
 
 // proc with internal linkage, not exported in the generated header
-helper: static proc(x:i32) -> i32 = { return x + 1; }
+helper: static proc(x: i32) -> i32 = { return x + 1; }
 
 // semantic-only C declaration, used when an imported C header already declares it
-puts: proc(text:*const char) -> i32 = { external; }
+puts: proc(text: *const char) -> i32 = { external; }
 
 // emitted C prototype, used when Rin owns the type surface for a linked C module
-fx_step: proc(dt:f32) -> void = { external_emit; }
+fx_step: proc(dt :f32) -> void = { external_emit; }
 
 // generic proc
-makeg: proc<T>(x:T) -> T = { return x; }
+makeg: proc<T>(x: T) -> T = { return x; }
 
 // requirement implementation for i32
-hash: proc<i32>(x:*i32) -> u64 = { return hash_fnv1a(x, sizeof(x[0])); }
+hash: proc<i32>(x: *i32) -> u64 = { return hash_fnv1a(x, sizeof(x[0])); }
 
 // constrained generic proc
-makehash: proc<T:hash>(x:T) -> u64 = { return hash<T>(&x); }
+makehash: proc<T: hash>(x: T) -> u64 = { return hash<T>(&x); }
 
 // usage
 a:array<i32> = {};
@@ -128,8 +129,8 @@ printf("num = {}\n", num);
 
 // bitfields and anonymous struct/union members, for binding real C headers
 Header:struct = {
-    version:u32:4;
-    flags:u32:28;
+    version: u32:4;
+    flags: u32:28;
     union = {
         as_i32:i32;
         as_f32:f32;
@@ -137,7 +138,7 @@ Header:struct = {
 }
 
 // volatile, for memory-mapped registers and signal-visible state
-Regs:struct = {
+Regs: struct = {
     status: volatile u32;
     data: *volatile u32;
 }
@@ -162,7 +163,7 @@ WinProc: proc[WINCALL](value:i32) -> i32 = {
         if (value == 7) { goto done; }
         switch (value) {
             case 1: {
-                step:i32 = 1;    // each case is its own scope
+                step: i32 = 1;    // each case is its own scope
                 value -= step;
                 break;
             }
@@ -171,9 +172,9 @@ WinProc: proc[WINCALL](value:i32) -> i32 = {
     }
     value shl= 1;
     value = ~value;
-done: label = {
-    letter = 'y';
-}
+    done: label = {
+        letter = 'y';
+    }
     return (value shl 1) | 1;
 }
 ```
