@@ -92,7 +92,7 @@ rejectable exactly as it is now.
 
 This replaces an earlier plan to ban `external` on structs. That plan was
 proposed on the premise that the opaque form "accepts any field name and passes
-it straight through to C" -- a line from a stale comment in `std/reflect.i`.
+it straight through to C" -- a line from a stale comment in `std/reflect.rin`.
 Measured against the current compiler, the opaque form is fully checked:
 
     Op: struct = { external; }
@@ -299,7 +299,7 @@ closing it is what "everything must be declared" actually costs.
 
 **The translator already exists and is already in the build.** `src/rinbind.c` is
 1,314 lines built on **libclang** -- it parses real headers with the actual C
-frontend and emits `.i` bindings, including `external` structs with field lists,
+frontend and emits `.rin` bindings, including `external` structs with field lists,
 aliases and external procs:
 
     rinbind <input.h> <output.i> [--preprocess] [--filter path-fragment]
@@ -323,7 +323,7 @@ naming and ergonomics, or triaging what libclang could not express.
 
 libclang can see a function-like macro but cannot type it, and `d3d11.h`'s COM
 calls are macros: `ID3D11Device_CreateBuffer(dev, ...)`. njinn already handles
-this by declaring them as external procs in `externs.i`. That works because **an
+this by declaring them as external procs in `externs.rin`. That works because **an
 external proc emits call sites only, never a prototype**, so rin type-checks the
 call and cpp expands the macro underneath. The same trick covers `va_start`,
 `va_end` and `_alloca`.

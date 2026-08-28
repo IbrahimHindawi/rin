@@ -1,4 +1,0 @@
-[core]
-metapath = "src/meta_arena/"
-# mainpath = "src/main.c"
-mainpath = "src/test.c"

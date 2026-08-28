@@ -20,7 +20,7 @@ Worth stating first, because it changes what the gaps cost.
   compared.
 - **Reflection with verified layout** -- 952 `_Static_assert`s comparing
   declared external records against the real C ones.
-- **Diagnostics report more than the first error** and map back to the `.i`
+- **Diagnostics report more than the first error** and map back to the `.rin`
   line through `#line`.
 
 ## 1. Error handling, and discarded results
@@ -70,7 +70,7 @@ What it gets right:
   value, and rin has no moves, so that is a copy of everything in it.
 
 Two pieces of the pattern live in the language rather than in each project.
-`reflect_name_from_value_or` is in `std/reflect.i` -- the plain version returns
+`reflect_name_from_value_or` is in `std/reflect.rin` -- the plain version returns
 null when nothing matches, which is right for code that tests the result and
 wrong for the common use, since passing null to a `%s` is undefined. And `<>`
 works on a *value*, not only a type, so the status variable names its own
@@ -103,7 +103,7 @@ So `Result` would buy three things, and two of them are not `Result`: value and
 error travelling together (needs exhaustive matching to enforce), composition in
 expressions (needs a propagation form), and forced handling (needs must-use).
 Without those it is a struct whose value can be read after a failure -- which is
-what `std/Result.i` is, and why it has three uses.
+what `std/Result.rin` is, and why it has three uses.
 
 ### What would strengthen the decided design
 

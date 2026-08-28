@@ -8,7 +8,7 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="#top" aria-label="I compiler docs home">
+    <a class="brand" href="#top" aria-label="rin compiler docs home">
       <span class="brand-mark">I</span>
       <span class="brand-copy">
         <strong>I Compiler</strong>
@@ -28,7 +28,7 @@
     <section class="hero">
       <div class="hero-copy">
         <p class="eyebrow">Transpiles to C</p>
-        <h1>I compiler</h1>
+        <h1>rin compiler</h1>
         <p class="lede">
           I is a focused C front-end: direct declarations, monomorphized generics,
           automatic reflection, typed formatting, and generated C that the native
@@ -42,8 +42,8 @@
       <div class="hero-visual" aria-label="Compiler pipeline visualization">
         <canvas id="pipelineCanvas" width="640" height="420"></canvas>
         <div class="pipeline-labels" aria-hidden="true">
-          <span>.i source</span>
-          <span>I.exe</span>
+          <span>.rin source</span>
+          <span>rin.exe</span>
           <span>C output</span>
           <span>native exe</span>
         </div>
@@ -59,7 +59,7 @@
         <article class="command">
           <div>
             <h3>Build compiler</h3>
-            <p>Builds <code>I.exe</code>, <code>ibind.exe</code>, and the packaged standard library.</p>
+            <p>Builds <code>rin.exe</code>, <code>rinbind.exe</code>, and the packaged standard library.</p>
           </div>
           <pre><code>python bunyan.py build debug</code></pre>
         </article>
@@ -68,9 +68,9 @@
             <h3>Package output</h3>
             <p>The build copies the compiler and <code>src\std</code> into a folder that can live on PATH.</p>
           </div>
-          <pre><code>C:\devel\i-windows-x64\
-    I.exe
-    ibind.exe
+          <pre><code>C:\devel\rin-windows-x64\
+    rin.exe
+    rinbind.exe
     std\</code></pre>
         </article>
         <article class="command">
@@ -78,14 +78,14 @@
             <h3>Compile an I file</h3>
             <p>The compiler finds the sibling <code>std</code> folder automatically.</p>
           </div>
-          <pre><code>I.exe compile src\main.i -o build\i_gen\main.c --header build\i_gen\main.h</code></pre>
+          <pre><code>rin.exe compile src\main.rin -o build\rin_gen\main.c --header build\rin_gen\main.h</code></pre>
         </article>
         <article class="command">
           <div>
             <h3>Check only</h3>
             <p>Used by editor tooling and diagnostics without producing build artifacts.</p>
           </div>
-          <pre><code>I.exe check src\main.i --diagnostics=json</code></pre>
+          <pre><code>rin.exe check src\main.rin --diagnostics=json</code></pre>
         </article>
       </div>
     </section>
@@ -127,7 +127,7 @@
         </article>
         <article>
           <h3>Editor path</h3>
-          <p>The LSP shell can call <code>I.exe check --diagnostics=json</code> and publish compiler-owned diagnostics.</p>
+          <p>The LSP shell can call <code>rin.exe check --diagnostics=json</code> and publish compiler-owned diagnostics.</p>
         </article>
       </div>
     </section>
@@ -190,21 +190,21 @@
       <div class="interop-grid">
         <article>
           <h3>Default project compile</h3>
-          <pre><code>I.exe compile src\main.i -o build\i_gen\main.c</code></pre>
+          <pre><code>rin.exe compile src\main.rin -o build\rin_gen\main.c</code></pre>
           <p>If no header path is given, the compiler can derive the companion header path from the C output path.</p>
         </article>
         <article>
           <h3>Generated files</h3>
-          <pre><code>build\i_gen\
+          <pre><code>build\rin_gen\
     main.c
     main.h
     Array_payload.h
     Array_payload.c</code></pre>
-          <p>Generated native monomorph headers stay build-local. Authored code remains <code>.i</code>.</p>
+          <p>Generated native monomorph headers stay build-local. Authored code remains <code>.rin</code>.</p>
         </article>
         <article>
           <h3>Diagnostics</h3>
-          <pre><code>I.exe check src\main.i --diagnostics=json --stdin-path src\main.i</code></pre>
+          <pre><code>rin.exe check src\main.rin --diagnostics=json --stdin-path src\main.rin</code></pre>
           <p>The compiler is the source of truth for errors; the LSP should stay a thin transport layer.</p>
         </article>
       </div>
@@ -218,7 +218,7 @@
       <div class="reference-grid">
         <article>
           <h3>Containers</h3>
-          <p><code>Array.i</code>, <code>Vec.i</code>, <code>Node.i</code>, <code>List.i</code>, <code>Map.i</code>, <code>Option.i</code>, and <code>Result.i</code> are I-native runtime modules.</p>
+          <p><code>Array.rin</code>, <code>Vec.rin</code>, <code>Node.rin</code>, <code>List.rin</code>, <code>Map.rin</code>, <code>Option.rin</code>, and <code>Result.rin</code> are I-native runtime modules.</p>
         </article>
         <article>
           <h3>Strings and paths</h3>
@@ -226,7 +226,7 @@
         </article>
         <article>
           <h3>Printing</h3>
-          <p><code>Print.i</code> provides concrete printers; <code>printfmt</code> uses compiler type information to pick the right printer.</p>
+          <p><code>Print.rin</code> provides concrete printers; <code>printfmt</code> uses compiler type information to pick the right printer.</p>
         </article>
       </div>
     </section>
@@ -240,13 +240,13 @@
         <li><span>1</span><p>I source is translated to C with <code>#line</code> directives.</p></li>
         <li><span>2</span><p>clang-cl compiles the C into normal debug info.</p></li>
         <li><span>3</span><p>Visual Studio can step the I source while native disassembly stays available.</p></li>
-        <li><span>4</span><p>If the generated C matters, it is still visible under <code>build\i_gen</code>.</p></li>
+        <li><span>4</span><p>If the generated C matters, it is still visible under <code>build\rin_gen</code>.</p></li>
       </ol>
     </section>
   </main>
 
   <footer class="footer">
-    <span>I compiler docs.</span>
+    <span>rin compiler docs.</span>
     <a href="#top">Back to top</a>
   </footer>
 

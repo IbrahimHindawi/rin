@@ -3439,7 +3439,7 @@ static DeclAttributes parse_decl_attributes(Parser *p, bool is_enum) {
             attrs.is_external = true;
             attrs.emit_external_proto = true;
         } else if (string8slice_equals_cstr(tok->text, "no_layout_check")) {
-            /* The record has no C type of that name at all -- ibind synthesises
+            /* The record has no C type of that name at all -- rinbind synthesises
                one for a genuinely anonymous member, which exists only in rin.
                Its layout cannot be compared against a type C cannot name. */
             attrs.no_layout_check = true;
@@ -6490,7 +6490,7 @@ static void emit_type_qualifiers(memops_arena *arena, string8 *out, TypeExpr *ty
    identifier for third-party C to claim -- it is a GLSL builtin, and any
    vector-math library an engine links is fair game.
 
-   I source keeps the short spelling; this is where the two meet. It covers the
+   rin source keeps the short spelling; this is where the two meet. It covers the
    record types, which C owns because the emitted tables are C initialisers of
    them, and the helpers and constants from std/reflect.rin, which are ordinary rin
    declarations that would otherwise land in C under their short names.
@@ -16096,7 +16096,7 @@ i32 main(i32 argc, char *argv[]) {
             std_fatal("the compiler cannot find its own std",
                       probe ? probe : "the compiler's own directory could not be determined",
                       null,
-                      "std must sit beside I.exe; reinstall, or pass --no-std");
+                      "std must sit beside rin.exe; reinstall, or pass --no-std");
         }
     }
 

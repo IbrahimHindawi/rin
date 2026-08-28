@@ -6,7 +6,7 @@
 
 ## Where we are
 
-Two string types already exist, in `src/std/string8.i`:
+Two string types already exist, in `src/std/string8.rin`:
 
     string8:      struct = { data: *u8; length: u64; capacity: u64; }
     string8slice: struct = { data: *u8; length: u64; }

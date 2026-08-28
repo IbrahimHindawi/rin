@@ -5361,7 +5361,7 @@ def command_check(paths: list[Path]) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Prototype language server for I.")
+    parser = argparse.ArgumentParser(description="Prototype language server for rin.")
     parser.add_argument("--check", nargs="*", type=Path, help="Analyze files without starting LSP stdio.")
     args = parser.parse_args()
 

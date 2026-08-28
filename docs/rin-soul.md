@@ -106,20 +106,20 @@ i-examples/
     README.md
     bunyan.py
     src/
-        00_hello.i
-        01_temperature.i
-        02_counting.i
-        03_arrays.i
-        04_strings.i
-        05_structs.i
-        06_enums_tables.i
-        07_pointers.i
-        08_arena.i
-        09_array_std.i
-        10_print_reflect.i
-        11_c_interop.i
-        12_tiny_grep.i
-        13_tiny_calc.i
+        00_hello.rin
+        01_temperature.rin
+        02_counting.rin
+        03_arrays.rin
+        04_strings.rin
+        05_structs.rin
+        06_enums_tables.rin
+        07_pointers.rin
+        08_arena.rin
+        09_array_std.rin
+        10_print_reflect.rin
+        11_c_interop.rin
+        12_tiny_grep.rin
+        13_tiny_calc.rin
     expected/
         00_hello.txt
         ...
@@ -138,20 +138,20 @@ new language feel approachable before it feels impressive.
 
 Candidate programs:
 
-- `00_hello.i`: print text, return status
-- `01_temperature.i`: Fahrenheit/Celsius table, K&R-style
-- `02_counting.i`: count chars, lines, words
-- `03_arrays.i`: fixed arrays, enum-sized tables
-- `04_strings.i`: `string8`, slices, path helpers
-- `05_structs.i`: a tiny `Point`, `Rect`, and `Sprite`
-- `06_enums_tables.i`: enum members as indexes, `[Kind<>.value_count]`
-- `07_pointers.i`: addresses, pointer fields, pointer parameters
-- `08_arena.i`: allocate several records from `memops_arena`
-- `09_array_std.i`: `Array<T>` reserve/append/use
-- `10_print_reflect.i`: derive simple print behavior from reflection metadata
-- `11_c_interop.i`: bind one tiny C function or header
-- `12_tiny_grep.i`: scan lines and print matches
-- `13_tiny_calc.i`: parse and evaluate simple integer expressions
+- `00_hello.rin`: print text, return status
+- `01_temperature.rin`: Fahrenheit/Celsius table, K&R-style
+- `02_counting.rin`: count chars, lines, words
+- `03_arrays.rin`: fixed arrays, enum-sized tables
+- `04_strings.rin`: `string8`, slices, path helpers
+- `05_structs.rin`: a tiny `Point`, `Rect`, and `Sprite`
+- `06_enums_tables.rin`: enum members as indexes, `[Kind<>.value_count]`
+- `07_pointers.rin`: addresses, pointer fields, pointer parameters
+- `08_arena.rin`: allocate several records from `memops_arena`
+- `09_array_std.rin`: `Array<T>` reserve/append/use
+- `10_print_reflect.rin`: derive simple print behavior from reflection metadata
+- `11_c_interop.rin`: bind one tiny C function or header
+- `12_tiny_grep.rin`: scan lines and print matches
+- `13_tiny_calc.rin`: parse and evaluate simple integer expressions
 
 The suite should be cute, but not toy-only. It should gently cross the same
 ground C programmers care about: bytes, arrays, text, files, structs, pointers,

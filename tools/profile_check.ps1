@@ -1,19 +1,19 @@
-# Runs `I.exe check` in a loop so a sampling profiler has a long enough workload.
+# Runs `rin.exe check` in a loop so a sampling profiler has a long enough workload.
 #
 # A single check of a large project takes well under a second, which gives a
 # sampler only a few hundred samples. Looping turns that into tens of seconds of
 # continuous, identical work.
 #
 #   .\scripts\profile_check.ps1                       # default target and count
-#   .\scripts\profile_check.ps1 -Entry path\to.i -Count 50
+#   .\scripts\profile_check.ps1 -Entry path\to.rin -Count 50
 #   .\scripts\profile_check.ps1 -Wpr                  # capture an ETL trace too
 #
-# Use build-profile\I.exe: it is /O2 with /Zi, so the profile reflects optimized
+# Use build-profile\rin.exe: it is /O2 with /Zi, so the profile reflects optimized
 # code and still resolves to function names via build-profile\I.pdb.
 
 param(
-    [string]$Exe    = "$PSScriptRoot\..\build-profile\I.exe",
-    [string]$Entry  = "C:\devel\njinn\src\gin_win32.i",
+    [string]$Exe    = "$PSScriptRoot\..\build-profile\rin.exe",
+    [string]$Entry  = "C:\devel\njinn\src\gin_win32.rin",
     [int]$Count     = 30,
     [switch]$Wpr
 )

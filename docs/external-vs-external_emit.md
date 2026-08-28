@@ -8,7 +8,7 @@ measurements are.
 
 Using a C library from rin means two separate parties need to know its shapes:
 
-1. **rin needs to know**, to type-check your code. That is the `.i` declaration.
+1. **rin needs to know**, to type-check your code. That is the `.rin` declaration.
    Always required, and identical for both spellings.
 2. **C needs to know**, so the generated C compiles. That comes from *either*
    the header (`cinclude`) *or* rin emitting prototypes (`external_emit`).
@@ -48,7 +48,7 @@ wrong *arity* fails at the call, wrong *types* with matching arity sail through.
 
 ## What it costs
 
-Flipping njinn's 173 hand-written `proc[external]` declarations in `externs.i`
+Flipping njinn's 173 hand-written `proc[external]` declarations in `externs.rin`
 to `external_emit` produced **20 C errors, with clang stopping early**, so 20 is
 a floor. Three distinct failure modes:
 
@@ -155,7 +155,7 @@ Recorded because each was stated confidently and was wrong:
   `external` no prototype is emitted, so there is nothing to compare. It is
   `external_emit` that gets the check, and only because the prototype is
   redundant with the header's.
-- **"Flip `externs.i` to `external_emit` for 228 free checks."** It breaks the
+- **"Flip `externs.rin` to `external_emit` for 228 free checks."** It breaks the
   build -- see the three failure modes above.
 - **A cgltf flip test was read as a result without running the control.** The
   same 20 errors appeared unmodified; the ad-hoc compile was missing the build's

@@ -17,7 +17,7 @@ fix makes the named test fail.
 
 ### One record, kind-tagged, variant payload
 
-`i_reflect_type` and `i_reflect_enum` are gone. One `reflect` record describes
+`rin_reflect_type` and `rin_reflect_enum` are gone. One `reflect` record describes
 every reflected type; `kind` says which, and `variant` holds the payload only
 that kind has. In rin the family is spelled without a prefix; in the emitted
 C it keeps one, for the namespace reasons under "The C names carry an `i_`
@@ -80,7 +80,7 @@ fails on `kind_tags`.*
 
 ### Reflection access is checked (was §1)
 
-`std/reflect.i` declares the fields alongside `external`, which opts the types
+`std/reflect.rin` declares the fields alongside `external`, which opts the types
 back into checking. `meta[0].value_kount` is now a type error at the access site
 rather than a C error in generated code, or a silent match against a different
 field. This also made the migration compiler-guided: every stale `value_count`
@@ -88,7 +88,7 @@ reported its own file and line.
 
 That was only conditionally true at first, and the condition was the wrong way
 round: the diagnostic fired only for a type the program had *declared*, so it
-required importing `std/reflect.i` — while `Type<>` needs no import at all. Code
+required importing `std/reflect.rin` — while `Type<>` needs no import at all. Code
 that never imported it, which is the ordinary case, went unchecked. Found when
 the rin-learn lessons kept compiling against field names that no longer exist. The
 reflect record's field set is compiler knowledge, not something the user
@@ -113,8 +113,8 @@ This decision does not depend on how `shape.md` §2.6 resolves the enum
 
 ### The wrong variant arm is a diagnostic again
 
-Collapsing the records cost a type error. Before, `*const i_reflect_enum` and
-`*const i_reflect_type` were different types, so handing a struct's table to an
+Collapsing the records cost a type error. Before, `*const rin_reflect_enum` and
+`*const rin_reflect_type` were different types, so handing a struct's table to an
 enum consumer could not be written. Afterwards both were `*const reflect`, and
 `Point<>.variant.values` compiled — and did not fail loudly, because both arms
 begin with a `const char *name`: it reinterpreted the fields pointer and printed
@@ -148,7 +148,7 @@ Measured in njinn: **155 tables over 1,737 of 29,542 generated lines (5.9%)**, a
 about **558 bytes of binary per table**, so roughly 200 KB in total.
 
 Two beliefs about this turned out to be wrong and are worth recording so they are
-not repeated. The C compiler cannot eliminate an unused table: `const i_reflect
+not repeated. The C compiler cannot eliminate an unused table: `const rin_reflect
 Point_reflect` has external linkage, so any single translation unit must assume
 another references it. And the linker does not pick up the slack either —
 measured, an unreferenced table is still in the binary at `-O0` **and** `-O2`.
@@ -188,7 +188,7 @@ any vector-math library an engine links is fair game. Nothing collided in
 njinn's whole vendor set (cgltf, stb, miniaudio, jsmn, cglm, D3D11), but doing
 this before third parties depend on the spelling is far cheaper than after.
 
-So the C side is `i_reflect`, `i_reflect_field`, `i_reflect_fields()`,
+So the C side is `rin_reflect`, `rin_reflect_field`, `rin_reflect_fields()`,
 `I_Reflect_Struct`, and so on, while **rin source keeps the short spelling**. The
 compiler maps between them when it emits.
 
@@ -199,11 +199,11 @@ correctness claim the backend actually makes.
 
 The mapping is a **closed list of 55 names**, not a "starts with `reflect`" rule.
 A blanket rule would silently rewrite a user's own
-`reflect_normal: proc = { external; }` into `i_reflect_normal` and break the link
+`reflect_normal: proc = { external; }` into `rin_reflect_normal` and break the link
 against the C function they meant to bind — the language must never rename
 someone's external bindings based on a prefix. A closed list can fall behind the
 headers instead, so `reflect_runtime_names` re-derives it from `std/reflect.h`
-and `std/reflect.i` on every run and fails on any difference in either
+and `std/reflect.rin` on every run and fails on any difference in either
 direction.
 
 *Mutation: drop one name from the table — `reflect_runtime_names` fails with
@@ -211,11 +211,11 @@ direction.
 
 ### The helpers are written in rin, not bound from C
 
-`std/reflect.h` used to define 41 `static inline` helpers, and `std/reflect.i`
+`std/reflect.h` used to define 41 `static inline` helpers, and `std/reflect.rin`
 mirrored a subset of them as `external` declarations. They are all pure logic
 — null checks, kind compares, loops over the arrays the compiler emitted, one
 small attribute tokeniser — so a C header was the wrong home for them. They are
-now ordinary rin procs in `std/reflect.i`, and the header holds record layouts
+now ordinary rin procs in `std/reflect.rin`, and the header holds record layouts
 only.
 
 Three things this bought. The hand-written `external` declarations are gone, and
@@ -238,8 +238,8 @@ helpers and passes unchanged against the rin implementations; and by
 Reflection tables are compiler-generated and must never be mutated. Measured
 against the current compiler, that is already enforced three ways over:
 
-- **Deep `const` in the emitted C**: `static const i_reflect_value[]`,
-  `static const i_reflect_field[]`, `const i_reflect`, `extern const i_reflect`,
+- **Deep `const` in the emitted C**: `static const rin_reflect_value[]`,
+  `static const rin_reflect_field[]`, `const rin_reflect`, `extern const rin_reflect`,
   with every interior pointer const-qualified in `reflect.h`.
 - **`.rdata`**: `llvm-nm` reports the tables as `R`/`r`. A program that forces a
   write through segfaults (exit 139).
@@ -251,7 +251,7 @@ proposed and rejected. The short version: that type error *is* the enforcement,
 so the magic would delete the check it was meant to strengthen. It would also
 make `*T` mean different things for different `T` under `substitute_type_sub`,
 and the tedium it saves is 11 spellings across all of njinn -- 75 of the 96 in
-the tree are in `src/std/reflect.i`, one file written once. Full reasoning in
+the tree are in `src/std/reflect.rin`, one file written once. Full reasoning in
 `shape.md` 9.2.
 
 **The one real hole is not a reflection hole.** `cast` launders `const` away for
@@ -272,7 +272,7 @@ into `.data` if the emitter changes.*
 Every item this document opened has been settled. The natural next questions, if
 reflection is picked up again, are the ones it never raised: whether reflect
 tables should be reachable by name at run time (there is still no
-`i_reflect_find_type`, so a walk can recurse through `info` but cannot look a
+`rin_reflect_find_type`, so a walk can recurse through `info` but cannot look a
 type up from a string), and whether `<>` should extend to anything beyond
 structs, unions and enums.
 
@@ -280,5 +280,5 @@ Immutability was raised and closed above without a language change; the general
 `cast`/`const` hole it exposed lives in `shape.md` 9.1, not here.
 
 Each would need a discriminating test in the execute suite before being called
-done, per `compiler-hardening.md`. `017-generics-and-reflection.i` is where they
+done, per `compiler-hardening.md`. `017-generics-and-reflection.rin` is where they
 belong, and every item under "Settled" above already has one.

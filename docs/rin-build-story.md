@@ -10,7 +10,7 @@ The compiler's front door is clean: two commands, no project files. The building
 around it is copy-paste: the build driver is not shipped, so every project
 vendors its own copy, and there are three of them that have already drifted.
 
-The destination is a build script written in rin (`build.i`), which is a long
+The destination is a build script written in rin (`build.rin`), which is a long
 way off and blocked on something that is not yet on the open list -- rin has
 no error-handling story, and every call a build system makes can fail. The one
 piece worth taking now is `I build`, which makes the simple case a single
@@ -111,7 +111,7 @@ came to exist -- not carelessness, just the only available path.
 usage; it produced `build/rin_gen/main.c` and `build/rin_gen/main.h`. `rin.exe help`
 prints a good usage message, so the no-argument case is the odd one.
 
-**The legacy CLI is still live.** `I input.i output.c output.h` and
+**The legacy CLI is still live.** `I input.rin output.c output.h` and
 `--check` / `--symbols=json` / `--lsp=json` all still work alongside the
 subcommand form. Two grammars for one tool, and the help text documents both.
 
@@ -123,7 +123,7 @@ Four tiers, in the order a project grows:
 |---|---|---|
 | `I compile` + `clang` | nothing | works today |
 | `I build main.rin` | nothing | **does not exist**; small |
-| `build.i` | a build script, in rin | does not exist; large |
+| `build.rin` | a build script, in rin | does not exist; large |
 | `bunyan.py` | a Python build script | works today; the thing being replaced |
 
 ### Tier 2 is `I build`, not `i init`
@@ -144,7 +144,7 @@ which is the serious tier -- and by then it is generating maybe eight lines.
 ### What `i init` would generate, when it does
 
     main.rin          a program that compiles
-    build.i         the build script
+    build.rin         the build script
     .gitignore      build/
 
 and nothing else. In particular the `CMakeLists.txt` should not be one of them:
@@ -162,7 +162,7 @@ njinn is the argument. Its build runs a resource cooker, a bindgen pass over
 manifest would either not express that or grow into a bad programming language.
 The escape hatch has to be there from the start.
 
-## `build.i`: what it needs that does not exist
+## `build.rin`: what it needs that does not exist
 
 A build script written in rin has to read a source tree, decide what is stale,
 run a C compiler, and write output. Here is std's entire contact with the
@@ -208,11 +208,11 @@ tests, because it is a real program with failure modes someone has to live with.
   located and configured.
 - **OS primitives in `std`** -- medium, and the cost is design rather than
   typing. Perhaps 20 calls behind an rin-shaped API, gated on the error story.
-- **`std/build.i` plus bootstrapping** -- large. bunyan's logic ported, plus the
+- **`std/build.rin` plus bootstrapping** -- large. bunyan's logic ported, plus the
   chicken-and-egg that a build script must be compiled and linked before it can
   run, plus a cache so that does not happen every invocation.
 
-Note that `I build` is not a detour on the way to `build.i` -- compiling and
+Note that `I build` is not a detour on the way to `build.rin` -- compiling and
 linking a build script into something runnable *is* the `I build` operation.
 
 ## Recommendation
@@ -224,10 +224,10 @@ commits to nothing.
 
 **Do not ship `bunyan.py` in the package.** An earlier draft of this document
 recommended exactly that, on the grounds that three drifted copies is a real
-problem. That advice is withdrawn: if `build.i` is the destination, shipping
+problem. That advice is withdrawn: if `build.rin` is the destination, shipping
 bunyan is investing in the layer being replaced. The three copies are annoying
 rather than harmful while there is one real project, and they stop mattering
-entirely when `build.i` lands.
+entirely when `build.rin` lands.
 
 Both halves of that get more expensive with a second real project, which is the
 event that should reopen this.

@@ -67,7 +67,7 @@ name the second, the check is decoration.
    immediately showed `fxed_update` at 132 lines against njinn's 46.
 2. **Port in file order**, working the checklist. Do not sample.
 3. **Diff the call sites, not just the module.** A complete module wired up
-   wrong is indistinguishable from a broken one at runtime. `fxops.i` was a
+   wrong is indistinguishable from a broken one at runtime. `fxops.rin` was a
    perfect port for four rounds while three of its entry points were never
    called by anything and a fourth was called with `null`.
 4. **Diff initialisation and mode setup.** The last defect was that fx mode
@@ -92,7 +92,7 @@ That is longer and less satisfying and it would have saved four rounds.
 
 ## Repo-specific traps hit during this port
 
-- **fxops reads the global `memory` from `state.i`**, it does not use the one
+- **fxops reads the global `memory` from `state.rin`**, it does not use the one
   passed in. A test that initialises a local `os_memory` faults on the first
   push.
 - **The scroll region has to be re-begun after the content is laid out**, with
@@ -115,7 +115,7 @@ That is longer and less satisfying and it would have saved four rounds.
 names per function. It is good and it found real bugs. Its blind spots, all hit
 here: argument values, statement order, initialisation, and reachability.
 
-Added during this port: `tests/fxops_emit_selftest.i`, which walks the chain an
+Added during this port: `tests/fxops_emit_selftest.rin`, which walks the chain an
 effect must travel before a vertex is possible -- packages load, registry
 rebuilds, anim resolves to a desc name, name resolves to an id, desc has effects
 -- across every character and anim. Any break in that chain means nothing renders

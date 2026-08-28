@@ -241,7 +241,7 @@ which one is correct.
 >
 > The generated C carries
 > `#pragma clang diagnostic error "-Wmicrosoft-enum-value"` after the includes,
-> which covers the expression cases on the real `.i` line -- the same borrowing
+> which covers the expression cases on the real `.rin` line -- the same borrowing
 > the external layout asserts already do. It is placed after the includes so it
 > governs the enums rin emits rather than whatever a third-party header
 > contains.
@@ -399,7 +399,7 @@ of confusion.
 ### 4.2 Arithmetic right shift
 
 **Today.** Right-shifting a negative signed value is arithmetic. C leaves this
-implementation-defined. `013-integer-conversion.i` records the behaviour but
+implementation-defined. `013-integer-conversion.rin` records the behaviour but
 that is documentation of what happens, not a decision that it should.
 > **Later.** Deferred deliberately; no work planned this round.
 
@@ -428,7 +428,7 @@ resolved from beside the compiler executable.
 answers in the implementation:
 
 - **Circular imports are diagnosed**, with the full chain:
-  `semantic error: import cycle: a.i -> b.i -> a.i`.
+  `semantic error: import cycle: a.rin -> b.rin -> a.rin`.
 - **Imports are transitive.** If A imports B and B imports C, A sees C's
   symbols. Verified with a *discriminating* test: a plain transitive call
   proves nothing while 3.4 is open, since an unresolved callee is accepted
@@ -580,7 +580,7 @@ through it, with no diagnostic:
     p: *reflect = cast(Point<>.&, *reflect);
     p[0].size = 999;                          // i: generated
 
-The emitted C is `((i_reflect *)(&(Point_reflect)))`. clang catches it only
+The emitted C is `((rin_reflect *)(&(Point_reflect)))`. clang catches it only
 under `-Wcast-qual`, which is not on by default. The write does fault at
 runtime -- see 9.2 -- so the failure mode is a crash rather than corruption, but
 the compile-time gap is real.
@@ -604,10 +604,10 @@ falsely.
 Reflection tables are compiler-generated and must never be mutated. Measured
 against the current compiler, this is already true at every level:
 
-- **Deep `const` in the emitted C.** `static const i_reflect_value[]`,
-  `static const i_reflect_field[]`, `const i_reflect`, `extern const i_reflect`,
+- **Deep `const` in the emitted C.** `static const rin_reflect_value[]`,
+  `static const rin_reflect_field[]`, `const rin_reflect`, `extern const rin_reflect`,
   and every interior pointer const-qualified in `reflect.h` (`const char *name`,
-  `const i_reflect *info`).
+  `const rin_reflect *info`).
 - **Read-only section.** `llvm-nm` reports the tables as `R`/`r` -- `.rdata`. A
   program that forces a write through segfaults (exit 139). The pages are
   read-only at runtime already.
@@ -633,7 +633,7 @@ Proposed to save writing `const`. Four reasons not to:
    `T` is not contained -- it is in every signature, every instantiation, the
    LSP, and every error message.
 4. **The tedium is smaller than it feels.** 96 `*const reflect*` spellings
-   exist; **75 are in `src/std/reflect.i`**, one file written once. All of njinn
+   exist; **75 are in `src/std/reflect.rin`**, one file written once. All of njinn
    (28K lines) has 11. rin-learn has 6. That is a permanent type-system exception
    to save eleven `const` keywords in an entire engine.
 
@@ -652,7 +652,7 @@ because the keyword is `alias`, not `type`.
     myint: alias = i32;
     reflectref: alias = *const reflect;
 
-Both check. `bindings/cglm.i` has been using it all along -- `vec2: alias = [2]f32;`.
+Both check. `bindings/cglm.rin` has been using it all along -- `vec2: alias = [2]f32;`.
 
 So the ergonomic complaint behind the rejected `*reflect` magic in 9.2 already
 has its general answer in the language, and it needs no new feature:
@@ -735,7 +735,7 @@ the same rule applied to modules instead of type arguments.
    the likely answer, but note it **interacts with 3.4**: while an unresolved
    callee is silently accepted, the checker cannot distinguish "ambiguous" from
    "undeclared", so this decision is partly blocked on that one.
-2. **Where does the module name come from?** Filename (`mem.i` gives `mem`), an
+2. **Where does the module name come from?** Filename (`mem.rin` gives `mem`), an
    explicit `module` declaration in the file, or the import site
    (`import "std/mem.rin" as mem`). Filename is the least ceremony; explicit is the
    only one that survives a file rename without breaking callers.
@@ -748,9 +748,9 @@ the same rule applied to modules instead of type arguments.
 
 **Bearing -- weaker than it first looks.** The 86% figure proves the prefixes get
 written, not that a feature is needed. Checked for drift and there is almost
-none: `fxops.i` is 106 of 111 consistent, `gops.i` 199 of 218, `gin.rin` 191 of
-212. The files that look like total violations -- `externs.i` (34 of 34),
-`os.i` (53 of 58), `pch.rin` (7 of 7) -- exist to declare *C* symbols, which no
+none: `fxops.rin` is 106 of 111 consistent, `gops.rin` 199 of 218, `gin.rin` 191 of
+212. The files that look like total violations -- `externs.rin` (34 of 34),
+`os.rin` (53 of 58), `pch.rin` (7 of 7) -- exist to declare *C* symbols, which no
 namespace feature would touch. The discipline is not failing.
 
 What it actually buys, ranked:

@@ -12,7 +12,7 @@ second user, and because the answer shapes the module design.
 
 A library defines a generic container:
 
-    // stack.i, written by someone else
+    // stack.rin, written by someone else
     Stack: struct<T> = {
         items: [8]T;
         count: i32;
@@ -84,7 +84,7 @@ No, and it is worth being explicit about why, because the machinery for solving
 it is not free.
 
 - **A game** is one program. Whole-program compilation covers it entirely.
-- **Teaching** hands students `.i` files. That is source.
+- **Teaching** hands students `.rin` files. That is source.
 - **Open-sourcing** a library hands over source too.
 
 The problem requires distributing a *closed-source binary* rin library that a
@@ -94,7 +94,7 @@ situation nobody is in.
 ## Options, If It Ever Applies
 
 **A. Ship generics as source; ship everything else compiled.** The library
-travels as `.h` + `.obj` for its ordinary code, plus the `.i` for its generic
+travels as `.h` + `.obj` for its ordinary code, plus the `.rin` for its generic
 definitions. The consumer's compiler generates every instantiation once. This
 is the default and it needs no new machinery — it is what already happens.
 

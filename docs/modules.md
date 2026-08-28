@@ -4,7 +4,7 @@ How `--modules` lowers a program to one `.h`/`.c` pair per source file instead o
 a single translation unit.
 
 The single-file path is unchanged and remains the default. Module mode is
-additive: `rin.exe compile entry.i --modules <dir>`.
+additive: `rin.exe compile entry.rin --modules <dir>`.
 
 ## What Gets Emitted
 
@@ -49,7 +49,7 @@ module ordered before them. That is acyclic, because imports are appended ahead
 of the file that imports them.
 
 It is not sufficient. Real code has **backward** references between modules: in
-the engine this was written against, `memops_pool.i` calls `gin_fatal`, which is
+the engine this was written against, `memops_pool.rin` calls `gin_fatal`, which is
 declared in `gin.rin` — a module that comes later. No acyclic per-module include
 can express that.
 
@@ -77,13 +77,13 @@ definition had nowhere to be declared. In the single-file build every prototype
 preceded every body, which hid the need.
 
 **Module names may not collide with the generated files.** A module called
-`types.i` or `monomorphs.i` is rejected rather than silently overwriting.
+`types.rin` or `monomorphs.rin` is rejected rather than silently overwriting.
 
 ## What Had To Change In The Project
 
-One thing, and it was a latent bug rather than a porting cost: `cryptops.i`
+One thing, and it was a latent bug rather than a porting cost: `cryptops.rin`
 declared `cryptops_seek_set` and `cryptops_seek_end` as `static i32` and
-`resio.i` used them. Internal linkage read across a module boundary only works
+`resio.rin` used them. Internal linkage read across a module boundary only works
 when everything is one translation unit. They are now non-static, which is what
 they should always have been — they are shared constants.
 

@@ -409,7 +409,7 @@ sum: proc<T>(items: *T, count: u64) -> T = {
 main: proc(argc: i32, argv: **char)-> i32 = {
     arena: memops_arena = {};
     memops_arena_initialize(arena.&);
-    // todo: this line is intentionally an I comment, not C preprocessor output.
+    // todo: this line is intentionally a rin comment, not C preprocessor output.
     printfmt("{}\n", add<i32>(1, 1));
     x: i32 = add<i32>(1, 1);
     printfmt("{}\n", x);
@@ -7824,7 +7824,7 @@ main:proc()->i32 = {
     # The reflect runtime's C names carry an `i_` prefix so they do not squat on
     # the C global namespace of every program -- `reflect` unprefixed is a GLSL
     # builtin and a plausible name in any vector-math library an engine links.
-    # I source keeps the short spelling, and src/main.c holds the closed list
+    # rin source keeps the short spelling, and src/main.c holds the closed list
     # that maps between them. A closed list rather than a "starts with reflect"
     # rule, because a blanket rule would rewrite a user's own external binding
     # and break its link -- but a closed list can fall behind the headers, so it
@@ -9098,7 +9098,7 @@ main:proc()->i32 = {
 
     # An array may be sized by an enum member so a table stays in step with the enum
     # it is indexed by. The member's C name is emitted, not its numeric value, so the
-    # generated C keeps the same symbolic link to the enum that the I source has.
+    # generated C keeps the same symbolic link to the enum that the rin source has.
     count_i = TEST_DIR / "array_count_enum.rin"
     count_c = TEST_DIR / "array_count_enum.c"
     count_i.write_text(

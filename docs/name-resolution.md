@@ -29,7 +29,7 @@ main: proc() -> i32 = {
 // ISO C99 and later do not support implicit function declarations
 ```
 
-Hit three times in one sitting while writing `njinn/src/fxed.i`, against
+Hit three times in one sitting while writing `njinn/src/fxed.rin`, against
 `sops_skin_state_deinit`, `pacops_character_name` and
 `guiops_layout_content_height` — none of which exist. The checker accepted all
 three.
@@ -83,13 +83,13 @@ than the raw call count suggested.
 names once `sizeof` was fixed, and the fix was **one new std module plus 11
 declarations in njinn**.
 
-- `src/std/cstd.i` -- a new module declaring the C runtime std itself uses
+- `src/std/cstd.rin` -- a new module declaring the C runtime std itself uses
   (`printf`, `fopen_s`, `fclose`, `fseek`, `ftell`, `fread`, `exit`, `memcpy`,
   `memmove`, `memset`, `memcmp`, `strlen`, `strcmp`) and the opaque `FILE`.
-  Imported by `memops.i`, `Option.i`, `Print.i`, `Result.i`, `Equal.i` and
-  `reflect.i`; transitivity covers the rest of std -- and njinn, whose 95 `printf`
+  Imported by `memops.rin`, `Option.rin`, `Print.rin`, `Result.rin`, `Equal.rin` and
+  `reflect.rin`; transitivity covers the rest of std -- and njinn, whose 95 `printf`
   calls resolved through it without a single edit.
-- `njinn/src/externs.i` -- 11 declarations, in the sections that already held
+- `njinn/src/externs.rin` -- 11 declarations, in the sections that already held
   their neighbours: five cglm entry points, `strrchr`, `fmodf`, `abort`,
   `_alloca`, `va_start`, `va_end`.
 
@@ -113,7 +113,7 @@ stays a value and is not callable. This removed all 131 with no source edits.
 declared, two modules that both use `printf` must both declare it -- and a
 program importing both would fail on a conflict neither author can see. C allows
 a compatible redeclaration for exactly this reason. A redeclaration that
-*disagrees* is still an error, and that is not hypothetical: `cstd.i` declared
+*disagrees* is still an error, and that is not hypothetical: `cstd.rin` declared
 `fseek`'s offset as `i64` while njinn used C's `long`, and this rule is what
 caught it. Non-external procs are unaffected.
 
@@ -225,7 +225,7 @@ other: silently wrong behaviour rather than an error.
 entered into the `TypeScope` -- it holds locals, parameters, globals,
 function-like macros and reflection globals -- so a hit there is by construction
 a nearer binding, which is exactly C's rule. If the nearest binding is not
-callable, `type_error_call_non_proc` reports it on the `.i` line; if it is
+callable, `type_error_call_non_proc` reports it on the `.rin` line; if it is
 callable (a proc-pointer local), it goes to the indirect-call path that already
 existed. Explicit type arguments are left alone, since `f<i32>(x)` is
 unambiguously a generic proc call and never a variable.
@@ -257,7 +257,7 @@ is that nothing should reach the backend.
 
 `rin-learn`'s reflection lessons compiled for weeks against `field_count`, a field
 that no longer existed, because reflect access was only checked when
-`std/reflect.i` happened to be imported. That was the same class of hole, and it
+`std/reflect.rin` happened to be imported. That was the same class of hole, and it
 was found by accident. §3.4 is the general case, and it is the single item that
 most separates "a language I can hand to someone else" from "a language that
 works if you already know what it wants".

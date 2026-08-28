@@ -13,7 +13,7 @@ checks were about whether things compiled, not what they computed.
 ## Method
 
 Every test targets a **hypothesised fault**, not a feature. "Does switch work"
-would have passed the entire time the bug existed: `002-enum-values.i` had a
+would have passed the entire time the bug existed: `002-enum-values.rin` had a
 switch and passed, because every case returned and fall-through was invisible.
 
 So each case is chosen so that the plausible wrong lowering **changes the
@@ -27,7 +27,7 @@ wrong-code bug gets enshrined as correct.
 
 The suite is validated by **mutation**: break the emitter deliberately and
 confirm the suite goes red. Disabling the `break` emission makes all six
-assertions in `008-switch-semantics.i` fire. A suite that stays green against an
+assertions in `008-switch-semantics.rin` fire. A suite that stays green against an
 injected fault has a hole.
 
 ## Done
@@ -103,7 +103,7 @@ shadowed — suggests it may not be deliberate. Three options:
 2. allow it, matching every other language in the family
 3. keep it *and* forbid shadowing globals, for consistency
 
-`014-names-and-emission-order.i` currently pins only the settled part.
+`014-names-and-emission-order.rin` currently pins only the settled part.
 
 ### Identifier restriction versus mangling
 
@@ -133,11 +133,11 @@ An earlier proposal to emit unparenthesised C for legibility is therefore
 withdrawn for binary operators. A narrower version remains possible: omit
 parentheses only where rin's precedence agrees with C's, keeping them where the
 tables now differ. That is cheap to state and fiddly to maintain, and it would
-need `012-precedence-and-parens.i` extended to cover every operator pair.
+need `012-precedence-and-parens.rin` extended to cover every operator pair.
 
 ### Arithmetic right shift is implementation-defined
 
-`013-integer-conversion.i` records that right-shifting a negative signed value
+`013-integer-conversion.rin` records that right-shifting a negative signed value
 is arithmetic. C leaves this implementation-defined. The test documents the
 current behaviour rather than a decision; it should be confirmed as deliberate
 and written into the language docs, or changed.
@@ -163,7 +163,7 @@ Constructs with no discriminating test, roughly in the order worth doing:
 - **varargs** — forwarding, and the promotion rules at the call boundary
 - **pointer arithmetic** — scaling by element size, differences, comparison
 - **`goto` across scopes** — jumping backward over an initialisation, jumping
-  out of a nested block; `003-goto-labels.i` covers the ordinary cases only
+  out of a nested block; `003-goto-labels.rin` covers the ordinary cases only
 - **associativity** beyond the arithmetic cases, especially the right-associative
   conditional: `a ? b : c ? d : e`
 - **index expressions with side effects** in multidimensional access

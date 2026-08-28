@@ -1,7 +1,7 @@
 const examples = {
   basics: {
     title: 'Basics',
-    code: `import "std/Print.i"
+    code: `import "std/Print.rin"
 
 add: proc<i32>(x: i32, y: i32)->i32 = {
     return x + y;
@@ -15,8 +15,8 @@ main: proc(argc: i32, argv: **char)->i32 = {
   },
   generics: {
     title: 'Generics',
-    code: `import "std/memops.i"
-import "std/Array.i"
+    code: `import "std/memops.rin"
+import "std/Array.rin"
 
 Payload: struct = {
     x: f32;
@@ -304,7 +304,7 @@ function drawPipeline() {
   ctx.clearRect(0, 0, w, h);
 
   const nodes = [
-    { x: w * 0.15, y: h * 0.36, label: '.i', color: '#8fc75a' },
+    { x: w * 0.15, y: h * 0.36, label: '.rin', color: '#8fc75a' },
     { x: w * 0.38, y: h * 0.24, label: 'parse', color: '#5eb3c6' },
     { x: w * 0.62, y: h * 0.40, label: 'emit C', color: '#e2b857' },
     { x: w * 0.84, y: h * 0.28, label: 'exe', color: '#df7b62' },

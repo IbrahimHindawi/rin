@@ -1,3 +1,0 @@
-[core]
-metapath = "extern/haikal/src/meta/"
-mainpath = "src/main.c"
