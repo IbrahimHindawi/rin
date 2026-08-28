@@ -4,6 +4,10 @@
 > rin as possible. This records the target and the measured size of the job so
 > the work does not start by re-counting. Nothing here is implemented.
 
+See also [strings-and-slices.md](strings-and-slices.md) for what each
+type is for and why, and [clib-removal.md](clib-removal.md), which measures the C library
+dependency in `string8.rin` and what it costs to remove.
+
 ## Where we are
 
 Two string types already exist, in `src/std/string8.rin`:

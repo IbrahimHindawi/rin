@@ -607,3 +607,125 @@ string8slice_split: proc(arena: *memops_arena, src: string8slice, sep: u8) -> Ve
 string8slice_split_from_string8: proc(arena: *memops_arena, src: string8, sep: u8) -> Vec<string8slice> = {
     return string8slice_split(arena, string8slice_from_string8(src), sep);
 }
+
+
+/* A string built straight onto the arena head.
+
+   string8_grow reallocates: it pushes a fresh block and memcpys, so building an
+   N-byte string by appending copies about N bytes through the doubling chain and
+   abandons every earlier block. In a scratch arena the abandoned bytes cost
+   nothing -- the whole thing is reset -- but the copying is real.
+
+   A builder avoids it. If nothing else allocates from the arena while the build
+   is open, the string *is* the arena head, so there is no difference between the
+   string's capacity and the space in front of the cursor. Appending is a push.
+   No capacity field, no doubling, no realloc, no copy: the one copy left is
+   string8_builder_commit, moving the finished string from scratch to permanent.
+
+   The rule this depends on is narrow: one *open* builder per arena. Finished
+   strings coexist in a scratch arena happily -- build one, take its slice, build
+   the next, and they sit side by side. What breaks is appending to a builder
+   after a second one opened, because the push then lands past the other's bytes
+   and the length spans memory it does not own. That produces a plausible string
+   of the wrong contents rather than a crash, so every append checks the head and
+   aborts instead. When two builds genuinely have to overlap, give the inner one
+   its own memops_arena_temp scope. */
+string8_builder: struct = {
+    arena: *memops_arena;
+    start: *u8;
+    length: u64;
+}
+
+string8_builder_begin: proc(arena: *memops_arena) -> string8_builder = {
+    b: string8_builder = {};
+    if (arena == null) {
+        printf("rin runtime: string8 builder with null arena\n");
+        exit(1);
+    }
+    b.arena = arena;
+    b.start = arena[0].base + arena[0].used;
+    b.length = 0;
+    return b;
+}
+
+/* The head check. Cheap enough to run on every append, and the only thing
+   standing between an interleaved build and silent corruption. */
+string8_builder_reserve_: proc(b: *string8_builder, count: u64) -> *u8 = {
+    if (b == null or b[0].arena == null) {
+        printf("rin runtime: string8 builder invalid argument\n");
+        exit(1);
+    }
+    if (b[0].start + b[0].length != b[0].arena[0].cursor) {
+        printf("rin runtime: string8 builder lost the arena head (interleaved allocation)\n");
+        exit(1);
+    }
+    p: *u8 = cast(memops_arena_push(b[0].arena, count, alignof(u8)), *u8);
+    if (p == null) {
+        printf("rin runtime: string8 builder allocation failure\n");
+        exit(1);
+    }
+    return p;
+}
+
+string8_builder_append_byte: proc(b: *string8_builder, byte: u8) -> void = {
+    p: *u8 = string8_builder_reserve_(b, 1);
+    p[0] = byte;
+    b[0].length += 1;
+}
+
+string8_builder_append_bytes: proc(b: *string8_builder, src: *const u8, count: u64) -> void = {
+    if (count == 0) {
+        return;
+    }
+    p: *u8 = string8_builder_reserve_(b, count);
+    memcpy(p, src, count);
+    b[0].length += count;
+}
+
+string8_builder_append_slice: proc(b: *string8_builder, src: string8slice) -> void = {
+    string8_builder_append_bytes(b, src.data, src.length);
+}
+
+string8_builder_append_string8: proc(b: *string8_builder, src: string8) -> void = {
+    string8_builder_append_bytes(b, src.data, src.length);
+}
+
+string8_builder_append_cstr: proc(b: *string8_builder, cstr: *const char) -> void = {
+    if (cstr == null) {
+        return;
+    }
+    string8_builder_append_bytes(b, cast(cstr, *const u8), cast(strlen(cstr), u64));
+}
+
+/* A view of what has been built. Valid until the arena is reset, and not
+   NUL-terminated -- use string8_builder_finish when C has to read it. */
+string8_builder_slice: proc(b: *const string8_builder) -> string8slice = {
+    out: string8slice = {};
+    if (b == null) {
+        return out;
+    }
+    out.data = b[0].start;
+    out.length = b[0].length;
+    return out;
+}
+
+/* Closes the build in place: pushes the terminator the rest of string8 keeps,
+   and hands back an owning string8 over the same arena bytes. No copy. */
+string8_builder_finish: proc(b: *string8_builder) -> string8 = {
+    p: *u8 = string8_builder_reserve_(b, 1);
+    p[0] = 0;
+    out: string8 = {};
+    out.data = b[0].start;
+    out.length = b[0].length;
+    out.capacity = b[0].length;
+    return out;
+}
+
+/* The scratch-to-permanent move: the one copy the pattern actually needs. */
+string8_builder_commit: proc(b: *const string8_builder, dst: *memops_arena) -> string8 = {
+    if (b == null) {
+        out: string8 = {};
+        return out;
+    }
+    return string8_copy_from_slice(dst, b[0].start, b[0].length);
+}

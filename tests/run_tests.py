@@ -643,6 +643,53 @@ main:proc()->i32 = {
         generated_contains=("string8_reflect", "string8slice_reflect", "Vec_string8_reflect", "Vec_string8slice_reflect", "print_string8", "print_string8slice"),
     ),
     Case(
+        name="string8_builder",
+        source=r'''
+cinclude "stdio.h"
+import "std/string8.rin"
+
+printf: proc[external](f: *const char, ...) -> i32 = {}
+
+main: proc() -> i32 = {
+    scratch: memops_arena = {};
+    perm: memops_arena = {};
+    memops_arena_initialize(scratch.&);
+    memops_arena_initialize(perm.&);
+    before: u64 = scratch.used;
+
+    b: string8_builder = string8_builder_begin(scratch.&);
+    string8_builder_append_cstr(b.&, "hello");
+    string8_builder_append_byte(b.&, 32);
+    string8_builder_append_slice(b.&, string8slice_from_cstr("world"));
+    s: string8slice = string8_builder_slice(b.&);
+
+    kept: string8 = string8_builder_commit(b.&, perm.&);
+
+    // A second build, opened after the first is done with, shares the arena.
+    c: string8_builder = string8_builder_begin(scratch.&);
+    string8_builder_append_cstr(c.&, "second");
+    d: string8slice = string8_builder_slice(c.&);
+    e: string8slice = string8_builder_slice(b.&);
+
+    printf("%.*s|%s|%llu|%.*s|%.*s\n",
+        cast(s.length, i32), s.data,
+        kept.data,
+        scratch.used - before - d.length,
+        cast(e.length, i32), e.data,
+        cast(d.length, i32), d.data);
+    return 0;
+}
+''',
+        # The third field is the arena cost of an 11-byte string. string8_append
+        # would report 16 or more, having doubled and abandoned the earlier
+        # blocks; the builder pushes onto the head, so it is exactly 11. That
+        # number is the whole point of the type. The last two fields check that
+        # the first builder's slice still reads correctly after a second one
+        # opened -- finished strings coexist, only appending to a stale builder
+        # is an error, and that case aborts rather than corrupting.
+        expected_stdout="hello world|hello world|11|hello world|second\n",
+    ),
+    Case(
         name="enum_reflect_preprocessor",
         source=r'''
 cinclude "stdio.h"
