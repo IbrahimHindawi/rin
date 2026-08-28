@@ -17,13 +17,18 @@ def build_haikal(ctx: BuildContext) -> None:
         build_type="Release",
     )
     cmake_build(haikal_build_dir)
+    # haikal infers the project root from the compile database, so it needs the
+    # path rather than just the entry file. command_config runs before this hook,
+    # so compile_commands.json is already on disk.
     run_cmd(
         [
             haikal_build_dir / "haikal.exe",
-            "--entry",
-            ctx.root_dir / "src" / "main.c",
+            "--compile-db",
+            ctx.build_dir / "compile_commands.json",
             "--meta",
             ctx.root_dir / "extern" / "haikal" / "src" / "meta_arena",
+            "--entry",
+            ctx.root_dir / "src" / "main.c",
         ],
         cwd=ctx.root_dir,
     )

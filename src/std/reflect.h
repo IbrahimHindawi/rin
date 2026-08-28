@@ -20,17 +20,17 @@
 
    I source keeps the short spelling -- `reflect`, `reflect_fields` -- and the
    compiler maps those onto the names below when it emits C. See
-   reflect_runtime_c_name() in src/main.c, and std/reflect.i for the I side. */
+   reflect_runtime_c_name() in src/main.c, and std/reflect.rin for the rin side. */
 
 /* One record describes every reflected type. `kind` says which, and `variant`
    holds the payload that only that kind has. This replaces the older split
    between the old separate type and enum records, which forced every consumer to
    know in advance which of two unrelated records it was going to be handed.
 
-   The layout here must match std/reflect.i exactly. Both `kind` fields are
+   The layout here must match std/reflect.rin exactly. Both `kind` fields are
    spelled i32 rather than as C enums on purpose: C leaves an enum's underlying
    type implementation-defined, so a C enum here would make the struct's layout
-   depend on the compiler while the I side mirrors it as a fixed i32. */
+   depend on the compiler while the rin side mirrors it as a fixed i32. */
 
 typedef struct rin_reflect rin_reflect;
 
@@ -94,7 +94,7 @@ struct rin_reflect {
 };
 
 /* The helpers that used to live here -- rin_reflect_fields, rin_reflect_find_field,
-   and the rest -- are now written in I, in std/reflect.i. They were pure logic
+   and the rest -- are now written in I, in std/reflect.rin. They were pure logic
    over the data below, so a C header was the wrong home: there they could not be
    type-checked, could not be read in the language that uses them, and had to be
    mirrored by a hand-written set of `external` declarations that nothing kept in

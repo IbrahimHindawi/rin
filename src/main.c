@@ -4678,7 +4678,7 @@ static void semantic_check_expr(Expr *e, Scope *scope, Vec_string8 *known_types,
             }
             return;
         }
-        // A `cinclude` does not lower anything into the I symbol table, and no
+        // A `cinclude` does not lower anything into the rin symbol table, and no
         // longer needs to: every C function is declared in I before it can be
         // called, so an unresolved name here is a mistake rather than interop.
         // The call path reports it; see type_error_call_undeclared.

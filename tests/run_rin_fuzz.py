@@ -1,4 +1,4 @@
-"""Mutation fuzzer for the I front end.
+"""Mutation fuzzer for the rin front end.
 
 Diagnostics are recoverable rather than fatal, which means the compiler keeps
 running after an error and can reach states the fixtures never produce. This
@@ -106,7 +106,7 @@ def check(path: Path, timeout: float) -> Failure | None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Mutation fuzzer for the I front end.")
+    parser = argparse.ArgumentParser(description="Mutation fuzzer for the rin front end.")
     parser.add_argument("--iterations", type=int, default=400)
     parser.add_argument("--seed", type=int, default=20240611, help="Fixed so runs reproduce.")
     parser.add_argument("--timeout", type=float, default=10.0)

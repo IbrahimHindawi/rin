@@ -1,4 +1,4 @@
-"""Differential runner for the I execute torture suite.
+"""Differential runner for the rin execute torture suite.
 
 The compile suite only proves the generated C is accepted by a C compiler. This
 one links and runs it, then compares stdout against a recorded .expected file, so

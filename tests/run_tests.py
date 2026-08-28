@@ -7781,7 +7781,7 @@ main:proc()->i32 = {
     print("ok type_reflect_variant_arm")
 
     # Reflection access used to be checked only when the program imported
-    # std/reflect.i, because the diagnostic fired for declared types only. But
+    # std/reflect.rin, because the diagnostic fired for declared types only. But
     # `Type<>` needs no import, so ordinary code went unchecked and a stale field
     # name passed straight to C. The reflect record's field set is compiler
     # knowledge, so the check must not depend on the user declaring it.
@@ -7920,7 +7920,7 @@ main:proc()->i32 = {
     # And the prefix must be the C-legal one. Two leading underscores, or an
     # underscore followed by an uppercase letter, are reserved to the
     # implementation for any use.
-    if "__i_reflect" in reflect_h or "_Reflect" in reflect_h.replace("I_Reflect", ""):
+    if "__rin_reflect" in reflect_h or "_Reflect" in reflect_h.replace("I_Reflect", ""):
         print("reflect_runtime_names: the prefix must be `i_`, not a reserved `__`/`_U` form")
         return 1
     print("ok reflect_runtime_names (%d mapped)" % len(table_names))
