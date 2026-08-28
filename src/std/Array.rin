@@ -13,7 +13,7 @@ Array<T>reserve: proc<T>(arena: *memops_arena, length: u64) -> Array<T> = {
     }
     arr.data = cast(memops_arena_push_zero(arena, sizeof(T) * length, alignof(T)), *T);
     if (arr.data == null) {
-        printf("I runtime: Array reserve allocation failure\n");
+        printf("rin runtime: Array reserve allocation failure\n");
         exit(1);
         return arr;
     }
@@ -28,7 +28,7 @@ Array<T>destroy: proc<T>(arena: *memops_arena, array: *Array<T>) -> void = {
 
 Array<T>at: proc<T>(array: *Array<T>, index: u64) -> *T = {
     if (array == null or index >= array[0].length) {
-        printf("I runtime: Array index out of bounds\n");
+        printf("rin runtime: Array index out of bounds\n");
         exit(1);
     }
     return array[0].data[index].&;

@@ -9,7 +9,7 @@ Stack: struct<T> = {
 Stack<T>create: proc<T>(arena: *memops_arena) -> *Stack<T> = {
     stack: *Stack<T> = cast(memops_arena_push_zero(arena, sizeof(Stack<T>), alignof(Stack<T>)), *Stack<T>);
     if (stack == null) {
-        printf("I runtime: Stack allocation failure\n");
+        printf("rin runtime: Stack allocation failure\n");
         exit(1);
     }
     return stack;

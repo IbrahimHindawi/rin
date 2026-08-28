@@ -10,7 +10,7 @@ BiNode: struct<T> = {
 BiNode<T>create: proc<T>(arena: *memops_arena, data: T) -> *BiNode<T> = {
     node: *BiNode<T> = cast(memops_arena_push_zero(arena, sizeof(BiNode<T>), alignof(BiNode<T>)), *BiNode<T>);
     if (node == null) {
-        printf("I runtime: BiNode allocation failure\n");
+        printf("rin runtime: BiNode allocation failure\n");
         exit(1);
     }
     node[0].next = null;

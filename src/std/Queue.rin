@@ -10,7 +10,7 @@ Queue: struct<T> = {
 Queue<T>create: proc<T>(arena: *memops_arena) -> *Queue<T> = {
     queue: *Queue<T> = cast(memops_arena_push_zero(arena, sizeof(Queue<T>), alignof(Queue<T>)), *Queue<T>);
     if (queue == null) {
-        printf("I runtime: Queue allocation failure\n");
+        printf("rin runtime: Queue allocation failure\n");
         exit(1);
     }
     return queue;

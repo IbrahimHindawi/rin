@@ -4246,6 +4246,55 @@ main:proc()->i32 = {
         return 1
     print("ok enum_ranges")
 
+    # A switch that lists cases and writes no `default` is a claim that the list
+    # is complete; this checks the claim. Writing `default` opts out entirely, so
+    # a two-hundred-member enum pays nothing -- the same rule C uses for -Wswitch.
+    # The failure it prevents is silent: a member is added later and every switch
+    # that enumerated the old set keeps compiling while quietly falling through.
+    exhaustive_rin = TEST_DIR / "switch_exhaustive.rin"
+    for src, label in (
+        ("Colour: enum = { red, green, blue, }\n"
+         "f: proc(c: Colour) -> i32 = {\n"
+         "    switch (c) { case Colour.red: {} case Colour.green: {} case Colour.blue: {} }\n"
+         "    return 0;\n}\n", "every member cased"),
+        ("Colour: enum = { red, green, blue, }\n"
+         "f: proc(c: Colour) -> i32 = {\n"
+         "    switch (c) { case Colour.red: {} default: {} }\n"
+         "    return 0;\n}\n", "default opts out"),
+        ("Colour: enum = { red, green, blue, }\n"
+         "f: proc(c: Colour) -> i32 = {\n"
+         "    switch (c) { case Colour.red: {} default: { } }\n"
+         "    return 0;\n}\n", "an empty default still opts out"),
+        ("f: proc(n: i32) -> i32 = {\n"
+         "    switch (n) { case 1: {} case 2: {} }\n"
+         "    return 0;\n}\n", "a plain integer switch is unaffected"),
+    ):
+        exhaustive_rin.write_text(src, encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(exhaustive_rin)])
+        if res.returncode != 0:
+            print(f"switch_exhaustive: {label!r} must stay legal")
+            print(res.stdout)
+            return 1
+
+    # The diagnostic names the members that were missed, since which ones is the
+    # whole content of the error.
+    exhaustive_rin.write_text(
+        "Colour: enum = { red, green, blue, }\n"
+        "f: proc(c: Colour) -> i32 = {\n"
+        "    switch (c) { case Colour.red: {} case Colour.green: {} }\n"
+        "    return 0;\n}\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(exhaustive_rin)])
+    if res.returncode == 0 or "does not handle blue" not in res.stdout:
+        print("switch_exhaustive: a missing member must be reported by name")
+        print(res.stdout)
+        return 1
+    if "red" in res.stdout.split("does not handle")[1].split(";")[0]:
+        print("switch_exhaustive: a cased member must not be reported missing")
+        print(res.stdout)
+        return 1
+    print("ok switch_exhaustive")
+
     # `true` and `false` are keywords producing 1 and 0. Nothing downstream --
     # inference, folding, emission -- had to learn about them, and b32 is
     # int32_t, so those are exactly its values. Keywords rather than a lexer

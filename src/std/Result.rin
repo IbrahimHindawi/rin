@@ -33,7 +33,7 @@ Result<T>is_err: proc<T>(result: Result<T>) -> b32 = {
 
 Result<T>unwrap: proc<T>(result: Result<T>) -> T = {
     if (!result.ok) {
-        printf("I runtime: Result unwrap on error %d\n", result.error);
+        printf("rin runtime: Result unwrap on error %d\n", result.error);
         exit(1);
     }
     return result.value;

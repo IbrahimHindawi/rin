@@ -34,12 +34,12 @@ path_is_sep: proc(c: u8) -> b32 = {
 string8_reserve: proc(arena: *memops_arena, capacity: u64) -> string8 = {
     s: string8 = {};
     if (arena == null) {
-        printf("I runtime: string8 reserve with null arena\n");
+        printf("rin runtime: string8 reserve with null arena\n");
         exit(1);
     }
     s.data = cast(memops_arena_push_zero(arena, capacity + 1, alignof(u8)), *u8);
     if (s.data == null) {
-        printf("I runtime: string8 reserve allocation failure\n");
+        printf("rin runtime: string8 reserve allocation failure\n");
         exit(1);
     }
     s.capacity = capacity;
@@ -48,14 +48,14 @@ string8_reserve: proc(arena: *memops_arena, capacity: u64) -> string8 = {
 
 string8_grow: proc(arena: *memops_arena, s: *string8, min_capacity: u64) -> void = {
     if (arena == null or s == null) {
-        printf("I runtime: string8 grow invalid argument\n");
+        printf("rin runtime: string8 grow invalid argument\n");
         exit(1);
     }
     if (s[0].capacity >= min_capacity) {
         if (s[0].data == null) {
             s[0].data = cast(memops_arena_push_zero(arena, s[0].capacity + 1, alignof(u8)), *u8);
             if (s[0].data == null) {
-                printf("I runtime: string8 grow allocation failure\n");
+                printf("rin runtime: string8 grow allocation failure\n");
                 exit(1);
             }
         }
@@ -78,7 +78,7 @@ string8_grow: proc(arena: *memops_arena, s: *string8, min_capacity: u64) -> void
         s[0].data = cast(memops_arena_realloc_(arena, new_capacity + 1, old_data, old_capacity + 1, alignof(u8)), *u8);
     }
     if (s[0].data == null) {
-        printf("I runtime: string8 grow allocation failure\n");
+        printf("rin runtime: string8 grow allocation failure\n");
         exit(1);
     }
     if (new_capacity + 1 > old_capacity + 1) {
@@ -145,7 +145,7 @@ string8_copy: proc(arena: *memops_arena, s: string8) -> string8 = {
 string8_to_cstr_temp: proc(arena: *memops_arena, s: string8) -> *char = {
     out: *char = cast(memops_arena_push_zero(arena, s.length + 1, alignof(char)), *char);
     if (out == null) {
-        printf("I runtime: string8 cstr allocation failure\n");
+        printf("rin runtime: string8 cstr allocation failure\n");
         exit(1);
     }
     if (s.length > 0 and s.data != null) {
@@ -158,7 +158,7 @@ string8_to_cstr_temp: proc(arena: *memops_arena, s: string8) -> *char = {
 string8slice_to_cstr_temp: proc(arena: *memops_arena, s: string8slice) -> *char = {
     out: *char = cast(memops_arena_push_zero(arena, s.length + 1, alignof(char)), *char);
     if (out == null) {
-        printf("I runtime: string8slice cstr allocation failure\n");
+        printf("rin runtime: string8slice cstr allocation failure\n");
         exit(1);
     }
     if (s.length > 0 and s.data != null) {

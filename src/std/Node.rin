@@ -9,7 +9,7 @@ Node: struct<T> = {
 Node<T>create: proc<T>(arena: *memops_arena, data: T) -> *Node<T> = {
     node: *Node<T> = cast(memops_arena_push_zero(arena, sizeof(Node<T>), alignof(Node<T>)), *Node<T>);
     if (node == null) {
-        printf("I runtime: Node allocation failure\n");
+        printf("rin runtime: Node allocation failure\n");
         exit(1);
     }
     node[0].next = null;

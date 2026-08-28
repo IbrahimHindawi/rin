@@ -29,7 +29,7 @@ runtime_cstr_copy: proc(arena: *memops_arena, key: *const char) -> *const char =
     byte_count: usize = strlen(key) + 1;
     copy: *char = cast(memops_arena_push(arena, byte_count, alignof(char)), *char);
     if (copy == null) {
-        printf("I runtime: cstring allocation failure\n");
+        printf("rin runtime: cstring allocation failure\n");
         exit(1);
     }
     memcpy(copy, key, byte_count);
@@ -99,14 +99,14 @@ Map<T>expand: proc<T>(arena: *memops_arena, hashmap: *Map<T>) -> b32 = {
 Map<T>create: proc<T>(arena: *memops_arena) -> *Map<T> = {
     hashmap: *Map<T> = cast(memops_arena_push_zero(arena, sizeof(Map<T>), alignof(Map<T>)), *Map<T>);
     if (hashmap == null) {
-        printf("I runtime: Map allocation failure\n");
+        printf("rin runtime: Map allocation failure\n");
         exit(1);
     }
     hashmap[0].length = 0;
     hashmap[0].border = I_RUNTIME_MAP_INITIAL_CAPACITY;
     hashmap[0].entries = cast(memops_arena_push_zero(arena, sizeof(MapEntry<T>) * hashmap[0].border, alignof(MapEntry<T>)), *MapEntry<T>);
     if (hashmap[0].entries == null) {
-        printf("I runtime: Map entries allocation failure\n");
+        printf("rin runtime: Map entries allocation failure\n");
         exit(1);
     }
     return hashmap;

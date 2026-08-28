@@ -10,7 +10,7 @@ List: struct<T> = {
 List<T>create: proc<T>(arena: *memops_arena) -> *List<T> = {
     list: *List<T> = cast(memops_arena_push_zero(arena, sizeof(List<T>), alignof(List<T>)), *List<T>);
     if (list == null) {
-        printf("I runtime: List allocation failure\n");
+        printf("rin runtime: List allocation failure\n");
         exit(1);
     }
     return list;
@@ -40,7 +40,7 @@ List<T>prepend: proc<T>(arena: *memops_arena, list: *List<T>, item: T) -> void =
 
 List<T>insert_at: proc<T>(arena: *memops_arena, list: *List<T>, item: T, index: i32) -> void = {
     if (list == null or index < 0 or cast(index, usize) > list[0].length) {
-        printf("I runtime: List invalid index\n");
+        printf("rin runtime: List invalid index\n");
         return;
     }
     if (index == 0) {

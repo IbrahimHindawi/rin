@@ -10770,6 +10770,62 @@ static void type_error_call_undeclared(
     diag_finish_at(line, col);
 }
 
+/* A switch that enumerates cases and writes no `default` is a claim that the
+   list is complete. This reports the members that claim missed, which is the
+   error that shows up much later, when a member is added and every switch that
+   silently falls through keeps compiling. Writing `default:` opts out entirely,
+   so an enum with two hundred members pays nothing. */
+static void type_error_switch_not_exhaustive(
+    string8 enum_name,
+    string8 *missing,
+    i32 missing_count,
+    i32 total_missing,
+    i32 line,
+    i32 col,
+    memops_arena *arena
+) {
+    string8 list = string8_reserve(arena, 256);
+    for (i32 i = 0; i < missing_count; i++) {
+        if (i > 0) string8_append_cstr(arena, &list, ", ");
+        string8_append_bytes(arena, &list, missing[i].data, missing[i].length);
+    }
+    if (total_missing > missing_count) {
+        char more[64];
+        snprintf(more, sizeof(more), ", and %d more", total_missing - missing_count);
+        string8_append_cstr(arena, &list, more);
+    }
+    if (g_diag_json) {
+        char message[1024];
+        snprintf(
+            message,
+            sizeof(message),
+            "switch on enum '%.*s' does not handle %.*s; add the missing case%s, "
+            "or a `default` if the rest are deliberately ignored",
+            (int)enum_name.length,
+            enum_name.data,
+            (int)list.length,
+            list.data,
+            total_missing == 1 ? "" : "s"
+        );
+        diag_json_error(diag_current_path(), line, col, "type", message);
+        diag_record_error();
+        return;
+    }
+    printf(
+        "%s:%d:%d: type error: switch on enum '%.*s' does not handle %.*s; "
+        "add the missing case%s, or a `default` if the rest are deliberately ignored" "\n",
+        g_diag_source_path ? g_diag_source_path : g_source_path,
+        line,
+        col,
+        (int)enum_name.length,
+        enum_name.data,
+        (int)list.length,
+        list.data,
+        total_missing == 1 ? "" : "s"
+    );
+    diag_finish_at(line, col);
+}
+
 static void type_error_call_non_proc(
     string8 name,
     TypeExpr *callee,
@@ -12310,6 +12366,43 @@ static void type_check_stmt(
                 type_check_stmt((Stmt *)sc->body.data[j], &case_scope, prog, return_type, current_proc, arena);
             }
         }
+        /* Only when the author wrote no `default`: that omission is the opt-in. */
+        if (!s->has_switch_default) {
+            EnumDecl *enum_decl = (switch_type && switch_type->kind == Type_Name)
+                                      ? lookup_enum_decl(prog, switch_type->name)
+                                      : null;
+            if (enum_decl && enum_decl->items.length > 0) {
+                string8 missing[8];
+                i32 shown = 0;
+                i32 total_missing = 0;
+                for (i32 i = 0; i < enum_decl->items.length; i++) {
+                    EnumItem *item = (EnumItem *)enum_decl->items.data[i];
+                    string8 c_name = enum_item_c_name(arena, enum_decl, item);
+                    bool covered = false;
+                    for (i32 j = 0; j < s->switch_cases.length && !covered; j++) {
+                        SwitchCase *sc = (SwitchCase *)s->switch_cases.data[j];
+                        Expr *ce = sc->expr;
+                        if (!ce) continue;
+                        if (ce->kind == Expr_Name && string8_equals(&ce->name, &c_name)) {
+                            covered = true;
+                        } else if (ce->kind == Expr_Field && string8_equals(&ce->name, &item->name)) {
+                            /* Not yet rewritten -- reachable when the case failed
+                               to type-check above, so the report stays honest. */
+                            covered = true;
+                        }
+                    }
+                    if (!covered) {
+                        if (shown < 8) missing[shown++] = item->name;
+                        total_missing++;
+                    }
+                }
+                if (total_missing > 0) {
+                    type_error_switch_not_exhaustive(
+                        enum_decl->name, missing, shown, total_missing, s->line, s->col, arena);
+                }
+            }
+        }
+
         TypeScope default_scope = type_scope_copy(arena, scope);
         for (i32 i = 0; i < s->switch_default_body.length; i++) {
             type_check_stmt((Stmt *)s->switch_default_body.data[i], &default_scope, prog, return_type, current_proc, arena);

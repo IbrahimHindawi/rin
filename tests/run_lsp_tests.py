@@ -269,6 +269,7 @@ main:proc()->i32 = {{
     payload_type_field:i32 = Payload.;
     payload_reflect_field:*const char = Payload<>.;
     kind_reflect_field:u64 = Kind<>.;
+    dot_kind_reflect_field:u64 = dot_kind<>.;
     payload_variant_arm:u64 = Payload<>.variant.;
     kind_variant_arm:u64 = Kind<>.variant.;
     payload_variant_member:u64 = Payload<>.variant.fields[0].;
@@ -2024,6 +2025,25 @@ main:proc()->i32 = {
         print("lsp: expected Payload<>. completion to return reflection metadata fields only")
         print(reflect_field_items)
         return 1
+    # `<>` reads a value as well as a type, and a value reflects the record of
+    # its own type -- `dot_kind: Kind` gives Kind's record. This resolved only
+    # type names once, so `value<>.` matched nothing and the client fell back to
+    # offering every symbol in the workspace: far worse than offering nothing,
+    # since it buries the six fields that are actually legal.
+    value_reflect_line = next(
+        i for i, line in enumerate(completion_context_lines) if "dot_kind_reflect_field" in line)
+    value_reflect_col = (completion_context_lines[value_reflect_line].index("dot_kind<>.")
+                         + len("dot_kind<>."))
+    value_reflect_items = lsp.reflect_field_completions_at(
+        workspace,
+        completion_context_doc,
+        value_reflect_line,
+        value_reflect_col,
+    )
+    if not value_reflect_items:
+        print("lsp: expected value<>. to complete the reflect record, got nothing")
+        return 1
+
     reflect_enum_line = next(i for i, line in enumerate(completion_context_lines) if "kind_reflect_field" in line)
     reflect_enum_col = completion_context_lines[reflect_enum_line].index("Kind<>.") + len("Kind<>.")
     reflect_enum_items = lsp.reflect_field_completions_at(
@@ -2040,6 +2060,11 @@ main:proc()->i32 = {
     ):
         print("lsp: expected Kind<>. completion to offer the same merged reflect members a struct does")
         print(reflect_enum_items)
+        return 1
+    # A value and its type must offer exactly the same record.
+    if {item.name for item in value_reflect_items} != {item.name for item in reflect_enum_items}:
+        print("lsp: expected dot_kind<>. to offer the same members as Kind<>.")
+        print(value_reflect_items)
         return 1
     # `variant` is a union and the compiler rejects the arm that is not live for
     # the owner's kind, so completion must offer only that arm. Suggesting both

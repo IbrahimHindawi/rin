@@ -11,7 +11,7 @@ DList: struct<T> = {
 DList<T>create: proc<T>(arena: *memops_arena) -> *DList<T> = {
     list: *DList<T> = cast(memops_arena_push_zero(arena, sizeof(DList<T>), alignof(DList<T>)), *DList<T>);
     if (list == null) {
-        printf("I runtime: DList allocation failure\n");
+        printf("rin runtime: DList allocation failure\n");
         exit(1);
     }
     return list;
@@ -47,7 +47,7 @@ DList<T>prepend: proc<T>(arena: *memops_arena, list: *DList<T>, item: T) -> void
 
 DList<T>insert_at: proc<T>(arena: *memops_arena, list: *DList<T>, item: T, index: i32) -> void = {
     if (list == null or index < 0 or cast(index, usize) > list[0].length) {
-        printf("I runtime: DList invalid index\n");
+        printf("rin runtime: DList invalid index\n");
         return;
     }
     if (index == 0) {

@@ -14,7 +14,7 @@ Vec<T>reserve: proc<T>(arena: *memops_arena, length: u64) -> Vec<T> = {
     }
     arr.data = cast(memops_arena_push_zero(arena, sizeof(T) * length, alignof(T)), *T);
     if (arr.data == null) {
-        printf("I runtime: Vec reserve allocation failure\n");
+        printf("rin runtime: Vec reserve allocation failure\n");
         exit(1);
         return arr;
     }
@@ -37,7 +37,7 @@ Vec<T>resize: proc<T>(arena: *memops_arena, array: *Vec<T>) -> *T = {
     }
     array[0].data = cast(memops_arena_realloc_(arena, sizeof(T) * array[0].border, array[0].data, sizeof(T) * old_border, alignof(T)), *T);
     if (array[0].data == null) {
-        printf("I runtime: Vec resize allocation failure\n");
+        printf("rin runtime: Vec resize allocation failure\n");
         exit(1);
     }
     if (array[0].border > old_border) {
@@ -62,7 +62,7 @@ Vec<T>append: proc<T>(arena: *memops_arena, array: *Vec<T>, elem: T) -> *T = {
 
 Vec<T>at: proc<T>(array: *Vec<T>, index: u64) -> *T = {
     if (array == null or index >= array[0].length) {
-        printf("I runtime: Vec index out of bounds\n");
+        printf("rin runtime: Vec index out of bounds\n");
         exit(1);
     }
     return array[0].data[index].&;
