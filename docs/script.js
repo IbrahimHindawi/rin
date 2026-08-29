@@ -305,17 +305,17 @@ function drawPipeline() {
   ctx.clearRect(0, 0, w, h);
 
   const nodes = [
-    { x: w * 0.15, y: h * 0.36, label: '.rin', color: '#8fc75a' },
-    { x: w * 0.38, y: h * 0.24, label: 'parse', color: '#5eb3c6' },
-    { x: w * 0.62, y: h * 0.40, label: 'emit C', color: '#e2b857' },
-    { x: w * 0.84, y: h * 0.28, label: 'exe', color: '#df7b62' },
+    { x: w * 0.15, y: h * 0.36, label: '.rin', color: '#e0453a' },
+    { x: w * 0.38, y: h * 0.24, label: 'parse', color: '#e0a89f' },
+    { x: w * 0.62, y: h * 0.40, label: 'emit C', color: '#c98a5e' },
+    { x: w * 0.84, y: h * 0.28, label: 'exe', color: '#b0a49f' },
   ];
 
   ctx.lineWidth = 1;
   for (let i = 0; i < nodes.length - 1; i++) {
     const a = nodes[i];
     const b = nodes[i + 1];
-    ctx.strokeStyle = 'rgba(240,243,238,.22)';
+    ctx.strokeStyle = 'rgba(230,222,217,.22)';
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.bezierCurveTo((a.x + b.x) / 2, a.y - 70, (a.x + b.x) / 2, b.y + 70, b.x, b.y);
@@ -344,7 +344,7 @@ function drawPipeline() {
 
   nodes.forEach((node, index) => {
     const pulse = Math.sin((frame + index * 17) / 18) * 3;
-    ctx.fillStyle = '#101314';
+    ctx.fillStyle = '#100d0c';
     ctx.strokeStyle = node.color;
     ctx.lineWidth = 2;
     ctx.fillRect(node.x - 46 - pulse, node.y - 26 - pulse, 92 + pulse * 2, 52 + pulse * 2);

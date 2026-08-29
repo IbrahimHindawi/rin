@@ -1,16 +1,16 @@
 :root {
   color-scheme: dark;
-  --bg: #121416;
-  --panel: #191d20;
-  --panel-2: #20262a;
-  --text: #f0f3ee;
-  --muted: #aab1a8;
-  --line: #343b3f;
-  --accent: #8fc75a;
-  --accent-2: #e2b857;
-  --accent-3: #5eb3c6;
-  --danger: #df7b62;
-  --code: #0c0f10;
+  --bg: #12100f;
+  --panel: #1a1614;
+  --panel-2: #221c1a;
+  --text: #e6ded9;
+  --muted: #8f817b;
+  --line: #2c2421;
+  --accent: #e0453a;
+  --accent-2: #c98a5e;
+  --accent-3: #e0a89f;
+  --danger: #b0a49f;
+  --code: #0a0807;
   --shadow: 0 18px 50px rgba(0, 0, 0, .28);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -26,7 +26,7 @@ html {
 body {
   margin: 0;
   background:
-    linear-gradient(180deg, rgba(18, 20, 22, .88), #121416 36rem),
+    linear-gradient(180deg, rgba(18, 16, 15, .88), #12100f 36rem),
     repeating-linear-gradient(90deg, rgba(255,255,255,.035) 0 1px, transparent 1px 96px),
     repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 96px);
   color: var(--text);
@@ -52,7 +52,7 @@ pre {
   gap: 1.5rem;
   padding: .9rem clamp(1rem, 3vw, 2.5rem);
   border-bottom: 1px solid rgba(255,255,255,.08);
-  background: rgba(18, 20, 22, .88);
+  background: rgba(18, 16, 15, .88);
   backdrop-filter: blur(18px);
 }
 
@@ -72,7 +72,7 @@ pre {
   color: var(--accent);
   font-weight: 800;
   font-size: 1.25rem;
-  background: #101311;
+  background: #0d0b0a;
 }
 
 .brand-copy {
@@ -186,16 +186,16 @@ h3 {
 }
 
 .button.primary {
-  border-color: #6f984b;
-  background: #6f984b;
-  color: #071007;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #17100e;
 }
 
 .hero-visual {
   position: relative;
   min-height: 27rem;
   border: 1px solid var(--line);
-  background: linear-gradient(135deg, rgba(143,199,90,.08), rgba(94,179,198,.06)), #101314;
+  background: linear-gradient(135deg, rgba(217,58,43,.08), rgba(224,168,159,.06)), #100d0c;
   box-shadow: var(--shadow);
 }
 
@@ -216,7 +216,7 @@ h3 {
 
 .pipeline-labels span {
   border: 1px solid rgba(255,255,255,.12);
-  background: rgba(12,15,16,.82);
+  background: rgba(10,8,7,.82);
   padding: .55rem;
   color: var(--muted);
   font-size: .78rem;
@@ -304,7 +304,7 @@ pre {
   background: var(--code);
   border: 1px solid rgba(255,255,255,.08);
   padding: 1rem;
-  color: #dfe8da;
+  color: #ddd2cc;
   line-height: 1.55;
   tab-size: 4;
 }
@@ -314,7 +314,7 @@ pre {
 }
 
 code {
-  color: #e8f0df;
+  color: #e6ded9;
 }
 
 p code,
@@ -419,7 +419,7 @@ li code {
   aspect-ratio: 1;
   margin-bottom: 1rem;
   background: var(--accent-2);
-  color: #17130a;
+  color: #160f0d;
   font-weight: 900;
 }
 
@@ -435,7 +435,7 @@ li code {
   padding: 1.25rem clamp(1rem, 5vw, 5rem);
   border-top: 1px solid var(--line);
   color: var(--muted);
-  background: #0f1112;
+  background: #0d0b0a;
 }
 
 .tok-keyword,
@@ -447,7 +447,7 @@ li code {
 
 .tok-structure,
 .tok-interop {
-  color: #74c7ec;
+  color: #d98f6a;
 }
 
 .tok-type {
@@ -455,12 +455,12 @@ li code {
 }
 
 .tok-storage {
-  color: #c49be8;
+  color: #8f6ad9;
 }
 
 .tok-function,
 .tok-builtin {
-  color: #f0c766;
+  color: #e8b98c;
 }
 
 .tok-string,
@@ -469,7 +469,7 @@ li code {
 }
 
 .tok-comment {
-  color: #6f6f6f;
+  color: #877873;
   font-style: italic;
 }
 
@@ -480,11 +480,11 @@ li code {
 
 .tok-operator,
 .tok-delimiter {
-  color: #cfd6cc;
+  color: #c9bcb6;
 }
 
 .tok-ident {
-  color: #e8f0df;
+  color: #e6ded9;
 }
 
 @media (max-width: 1050px) {
