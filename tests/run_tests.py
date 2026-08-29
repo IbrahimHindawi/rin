@@ -690,6 +690,185 @@ main: proc() -> i32 = {
         expected_stdout="hello world|hello world|11|hello world|second\n",
     ),
     Case(
+        name="slice_generic",
+        source=r'''
+cinclude "stdio.h"
+import "std/slice.rin"
+
+printf: proc[external](f: *const char, ...) -> i32 = {}
+
+main: proc() -> i32 = {
+    arena: memops_arena = {};
+    memops_arena_initialize(arena.&);
+
+    nums: [6]i32 = {10, 20, 30, 40, 50, 60};
+    s: slice<i32> = slice<i32>from_parts(nums[0].&, 6);
+
+    mid: slice<i32> = slice<i32>sub(s, 1, 3);
+    tail: slice<i32> = slice<i32>skip(s, 4);
+    head: slice<i32> = slice<i32>take(s, 2);
+    // A count running past the end clamps to what exists rather than aborting.
+    clamped: slice<i32> = slice<i32>sub(s, 4, 99);
+
+    f: Option<i32> = slice<i32>first(s);
+    l: Option<i32> = slice<i32>last(s);
+    oob: Option<i32> = slice<i32>get(s, 99);
+
+    same: slice<i32> = slice<i32>from_parts(nums[0].&, 6);
+    owned: Array<i32> = slice<i32>to_array(arena.&, mid);
+
+    printf("%llu %d%d%d %d%d %d%d %llu %d %d %d %d %d %d %llu %d%d%d\n",
+        s.length,
+        slice<i32>at(mid, 0)[0], slice<i32>at(mid, 1)[0], slice<i32>at(mid, 2)[0],
+        slice<i32>at(tail, 0)[0], slice<i32>at(tail, 1)[0],
+        slice<i32>at(head, 0)[0], slice<i32>at(head, 1)[0],
+        clamped.length,
+        Option<i32>unwrap(f), Option<i32>unwrap(l), Option<i32>is_none(oob),
+        slice<i32>equals(s, same), slice<i32>equals(s, mid), slice<i32>is_empty(mid),
+        owned.length, owned.data[0], owned.data[1], owned.data[2]);
+    return 0;
+}
+''',
+        # sub/skip/take, the clamp (4,99 over a 6 element slice yields 2), the
+        # Option forms, byte equality, and the owning copy.
+        expected_stdout="6 203040 5060 1020 2 10 60 1 1 0 0 3 203040\n",
+        generated_contains=("slice_i32_reflect",),
+    ),
+    Case(
+        name="fmt_and_cstr",
+        source=r'''
+cinclude "stdio.h"
+import "std/fmt.rin"
+import "std/cstr.rin"
+
+printf: proc[external](f: *const char, ...) -> i32 = {}
+
+main: proc() -> i32 = {
+    buf: [128]c8 = {};
+
+    // The shape almost every snprintf in njinn has: literals joined with values.
+    fmt_cat3(buf[0].&, sizeof(buf), "res/fx/", "explosion", ".json");
+    printf("%s ", buf.&);
+
+    // Numbers, matching what %llu %d %.3f %08X produce.
+    f: fmt = fmt_to(buf[0].&, sizeof(buf));
+    fmt_u64(f.&, 12345);
+    fmt_char(f.&, cast(32, c8));
+    fmt_i64(f.&, -7);
+    fmt_char(f.&, cast(32, c8));
+    fmt_f64(f.&, 3.14159, 3);
+    fmt_char(f.&, cast(32, c8));
+    fmt_hex(f.&, 48879, 8, 1);
+    printf("%s ", buf.&);
+
+    // Rounding that carries into the integer part, and a zero fraction.
+    g: fmt = fmt_to(buf[0].&, sizeof(buf));
+    fmt_f64(g.&, 9.999, 2);
+    fmt_char(g.&, cast(32, c8));
+    fmt_f64(g.&, 0.0, 2);
+    printf("%s ", buf.&);
+
+    // Truncation stops short and still terminates.
+    small: [8]c8 = {};
+    tn: u64 = fmt_cat2(small[0].&, sizeof(small), "abcdefgh", "ijkl");
+    printf("%s/%llu ", small.&, tn);
+
+    // cstr: the strcmp/strncpy/strstr/sscanf replacements.
+    cn: u64 = cstr_copy(small[0].&, sizeof(small), "abcdefghij");
+    iv: i64 = 0;
+    fv: f64 = 0.0;
+    untouched: i64 = 99;
+    // Sequenced deliberately: argument evaluation order is unspecified, so a
+    // parse and the variable it writes must not appear in the same call.
+    ok_i: b32 = cstr_parse_i64("  -1234", iv.&);
+    ok_f: b32 = cstr_parse_f64("3.5", fv.&);
+    ok_bad: b32 = cstr_parse_i64("abc", untouched.&);
+    printf("%d%d%d %lld %d %llu %d%d %d %lld %d %.2f %d %lld\n",
+        cstr_equals("abc", "abc"), cstr_equals("abc", "abd"), cstr_equals_n("abcdef", "abcxxx", 3),
+        cstr_find("hello world", "world"),
+        cstr_starts_with("res/fx/a.json", "res/"),
+        cn, small[7] == 0, cstr_ends_with("a.json", ".json"),
+        ok_i, iv,
+        ok_f, fv,
+        ok_bad, untouched);
+    return 0;
+}
+''',
+        # The formatter is checked against what snprintf produces for the same
+        # inputs; 9.999 at two decimals must carry to 10.00, and a failed parse
+        # must leave its out-parameter alone rather than zeroing it.
+        expected_stdout=(
+            "res/fx/explosion.json "
+            "12345 -7 3.142 0000BEEF "
+            "10.00 0.00 "
+            "abcdefg/7 "
+            "101 6 1 7 11 1 -1234 1 3.50 0 99\n"
+        ),
+    ),
+    Case(
+        name="fmt_cstr_slice_edges",
+        source=r'''
+cinclude "stdio.h"
+import "std/fmt.rin"
+import "std/cstr.rin"
+import "std/slice.rin"
+
+printf: proc[external](f: *const char, ...) -> i32 = {}
+
+main: proc() -> i32 = {
+    // A buffer with no room for even one byte, and a null buffer. fmt_bytes
+    // used to write its terminator without checking there was room for it,
+    // which dereferenced null and crashed rather than reporting truncation.
+    one: [1]c8 = {};
+    a: fmt = fmt_to(one[0].&, 1);
+    fmt_cstr(a.&, "xyz");
+
+    nul: fmt = fmt_to(null, 0);
+    fmt_cstr(nul.&, "safe");
+
+    // Truncation keeps the most significant digits, not the last ones.
+    two: [2]c8 = {};
+    b: fmt = fmt_to(two[0].&, 2);
+    fmt_u64(b.&, 12345);
+
+    // The extremes of each integer type, including the value whose negation
+    // overflows.
+    big: [64]c8 = {};
+    c: fmt = fmt_to(big[0].&, sizeof(big));
+    fmt_u64(c.&, 18446744073709551615);
+    fmt_char(c.&, cast(32, c8));
+    fmt_i64(c.&, -9223372036854775807 - 1);
+    printf("%s|", big.&);
+
+    // Rounding that carries all the way, and a zero-padded hex zero.
+    d: fmt = fmt_to(big[0].&, sizeof(big));
+    fmt_f64(d.&, 0.999999, 2);
+    fmt_char(d.&, cast(32, c8));
+    fmt_hex(d.&, 0, 4, 1);
+    printf("%s|", big.&);
+
+    nums: [3]i32 = {1, 2, 3};
+    s: slice<i32> = slice<i32>from_parts(nums[0].&, 3);
+    empty: slice<i32> = slice<i32>from_parts(null, 0);
+
+    printf("%llu%d%d %s %llu%d %llu %lld%lld%lld %d%d %llu%llu%llu %d\n",
+        a.length, fmt_truncated(a.&), one[0] == 0,
+        two.&, b.length, fmt_truncated(b.&),
+        nul.length,
+        cstr_find("", ""), cstr_find("abc", ""), cstr_find("", "abc"),
+        cstr_equals(null, null), cstr_equals(null, "a"),
+        slice<i32>sub(s, 3, 1).length, slice<i32>skip(s, 99).length, slice<i32>take(s, 0).length,
+        slice<i32>equals(empty, empty));
+    return 0;
+}
+''',
+        expected_stdout=(
+            "18446744073709551615 -9223372036854775808|"
+            "1.00 0000|"
+            "011 1 11 0 00-1 10 000 1\n"
+        ),
+    ),
+    Case(
         name="enum_reflect_preprocessor",
         source=r'''
 cinclude "stdio.h"
@@ -4295,7 +4474,13 @@ main:proc()->i32 = {
 
     # A switch that lists cases and writes no `default` is a claim that the list
     # is complete; this checks the claim. Writing `default` opts out entirely, so
-    # a two-hundred-member enum pays nothing -- the same rule C uses for -Wswitch.
+    # a two-hundred-member enum pays nothing, which is how C's -Wswitch behaves.
+    #
+    # One deliberate divergence: clang folds integer cases, so `case 0: case 1:`
+    # on a two-member enum satisfies it. rin matches on the member, so those are
+    # reported as unhandled. Writing `case E.a:` is clearer anyway and `default:`
+    # opts out, so the stricter reading was kept rather than adding constant
+    # folding for a rare spelling.
     # The failure it prevents is silent: a member is added later and every switch
     # that enumerated the old set keeps compiling while quietly falling through.
     exhaustive_rin = TEST_DIR / "switch_exhaustive.rin"
@@ -4331,6 +4516,27 @@ main:proc()->i32 = {
         "    switch (c) { case Colour.red: {} case Colour.green: {} }\n"
         "    return 0;\n}\n",
         encoding="utf-8", newline="\n")
+    # Integer cases deliberately do not count as covering. clang folds them and
+    # accepts this; rin matches on the member instead, so it does not. Pinned so
+    # the divergence stays a decision rather than drifting into one.
+    exhaustive_rin.write_text(
+        "Colour: enum = { red, green, blue, }\n"
+        "f: proc(c: Colour) -> i32 = {\n"
+        "    switch (c) { case 0: {} case 1: {} case 2: {} }\n"
+        "    return 0;\n}\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(exhaustive_rin)])
+    if res.returncode == 0:
+        print("switch_exhaustive: integer cases must not count as covering members")
+        print(res.stdout)
+        return 1
+
+    exhaustive_rin.write_text(
+        "Colour: enum = { red, green, blue, }\n"
+        "f: proc(c: Colour) -> i32 = {\n"
+        "    switch (c) { case Colour.red: {} case Colour.green: {} }\n"
+        "    return 0;\n}\n",
+        encoding="utf-8", newline="\n")
     res = run([str(RIN_EXE), "check", str(exhaustive_rin)])
     if res.returncode == 0 or "does not handle blue" not in res.stdout:
         print("switch_exhaustive: a missing member must be reported by name")
@@ -4341,6 +4547,138 @@ main:proc()->i32 = {
         print(res.stdout)
         return 1
     print("ok switch_exhaustive")
+
+    # `rin build` reads build.rin and drives cmake. The whole point is that a
+    # project describes its build once, declaratively, and never hand-writes a
+    # CMakeLists -- so this checks the generated one says what build.rin did,
+    # and that a missing required field is refused rather than defaulted.
+    build_root = TEST_DIR / "build_cmd"
+    shutil.rmtree(build_root, ignore_errors=True)
+    (build_root / "src").mkdir(parents=True)
+    (build_root / "src" / "app.rin").write_text(
+        "main: proc() -> i32 = { return 0; }\n", encoding="utf-8", newline="\n")
+    (build_root / "build.rin").write_text(
+        'build_name:         *const char = "buildcmd_probe";\n'
+        'build_entry:        *const char = "src/app.rin";\n'
+        'build_dir:          *const char = "out";\n'
+        'build_include_dirs: [1]*const char = { "src" };\n'
+        'build_defines:      [1]*const char = { "PROBE_DEFINE" };\n'
+        'build_libraries:    [1]*const char = { "user32" };\n',
+        encoding="utf-8", newline="\n")
+
+    # build.rin is ordinary rin: it must type-check like any other module.
+    res = run([str(RIN_EXE), "check", str(build_root / "build.rin")])
+    if res.returncode != 0:
+        print("build_command: build.rin must be valid rin")
+        print(res.stdout)
+        return 1
+
+    res = run([str(RIN_EXE), "build"], cwd=str(build_root))
+    generated = build_root / "out" / "rin_gen" / "app.c"
+    cmake_file = build_root / "out" / "rin_gen" / "CMakeLists.txt"
+    if not generated.exists():
+        print("build_command: expected the entry module to be transpiled")
+        print(res.stdout)
+        return 1
+    if not cmake_file.exists():
+        print("build_command: expected a generated CMakeLists.txt")
+        print(res.stdout)
+        return 1
+    cmake_text = cmake_file.read_text(encoding="utf-8")
+    for needed in ("project(buildcmd_probe", "PROBE_DEFINE", "user32", "app.c"):
+        if needed not in cmake_text:
+            print(f"build_command: generated CMakeLists is missing {needed!r}")
+            print(cmake_text)
+            return 1
+
+    # A required field left out is an error, not a default.
+    (build_root / "build.rin").write_text(
+        'build_entry: *const char = "src/app.rin";\n', encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "build"], cwd=str(build_root))
+    if res.returncode == 0 or "must set build_name" not in res.stdout:
+        print("build_command: a build.rin without build_name must be refused")
+        print(res.stdout)
+        return 1
+    print("ok build_command")
+
+    # build_entries: several independent programs from one build.rin. rin-learn
+    # is nineteen lessons that share nothing, and each has to become its own
+    # executable named after its file rather than after the project.
+    multi_root = TEST_DIR / "build_multi"
+    shutil.rmtree(multi_root, ignore_errors=True)
+    (multi_root / "src").mkdir(parents=True)
+    for n in ("alpha", "beta"):
+        (multi_root / "src" / f"{n}.rin").write_text(
+            "main: proc() -> i32 = { return 0; }\n", encoding="utf-8", newline="\n")
+    (multi_root / "build.rin").write_text(
+        'build_name:    *const char = "multi_probe";\n'
+        'build_dir:     *const char = "out";\n'
+        'build_entries: [2]*const char = { "src/alpha.rin", "src/beta.rin" };\n',
+        encoding="utf-8", newline="\n")
+
+    res = run([str(RIN_EXE), "build"], cwd=str(multi_root))
+    gen = multi_root / "out" / "rin_gen"
+    for n in ("alpha", "beta"):
+        if not (gen / f"{n}.c").exists():
+            print(f"build_command: expected {n}.c to be transpiled")
+            print(res.stdout)
+            return 1
+    cmake_text = (gen / "CMakeLists.txt").read_text(encoding="utf-8")
+    # One target per entry, named after the file -- not one target named after
+    # the project with both sources in it.
+    if cmake_text.count("add_executable(") != 2:
+        print("build_command: expected one add_executable per entry")
+        print(cmake_text)
+        return 1
+    for n in ("alpha", "beta"):
+        if f"add_executable({n}" not in cmake_text:
+            print(f"build_command: expected a target named {n}")
+            print(cmake_text)
+            return 1
+
+    # Neither entry form given at all is an error.
+    (multi_root / "build.rin").write_text(
+        'build_name: *const char = "multi_probe";\n',
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "build"], cwd=str(multi_root))
+    if res.returncode == 0 or "build_entry or build_entries" not in res.stdout:
+        print("build_command: a build.rin with no entry must be refused")
+        print(res.stdout)
+        return 1
+    print("ok build_command_multi")
+
+    # Running the compiler with nothing to do used to compile src/main.rin --
+    # a guess about the project's layout dressed as a default, which silently
+    # wrote output for a file the caller never named. Every other compiler
+    # reports that it has no input.
+    for args in ([], ["compile"], ["check"]):
+        res = run([str(RIN_EXE), *args])
+        if res.returncode == 0 or "no input files" not in res.stdout:
+            print(f"cli_no_input: {args!r} must report no input files")
+            print(res.stdout)
+            return 1
+
+    # `build` keeps a default, because build.rin is a file the project has
+    # rather than one it might -- the same convention make and cargo use. It
+    # still fails when that file is absent.
+    empty_dir = TEST_DIR / "cli_no_input"
+    shutil.rmtree(empty_dir, ignore_errors=True)
+    empty_dir.mkdir(parents=True)
+    res = run([str(RIN_EXE), "build"], cwd=str(empty_dir))
+    if res.returncode == 0 or "no build.rin" not in res.stdout:
+        print("cli_no_input: build without a build.rin must say so")
+        print(res.stdout)
+        return 1
+
+    # The generated name follows the input instead of being fixed at main.c.
+    (empty_dir / "widget.rin").write_text(
+        "main: proc() -> i32 = { return 0; }\n", encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "compile", "widget.rin"], cwd=str(empty_dir))
+    if res.returncode != 0 or not (empty_dir / "build" / "rin_gen" / "widget.c").exists():
+        print("cli_no_input: the default output name should follow the input")
+        print(res.stdout)
+        return 1
+    print("ok cli_no_input")
 
     # `true` and `false` are keywords producing 1 and 0. Nothing downstream --
     # inference, folding, emission -- had to learn about them, and b32 is

@@ -1,0 +1,129 @@
+cinclude "stdio.h"
+cinclude "stdlib.h"
+cinclude "string.h"
+
+import "memops.rin"
+import "Option.rin"
+import "Array.rin"
+import "Vec.rin"
+
+/* A view over contiguous elements that owns nothing.
+
+   Array<T> and Vec<T> already carry data + length, but both allocate: their
+   constructors push from an arena, so passing one around passes a container.
+   slice<T> is the borrowed half of that -- it names a range someone else owns,
+   and sub-slicing is free because there is nothing to copy or reserve.
+
+   string8slice is the same idea specialised to bytes, and it keeps its own set
+   of procs because string work is not element work: trimming, splitting on a
+   separator and case folding have no meaning for a slice<Foo>. The two are
+   deliberately not unified. */
+slice: struct<T> = {
+    data: *T;
+    length: u64;
+}
+
+slice<T>from_parts: proc<T>(data: *T, length: u64) -> slice<T> = {
+    s: slice<T> = {};
+    if (data == null or length == 0) {
+        return s;
+    }
+    s.data = data;
+    s.length = length;
+    return s;
+}
+
+slice<T>from_array: proc<T>(array: Array<T>) -> slice<T> = {
+    return slice<T>from_parts(array.data, array.length);
+}
+
+slice<T>from_vec: proc<T>(vec: Vec<T>) -> slice<T> = {
+    return slice<T>from_parts(vec.data, vec.length);
+}
+
+slice<T>is_empty: proc<T>(s: slice<T>) -> b32 = {
+    return s.length == 0;
+}
+
+/* Aborts on a bad index. The Option form below is the one to reach for when
+   the index came from outside. */
+slice<T>at: proc<T>(s: slice<T>, index: u64) -> *T = {
+    if (s.data == null or index >= s.length) {
+        printf("rin runtime: slice index out of bounds\n");
+        exit(1);
+    }
+    return s.data[index].&;
+}
+
+slice<T>get: proc<T>(s: slice<T>, index: u64) -> Option<T> = {
+    if (s.data == null or index >= s.length) {
+        return Option<T>none();
+    }
+    return Option<T>some(s.data[index]);
+}
+
+slice<T>first: proc<T>(s: slice<T>) -> Option<T> = {
+    return slice<T>get(s, 0);
+}
+
+slice<T>last: proc<T>(s: slice<T>) -> Option<T> = {
+    if (s.length == 0) {
+        return Option<T>none();
+    }
+    return slice<T>get(s, s.length - 1);
+}
+
+/* Clamped rather than fatal: a sub-range that runs off the end yields the part
+   that exists, which is what every caller wants when scanning. */
+slice<T>sub: proc<T>(s: slice<T>, start: u64, count: u64) -> slice<T> = {
+    out: slice<T> = {};
+    if (s.data == null or start >= s.length) {
+        return out;
+    }
+    remaining: u64 = s.length - start;
+    if (count > remaining) {
+        count = remaining;
+    }
+    return slice<T>from_parts(s.data[start].&, count);
+}
+
+slice<T>skip: proc<T>(s: slice<T>, count: u64) -> slice<T> = {
+    if (count >= s.length) {
+        out: slice<T> = {};
+        return out;
+    }
+    return slice<T>sub(s, count, s.length - count);
+}
+
+slice<T>take: proc<T>(s: slice<T>, count: u64) -> slice<T> = {
+    return slice<T>sub(s, 0, count);
+}
+
+/* Byte equality over sizeof(T) * length. Correct for the plain data slices are
+   made of; a T holding a pointer compares the pointer, not what it points at. */
+slice<T>equals: proc<T>(a: slice<T>, b: slice<T>) -> b32 = {
+    if (a.length != b.length) {
+        return 0;
+    }
+    if (a.length == 0) {
+        return 1;
+    }
+    if (a.data == null or b.data == null) {
+        return 0;
+    }
+    return memcmp(a.data, b.data, sizeof(T) * a.length) == 0;
+}
+
+slice<T>copy_to: proc<T>(dst: *T, s: slice<T>) -> void = {
+    if (dst == null or s.data == null or s.length == 0) {
+        return;
+    }
+    memcpy(dst, s.data, sizeof(T) * s.length);
+}
+
+/* The owning copy, when a view has to outlive what it borrowed from. */
+slice<T>to_array: proc<T>(arena: *memops_arena, s: slice<T>) -> Array<T> = {
+    out: Array<T> = Array<T>reserve(arena, s.length);
+    slice<T>copy_to(out.data, s);
+    return out;
+}

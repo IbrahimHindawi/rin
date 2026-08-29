@@ -1,0 +1,290 @@
+import "string8.rin"
+
+/* Operations on NUL-terminated byte strings, written in rin.
+
+   These exist so a project can drop `string.h` without first converting every
+   `*c8` it holds into a string8slice. The conversion is the better end state --
+   see docs/strings-and-slices.md -- but it touches every signature, and this
+   lets the C library go first.
+
+   Two differences from the functions they replace, both deliberate:
+
+     * `cstr_copy` always terminates. `strncpy` does not when the source fills
+       the buffer exactly, which is its most-reported defect.
+     * The comparisons return a b32 saying "equal", not an ordering. Every call
+       site in njinn tested `strcmp(...) == 0`; the ordering was never used, and
+       returning it invites `if (cstr_cmp(a, b))` meaning the opposite of what
+       it reads like. `cstr_order` is there for the rare real sort. */
+
+cstr_length: proc(s: *const c8) -> u64 = {
+    if (s == null) {
+        return 0;
+    }
+    n: u64 = 0;
+    while (s[n] != 0) {
+        n += 1;
+    }
+    return n;
+}
+
+cstr_is_empty: proc(s: *const c8) -> b32 = {
+    return s == null or s[0] == 0;
+}
+
+cstr_equals: proc(a: *const c8, b: *const c8) -> b32 = {
+    if (a == null or b == null) {
+        return a == b;
+    }
+    i: u64 = 0;
+    while (a[i] != 0 and a[i] == b[i]) {
+        i += 1;
+    }
+    return a[i] == b[i];
+}
+
+cstr_equals_n: proc(a: *const c8, b: *const c8, count: u64) -> b32 = {
+    if (a == null or b == null) {
+        return a == b;
+    }
+    for (i: u64 = 0; i < count; i += 1) {
+        if (a[i] != b[i]) {
+            return 0;
+        }
+        if (a[i] == 0) {
+            return 1;
+        }
+    }
+    return 1;
+}
+
+/* Negative, zero or positive like strcmp, for the cases that genuinely order. */
+cstr_order: proc(a: *const c8, b: *const c8) -> i32 = {
+    if (a == null or b == null) {
+        if (a == b) { return 0; }
+        if (a == null) { return -1; }
+        return 1;
+    }
+    i: u64 = 0;
+    while (a[i] != 0 and a[i] == b[i]) {
+        i += 1;
+    }
+    return cast(cast(a[i], u8), i32) - cast(cast(b[i], u8), i32);
+}
+
+/* Copies at most capacity-1 bytes and always terminates. Returns the length
+   written, so a caller can tell truncation happened by comparing it against
+   cstr_length(src). */
+cstr_copy: proc(dst: *c8, capacity: u64, src: *const c8) -> u64 = {
+    if (dst == null or capacity == 0) {
+        return 0;
+    }
+    if (src == null) {
+        dst[0] = 0;
+        return 0;
+    }
+    n: u64 = 0;
+    while (src[n] != 0 and n + 1 < capacity) {
+        dst[n] = src[n];
+        n += 1;
+    }
+    dst[n] = 0;
+    return n;
+}
+
+cstr_append: proc(dst: *c8, capacity: u64, src: *const c8) -> u64 = {
+    if (dst == null or capacity == 0) {
+        return 0;
+    }
+    used: u64 = cstr_length(dst);
+    if (used + 1 >= capacity) {
+        return used;
+    }
+    return used + cstr_copy(dst[used].&, capacity - used, src);
+}
+
+/* Index of the first occurrence, or -1. strchr/strstr returned pointers, which
+   forced null checks that read as "found"; an index says what it means. */
+cstr_find_char: proc(s: *const c8, c: c8) -> i64 = {
+    if (s == null) {
+        return -1;
+    }
+    i: u64 = 0;
+    while (s[i] != 0) {
+        if (s[i] == c) {
+            return cast(i, i64);
+        }
+        i += 1;
+    }
+    if (c == 0) {
+        return cast(i, i64);
+    }
+    return -1;
+}
+
+cstr_find: proc(haystack: *const c8, needle: *const c8) -> i64 = {
+    if (haystack == null or needle == null) {
+        return -1;
+    }
+    if (needle[0] == 0) {
+        return 0;
+    }
+    hn: u64 = cstr_length(haystack);
+    nn: u64 = cstr_length(needle);
+    if (nn > hn) {
+        return -1;
+    }
+    last: u64 = hn - nn;
+    for (i: u64 = 0; i <= last; i += 1) {
+        j: u64 = 0;
+        while (j < nn and haystack[i + j] == needle[j]) {
+            j += 1;
+        }
+        if (j == nn) {
+            return cast(i, i64);
+        }
+    }
+    return -1;
+}
+
+cstr_starts_with: proc(s: *const c8, prefix: *const c8) -> b32 = {
+    return cstr_equals_n(s, prefix, cstr_length(prefix));
+}
+
+cstr_ends_with: proc(s: *const c8, suffix: *const c8) -> b32 = {
+    sn: u64 = cstr_length(s);
+    fn_: u64 = cstr_length(suffix);
+    if (fn_ > sn) {
+        return 0;
+    }
+    return cstr_equals(s[sn - fn_].&, suffix);
+}
+
+cstr_slice: proc(s: *const c8) -> string8slice = {
+    out: string8slice = {};
+    if (s == null) {
+        return out;
+    }
+    out.data = cast(s, *u8);
+    out.length = cstr_length(s);
+    return out;
+}
+
+/* Parsing, replacing the sscanf calls. Each reports success separately rather
+   than folding failure into a sentinel value, because 0 is a legitimate
+   result and sscanf's return count was being ignored at every call site. */
+cstr_parse_i64: proc(s: *const c8, out: *i64) -> b32 = {
+    if (s == null or out == null) {
+        return 0;
+    }
+    i: u64 = 0;
+    while (s[i] == cast(32, c8) or s[i] == cast(9, c8)) {
+        i += 1;
+    }
+    negative: b32 = 0;
+    if (s[i] == cast(45, c8)) {
+        negative = 1;
+        i += 1;
+    } else if (s[i] == cast(43, c8)) {
+        i += 1;
+    }
+    digits: u64 = 0;
+    value: u64 = 0;
+    while (s[i] >= cast(48, c8) and s[i] <= cast(57, c8)) {
+        value = value * 10 + cast(cast(s[i], u8) - 48, u64);
+        digits += 1;
+        i += 1;
+    }
+    if (digits == 0) {
+        return 0;
+    }
+    if (negative != 0) {
+        out[0] = cast(cast(0, u64) - value, i64);
+    } else {
+        out[0] = cast(value, i64);
+    }
+    return 1;
+}
+
+cstr_parse_f64: proc(s: *const c8, out: *f64) -> b32 = {
+    if (s == null or out == null) {
+        return 0;
+    }
+    i: u64 = 0;
+    while (s[i] == cast(32, c8) or s[i] == cast(9, c8)) {
+        i += 1;
+    }
+    negative: b32 = 0;
+    if (s[i] == cast(45, c8)) {
+        negative = 1;
+        i += 1;
+    } else if (s[i] == cast(43, c8)) {
+        i += 1;
+    }
+    digits: u64 = 0;
+    whole: f64 = 0.0;
+    while (s[i] >= cast(48, c8) and s[i] <= cast(57, c8)) {
+        whole = whole * 10.0 + cast(cast(cast(s[i], u8) - 48, u64), f64);
+        digits += 1;
+        i += 1;
+    }
+    if (s[i] == cast(46, c8)) {
+        i += 1;
+        place: f64 = 0.1;
+        while (s[i] >= cast(48, c8) and s[i] <= cast(57, c8)) {
+            whole += place * cast(cast(cast(s[i], u8) - 48, u64), f64);
+            place *= 0.1;
+            digits += 1;
+            i += 1;
+        }
+    }
+    if (digits == 0) {
+        return 0;
+    }
+    if (negative != 0) {
+        whole = -whole;
+    }
+    out[0] = whole;
+    return 1;
+}
+
+/* strtok without the static state.
+
+   strtok remembers its position in a hidden global, so two interleaved token
+   runs corrupt each other and it can never be called from two threads. This
+   takes the cursor as a parameter instead: the caller owns it, and two runs
+   over different buffers are independent.
+
+   Like strtok it writes a terminator into the buffer, so the input must be
+   mutable. An empty `delims` returns the whole remainder, which is how the
+   callers get "the rest of the line". */
+cstr_token: proc(s: *c8, cursor: *u64, delims: *const c8) -> *c8 = {
+    if (s == null or cursor == null) {
+        return null;
+    }
+    i: u64 = cursor[0];
+    if (delims == null or delims[0] == 0) {
+        if (s[i] == 0) {
+            return null;
+        }
+        cursor[0] = i + cstr_length(s[i].&);
+        return s[i].&;
+    }
+    /* Skip leading delimiters. */
+    while (s[i] != 0 and cstr_find_char(delims, s[i]) >= 0) {
+        i += 1;
+    }
+    if (s[i] == 0) {
+        cursor[0] = i;
+        return null;
+    }
+    start: u64 = i;
+    while (s[i] != 0 and cstr_find_char(delims, s[i]) < 0) {
+        i += 1;
+    }
+    if (s[i] != 0) {
+        s[i] = 0;
+        i += 1;
+    }
+    cursor[0] = i;
+    return s[start].&;
+}

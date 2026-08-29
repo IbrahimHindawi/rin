@@ -50,6 +50,7 @@
 bool i32_eq(i32 a, i32 b) { return a == b; }
 
 #include <stdio.h>
+#include <direct.h>
 #include <stdarg.h>
 #include <string.h>
 #include <time.h>
@@ -15719,6 +15720,7 @@ static void cli_print_usage(void) {
         "rin compiler\n"
         "\n"
         "usage:\n"
+        "  rin build   [build.rin]\n"
         "  rin compile [input.rin] [-o output.c] [--header output.h] [--no-header]\n"
         "  rin check   [input.rin] [--diagnostics=json]\n"
         "  rin symbols [input.rin] [--stdin|--stdin-path file]\n"
@@ -15731,6 +15733,7 @@ static void cli_print_usage(void) {
         "  rin [input.rin] --lsp=json\n"
         "\n"
         "commands:\n"
+        "  build     read build.rin, transpile, then drive cmake and the generator\n"
         "  compile   transpile rin to C and optionally a generated header\n"
         "  check     parse, import, validate, and type-check only\n"
         "  symbols   emit compiler symbol metadata as JSON\n"
@@ -15755,12 +15758,294 @@ static void cli_print_usage(void) {
     );
 }
 
+
+/* `rin build` -- the project driver.
+
+   build.rin is read, not run. It is ordinary rin holding top-level globals with
+   known names, so it parses with the same parser as everything else, type-checks
+   like everything else, and an editor already understands it. Executing it would
+   need a whole interpreter for no gain: every project's build is a handful of
+   paths and flags, and a declaration says them more plainly than a script.
+
+   What happens, in order:
+
+     1. build.rin is parsed and the known globals are read out of it.
+     2. The entry module is transpiled to <build_dir>/rin_gen/<stem>.c.
+     3. A CMakeLists.txt is written into <build_dir>/rin_gen, generated from the
+        config -- the project never hand-writes one.
+     4. cmake configures and builds it.
+
+   The generated CMakeLists is deliberately regenerated every time. Editing it
+   would be editing an output. */
+
+
+/* CMake wants forward slashes in paths on every platform, and objects to a
+   trailing separator -- which exe_import_root leaves behind. */
+static const char *cmake_path(memops_arena *arena, const char *p) {
+    u64 n = (u64)strlen(p);
+    while (n > 0 && (p[n - 1] == '/' || p[n - 1] == '\\')) n -= 1;
+    string8 out = string8_reserve(arena, n + 1);
+    for (u64 i = 0; i < n; i++) {
+        string8_append_byte(arena, &out, p[i] == '\\' ? '/' : (u8)p[i]);
+    }
+    string8_append_byte(arena, &out, 0);
+    return (const char *)out.data;
+}
+
+static const char *cwd_path(memops_arena *arena) {
+    char buffer[4096];
+    if (!_getcwd(buffer, (int)sizeof(buffer))) return ".";
+    string8 out = string8_reserve(arena, (u64)strlen(buffer) + 1);
+    for (const char *c = buffer; *c; c++) {
+        /* CMake wants forward slashes even on Windows. */
+        string8_append_byte(arena, &out, *c == '\\' ? '/' : (u8)*c);
+    }
+    string8_append_byte(arena, &out, 0);
+    return (const char *)out.data;
+}
+
+static const char *join_path2(memops_arena *arena, const char *a, const char *b) {
+    string8 out = string8_reserve(arena, (u64)strlen(a) + (u64)strlen(b) + 2);
+    string8_append_bytes(arena, &out, (u8 *)a, (u64)strlen(a));
+    string8_append_byte(arena, &out, '/');
+    string8_append_bytes(arena, &out, (u8 *)b, (u64)strlen(b));
+    string8_append_byte(arena, &out, 0);
+    return (const char *)out.data;
+}
+
+static const char *join_path3(memops_arena *arena, const char *a, const char *b, const char *c) {
+    string8 out = string8_reserve(arena, (u64)strlen(a) + (u64)strlen(b) + (u64)strlen(c) + 2);
+    string8_append_bytes(arena, &out, (u8 *)a, (u64)strlen(a));
+    string8_append_byte(arena, &out, '/');
+    string8_append_bytes(arena, &out, (u8 *)b, (u64)strlen(b));
+    string8_append_bytes(arena, &out, (u8 *)c, (u64)strlen(c));
+    string8_append_byte(arena, &out, 0);
+    return (const char *)out.data;
+}
+
+/* Creates a directory and every parent of it. */
+static bool ensure_directory(const char *path) {
+    char buffer[4096];
+    u64 n = (u64)strlen(path);
+    if (n + 1 > sizeof(buffer)) return false;
+    memcpy(buffer, path, n + 1);
+    for (u64 i = 0; i < n; i++) {
+        if (buffer[i] == '/' || buffer[i] == '\\') {
+            char saved = buffer[i];
+            buffer[i] = 0;
+            if (buffer[0]) _mkdir(buffer);
+            buffer[i] = saved;
+        }
+    }
+    _mkdir(buffer);
+    return true;
+}
+
+typedef struct BuildConfig {
+    const char *name;
+    const char *entry;
+    const char *build_dir;
+    const char *generator;
+    const char *compiler;
+    const char *build_type;
+    Vec_string8 c_sources;
+    Vec_string8 include_dirs;
+    Vec_string8 libraries;
+    Vec_string8 defines;
+    Vec_string8 c_flags;
+    const char *pch;
+    Vec_string8 entries;
+    bool emit_header;
+} BuildConfig;
+
+static const char *build_cstr(memops_arena *arena, string8 v) {
+    string8 out = string8_reserve(arena, v.length + 1);
+    string8_append_bytes(arena, &out, v.data, v.length);
+    string8_append_byte(arena, &out, 0);
+    return (const char *)out.data;
+}
+
+static string8 build_string_of(memops_arena *arena, Expr *e) {
+    /* string_lit still carries its quotes at this stage. */
+    if (e && e->kind == Expr_String) return string_lit_inner(arena, e->string_lit);
+    return (string8){0};
+}
+
+/* Reads a `[N]*const char = { "a", "b" }` initialiser into a list. */
+static void build_collect_list(memops_arena *arena, Expr *init, Vec_string8 *out) {
+    if (!init || init->kind != Expr_InitList) return;
+    for (i32 i = 0; i < init->args.length; i++) {
+        Expr *item = (Expr *)init->args.data[i];
+        string8 v = build_string_of(arena, item);
+        if (v.data) Vec_string8_append(arena, out, v);
+    }
+}
+
+static bool build_read_config(memops_arena *arena, Program *prog, BuildConfig *cfg) {
+    cfg->build_dir = "build";
+    cfg->generator = "Ninja";
+    cfg->compiler = "clang-cl";
+    cfg->build_type = "Debug";
+    cfg->emit_header = false;
+    cfg->c_sources = Vec_string8_reserve(arena, 0);
+    cfg->include_dirs = Vec_string8_reserve(arena, 0);
+    cfg->libraries = Vec_string8_reserve(arena, 0);
+    cfg->defines = Vec_string8_reserve(arena, 0);
+    cfg->c_flags = Vec_string8_reserve(arena, 0);
+    cfg->entries = Vec_string8_reserve(arena, 0);
+
+    for (i32 i = 0; i < prog->globals.length; i++) {
+        Stmt *g = (Stmt *)prog->globals.data[i];
+        if (g->kind != Stmt_Var || !g->name.data) continue;
+        string8 v = build_string_of(arena, g->expr);
+        const char *sv = v.data ? build_cstr(arena, v) : null;
+
+        if (string8_equals_cstr(&g->name, "build_name") && sv) cfg->name = sv;
+        else if (string8_equals_cstr(&g->name, "build_entry") && sv) cfg->entry = sv;
+        else if (string8_equals_cstr(&g->name, "build_dir") && sv) cfg->build_dir = sv;
+        else if (string8_equals_cstr(&g->name, "build_generator") && sv) cfg->generator = sv;
+        else if (string8_equals_cstr(&g->name, "build_compiler") && sv) cfg->compiler = sv;
+        else if (string8_equals_cstr(&g->name, "build_type") && sv) cfg->build_type = sv;
+        else if (string8_equals_cstr(&g->name, "build_pch") && sv) cfg->pch = sv;
+        else if (string8_equals_cstr(&g->name, "build_c_sources"))
+            build_collect_list(arena, g->expr, &cfg->c_sources);
+        else if (string8_equals_cstr(&g->name, "build_include_dirs"))
+            build_collect_list(arena, g->expr, &cfg->include_dirs);
+        else if (string8_equals_cstr(&g->name, "build_libraries"))
+            build_collect_list(arena, g->expr, &cfg->libraries);
+        else if (string8_equals_cstr(&g->name, "build_defines"))
+            build_collect_list(arena, g->expr, &cfg->defines);
+        else if (string8_equals_cstr(&g->name, "build_c_flags"))
+            build_collect_list(arena, g->expr, &cfg->c_flags);
+        else if (string8_equals_cstr(&g->name, "build_entries"))
+            build_collect_list(arena, g->expr, &cfg->entries);
+    }
+
+    if (!cfg->name) {
+        printf("rin: error: build.rin must set build_name\n");
+        return false;
+    }
+    if (!cfg->entry && cfg->entries.length == 0) {
+        printf("rin: error: build.rin must set build_entry or build_entries\n");
+        return false;
+    }
+    return true;
+}
+
+static const char *build_stem_of(memops_arena *arena, const char *path) {
+    u64 n = (u64)strlen(path);
+    u64 start = 0;
+    for (u64 i = n; i > 0; i--) {
+        if (path[i - 1] == '/' || path[i - 1] == '\\') { start = i; break; }
+    }
+    u64 end = n;
+    for (u64 i = n; i > start; i--) {
+        if (path[i - 1] == '.') { end = i - 1; break; }
+    }
+    string8 out = string8_reserve(arena, end - start + 1);
+    string8_append_bytes(arena, &out, (u8 *)(path + start), end - start);
+    string8_append_byte(arena, &out, 0);
+    return (const char *)out.data;
+}
+
+static void build_write_list(FILE *f, const char *indent, Vec_string8 *items) {
+    for (i32 i = 0; i < items->length; i++) {
+        string8 it = items->data[i];
+        fprintf(f, "%s%.*s\n", indent, (int)it.length, it.data);
+    }
+}
+
+/* Emits the shared settings for one target. Split out because a project with
+   several entries -- rin-learn's nineteen lessons, each its own program -- wants
+   the same include path, libraries and flags on every one of them. */
+static void build_write_target(FILE *f, BuildConfig *cfg, const char *target,
+                               const char *generated_c, const char *project_root) {
+    fprintf(f, "add_executable(%s\n    %s/%s\n", target, project_root, generated_c);
+    for (i32 i = 0; i < cfg->c_sources.length; i++) {
+        string8 it = cfg->c_sources.data[i];
+        fprintf(f, "    %s/%.*s\n", project_root, (int)it.length, it.data);
+    }
+    fprintf(f, ")\n\n");
+
+    fprintf(f, "target_include_directories(%s PRIVATE\n", target);
+    fprintf(f, "    %s\n", project_root);
+    for (i32 i = 0; i < cfg->include_dirs.length; i++) {
+        string8 it = cfg->include_dirs.data[i];
+        fprintf(f, "    %s/%.*s\n", project_root, (int)it.length, it.data);
+    }
+    if (g_exe_import_root) {
+        const char *root_c = cmake_path(g_index_arena, g_exe_import_root);
+        fprintf(f, "    %s\n", root_c);
+        fprintf(f, "    %s/std\n", root_c);
+    }
+    fprintf(f, ")\n\n");
+
+    if (cfg->pch) {
+        fprintf(f, "target_precompile_headers(%s PRIVATE %s/%s)\n\n",
+                target, project_root, cfg->pch);
+    }
+    if (cfg->defines.length > 0) {
+        fprintf(f, "target_compile_definitions(%s PRIVATE\n", target);
+        build_write_list(f, "    ", &cfg->defines);
+        fprintf(f, ")\n\n");
+    }
+    if (cfg->c_flags.length > 0) {
+        fprintf(f, "target_compile_options(%s PRIVATE\n", target);
+        build_write_list(f, "    ", &cfg->c_flags);
+        fprintf(f, ")\n\n");
+    }
+    if (cfg->libraries.length > 0) {
+        fprintf(f, "target_link_libraries(%s PRIVATE\n", target);
+        build_write_list(f, "    ", &cfg->libraries);
+        fprintf(f, ")\n\n");
+    }
+}
+
+/* The whole file: a project block, then one target per entry. */
+static bool build_write_cmake(const char *path, BuildConfig *cfg,
+                              Vec_string8 *targets, Vec_string8 *generated,
+                              const char *project_root) {
+    FILE *f = null;
+    if (fopen_s(&f, path, "wb") != 0 || !f) {
+        printf("rin: error: cannot write %s\n", path);
+        return false;
+    }
+    fprintf(f, "# Generated by `rin build` from build.rin. Do not edit.\n");
+    fprintf(f, "cmake_minimum_required(VERSION 3.16)\n");
+    fprintf(f, "project(%s C)\n\n", cfg->name);
+    fprintf(f, "set(CMAKE_EXPORT_COMPILE_COMMANDS ON)\n\n");
+    for (i32 i = 0; i < targets->length; i++) {
+        string8 t = targets->data[i];
+        string8 g = generated->data[i];
+        char target[256];
+        char gen[1024];
+        snprintf(target, sizeof(target), "%.*s", (int)t.length, t.data);
+        snprintf(gen, sizeof(gen), "%.*s", (int)g.length, g.data);
+        build_write_target(f, cfg, target, gen, project_root);
+    }
+    fclose(f);
+    return true;
+}
+
+static i32 build_run(const char *what, const char *cmd, bool verbose) {
+    if (verbose) printf("+ %s\n", cmd);
+    /* cmd.exe strips the outer quotes when a command line begins with one, so a
+       quoted program path loses them and the path is split on its spaces.
+       Wrapping the whole line in another pair is the documented workaround. */
+    char wrapped[4200];
+    snprintf(wrapped, sizeof(wrapped), "\"%s\"", cmd);
+    i32 rc = system(wrapped);
+    if (rc != 0) printf("rin: error: %s failed (exit %d)\n", what, rc);
+    return rc;
+}
+
 static void cli_print_version(void) {
     printf("rin compiler dev\n");
 }
 
 static bool cli_is_command(const char *arg) {
     return cstr_equals(arg, "compile") ||
+           cstr_equals(arg, "build") ||
            cstr_equals(arg, "check") ||
            cstr_equals(arg, "symbols") ||
            cstr_equals(arg, "lsp") ||
@@ -16165,8 +16450,15 @@ i32 main(i32 argc, char *argv[]) {
         positional++;
     }
     profile_mark("cli", &profile_last, profile_start);
-    if (!input_path) input_path = "src/main.rin";
-    if (!output_path) output_path = "build/rin_gen/main.c";
+    if (!input_path) {
+        if (command && cstr_equals(command, "build")) {
+            input_path = "build.rin";
+        } else {
+            cli_error_json_or_text("no input files");
+            return 1;
+        }
+    }
+
     if (!emit_header && header_path) {
         cli_error_json_or_text("--no-header cannot be used with --header or a positional header path");
         return 1;
@@ -16176,6 +16468,13 @@ i32 main(i32 argc, char *argv[]) {
     memops_arena arena = {0};
     memops_arena_initialize(&arena);
     g_index_arena = &arena;
+    /* Derived from the input rather than fixed, so `rin compile foo.rin` writes
+       foo.c instead of main.c. */
+    if (!output_path) {
+        output_path = join_path3(&arena, "build/rin_gen",
+                                 build_stem_of(&arena, input_path), ".c");
+    }
+
     g_exe_import_root = exe_import_root(&arena, argv[0]);
     add_import_dir(g_exe_import_root);
 
@@ -16191,6 +16490,89 @@ i32 main(i32 argc, char *argv[]) {
                       null,
                       "std must sit beside rin.exe; reinstall, or pass --no-std");
         }
+    }
+
+    if (command && cstr_equals(command, "build")) {
+        const char *build_file = input_path ? input_path : "build.rin";
+        if (!file_exists_cstr(build_file)) {
+            printf("rin: error: no %s in this directory\n", build_file);
+            return 1;
+        }
+
+        /* Parsed with the ordinary front end: build.rin is rin, not a
+           bespoke config format. */
+        string8 build_src = string8_read_file(&arena, build_file);
+        if (!build_src.data) {
+            printf("rin: error: cannot read %s\n", build_file);
+            return 1;
+        }
+        g_source_path = build_file;
+        Vec_Token build_tokens = {0};
+        Vec_string8 build_directives = {0};
+        lex_tokens(&arena, build_src, &build_tokens, &build_directives);
+        Parser build_parser = {0};
+        build_parser.arena = &arena;
+        build_parser.source = build_src;
+        build_parser.tokens = build_tokens;
+        build_parser.index = 0;
+        Program build_prog = parse_program(&build_parser);
+
+        BuildConfig cfg = {0};
+        if (!build_read_config(&arena, &build_prog, &cfg)) {
+            return 1;
+        }
+
+        const char *root = cwd_path(&arena);
+        const char *gen_dir = join_path2(&arena, cfg.build_dir, "rin_gen");
+        if (!ensure_directory(gen_dir)) {
+            printf("rin: error: cannot create %s\n", gen_dir);
+            return 1;
+        }
+
+        /* One entry or many. rin-learn's lessons are nineteen independent
+           programs, so each entry becomes its own executable named after its
+           file; a single build_entry keeps build_name as the target. */
+        Vec_string8 targets = Vec_string8_reserve(&arena, 8);
+        Vec_string8 generated = Vec_string8_reserve(&arena, 8);
+        Vec_string8 all_entries = Vec_string8_reserve(&arena, 8);
+        if (cfg.entries.length > 0) {
+            for (i32 i = 0; i < cfg.entries.length; i++) {
+                Vec_string8_append(&arena, &all_entries, cfg.entries.data[i]);
+            }
+        } else {
+            Vec_string8_append(&arena, &all_entries, string8_from_cstr(&arena, cfg.entry));
+        }
+
+        char cmd[4096];
+        for (i32 i = 0; i < all_entries.length; i++) {
+            const char *entry = build_cstr(&arena, all_entries.data[i]);
+            const char *stem = build_stem_of(&arena, entry);
+            const char *gen_c = join_path3(&arena, gen_dir, stem, ".c");
+            const char *target = (cfg.entries.length > 0) ? stem : cfg.name;
+
+            snprintf(cmd, sizeof(cmd), "\"%s\" compile \"%s\" -o \"%s\" --no-header",
+                     argv[0], entry, gen_c);
+            if (build_run("transpile", cmd, true) != 0) return 1;
+
+            Vec_string8_append(&arena, &targets, string8_from_cstr(&arena, target));
+            Vec_string8_append(&arena, &generated, string8_from_cstr(&arena, gen_c));
+        }
+
+        /* The CMakeLists is an output, regenerated every time. */
+        const char *cmake_path_out = join_path2(&arena, gen_dir, "CMakeLists.txt");
+        if (!build_write_cmake(cmake_path_out, &cfg, &targets, &generated, root)) return 1;
+
+        const char *cmake_build_dir = join_path2(&arena, cfg.build_dir, "cmake");
+        snprintf(cmd, sizeof(cmd),
+                 "cmake -S \"%s\" -B \"%s\" -G \"%s\" -DCMAKE_C_COMPILER=%s -DCMAKE_BUILD_TYPE=%s",
+                 gen_dir, cmake_build_dir, cfg.generator, cfg.compiler, cfg.build_type);
+        if (build_run("cmake configure", cmd, true) != 0) return 1;
+
+        snprintf(cmd, sizeof(cmd), "cmake --build \"%s\"", cmake_build_dir);
+        if (build_run("cmake build", cmd, true) != 0) return 1;
+
+        printf("rin: built %s\n", cfg.name);
+        return 0;
     }
 
     const char *canonical_input_path = canonicalize_path(&arena, string8_from_cstr(&arena, input_path));

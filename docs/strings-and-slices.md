@@ -16,9 +16,9 @@
 | `[64]c8` in a struct | the struct does | no | caller's business | long-lived mutable |
 
 The fourth is not a library type. It is a fixed array declared inline, and it is
-how gin answered "a string that lives as long as this struct and changes
-occasionally" -- 33 of them, `name[64]`, `path[512]`, `texture_name[64]`. It
-costs no allocation and asks no lifetime question. rin can declare it today.
+how both engines answer "a string that lives as long as this struct and changes
+occasionally" -- gin has 140, njinn 143. It costs no allocation and asks no
+lifetime question.
 
 ## What `string8` is actually for
 
@@ -121,16 +121,21 @@ needs it. Cheap now; annoying once more code exists.
 
 ### 2. Long-lived mutable strings
 
-rin has no answer for this and gin did: an inline fixed array. The port moved
-away from it -- gin has 33 inline string buffers and zero string pointers in the
-same role; njinn has 42 pointer fields (`*char` 26, `*const char` 16) and no
-inline buffers. That is where the ownership questions come from, and it is worth
-asking whether it was deliberate.
+Both engines already answer this the same way, and it is the C answer: an inline
+fixed array. gin has 140 of them, njinn has 143 -- `path: [512]char`,
+`key: [64]char`, `status_line: [128]char`. The port preserved the pattern rather
+than abandoning it.
 
-Adopting `[64]c8` for asset names, paths and texture names would put gin's answer
-back. It is not an allocator problem and does not need one: a free list is only
-worth building for many strings of unpredictable size with genuinely independent
-lifetimes, and neither engine has that. gin shipped without one.
+So there is nothing to fix here. It is worth stating only because it rules
+something out: a free list is only worth building for many strings of
+unpredictable size with genuinely independent lifetimes, and neither engine has
+that population. Long-lived mutable strings already live in the struct that owns
+them, allocate nothing, and ask no lifetime question. gin shipped that way and
+njinn kept it.
+
+What this does mean is that `[N]char` is a fourth string shape in practice, and
+the bounded copy into it -- `strncpy` today, 17 calls in njinn -- is a std gap
+rather than a design question.
 
 ### 3. The C library
 

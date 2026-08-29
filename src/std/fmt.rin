@@ -1,0 +1,281 @@
+import "memops.rin"
+import "string8.rin"
+
+/* A bounded writer over a buffer the caller owns.
+
+   This exists to replace snprintf into a fixed `[N]char`, which is what almost
+   all of it is used for. The shape is deliberately not a format string: there
+   is no varargs, no parsing at runtime, and every value is written by a proc
+   that knows its type. Truncation follows snprintf -- writing stops at the
+   capacity and the result is always NUL-terminated -- and `truncated` records
+   whether anything was lost, which snprintf only tells you by comparing its
+   return against the size you passed.
+
+   `capacity` counts the terminator, so it is exactly `sizeof(buf)`. */
+fmt: struct = {
+    data: *c8;
+    capacity: u64;
+    length: u64;
+    truncated: b32;
+}
+
+fmt_to: proc(data: *c8, capacity: u64) -> fmt = {
+    f: fmt = {};
+    f.data = data;
+    f.capacity = capacity;
+    f.length = 0;
+    f.truncated = 0;
+    if (data != null and capacity > 0) {
+        data[0] = 0;
+    }
+    return f;
+}
+
+fmt_remaining: proc(f: *const fmt) -> u64 = {
+    if (f[0].data == null or f[0].capacity == 0) {
+        return 0;
+    }
+    /* One byte is always held back for the terminator. */
+    if (f[0].length + 1 >= f[0].capacity) {
+        return 0;
+    }
+    return f[0].capacity - f[0].length - 1;
+}
+
+fmt_char: proc(f: *fmt, c: c8) -> void = {
+    if (fmt_remaining(f) == 0) {
+        f[0].truncated = 1;
+        return;
+    }
+    f[0].data[f[0].length] = c;
+    f[0].length += 1;
+    f[0].data[f[0].length] = 0;
+}
+
+fmt_bytes: proc(f: *fmt, src: *const c8, count: u64) -> void = {
+    if (src == null or count == 0) {
+        return;
+    }
+    room: u64 = fmt_remaining(f);
+    n: u64 = count;
+    if (n > room) {
+        n = room;
+        f[0].truncated = 1;
+    }
+    /* room is 0 for a null buffer and for a zero capacity, and in both cases
+       there is nowhere to put the terminator either -- writing it anyway
+       dereferenced null. */
+    if (n == 0) {
+        return;
+    }
+    for (i: u64 = 0; i < n; i += 1) {
+        f[0].data[f[0].length + i] = src[i];
+    }
+    f[0].length += n;
+    f[0].data[f[0].length] = 0;
+}
+
+cstr_len_: proc(s: *const c8) -> u64 = {
+    if (s == null) {
+        return 0;
+    }
+    n: u64 = 0;
+    while (s[n] != 0) {
+        n += 1;
+    }
+    return n;
+}
+
+fmt_cstr: proc(f: *fmt, s: *const c8) -> void = {
+    fmt_bytes(f, s, cstr_len_(s));
+}
+
+fmt_slice: proc(f: *fmt, s: string8slice) -> void = {
+    fmt_bytes(f, cast(s.data, *const c8), s.length);
+}
+
+/* Left-justified in a field of `width`, like %-24s. Longer input is written in
+   full rather than truncated, which is what printf does too. */
+fmt_cstr_pad: proc(f: *fmt, s: *const c8, width: u64) -> void = {
+    n: u64 = 0;
+    if (s != null) {
+        n = cstr_len_(s);
+    }
+    fmt_cstr(f, s);
+    while (n < width) {
+        fmt_char(f, cast(32, c8));
+        n += 1;
+    }
+}
+
+/* Digits come out backwards, so they are staged and reversed rather than
+   written straight into the buffer -- a truncated number must not leave its
+   most significant digits behind and drop the rest. */
+fmt_u64: proc(f: *fmt, value: u64) -> void = {
+    digits: [24]c8 = {};
+    n: u64 = 0;
+    v: u64 = value;
+    if (v == 0) {
+        digits[0] = cast(48, c8);
+        n = 1;
+    }
+    while (v > 0) {
+        digits[n] = cast(48 + cast(v % 10, i32), c8);
+        v /= 10;
+        n += 1;
+    }
+    out: [24]c8 = {};
+    for (i: u64 = 0; i < n; i += 1) {
+        out[i] = digits[n - 1 - i];
+    }
+    fmt_bytes(f, out[0].&, n);
+}
+
+fmt_i64: proc(f: *fmt, value: i64) -> void = {
+    if (value < 0) {
+        fmt_char(f, cast(45, c8));
+        /* Negating the most negative value overflows, so widen first. */
+        fmt_u64(f, cast(0, u64) - cast(value, u64));
+        return;
+    }
+    fmt_u64(f, cast(value, u64));
+}
+
+fmt_hex: proc(f: *fmt, value: u64, min_digits: u64, upper: b32) -> void = {
+    digits: [24]c8 = {};
+    n: u64 = 0;
+    v: u64 = value;
+    if (v == 0) {
+        digits[0] = cast(48, c8);
+        n = 1;
+    }
+    while (v > 0) {
+        d: u64 = v % 16;
+        if (d < 10) {
+            digits[n] = cast(48 + cast(d, i32), c8);
+        } else if (upper != 0) {
+            digits[n] = cast(55 + cast(d, i32), c8);
+        } else {
+            digits[n] = cast(87 + cast(d, i32), c8);
+        }
+        v /= 16;
+        n += 1;
+    }
+    while (n < min_digits and n < 24) {
+        digits[n] = cast(48, c8);
+        n += 1;
+    }
+    out: [24]c8 = {};
+    for (i: u64 = 0; i < n; i += 1) {
+        out[i] = digits[n - 1 - i];
+    }
+    fmt_bytes(f, out[0].&, n);
+}
+
+/* Fixed-point, which is all the call sites need -- %.2f and friends. Not a
+   general float formatter: very large magnitudes lose the integer part to the
+   u64 cast, and there is no exponent form. */
+fmt_f64: proc(f: *fmt, value: f64, decimals: u64) -> void = {
+    v: f64 = value;
+    if (v < 0.0) {
+        fmt_char(f, cast(45, c8));
+        v = -v;
+    }
+    scale: u64 = 1;
+    for (i: u64 = 0; i < decimals; i += 1) {
+        scale *= 10;
+    }
+    whole: u64 = cast(v, u64);
+    frac: f64 = v - cast(whole, f64);
+    scaled: u64 = cast(frac * cast(scale, f64) + 0.5, u64);
+    if (scaled >= scale) {
+        whole += 1;
+        scaled -= scale;
+    }
+    fmt_u64(f, whole);
+    if (decimals == 0) {
+        return;
+    }
+    fmt_char(f, cast(46, c8));
+    /* Leading zeros of the fraction are significant. */
+    place: u64 = scale / 10;
+    while (place > 0) {
+        fmt_char(f, cast(48 + cast((scaled / place) % 10, i32), c8));
+        place /= 10;
+    }
+}
+
+/* Length written, not counting the terminator. */
+fmt_done: proc(f: *const fmt) -> u64 = {
+    return f[0].length;
+}
+
+fmt_truncated: proc(f: *const fmt) -> b32 = {
+    return f[0].truncated;
+}
+
+/* Expands a format string held in data, which is the one case a call site
+   cannot be rewritten into explicit calls: the format arrives from a table.
+   Only "%d" is recognised, because that is the only conversion those tables
+   use; anything else is copied through verbatim so a stray "%s" shows up in
+   the output rather than reading a stack slot that was never passed. */
+fmt_expand_i64: proc(dst: *c8, capacity: u64, format: *const c8, value: i64) -> u64 = {
+    f: fmt = fmt_to(dst, capacity);
+    if (format == null) {
+        return 0;
+    }
+    i: u64 = 0;
+    while (format[i] != 0) {
+        if (format[i] == cast(37, c8) and format[i + 1] == cast(100, c8)) {
+            fmt_i64(f.&, value);
+            i += 2;
+        } else {
+            fmt_char(f.&, format[i]);
+            i += 1;
+        }
+    }
+    return f.length;
+}
+
+/* The dominant snprintf shape by a wide margin is literal fragments joined with
+   strings -- "res/fx/%s.json", "%s/%s", "res/%s/mesh/%s.gltf". These cover it
+   without a builder at the call site. Each returns the length written. */
+fmt_cat1: proc(dst: *c8, capacity: u64, a: *const c8) -> u64 = {
+    f: fmt = fmt_to(dst, capacity);
+    fmt_cstr(f.&, a);
+    return f.length;
+}
+
+fmt_cat2: proc(dst: *c8, capacity: u64, a: *const c8, b: *const c8) -> u64 = {
+    f: fmt = fmt_to(dst, capacity);
+    fmt_cstr(f.&, a);
+    fmt_cstr(f.&, b);
+    return f.length;
+}
+
+fmt_cat3: proc(dst: *c8, capacity: u64, a: *const c8, b: *const c8, c: *const c8) -> u64 = {
+    f: fmt = fmt_to(dst, capacity);
+    fmt_cstr(f.&, a);
+    fmt_cstr(f.&, b);
+    fmt_cstr(f.&, c);
+    return f.length;
+}
+
+fmt_cat4: proc(dst: *c8, capacity: u64, a: *const c8, b: *const c8, c: *const c8, d: *const c8) -> u64 = {
+    f: fmt = fmt_to(dst, capacity);
+    fmt_cstr(f.&, a);
+    fmt_cstr(f.&, b);
+    fmt_cstr(f.&, c);
+    fmt_cstr(f.&, d);
+    return f.length;
+}
+
+fmt_cat5: proc(dst: *c8, capacity: u64, a: *const c8, b: *const c8, c: *const c8, d: *const c8, e: *const c8) -> u64 = {
+    f: fmt = fmt_to(dst, capacity);
+    fmt_cstr(f.&, a);
+    fmt_cstr(f.&, b);
+    fmt_cstr(f.&, c);
+    fmt_cstr(f.&, d);
+    fmt_cstr(f.&, e);
+    return f.length;
+}

@@ -34,10 +34,26 @@ def build_haikal(ctx: BuildContext) -> None:
     )
 
 
+def sync_std(ctx: BuildContext) -> None:
+    """Copy src/std next to the freshly built compiler.
+
+    CMake does this in a POST_BUILD step, which only fires when the target
+    relinks -- so editing a .rin in src/std and rebuilding left build/std stale
+    and the test suite silently running against the old library. Doing it here
+    makes it unconditional.
+    """
+    build_std = ctx.build_dir / "std"
+    if build_std.exists():
+        shutil.rmtree(build_std)
+    shutil.copytree(ctx.root_dir / "src" / "std", build_std)
+
+
 def package_rin(ctx: BuildContext) -> None:
     package_dir = ctx.root_dir.parent / "rin-windows-x64"
     package_std_dir = package_dir / "std"
     rinbind_path = ctx.build_dir / "rinbind.exe"
+
+    sync_std(ctx)
 
     package_dir.mkdir(parents=True, exist_ok=True)
     shutil.copy2(ctx.exe_path, package_dir / "rin.exe")
