@@ -815,6 +815,9 @@ typedef struct Parser {
     i32 index;
     bool pending_equal;
     bool reported_eof; // so an unclosed '{' reports once, not once per nesting level
+    i32 expr_depth;    // guards the stack against pathological nesting
+    i32 expr_nodes;    // binary nodes in the expression being parsed
+    bool reported_depth;
     Vec_voidptr *pending_array_counts; // borrowed from the Program being parsed
 } Parser;
 
@@ -2408,6 +2411,7 @@ static Expr *expr_number_zero(memops_arena *arena, i32 line, i32 col) {
 }
 
 static Expr *parse_expr(Parser *p);
+static bool parser_note_expr_node(Parser *p);
 static Expr *parse_unary(Parser *p);
 static Expr *parse_multiplicative(Parser *p);
 static Expr *parse_additive(Parser *p);
@@ -2828,6 +2832,9 @@ static Expr *parse_multiplicative(Parser *p) {
         TokenKind op = op_tok->kind;
         parser_next(p);
         Expr *right = parse_unary(p);
+        if (!parser_note_expr_node(p)) {
+            return left;
+        }
         Expr *bin = expr_new(p->arena, Expr_Binary);
         bin->left = left;
         bin->right = right;
@@ -2846,6 +2853,9 @@ static Expr *parse_additive(Parser *p) {
         TokenKind op = op_tok->kind;
         parser_next(p);
         Expr *right = parse_multiplicative(p);
+        if (!parser_note_expr_node(p)) {
+            return left;
+        }
         Expr *bin = expr_new(p->arena, Expr_Binary);
         bin->left = left;
         bin->right = right;
@@ -2864,6 +2874,9 @@ static Expr *parse_shift(Parser *p) {
         TokenKind op = op_tok->kind;
         parser_next(p);
         Expr *right = parse_additive(p);
+        if (!parser_note_expr_node(p)) {
+            return left;
+        }
         Expr *bin = expr_new(p->arena, Expr_Binary);
         bin->left = left;
         bin->right = right;
@@ -2885,6 +2898,9 @@ static Expr *parse_relational(Parser *p) {
         TokenKind op = op_tok->kind;
         parser_next(p);
         Expr *right = parse_bitwise_or(p);
+        if (!parser_note_expr_node(p)) {
+            return left;
+        }
         Expr *bin = expr_new(p->arena, Expr_Binary);
         bin->left = left;
         bin->right = right;
@@ -2903,6 +2919,9 @@ static Expr *parse_equality(Parser *p) {
         TokenKind op = op_tok->kind;
         parser_next(p);
         Expr *right = parse_relational(p);
+        if (!parser_note_expr_node(p)) {
+            return left;
+        }
         Expr *bin = expr_new(p->arena, Expr_Binary);
         bin->left = left;
         bin->right = right;
@@ -2920,6 +2939,9 @@ static Expr *parse_bitwise_and(Parser *p) {
         Token *op_tok = parser_peek(p);
         parser_next(p);
         Expr *right = parse_shift(p);
+        if (!parser_note_expr_node(p)) {
+            return left;
+        }
         Expr *bin = expr_new(p->arena, Expr_Binary);
         bin->left = left;
         bin->right = right;
@@ -2937,6 +2959,9 @@ static Expr *parse_bitwise_xor(Parser *p) {
         Token *op_tok = parser_peek(p);
         parser_next(p);
         Expr *right = parse_bitwise_and(p);
+        if (!parser_note_expr_node(p)) {
+            return left;
+        }
         Expr *bin = expr_new(p->arena, Expr_Binary);
         bin->left = left;
         bin->right = right;
@@ -2954,6 +2979,9 @@ static Expr *parse_bitwise_or(Parser *p) {
         Token *op_tok = parser_peek(p);
         parser_next(p);
         Expr *right = parse_bitwise_xor(p);
+        if (!parser_note_expr_node(p)) {
+            return left;
+        }
         Expr *bin = expr_new(p->arena, Expr_Binary);
         bin->left = left;
         bin->right = right;
@@ -2971,6 +2999,9 @@ static Expr *parse_logical_and(Parser *p) {
         Token *op_tok = parser_peek(p);
         parser_next(p);
         Expr *right = parse_equality(p);
+        if (!parser_note_expr_node(p)) {
+            return left;
+        }
         Expr *bin = expr_new(p->arena, Expr_Binary);
         bin->left = left;
         bin->right = right;
@@ -2988,6 +3019,9 @@ static Expr *parse_logical_or(Parser *p) {
         Token *op_tok = parser_peek(p);
         parser_next(p);
         Expr *right = parse_logical_and(p);
+        if (!parser_note_expr_node(p)) {
+            return left;
+        }
         Expr *bin = expr_new(p->arena, Expr_Binary);
         bin->left = left;
         bin->right = right;
@@ -3019,8 +3053,53 @@ static Expr *parse_ternary(Parser *p) {
     return e;
 }
 
+/* Nesting and chain length both consume stack -- nesting here in the parser,
+   chain length later when the type checker walks a left-leaning tree. One limit
+   covers both, because both are bounded by how deep this function goes. */
+#define RIN_MAX_EXPR_DEPTH 200
+/* A chain of operators is parsed by a loop but produces a tree as deep as the
+   chain is long, and the type checker walks it recursively. The stack gives out
+   somewhere between one and two thousand, so the limit sits below that rather
+   than above it -- a guard that trips after the crash is no guard. njinn's
+   longest expression is well under a hundred nodes. */
+#define RIN_MAX_EXPR_NODES 800
+
+/* Called wherever a binary node is built. Reports once per expression and
+   then lets parsing finish, so the file still yields its other diagnostics. */
+static bool parser_note_expr_node(Parser *p) {
+    p->expr_nodes += 1;
+    if (p->expr_nodes <= RIN_MAX_EXPR_NODES) {
+        return true;
+    }
+    if (!p->reported_depth) {
+        p->reported_depth = true;
+        parser_error_token(p, parser_peek(p),
+                           "expression has too many operators; split it across statements");
+    }
+    return false;
+}
+
 static Expr *parse_expr(Parser *p) {
-    return parse_ternary(p);
+    if (p->expr_depth >= RIN_MAX_EXPR_DEPTH) {
+        if (!p->reported_depth) {
+            p->reported_depth = true;
+            parser_error_token(p, parser_peek(p),
+                               "expression nests too deeply; simplify it or split it "
+                               "across statements");
+        }
+        /* Returning a leaf keeps the parser making progress instead of
+           unwinding into the same error at every level. */
+        Expr *stub = expr_new(p->arena, Expr_Number);
+        stub->number = string8_from_cstr(p->arena, "0");
+        return stub;
+    }
+    if (p->expr_depth == 0) {
+        p->expr_nodes = 0;
+    }
+    p->expr_depth += 1;
+    Expr *e = parse_ternary(p);
+    p->expr_depth -= 1;
+    return e;
 }
 
 static Stmt *stmt_new(memops_arena *arena, StmtKind kind) {
@@ -9324,7 +9403,10 @@ static TypeExpr *infer_expr_type(Expr *e, TypeScope *scope, Program *prog, memop
         if (e->op == Token_Minus && left && right && left->kind == Type_Array && right->kind == Type_Ptr && type_expr_equal_resolved(prog, left->elem, right->elem)) {
             return type_name_expr(arena, "long");
         }
-        return infer_expr_type(e->left, scope, prog, arena);
+        /* `left` is this exact call. Recomputing it here made every binary node
+           infer its left subtree twice, so a chain of n operators cost 2^n --
+           forty terms of `1 + 1 + ...` took over a minute to type-check. */
+        return left;
     }
     return null;
 }

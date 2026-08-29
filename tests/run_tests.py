@@ -4,6 +4,7 @@ import json
 import re
 import shutil
 import subprocess
+import time
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -4679,6 +4680,65 @@ main:proc()->i32 = {
         print(res.stdout)
         return 1
     print("ok cli_no_input")
+
+    # Input that used to take the compiler down. All three of these crashed the
+    # process with STATUS_STACK_OVERFLOW and no diagnostic at all, or ran for
+    # minutes -- a compiler must refuse what it cannot handle, not die on it.
+    hard_rin = TEST_DIR / "hardening.rin"
+
+    # 1. Deep parenthesis nesting: recursive descent ran out of stack at ~500.
+    hard_rin.write_text(
+        "main: proc() -> i32 = { return %s1%s; }\n" % ("(" * 4000, ")" * 4000),
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(hard_rin)])
+    if res.returncode == 0 or "nests too deeply" not in res.stdout:
+        print("compiler_hardening: deep nesting must be reported, not crash")
+        print(res.stdout[:400])
+        return 1
+
+    # 2. A long operator chain: parsed by a loop, but the tree it builds is as
+    #    deep as the chain, and every later pass walks it recursively.
+    hard_rin.write_text(
+        "main: proc() -> i32 = { return %s; }\n" % "+".join(["1"] * 8000),
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(hard_rin)])
+    if res.returncode == 0 or "too many operators" not in res.stdout:
+        print("compiler_hardening: a long operator chain must be reported, not crash")
+        print(res.stdout[:400])
+        return 1
+
+    # 3. Type inference was exponential in chain length: each binary node
+    #    inferred its left subtree twice, so forty terms took over a minute.
+    #    Four hundred is well inside the limit and must be fast.
+    hard_rin.write_text(
+        "main: proc() -> i32 = { return %s; }\n" % "+".join(["1"] * 400),
+        encoding="utf-8", newline="\n")
+    started = time.monotonic()
+    res = run([str(RIN_EXE), "check", str(hard_rin)])
+    elapsed = time.monotonic() - started
+    if res.returncode != 0:
+        print("compiler_hardening: a 400 term chain is legal and must compile")
+        print(res.stdout[:400])
+        return 1
+    if elapsed > 10.0:
+        print(f"compiler_hardening: 400 terms took {elapsed:.1f}s; inference is not linear")
+        return 1
+
+    # Malformed input of the kinds a fuzzer finds first.
+    for src, label in (
+        ("", "an empty file"),
+        ("}", "a stray closing brace"),
+        (";;;;", "bare semicolons"),
+        ("/* unterminated", "an unterminated block comment"),
+        ("main: proc() -> i32 = {", "an unclosed brace"),
+    ):
+        hard_rin.write_text(src, encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(hard_rin)])
+        if res.returncode not in (0, 1):
+            print(f"compiler_hardening: {label} exited {res.returncode}, not a clean result")
+            print(res.stdout[:300])
+            return 1
+    print("ok compiler_hardening")
 
     # `true` and `false` are keywords producing 1 and 0. Nothing downstream --
     # inference, folding, emission -- had to learn about them, and b32 is
