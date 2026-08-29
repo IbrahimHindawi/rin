@@ -271,7 +271,11 @@ copyButton.addEventListener('click', async () => {
 
 setExample('basics');
 
-const navLinks = [...document.querySelectorAll('.nav a')];
+// Only in-page anchors are observable. The nav now also holds a relative page
+// link and an absolute URL, and passing either to querySelector is at best
+// meaningless and at worst a SyntaxError that kills the rest of this file.
+const navLinks = [...document.querySelectorAll('.nav a')]
+  .filter(link => (link.getAttribute('href') || '').startsWith('#'));
 const sections = navLinks
   .map(link => document.querySelector(link.getAttribute('href')))
   .filter(Boolean);
@@ -286,80 +290,3 @@ const observer = new IntersectionObserver(entries => {
 }, { rootMargin: '-30% 0px -55% 0px', threshold: 0 });
 
 sections.forEach(section => observer.observe(section));
-
-const canvas = document.querySelector('#pipelineCanvas');
-const ctx = canvas.getContext('2d');
-let frame = 0;
-
-function resizeCanvas() {
-  const rect = canvas.getBoundingClientRect();
-  const scale = window.devicePixelRatio || 1;
-  canvas.width = Math.max(1, Math.floor(rect.width * scale));
-  canvas.height = Math.max(1, Math.floor(rect.height * scale));
-  ctx.setTransform(scale, 0, 0, scale, 0, 0);
-}
-
-function drawPipeline() {
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-  ctx.clearRect(0, 0, w, h);
-
-  const nodes = [
-    { x: w * 0.15, y: h * 0.36, label: '.rin', color: '#e0453a' },
-    { x: w * 0.38, y: h * 0.24, label: 'parse', color: '#e0a89f' },
-    { x: w * 0.62, y: h * 0.40, label: 'emit C', color: '#c98a5e' },
-    { x: w * 0.84, y: h * 0.28, label: 'exe', color: '#b0a49f' },
-  ];
-
-  ctx.lineWidth = 1;
-  for (let i = 0; i < nodes.length - 1; i++) {
-    const a = nodes[i];
-    const b = nodes[i + 1];
-    ctx.strokeStyle = 'rgba(230,222,217,.22)';
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.bezierCurveTo((a.x + b.x) / 2, a.y - 70, (a.x + b.x) / 2, b.y + 70, b.x, b.y);
-    ctx.stroke();
-
-    const t = (frame / 100 + i * .23) % 1;
-    const px = a.x + (b.x - a.x) * t;
-    const py = a.y + (b.y - a.y) * t + Math.sin(t * Math.PI) * -42;
-    ctx.fillStyle = b.color;
-    ctx.fillRect(px - 3, py - 3, 6, 6);
-  }
-
-  ctx.strokeStyle = 'rgba(255,255,255,.08)';
-  for (let x = 28; x < w; x += 48) {
-    ctx.beginPath();
-    ctx.moveTo(x, 20);
-    ctx.lineTo(x, h - 68);
-    ctx.stroke();
-  }
-  for (let y = 28; y < h - 64; y += 48) {
-    ctx.beginPath();
-    ctx.moveTo(20, y);
-    ctx.lineTo(w - 20, y);
-    ctx.stroke();
-  }
-
-  nodes.forEach((node, index) => {
-    const pulse = Math.sin((frame + index * 17) / 18) * 3;
-    ctx.fillStyle = '#100d0c';
-    ctx.strokeStyle = node.color;
-    ctx.lineWidth = 2;
-    ctx.fillRect(node.x - 46 - pulse, node.y - 26 - pulse, 92 + pulse * 2, 52 + pulse * 2);
-    ctx.strokeRect(node.x - 46 - pulse, node.y - 26 - pulse, 92 + pulse * 2, 52 + pulse * 2);
-    ctx.fillStyle = node.color;
-    ctx.font = '700 15px Consolas, monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(node.label, node.x, node.y);
-  });
-
-  frame += 1;
-  requestAnimationFrame(drawPipeline);
-}
-
-window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
-drawPipeline();

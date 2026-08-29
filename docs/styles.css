@@ -12,6 +12,7 @@
   --danger: #b0a49f;
   --code: #0a0807;
   --shadow: 0 18px 50px rgba(0, 0, 0, .28);
+  --mono: ui-monospace, "Cascadia Mono", "JetBrains Mono", Consolas, monospace;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -108,16 +109,70 @@ pre {
 }
 
 main {
-  overflow: hidden;
+  /* Not overflow:hidden -- that would clip .hero-code out of its sticky
+     context and pin it to nothing. Only the horizontal axis is constrained. */
+  overflow-x: clip;
 }
 
 .hero {
-  min-height: calc(100vh - 4rem);
   display: grid;
-  grid-template-columns: minmax(0, .9fr) minmax(22rem, 1.1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(24rem, 1fr);
+  align-items: start;
+  gap: clamp(2rem, 5vw, 4.5rem);
+  padding: clamp(3rem, 7vw, 5.5rem) clamp(1rem, 5vw, 5rem) clamp(3rem, 6vw, 5rem);
+}
+
+.hero-code {
+  position: sticky;
+  top: 5.5rem;
+  display: grid;
+  gap: .75rem;
+}
+
+.points {
+  margin: 1.6rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: .85rem;
+  max-width: 40rem;
+}
+
+.points li {
+  padding-left: 1rem;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.points li strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.next {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: clamp(2rem, 5vw, 5rem);
-  padding: clamp(3rem, 7vw, 6rem) clamp(1rem, 5vw, 5rem) 2rem;
+  justify-content: space-between;
+  gap: 1.5rem clamp(2rem, 5vw, 4rem);
+  padding: clamp(2.5rem, 5vw, 4rem) clamp(1rem, 5vw, 5rem);
+  border-top: 1px solid rgba(255,255,255,.07);
+  background: rgba(255,255,255,.025);
+}
+
+.next-copy {
+  max-width: 38rem;
+}
+
+.next-copy p:not(.eyebrow) {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.next-copy h2 {
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
 }
 
 .hero-copy {
@@ -142,9 +197,11 @@ p {
 
 h1 {
   margin-bottom: 1rem;
-  font-size: clamp(3rem, 8vw, 7rem);
+  font-family: var(--mono);
+  font-size: clamp(3.5rem, 9vw, 6rem);
+  font-weight: 600;
   line-height: .9;
-  letter-spacing: 0;
+  letter-spacing: -.04em;
 }
 
 h2 {
@@ -191,113 +248,6 @@ h3 {
   color: #17100e;
 }
 
-.hero-visual {
-  position: relative;
-  min-height: 27rem;
-  border: 1px solid var(--line);
-  background: linear-gradient(135deg, rgba(217,58,43,.08), rgba(224,168,159,.06)), #100d0c;
-  box-shadow: var(--shadow);
-}
-
-#pipelineCanvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-  min-height: 27rem;
-}
-
-.pipeline-labels {
-  position: absolute;
-  inset: auto 1rem 1rem 1rem;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: .45rem;
-}
-
-.pipeline-labels span {
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(10,8,7,.82);
-  padding: .55rem;
-  color: var(--muted);
-  font-size: .78rem;
-  text-align: center;
-}
-
-.band,
-.split {
-  padding: clamp(3rem, 7vw, 6rem) clamp(1rem, 5vw, 5rem);
-}
-
-.band {
-  border-top: 1px solid rgba(255,255,255,.07);
-  background: rgba(255,255,255,.025);
-}
-
-.split {
-  display: grid;
-  grid-template-columns: minmax(16rem, .7fr) minmax(0, 1.3fr);
-  gap: clamp(2rem, 5vw, 5rem);
-  border-top: 1px solid rgba(255,255,255,.07);
-}
-
-.split.reverse {
-  grid-template-columns: minmax(0, 1.25fr) minmax(16rem, .75fr);
-}
-
-.split.reverse .section-head {
-  order: 2;
-}
-
-.section-head {
-  max-width: 45rem;
-}
-
-.section-head p:not(.eyebrow) {
-  color: var(--muted);
-  line-height: 1.65;
-}
-
-.sticky-head {
-  align-self: start;
-  position: sticky;
-  top: 6rem;
-}
-
-.command-grid,
-.feature-list,
-.reference-grid,
-.interop-grid {
-  display: grid;
-  gap: 1rem;
-}
-
-.command-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.command,
-.feature-list article,
-.reference-grid article,
-.interop-grid article {
-  border: 1px solid var(--line);
-  background: var(--panel);
-  padding: 1rem;
-}
-
-.command {
-  display: grid;
-  align-content: space-between;
-  min-height: 13rem;
-}
-
-.command p,
-.feature-list p,
-.interop-grid p,
-.reference-grid li {
-  color: var(--muted);
-  line-height: 1.55;
-}
-
 pre {
   margin: 0;
   overflow: auto;
@@ -307,10 +257,6 @@ pre {
   color: #ddd2cc;
   line-height: 1.55;
   tab-size: 4;
-}
-
-.command pre {
-  white-space: pre-wrap;
 }
 
 code {
@@ -324,19 +270,11 @@ li code {
   border: 1px solid rgba(255,255,255,.08);
 }
 
-.feature-list {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.feature-list article {
-  min-height: 10.5rem;
-}
-
 .tabs {
   display: flex;
   flex-wrap: wrap;
   gap: .45rem;
-  margin: 1.5rem 0 1rem;
+  margin: 0;
 }
 
 .tab,
@@ -379,53 +317,6 @@ li code {
 .code-panel pre {
   border: 0;
   max-height: 31rem;
-}
-
-.reference-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-top: 1rem;
-}
-
-.reference-grid ul {
-  margin: 0;
-  padding-left: 1.1rem;
-}
-
-.interop-grid {
-  grid-template-columns: 1fr;
-}
-
-.flow {
-  counter-reset: flow;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 1rem;
-  padding: 0;
-  margin: 1.5rem 0 0;
-  list-style: none;
-}
-
-.flow li {
-  min-height: 13rem;
-  padding: 1rem;
-  border: 1px solid var(--line);
-  background: var(--panel);
-}
-
-.flow span {
-  display: grid;
-  place-items: center;
-  width: 2rem;
-  aspect-ratio: 1;
-  margin-bottom: 1rem;
-  background: var(--accent-2);
-  color: #160f0d;
-  font-weight: 900;
-}
-
-.flow p {
-  color: var(--muted);
-  line-height: 1.55;
 }
 
 .footer {
@@ -488,27 +379,14 @@ li code {
 }
 
 @media (max-width: 1050px) {
-  .hero,
-  .split,
-  .split.reverse {
+  .hero {
     grid-template-columns: 1fr;
   }
 
-  .split.reverse .section-head {
-    order: 0;
-  }
-
-  .sticky-head {
+  /* Stacked, the code panel must scroll with the page rather than pin
+     itself over the prose. */
+  .hero-code {
     position: static;
-  }
-
-  .command-grid,
-  .flow {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .reference-grid {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -524,24 +402,6 @@ li code {
 
   .hero {
     padding-top: 2rem;
-  }
-
-  .hero-visual {
-    min-height: 22rem;
-  }
-
-  #pipelineCanvas {
-    min-height: 22rem;
-  }
-
-  .pipeline-labels {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .command-grid,
-  .feature-list,
-  .flow {
-    grid-template-columns: 1fr;
   }
 
   h1 {

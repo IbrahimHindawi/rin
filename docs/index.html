@@ -8,7 +8,7 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="#top" aria-label="rin compiler docs home">
+    <a class="brand" href="#top" aria-label="rin home">
       <span class="brand-mark">r</span>
       <span class="brand-copy">
         <strong>rin</strong>
@@ -16,268 +16,61 @@
       </span>
     </a>
     <nav class="nav" aria-label="Primary navigation">
-      <a href="#quickstart">Quickstart</a>
-      <a href="#syntax">Syntax</a>
-      <a href="#compiler">Compiler</a>
-      <a href="#std">Std</a>
-      <a href="#debug">Debug</a>
       <a href="lessons.html">Lessons</a>
+      <a href="https://github.com/IbrahimHindawi/rin">GitHub</a>
     </nav>
   </header>
 
   <main id="top">
     <section class="hero">
       <div class="hero-copy">
-        <p class="eyebrow">Transpiles to C</p>
-        <h1>rin compiler</h1>
+        <h1>rin</h1>
         <p class="lede">
           A small systems language that compiles to readable C, so it runs
-          wherever C runs and links against anything C links against. Explicit
-          sizes, declarations that read left to right, generics resolved while
-          compiling, and reflection the compiler emits for you.
+          wherever C runs and links against anything C links against.
         </p>
+        <ul class="points">
+          <li><strong>Sizes are in the names.</strong> <code>i32</code> is 32 bits on every machine. There is no <code>int</code> whose width depends on where you built it.</li>
+          <li><strong>One declaration shape.</strong> <code>name: kind = value</code>, for variables, structs, enums and procs alike. Read left to right, always.</li>
+          <li><strong>Order does not matter.</strong> Use a type or a proc before you declare it. No forward declarations, no header discipline.</li>
+          <li><strong>Generics and reflection, no macros.</strong> Instantiated per type while compiling, with a record describing every type that asks for one.</li>
+          <li><strong>Arenas, not a collector.</strong> Ask once, hand out pieces, release the whole thing at once.</li>
+          <li><strong>The debugger points at your source.</strong> Machine-code line tables name the <code>.rin</code> file, not the generated C.</li>
+        </ul>
         <div class="actions">
-          <a class="button primary" href="lessons.html">Learn it</a>
-          <a class="button" href="#quickstart">Install it</a>
-          <a class="button" href="#syntax">See syntax</a>
+          <a class="button primary" href="lessons.html">Learn rin</a>
+          <a class="button" href="https://github.com/IbrahimHindawi/rin">Source</a>
         </div>
       </div>
-      <div class="hero-visual" aria-label="Compiler pipeline visualization">
-        <canvas id="pipelineCanvas" width="640" height="420"></canvas>
-        <div class="pipeline-labels" aria-hidden="true">
-          <span>.rin source</span>
-          <span>rin.exe</span>
-          <span>C output</span>
-          <span>native exe</span>
+
+      <div class="hero-code">
+        <div class="tabs" role="tablist" aria-label="Syntax examples">
+          <button class="tab active" data-example="basics" type="button">Basics</button>
+          <button class="tab" data-example="generics" type="button">Generics</button>
+          <button class="tab" data-example="control" type="button">Control flow</button>
+          <button class="tab" data-example="types" type="button">Types</button>
+        </div>
+        <div class="code-panel">
+          <div class="code-toolbar">
+            <span id="exampleTitle">Basics</span>
+            <button id="copyCode" type="button">Copy</button>
+          </div>
+          <pre><code id="exampleCode"></code></pre>
         </div>
       </div>
     </section>
 
-    <section id="quickstart" class="band">
-      <div class="section-head">
-        <p class="eyebrow">Quickstart</p>
-        <h2>Install it, then build something</h2>
+    <section class="next">
+      <div class="next-copy">
+        <p class="eyebrow">Start here</p>
+        <h2>Twenty lessons, in order</h2>
+        <p>
+          Each one is a short program that compiles, runs, and teaches a single
+          thing about how the machine works. It opens with what the language is
+          and how to install it.
+        </p>
       </div>
-      <div class="command-grid">
-        <article class="command">
-          <div>
-            <h3>Install</h3>
-            <p>Point <code>RIN_HOME</code> at the packaged folder, or put it on <code>PATH</code>.
-               <code>std</code> must sit beside <code>rin.exe</code>; the compiler refuses to start without it.</p>
-          </div>
-          <pre><code>setx RIN_HOME C:\devel\rin-windows-x64
-rin --version</code></pre>
-        </article>
-        <article class="command">
-          <div>
-            <h3>Package output</h3>
-            <p>The build copies the compiler and <code>src\std</code> into a folder that can live on PATH.</p>
-          </div>
-          <pre><code>C:\devel\rin-windows-x64\
-    rin.exe
-    rinbind.exe
-    std\</code></pre>
-        </article>
-        <article class="command">
-          <div>
-            <h3>Compile one file</h3>
-            <p>The compiler finds the sibling <code>std</code> folder automatically.</p>
-          </div>
-          <pre><code>rin compile src\main.rin -o build\rin_gen\main.c --header build\rin_gen\main.h</code></pre>
-        </article>
-        <article class="command">
-          <div>
-            <h3>Check only</h3>
-            <p>Used by editor tooling and diagnostics without producing build artifacts.</p>
-          </div>
-          <pre><code>rin check src\main.rin --diagnostics=json</code></pre>
-        </article>
-        <article class="command">
-          <div>
-            <h3>Build a whole project</h3>
-            <p>Describe the build once in a <code>build.rin</code> — ordinary rin globals,
-               parsed by the same front end — and the compiler drives cmake and the generator.</p>
-          </div>
-          <pre><code>build_name:  *const char = "hello";
-build_entry: *const char = "src/main.rin";
-
-rin build</code></pre>
-        </article>
-      </div>
-    </section>
-
-    <section id="features" class="split">
-      <div class="section-head sticky-head">
-        <p class="eyebrow">Shape</p>
-        <h2>Small syntax, explicit output</h2>
-        <p>The language stays close to C. The compiler owns the type system, generics, reflection, diagnostics, and C emission.</p>
-      </div>
-      <div class="feature-list">
-        <article>
-          <h3>Declaration-first syntax</h3>
-          <p><code>name: type</code> is used for locals, globals, fields, structs, enums, aliases, and procedures.</p>
-        </article>
-        <article>
-          <h3>Native monomorphization</h3>
-          <p><code>Array&lt;payload&gt;</code> and <code>sum&lt;payload&gt;</code> emit concrete C structs and procs.</p>
-        </article>
-        <article>
-          <h3>Typed operations</h3>
-          <p>Generic algorithms can call typed implementations such as <code>add&lt;T&gt;</code> and resolve per concrete type.</p>
-        </article>
-        <article>
-          <h3>Automatic reflection</h3>
-          <p><code>Payload&lt;&gt;</code> lowers to immutable metadata for field names, offsets, sizes, enum values, and type facts.</p>
-        </article>
-        <article>
-          <h3>Compiler-driven formatting</h3>
-          <p><code>printfmt("{}"</code> resolves argument types and lowers to concrete <code>print&lt;T&gt;</code> calls.</p>
-        </article>
-        <article>
-          <h3>C interop remains direct</h3>
-          <p><code>cinclude</code>, <code>external</code>, and <code>external_emit</code> keep C APIs visible without wrapping everything.</p>
-        </article>
-        <article>
-          <h3>Line mapped generated C</h3>
-          <p>Generated C uses <code>#line</code> so native compiler errors and debugger stepping can point back to the <code>.rin</code> source.</p>
-        </article>
-        <article>
-          <h3>Exhaustive switches</h3>
-          <p>A <code>switch</code> over an enum that lists cases and writes no <code>default</code>
-             must handle every member. Writing <code>default</code> opts out, so a large enum costs nothing.</p>
-        </article>
-        <article>
-          <h3>Three C compilers</h3>
-          <p>The generated C is checked against clang, clang-cl and MSVC <code>cl</code>,
-             with the same expected output from each.</p>
-        </article>
-        <article>
-          <h3>Editor path</h3>
-          <p>The LSP shell calls <code>rin check --diagnostics=json</code> and publishes compiler-owned diagnostics.</p>
-        </article>
-      </div>
-    </section>
-
-    <section id="syntax" class="band">
-      <div class="section-head">
-        <p class="eyebrow">Syntax</p>
-        <h2>Current language examples</h2>
-      </div>
-      <div class="tabs" role="tablist" aria-label="Syntax examples">
-        <button class="tab active" data-example="basics" type="button">Basics</button>
-        <button class="tab" data-example="generics" type="button">Generics</button>
-        <button class="tab" data-example="control" type="button">Control flow</button>
-        <button class="tab" data-example="types" type="button">Types</button>
-      </div>
-      <div class="code-panel">
-        <div class="code-toolbar">
-          <span id="exampleTitle">Basics</span>
-          <button id="copyCode" type="button">Copy</button>
-        </div>
-        <pre><code id="exampleCode"></code></pre>
-      </div>
-      <div class="reference-grid">
-        <article>
-          <h3>Unified forms</h3>
-          <ul>
-            <li><code>value: T = expr;</code></li>
-            <li><code>Name: struct = { field: T; }</code></li>
-            <li><code>name: proc(args)-&gt;T = { ... }</code></li>
-            <li><code>Generic: struct&lt;T&gt; = { ... }</code></li>
-          </ul>
-        </article>
-        <article>
-          <h3>Metaprogramming</h3>
-          <ul>
-            <li><code>Payload&lt;&gt;.count</code>, <code>.size</code>, <code>.variant.fields[i]</code></li>
-            <li><code>Array&lt;T&gt;</code> native generic types</li>
-            <li><code>print: proc&lt;Payload&gt;(...)</code> typed operation specialization</li>
-            <li><code>printfmt("{}\n", value)</code> compiler lowered formatting</li>
-          </ul>
-        </article>
-        <article>
-          <h3>Interop</h3>
-          <ul>
-            <li><code>cinclude "stdio.h"</code></li>
-            <li><code>#define FLAG</code> passes through to C</li>
-            <li><code>proc[callconv(NAME)](...)</code></li>
-            <li><code>external</code> and <code>external_emit</code></li>
-          </ul>
-        </article>
-      </div>
-    </section>
-
-    <section id="compiler" class="split reverse">
-      <div class="section-head sticky-head">
-        <p class="eyebrow">Compiler</p>
-        <h2>One merged generated unit</h2>
-        <p>Imports are resolved by the compiler, then emitted as C in a deterministic order.</p>
-      </div>
-      <div class="interop-grid">
-        <article>
-          <h3>Default project compile</h3>
-          <pre><code>rin compile src\main.rin -o build\rin_gen\main.c</code></pre>
-          <p>If no header path is given, the compiler can derive the companion header path from the C output path.</p>
-        </article>
-        <article>
-          <h3>Generated files</h3>
-          <pre><code>build\rin_gen\
-    main.c
-    main.h
-    Array_payload.h
-    Array_payload.c</code></pre>
-          <p>Generated native monomorph headers stay build-local. Authored code remains <code>.rin</code>.</p>
-        </article>
-        <article>
-          <h3>Diagnostics</h3>
-          <pre><code>rin check src\main.rin --diagnostics=json --stdin-path src\main.rin</code></pre>
-          <p>The compiler is the source of truth for errors; the LSP should stay a thin transport layer.</p>
-        </article>
-      </div>
-    </section>
-
-    <section id="std" class="band">
-      <div class="section-head">
-        <p class="eyebrow">Standard Library</p>
-        <h2>Small runtime, arena-shaped</h2>
-      </div>
-      <div class="reference-grid">
-        <article>
-          <h3>Containers</h3>
-          <p><code>Array.rin</code>, <code>Vec.rin</code>, <code>Node.rin</code>, <code>List.rin</code>, <code>Map.rin</code>, <code>Option.rin</code>, and <code>Result.rin</code> are written in rin, not bound from C.</p>
-        </article>
-        <article>
-          <h3>No C string library</h3>
-          <p><code>cstr.rin</code> and <code>fmt.rin</code> replace <code>string.h</code> and
-             <code>snprintf</code> in rin. The 25,000-line engine built on this uses none of them.</p>
-        </article>
-        <article>
-          <h3>Views</h3>
-          <p><code>slice&lt;T&gt;</code> is the borrowed half of <code>Array&lt;T&gt;</code>:
-             a pointer and a length, owning nothing, free to sub-slice.</p>
-        </article>
-        <article>
-          <h3>Strings and paths</h3>
-          <p><code>string8</code> owns arena memory, <code>string8slice</code> borrows, and path helpers normalize slash handling at the rin level.</p>
-        </article>
-        <article>
-          <h3>Printing</h3>
-          <p><code>Print.rin</code> provides concrete printers; <code>printfmt</code> uses compiler type information to pick the right printer.</p>
-        </article>
-      </div>
-    </section>
-
-    <section id="debug" class="band">
-      <div class="section-head">
-        <p class="eyebrow">Debug</p>
-        <h2>Use the native toolchain</h2>
-      </div>
-      <ol class="flow">
-        <li><span>1</span><p><code>.rin</code> source is translated to C with <code>#line</code> directives.</p></li>
-        <li><span>2</span><p>clang-cl compiles the C into normal debug info.</p></li>
-        <li><span>3</span><p>Visual Studio can step the rin source while native disassembly stays available.</p></li>
-        <li><span>4</span><p>If the generated C matters, it is still visible under <code>build\rin_gen</code>.</p></li>
-      </ol>
+      <a class="button primary" href="lessons.html">Open the lessons</a>
     </section>
   </main>
 
