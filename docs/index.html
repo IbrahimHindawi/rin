@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>I Compiler Docs</title>
+  <title>rin — a C-shaped systems language</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="topbar">
     <a class="brand" href="#top" aria-label="rin compiler docs home">
-      <span class="brand-mark">I</span>
+      <span class="brand-mark">r</span>
       <span class="brand-copy">
-        <strong>I Compiler</strong>
+        <strong>rin</strong>
         <span>C-shaped systems language</span>
       </span>
     </a>
@@ -21,6 +21,7 @@
       <a href="#compiler">Compiler</a>
       <a href="#std">Std</a>
       <a href="#debug">Debug</a>
+      <a href="lessons.html">Lessons</a>
     </nav>
   </header>
 
@@ -30,12 +31,14 @@
         <p class="eyebrow">Transpiles to C</p>
         <h1>rin compiler</h1>
         <p class="lede">
-          I is a focused C front-end: direct declarations, monomorphized generics,
-          automatic reflection, typed formatting, and generated C that the native
-          toolchain compiles normally.
+          A small systems language that compiles to readable C, so it runs
+          wherever C runs and links against anything C links against. Explicit
+          sizes, declarations that read left to right, generics resolved while
+          compiling, and reflection the compiler emits for you.
         </p>
         <div class="actions">
-          <a class="button primary" href="#quickstart">Build it</a>
+          <a class="button primary" href="lessons.html">Learn it</a>
+          <a class="button" href="#quickstart">Install it</a>
           <a class="button" href="#syntax">See syntax</a>
         </div>
       </div>
@@ -53,15 +56,17 @@
     <section id="quickstart" class="band">
       <div class="section-head">
         <p class="eyebrow">Quickstart</p>
-        <h2>Compiler repo and package flow</h2>
+        <h2>Install it, then build something</h2>
       </div>
       <div class="command-grid">
         <article class="command">
           <div>
-            <h3>Build compiler</h3>
-            <p>Builds <code>rin.exe</code>, <code>rinbind.exe</code>, and the packaged standard library.</p>
+            <h3>Install</h3>
+            <p>Point <code>RIN_HOME</code> at the packaged folder, or put it on <code>PATH</code>.
+               <code>std</code> must sit beside <code>rin.exe</code>; the compiler refuses to start without it.</p>
           </div>
-          <pre><code>python bunyan.py build debug</code></pre>
+          <pre><code>setx RIN_HOME C:\devel\rin-windows-x64
+rin --version</code></pre>
         </article>
         <article class="command">
           <div>
@@ -75,17 +80,28 @@
         </article>
         <article class="command">
           <div>
-            <h3>Compile an I file</h3>
+            <h3>Compile one file</h3>
             <p>The compiler finds the sibling <code>std</code> folder automatically.</p>
           </div>
-          <pre><code>rin.exe compile src\main.rin -o build\rin_gen\main.c --header build\rin_gen\main.h</code></pre>
+          <pre><code>rin compile src\main.rin -o build\rin_gen\main.c --header build\rin_gen\main.h</code></pre>
         </article>
         <article class="command">
           <div>
             <h3>Check only</h3>
             <p>Used by editor tooling and diagnostics without producing build artifacts.</p>
           </div>
-          <pre><code>rin.exe check src\main.rin --diagnostics=json</code></pre>
+          <pre><code>rin check src\main.rin --diagnostics=json</code></pre>
+        </article>
+        <article class="command">
+          <div>
+            <h3>Build a whole project</h3>
+            <p>Describe the build once in a <code>build.rin</code> — ordinary rin globals,
+               parsed by the same front end — and the compiler drives cmake and the generator.</p>
+          </div>
+          <pre><code>build_name:  *const char = "hello";
+build_entry: *const char = "src/main.rin";
+
+rin build</code></pre>
         </article>
       </div>
     </section>
@@ -123,11 +139,21 @@
         </article>
         <article>
           <h3>Line mapped generated C</h3>
-          <p>Generated C uses <code>#line</code> so native compiler errors and debugger stepping can point back to I source.</p>
+          <p>Generated C uses <code>#line</code> so native compiler errors and debugger stepping can point back to the <code>.rin</code> source.</p>
+        </article>
+        <article>
+          <h3>Exhaustive switches</h3>
+          <p>A <code>switch</code> over an enum that lists cases and writes no <code>default</code>
+             must handle every member. Writing <code>default</code> opts out, so a large enum costs nothing.</p>
+        </article>
+        <article>
+          <h3>Three C compilers</h3>
+          <p>The generated C is checked against clang, clang-cl and MSVC <code>cl</code>,
+             with the same expected output from each.</p>
         </article>
         <article>
           <h3>Editor path</h3>
-          <p>The LSP shell can call <code>rin.exe check --diagnostics=json</code> and publish compiler-owned diagnostics.</p>
+          <p>The LSP shell calls <code>rin check --diagnostics=json</code> and publishes compiler-owned diagnostics.</p>
         </article>
       </div>
     </section>
@@ -163,7 +189,7 @@
         <article>
           <h3>Metaprogramming</h3>
           <ul>
-            <li><code>Payload&lt;&gt;.field_count</code></li>
+            <li><code>Payload&lt;&gt;.count</code>, <code>.size</code>, <code>.variant.fields[i]</code></li>
             <li><code>Array&lt;T&gt;</code> native generic types</li>
             <li><code>print: proc&lt;Payload&gt;(...)</code> typed operation specialization</li>
             <li><code>printfmt("{}\n", value)</code> compiler lowered formatting</li>
@@ -173,8 +199,8 @@
           <h3>Interop</h3>
           <ul>
             <li><code>cinclude "stdio.h"</code></li>
-            <li><code>define("FLAG")</code></li>
-            <li><code>proc[WINCALL](...)</code></li>
+            <li><code>#define FLAG</code> passes through to C</li>
+            <li><code>proc[callconv(NAME)](...)</code></li>
             <li><code>external</code> and <code>external_emit</code></li>
           </ul>
         </article>
@@ -185,12 +211,12 @@
       <div class="section-head sticky-head">
         <p class="eyebrow">Compiler</p>
         <h2>One merged generated unit</h2>
-        <p>I imports are resolved by the compiler, then emitted as C in a deterministic order.</p>
+        <p>Imports are resolved by the compiler, then emitted as C in a deterministic order.</p>
       </div>
       <div class="interop-grid">
         <article>
           <h3>Default project compile</h3>
-          <pre><code>rin.exe compile src\main.rin -o build\rin_gen\main.c</code></pre>
+          <pre><code>rin compile src\main.rin -o build\rin_gen\main.c</code></pre>
           <p>If no header path is given, the compiler can derive the companion header path from the C output path.</p>
         </article>
         <article>
@@ -204,7 +230,7 @@
         </article>
         <article>
           <h3>Diagnostics</h3>
-          <pre><code>rin.exe check src\main.rin --diagnostics=json --stdin-path src\main.rin</code></pre>
+          <pre><code>rin check src\main.rin --diagnostics=json --stdin-path src\main.rin</code></pre>
           <p>The compiler is the source of truth for errors; the LSP should stay a thin transport layer.</p>
         </article>
       </div>
@@ -218,7 +244,17 @@
       <div class="reference-grid">
         <article>
           <h3>Containers</h3>
-          <p><code>Array.rin</code>, <code>Vec.rin</code>, <code>Node.rin</code>, <code>List.rin</code>, <code>Map.rin</code>, <code>Option.rin</code>, and <code>Result.rin</code> are I-native runtime modules.</p>
+          <p><code>Array.rin</code>, <code>Vec.rin</code>, <code>Node.rin</code>, <code>List.rin</code>, <code>Map.rin</code>, <code>Option.rin</code>, and <code>Result.rin</code> are written in rin, not bound from C.</p>
+        </article>
+        <article>
+          <h3>No C string library</h3>
+          <p><code>cstr.rin</code> and <code>fmt.rin</code> replace <code>string.h</code> and
+             <code>snprintf</code> in rin. The 25,000-line engine built on this uses none of them.</p>
+        </article>
+        <article>
+          <h3>Views</h3>
+          <p><code>slice&lt;T&gt;</code> is the borrowed half of <code>Array&lt;T&gt;</code>:
+             a pointer and a length, owning nothing, free to sub-slice.</p>
         </article>
         <article>
           <h3>Strings and paths</h3>
@@ -237,7 +273,7 @@
         <h2>Use the native toolchain</h2>
       </div>
       <ol class="flow">
-        <li><span>1</span><p>I source is translated to C with <code>#line</code> directives.</p></li>
+        <li><span>1</span><p><code>.rin</code> source is translated to C with <code>#line</code> directives.</p></li>
         <li><span>2</span><p>clang-cl compiles the C into normal debug info.</p></li>
         <li><span>3</span><p>Visual Studio can step the rin source while native disassembly stays available.</p></li>
         <li><span>4</span><p>If the generated C matters, it is still visible under <code>build\rin_gen</code>.</p></li>
@@ -246,7 +282,7 @@
   </main>
 
   <footer class="footer">
-    <span>rin compiler docs.</span>
+    <span>rin — MIT licensed. The generated C stays readable, and the debugger points at your source.</span>
     <a href="#top">Back to top</a>
   </footer>
 

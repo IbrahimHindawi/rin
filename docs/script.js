@@ -43,24 +43,22 @@ sum: proc<T>(items: *T, count: u64)->T = {
     Attack,
 }
 
-step: proc(mode: Mode, value: i32)->i32 = {
+step: proc(mode: Mode, value: i32) -> i32 = {
     while (value > 0) {
         value -= 1;
-
         if (mode == Mode.Attack and value == 2) {
             continue;
         }
-
-        switch (value) {
-            case 1:
-                break;
-            default:
-                value = value shl 1;
-                break;
-        }
     }
 
-    return value | 1;
+    // A switch that lists cases and writes no \`default\` must handle every
+    // member. Add one to Mode and the compiler names this switch.
+    switch (mode) {
+        case Mode.Idle:   { return 0; }
+        case Mode.Run:    { return value; }
+        case Mode.Attack: { return value | 1; }
+    }
+    return value;
 }`
   },
   types: {
@@ -71,11 +69,14 @@ step: proc(mode: Mode, value: i32)->i32 = {
     samples: [4]f32;
 }
 
-main: proc()->i32 = {
-    printfmt("type {} has {} fields\\n", Payload<>.name, Payload<>.field_count);
+main: proc() -> i32 = {
+    printfmt("{} is {} bytes, {} fields\\n",
+             Payload<>.name, Payload<>.size, Payload<>.count);
 
-    for (i: u64 = 0; i < Payload<>.field_count; i += 1) {
-        printfmt("field[{}] = {}\\n", i, Payload<>.fields[i].name);
+    for (i: u64 = 0; i < Payload<>.count; i += 1) {
+        printfmt("  {} at +{}\\n",
+                 Payload<>.variant.fields[i].name,
+                 Payload<>.variant.fields[i].offset);
     }
     return 0;
 }`
