@@ -4835,6 +4835,46 @@ main:proc()->i32 = {
             print(f"global_const_init: {label} is constant and must be accepted")
             print(res.stdout[:300])
             return 1
+        const_rin.write_text(src, encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(const_rin)])
+        if res.returncode != 0:
+            print(f"global_const_init: {label} is constant and must be accepted")
+            print(res.stdout[:300])
+            return 1
+
+    # An array size is the same rule reached through the type rather than the
+    # initialiser. A global array sized by a variable emits a variable-length
+    # array at file scope, which C does not allow -- inside a function it is a
+    # legal C99 VLA, so locals are deliberately left alone.
+    const_rin.write_text(
+        "n: i32 = 4;\nx: [n]i32 = {};\nmain: proc() -> i32 = { return 0; }\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(const_rin)])
+    if res.returncode == 0 or "array size must be a constant" not in res.stdout:
+        print("global_const_init: a global array sized by a variable must be rejected")
+        print(res.stdout[:300])
+        return 1
+
+    # A bare identifier in an array count usually names a C macro, which is
+    # what makes it constant -- and rin's own `#define` lowers to exactly that.
+    # The first version of this check looked in the enclosing scope, where
+    # defines are registered for name resolution, and rejected all of njinn.
+    for src, label in (
+        ("main: proc() -> i32 = { n: i32 = 4; x: [n]i32 = {}; return 0; }\n",
+         "a local VLA"),
+        ("#define BUF_N 8\nx: [BUF_N]i32 = {};\nmain: proc() -> i32 = { return 0; }\n",
+         "a rin #define"),
+        ("cinclude \"stdio.h\"\nx: [BUFSIZ]i32 = {};\nmain: proc() -> i32 = { return 0; }\n",
+         "a C macro"),
+        ("E: enum = { A, B }\nx: [E<>.count]i32 = {};\nmain: proc() -> i32 = { return 0; }\n",
+         "an enum count"),
+    ):
+        const_rin.write_text(src, encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(const_rin)])
+        if res.returncode != 0:
+            print(f"global_const_init: {label} sizes an array legally and must be accepted")
+            print(res.stdout[:300])
+            return 1
     print("ok global_const_init")
 
     # `true` and `false` are keywords producing 1 and 0. Nothing downstream --

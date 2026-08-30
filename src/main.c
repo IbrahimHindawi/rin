@@ -4877,6 +4877,37 @@ static void semantic_error_name_path(const char *msg, string8 name, const char *
 
    Enum members, sizeof, alignof and `<>.count` all fold to literals before
    emission, so they stay legal. */
+/* An array count is kept as text, and a bare identifier in one is deliberately
+   left alone: it usually names a C constant or macro the generated code refers
+   to directly. But if it names a rin global *variable*, the emitted array is a
+   variable-length array -- legal inside a function in C99, and not legal at
+   file scope, where clang rejects it. Locals are left alone for that reason:
+   there the VLA is real and works. */
+static void semantic_check_global_array_counts(Program *prog, TypeExpr *type,
+                                               const char *source_path) {
+    if (!type) return;
+    if (type->kind == Type_Array &&
+        type->array_count.data && type->array_count.length > 0 &&
+        is_alpha(type->array_count.data[0])) {
+        /* prog->globals rather than the enclosing scope: a `#define` is
+           registered in the scope too, for name resolution, and one of those is
+           exactly what an array count is *supposed* to name -- it lowers to a C
+           macro and is constant there. Only a real variable declaration is a
+           problem, and only those are in prog->globals. */
+        for (i32 i = 0; i < prog->globals.length; i++) {
+            Stmt *g = (Stmt *)prog->globals.data[i];
+            if (!string8_equals(&g->name, &type->array_count)) continue;
+            semantic_error_name_path(
+                "a global's array size must be a constant; this reads a global variable",
+                type->array_count, source_path, type->line, type->col);
+            break;
+        }
+    }
+    if (type->kind == Type_Array || type->kind == Type_Ptr) {
+        semantic_check_global_array_counts(prog, type->elem, source_path);
+    }
+}
+
 static void semantic_check_global_initializer(Program *prog, Expr *e, Scope *scope,
                                               const char *source_path) {
     if (!e) return;
@@ -6664,6 +6695,7 @@ static void semantic_check_program(Program *prog, memops_arena *arena) {
         const char *prev_diag_import_chain = null;
         diag_push_decl_context(decl->source_path, decl->import_chain, &prev_diag_source_path, &prev_diag_import_chain);
         semantic_check_type(prog, decl->type, &structs, null, decl->source_path);
+        semantic_check_global_array_counts(prog, decl->type, decl->source_path);
         if (decl->expr) {
             semantic_check_expr(decl->expr, &base, &structs, null);
             semantic_check_global_initializer(prog, decl->expr, &base, decl->source_path);
