@@ -4786,6 +4786,57 @@ main:proc()->i32 = {
             return 1
     print("ok compiler_hardening")
 
+    # A file-scope initialiser becomes a C initialiser, and C requires those to
+    # be constant. rin accepted four shapes that are not, and clang then
+    # rejected them against generated code the author never wrote.
+    #
+    # This is also where "order does not matter" stops being true, and
+    # reordering would not rescue it: reading another global is not a constant
+    # expression in C even when that global is declared first.
+    const_rin = TEST_DIR / "global_const_init.rin"
+    for src, label in (
+        ("g_a: i32 = g_b;\ng_b: i32 = 5;\nmain: proc() -> i32 = { return g_a; }\n",
+         "reading a later global"),
+        ("g_b: i32 = 5;\ng_a: i32 = g_b;\nmain: proc() -> i32 = { return g_a; }\n",
+         "reading an earlier global"),
+        ("g_a: i32 = g_a;\nmain: proc() -> i32 = { return g_a; }\n",
+         "reading itself"),
+        ("f: proc() -> i32 = { return 1; }\ng: i32 = f();\nmain: proc() -> i32 = { return g; }\n",
+         "calling a proc"),
+        ("g_b: i32 = 5;\ng_a: i32 = 1 + g_b * 2;\nmain: proc() -> i32 = { return g_a; }\n",
+         "reading a global inside arithmetic"),
+    ):
+        const_rin.write_text(src, encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(const_rin)])
+        if res.returncode == 0 or "must be a constant" not in res.stdout:
+            print(f"global_const_init: {label} must be rejected by rin, not by clang")
+            print(res.stdout[:300])
+            return 1
+
+    # The things that genuinely are constant have to keep working. `E<>.count`
+    # is the one worth naming: the record is a global, so the obvious spelling
+    # of this check rejected it -- but it is const with a literal initialiser
+    # and C folds the read, which was confirmed against clang before exempting.
+    for src, label in (
+        ("g: i32 = 2 + 3 * 4;\nmain: proc() -> i32 = { return g; }\n", "literal arithmetic"),
+        ("S: struct = { x: i32; }\na: u64 = sizeof(S);\nb: u64 = alignof(S);\n"
+         "main: proc() -> i32 = { return 0; }\n", "sizeof and alignof"),
+        ("E: enum = { A, B }\ng: E = E.B;\nmain: proc() -> i32 = { return 0; }\n", "an enum member"),
+        ("E: enum = { A, B }\ng: u64 = E<>.count;\nmain: proc() -> i32 = { return 0; }\n",
+         "a reflection count"),
+        ("g_b: i32 = 5;\ng_p: *i32 = g_b.&;\nmain: proc() -> i32 = { return 0; }\n",
+         "the address of a global"),
+        ("S: struct = { x: i32; y: i32; }\ng: S = { .x = 1, .y = 2 };\n"
+         "main: proc() -> i32 = { return 0; }\n", "an initialiser list"),
+    ):
+        const_rin.write_text(src, encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(const_rin)])
+        if res.returncode != 0:
+            print(f"global_const_init: {label} is constant and must be accepted")
+            print(res.stdout[:300])
+            return 1
+    print("ok global_const_init")
+
     # `true` and `false` are keywords producing 1 and 0. Nothing downstream --
     # inference, folding, emission -- had to learn about them, and b32 is
     # int32_t, so those are exactly its values. Keywords rather than a lexer

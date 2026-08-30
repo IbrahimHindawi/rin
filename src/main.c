@@ -4864,6 +4864,84 @@ static void semantic_add_program_symbols(Program *prog, Scope *base, Vec_string8
 static bool semantic_builtin_type_name(string8 name);
 static void semantic_check_expr(Expr *e, Scope *scope, Vec_string8 *known_types, Vec_string8 *generic_params);
 
+static void semantic_error_name_path(const char *msg, string8 name, const char *path,
+                                     i32 line, i32 col);
+
+/* A file-scope initialiser becomes a C initialiser, and C requires those to be
+   constant expressions -- so `g: i32 = other_global;` and `g: i32 = f();` are
+   accepted here and then rejected by the C compiler, against generated code the
+   author never wrote. That is the same shape as every other hole this pass
+   closed, and it is where "order does not matter" stops being true: reordering
+   would not help, because referencing another global is not constant in C even
+   when the other one is declared first.
+
+   Enum members, sizeof, alignof and `<>.count` all fold to literals before
+   emission, so they stay legal. */
+static void semantic_check_global_initializer(Program *prog, Expr *e, Scope *scope,
+                                              const char *source_path) {
+    if (!e) return;
+    switch (e->kind) {
+        case Expr_Name: {
+            if (string8_equals_cstr(&e->name, "null")) return;
+            /* A `<>` record is a global by construction -- `E<>` resolves to
+               `E_reflect` -- but it is const with a literal initialiser, so C
+               folds a read of its fields and `g: u64 = E<>.count;` compiles.
+               Checked against clang rather than assumed: the first version of
+               this check rejected it. */
+            if (e->reflect_base.data) return;
+            /* An enum member reaches here as a bare name once resolved. Only a
+               real global is a problem, so only that is reported. */
+            if (scope_has(&scope->globals, e->name)) {
+                semantic_error_name_path(
+                    "a global initializer must be a constant; this reads another global",
+                    e->name, source_path, e->line, e->col);
+            }
+            return;
+        }
+        case Expr_Call: {
+            semantic_error_name_path(
+                "a global initializer must be a constant; this calls a proc",
+                e->name, source_path, e->line, e->col);
+            return;
+        }
+        case Expr_Binary:
+            semantic_check_global_initializer(prog, e->left, scope, source_path);
+            semantic_check_global_initializer(prog, e->right, scope, source_path);
+            return;
+        case Expr_Ternary:
+            semantic_check_global_initializer(prog, e->left, scope, source_path);
+            semantic_check_global_initializer(prog, e->right, scope, source_path);
+            semantic_check_global_initializer(prog, e->third, scope, source_path);
+            return;
+        case Expr_Unary:
+        case Expr_Cast:
+        case Expr_CompoundInit:
+            semantic_check_global_initializer(prog, e->inner, scope, source_path);
+            return;
+        case Expr_Addr:
+            /* `&g` is a constant: the address of a global is known at link
+               time even though its value is not. */
+            return;
+        case Expr_Index:
+            semantic_check_global_initializer(prog, e->base, scope, source_path);
+            semantic_check_global_initializer(prog, e->index_expr, scope, source_path);
+            return;
+        case Expr_Field:
+            semantic_check_global_initializer(prog, e->base, scope, source_path);
+            return;
+        case Expr_InitList: {
+            for (i32 i = 0; i < e->args.length; i++) {
+                semantic_check_global_initializer(prog, (Expr *)e->args.data[i], scope, source_path);
+            }
+            return;
+        }
+        default:
+            /* Number, String, Char, ZeroInit, SizeofType, AlignofType: all
+               constant by construction. */
+            return;
+    }
+}
+
 static void semantic_check_expr(Expr *e, Scope *scope, Vec_string8 *known_types, Vec_string8 *generic_params) {
     if (!e) return;
     if (e->kind == Expr_Number) return;
@@ -6588,6 +6666,7 @@ static void semantic_check_program(Program *prog, memops_arena *arena) {
         semantic_check_type(prog, decl->type, &structs, null, decl->source_path);
         if (decl->expr) {
             semantic_check_expr(decl->expr, &base, &structs, null);
+            semantic_check_global_initializer(prog, decl->expr, &base, decl->source_path);
         }
         diag_pop_decl_context(prev_diag_source_path, prev_diag_import_chain);
     }
