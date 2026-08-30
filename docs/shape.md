@@ -562,25 +562,73 @@ be accepted:
 `T` survived because `semantic_builtin_type_name` answers "is this a typedef
 from a `cinclude`?" with "it is all uppercase", so it let `T` through exactly as
 it lets `FILE` and `UINT` through — and the program then failed inside clang.
-That exemption is load-bearing and cannot simply go: `FILE`, `UINT`, `HRESULT`,
-`HWND` and the `D3D11_*` family have no rin declarations, 50 distinct names
-across njinn and the compiler.
-
 The check is therefore declaration-driven rather than lexical. A name that some
 declaration in the program introduces with `<...>` is a type parameter, so using
 it where nothing introduced it is a missing parameter list, not an unknown C
-type. This runs *before* the typedef exemption, which is the only reason it can
-separate `T` from `HWND` without knowing anything about C.
+type.
 
-**The remaining limit**, stated plainly: a name that is never introduced as a
-parameter anywhere in the program is indistinguishable from a C typedef. In a
-program where nothing declares `<U>`, a stray `U` is still accepted. Closing
-that needs rin to gain a way to declare opaque C types, or `cinclude` to read
-headers — a separate job, and the last thing standing between this and a
-front end that is the sole authority on what type-checks.
+That exemption has since been removed outright — see 6.2 — so the two questions
+no longer interact. Regression-tested as `type_param_undeclared`.
 
-Regression-tested as `type_param_undeclared`, which also asserts `FILE` and
-`UINT` keep resolving.
+### 6.2 A type from C is declared, not guessed *(fixed)*
+
+`cinclude` emits an `#include` into the generated C and nothing else: rin never
+reads the header. So when a signature named `HWND`, the compiler had no way to
+know whether that was a real Windows type or a typo, and it guessed by spelling.
+Four rules, three of them wildcards:
+
+| rule | what it accepted |
+|---|---|
+| all uppercase | `FILE`, `UINT`, `D3D11_BUFFER_DESC` — and `HWMD`, and `T` |
+| two leading capitals | `ID3D11Buffer`, `IDXGISwapChain` — and any typo of one |
+| `ma_` / `cgltf_` / `stbi` / `stbir` prefix | three specific C libraries, named inside a language compiler |
+| an explicit list | legitimate |
+
+A misspelling therefore type-checked and failed inside clang, reported against
+generated C the author never wrote. It is also how `T` slipped through for so
+long: to the first rule, `T` and `FILE` are the same shape.
+
+**All three wildcards are gone.** A type from C is declared like any other,
+using the forms that already existed:
+
+    ID3D11Device: struct[external] = {}          // C's incomplete type
+    DXGI_FORMAT: enum[external] = {}             // a C enum, no members named
+    FLOAT: alias = f32;                          // a scalar typedef
+
+    D3D11_BUFFER_DESC: struct[external, no_layout_check] = {
+        ByteWidth: UINT;                         // only the fields njinn touches
+        Usage: D3D11_USAGE;
+    }
+
+None of these emits a definition — the real header still provides it, and the
+generated C names the real type. Field access lowers to C's own struct, so the
+offsets are C's whatever rin was told; `no_layout_check` is what allows
+declaring a few fields of a large struct rather than transcribing all of them.
+Without it, rin emits `static_assert`s comparing size, alignment and every field
+offset against the C type, so a full declaration is checked rather than trusted.
+
+njinn now declares 63 such types in `src/bindings/win32.rin` and
+`src/bindings/miniaudio.rin`, with field types read out of the SDK headers by
+`rinbind`. Two consequences worth stating:
+
+  * **An opaque type declares no fields, so reaching for one is an error.**
+    Previously a foreign type's fields were unknown and anything was allowed.
+    Declaring `X: struct[external] = {}` now says "no fields"; if you need one,
+    declare it.
+  * **A generic external proc no longer registers its own parameters.** An
+    external signature registers the type names it mentions, which is how a
+    `cinclude`d type becomes known — and `f: proc[external]<T>(x: T)` registered
+    `T` as a real type, which stopped it being a parameter. Parameter names are
+    now excluded, collected across the whole program first so the result does
+    not depend on declaration order.
+
+**What is left.** The explicit list still carries about forty C spellings —
+`DWORD`, `HWND`, `ma_result` and friends. That is an allowlist rather than a
+wildcard, so it cannot accept a typo, but it is still a language compiler
+knowing names from Windows and miniaudio. Moving them out is mechanical and
+independent: declare each one in njinn the way the other 63 now are.
+
+Regression-tested as `type_param_undeclared` and `field_access_fieldless`.
 
 
 ## 7. The C Backend Contract

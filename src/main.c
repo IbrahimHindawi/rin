@@ -5277,30 +5277,22 @@ static void semantic_decl_site_add_checked(
     semantic_decl_site_add(arena, sites, name, path, import_chain, line, col);
 }
 
-static bool string8_starts_with_cstr(string8 s, const char *prefix) {
-    u64 prefix_len = (u64)strlen(prefix);
-    return s.length >= prefix_len && strncmp((const char *)s.data, prefix, prefix_len) == 0;
-}
+/* rin's own primitives, plus the C spellings that pass straight through to the
+   backend.
 
+   This used to guess as well as list. An all-uppercase name was assumed to be a
+   typedef from a `cinclude`, as was any name starting with two capitals or with
+   `ma_` / `cgltf_` / `stbi` / `stbir`. That made `HWMD` exactly as acceptable as
+   `HWND`, and made `T` as acceptable as `FILE` -- the front end had no basis for
+   either answer and left the real check to the C compiler, which then reported
+   it against generated code the author never wrote. It also put the names of
+   three specific C libraries inside a language compiler.
+
+   A type from C is now declared like any other. `X: struct[external] = {}` is
+   C's incomplete type -- usable behind a pointer, never defined here -- `alias`
+   covers scalar typedefs, and `enum[external]` covers C enums. See shape.md
+   6.1. */
 static bool semantic_builtin_type_name(string8 name) {
-    bool c_typedef_style = name.data && name.length > 0;
-    for (u64 i = 0; c_typedef_style && i < name.length; i++) {
-        u8 c = name.data[i];
-        c_typedef_style = (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
-    }
-    if (c_typedef_style) return true;
-    if (name.length >= 2 &&
-        name.data[0] >= 'A' && name.data[0] <= 'Z' &&
-        name.data[1] >= 'A' && name.data[1] <= 'Z') {
-        return true;
-    }
-    if (string8_starts_with_cstr(name, "ma_") ||
-        string8_starts_with_cstr(name, "cgltf_") ||
-        string8_starts_with_cstr(name, "stbi") ||
-        string8_starts_with_cstr(name, "stbir")) {
-        return true;
-    }
-
     return string8_equals_cstr(&name, "c8") ||
            string8_equals_cstr(&name, "b8") ||
            string8_equals_cstr(&name, "b16") ||
@@ -5997,6 +5989,71 @@ static void semantic_collect_external_type_names(TypeExpr *type, Vec_string8 *kn
     }
 }
 
+/* Every name any declaration introduces with `<...>`, read from where the
+   parser left it -- this runs before those lists are resolved into
+   `type_params`.
+
+   Needed because an external signature registers the type names it mentions,
+   which is how a `cinclude`d C type comes to be known. A generic proc mentions
+   its own parameters there too, and registering `T` out of
+   `f: proc[external]<T>(x: T)` made it a real type, which then stopped it being
+   recognised as a parameter at all. Collected across the whole program up front
+   rather than per declaration, because file-scope declarations are a set: one
+   external proc mentioning `T` must not depend on whether it happens to be
+   visited before or after the generic that introduces it. */
+static bool semantic_decl_introduces_type_name(Program *prog, string8 name) {
+    for (i32 i = 0; i < prog->procs.length; i++) {
+        ProcDecl *decl = (ProcDecl *)prog->procs.data[i];
+        for (i32 j = 0; j < decl->type_params.length; j++) {
+            if (string8_equals(&decl->type_params.data[j], &name)) return true;
+        }
+        if (decl->angle_type && decl->angle_type->kind == Type_Name &&
+            string8_equals(&decl->angle_type->name, &name)) {
+            return true;
+        }
+        for (i32 a = 0; a < decl->angle_types.length; a++) {
+            TypeExpr *angle = (TypeExpr *)decl->angle_types.data[a];
+            if (angle && angle->kind == Type_Name && string8_equals(&angle->name, &name)) {
+                return true;
+            }
+        }
+    }
+    for (i32 i = 0; i < prog->structs.length; i++) {
+        StructDecl *decl = (StructDecl *)prog->structs.data[i];
+        for (i32 j = 0; j < decl->type_params.length; j++) {
+            if (string8_equals(&decl->type_params.data[j], &name)) return true;
+        }
+    }
+    return false;
+}
+
+/* A name that some declaration actually defines is that type, whatever else
+   uses it. `f: proc<Payload>(...)` specialises on a real `Payload` rather than
+   introducing a parameter called `Payload`, and the two are the same shape
+   until you look at what is declared. */
+static bool semantic_name_is_declared_type(Program *prog, string8 name) {
+    for (i32 i = 0; i < prog->structs.length; i++) {
+        if (string8_equals(&((StructDecl *)prog->structs.data[i])->name, &name)) return true;
+    }
+    for (i32 i = 0; i < prog->enums.length; i++) {
+        if (string8_equals(&((EnumDecl *)prog->enums.data[i])->name, &name)) return true;
+    }
+    for (i32 i = 0; i < prog->aliases.length; i++) {
+        if (string8_equals(&((AliasDecl *)prog->aliases.data[i])->name, &name)) return true;
+    }
+    return false;
+}
+
+static void semantic_drop_type_param_names(Program *prog, Vec_string8 *known_types) {
+    for (i32 i = (i32)known_types->length; i > 0; i--) {
+        string8 name = known_types->data[i - 1];
+        if (semantic_name_is_declared_type(prog, name)) continue;
+        if (!semantic_decl_introduces_type_name(prog, name)) continue;
+        known_types->data[i - 1] = known_types->data[known_types->length - 1];
+        known_types->length--;
+    }
+}
+
 static void semantic_collect_program_external_type_names(Program *prog, Vec_string8 *known_types, memops_arena *arena) {
     for (i32 i = 0; i < prog->structs.length; i++) {
         StructDecl *decl = (StructDecl *)prog->structs.data[i];
@@ -6023,6 +6080,8 @@ static void semantic_collect_program_external_type_names(Program *prog, Vec_stri
             semantic_collect_external_type_names(decl->type, known_types, arena);
         }
     }
+
+    semantic_drop_type_param_names(prog, known_types);
 }
 
 static bool semantic_known_type_name(Vec_string8 *known_types, string8 name) {

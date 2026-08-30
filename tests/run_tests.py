@@ -5000,6 +5000,12 @@ main:proc()->i32 = {
     line_map_mono_param_i = TEST_DIR / "generated_line_map_mono_param_error.rin"
     line_map_mono_param_c = TEST_DIR / "generated_line_map_mono_param_error.c"
     line_map_mono_param_source = r'''
+// Declared so rin accepts it and clang does not: no header defines this
+// type, which is what puts the error in the generated C where the line map
+// has to bring it back. An undeclared type is an rin error now and never
+// reaches clang at all.
+MISSING_C_MONO_PARAM_TYPE: struct[external] = {}
+
 bad_generic:proc[external_emit]<T>(
     ok:T,
     bad:MISSING_C_MONO_PARAM_TYPE
@@ -5080,6 +5086,12 @@ main:proc()->i32 = {
     line_map_param_i = TEST_DIR / "generated_line_map_param_error.rin"
     line_map_param_c = TEST_DIR / "generated_line_map_param_error.c"
     line_map_param_source = r'''
+// Declared so rin accepts it and clang does not: no header defines this
+// type, which is what puts the error in the generated C where the line map
+// has to bring it back. An undeclared type is an rin error now and never
+// reaches clang at all.
+MISSING_C_PARAM_TYPE: struct[external] = {}
+
 bad_param_proc:proc(
     ok:i32,
     bad:MISSING_C_PARAM_TYPE
@@ -5119,6 +5131,12 @@ main:proc()->i32 = {
     line_map_field_i = TEST_DIR / "generated_line_map_field_error.rin"
     line_map_field_c = TEST_DIR / "generated_line_map_field_error.c"
     line_map_field_source = r'''
+// Declared so rin accepts it and clang does not: no header defines this
+// type, which is what puts the error in the generated C where the line map
+// has to bring it back. An undeclared type is an rin error now and never
+// reaches clang at all.
+MISSING_C_FIELD_TYPE: struct[external] = {}
+
 ExternalPayload:struct = {
     ok:i32;
     bad:MISSING_C_FIELD_TYPE;
@@ -5159,6 +5177,12 @@ main:proc()->i32 = {
     line_map_import_app_i = TEST_DIR / "generated_line_map_import_app.rin"
     line_map_import_app_c = TEST_DIR / "generated_line_map_import_app.c"
     line_map_import_mod_source = r'''
+// Declared so rin accepts it and clang does not: no header defines this
+// type, which is what puts the error in the generated C where the line map
+// has to bring it back across the import. An undeclared type is an rin
+// error now and never reaches clang at all.
+MISSING_IMPORTED_FIELD_TYPE: struct[external] = {}
+
 ImportedPayload:struct = {
     ok:i32;
     bad:MISSING_IMPORTED_FIELD_TYPE;
@@ -8582,6 +8606,10 @@ main:proc()->i32 = {
     interop_i = TEST_DIR / "interop_type_compat.rin"
     interop_c = TEST_DIR / "interop_type_compat.c"
     interop_i.write_text(r'''
+// Types from C are declared now rather than assumed from their spelling.
+D3D_FEATURE_LEVEL: enum[external] = {}
+FLOAT: alias = f32;
+
 take_module: proc[external](m:HMODULE)->void = {}
 take_levels: proc[external](levels:*const D3D_FEATURE_LEVEL)->void = {}
 take_float: proc[external](v:FLOAT)->void = {}
@@ -9879,21 +9907,34 @@ main:proc()->i32 = {
             print(fieldless.stdout)
             return 1
 
-    # The discriminating half. A type the compiler has never seen is a foreign C
-    # type arriving through a `cinclude`, and its fields are genuinely unknown
-    # here -- reporting on those would reject njinn, where D3D11_RASTERIZER_DESC
-    # and friends are declared only in d3d11.h. Widening the check to "anything
-    # that is not a declared aggregate" passes the three cases above and breaks
-    # this one, so it is what keeps the fix honest.
+    # The discriminating half, and it changed meaning once foreign types had to
+    # be declared. There is no longer a category of "type the compiler has never
+    # seen": an opaque C type says so with `struct[external] = {}`, and that
+    # declares no fields, so reaching for one is an error with its own message.
+    # Declaring the fields is what makes them readable -- which is exactly how
+    # njinn now spells D3D11_RASTERIZER_DESC and friends.
     fieldless_i.write_text(
         'cinclude "stdio.h"\n'
-        "main:proc()->i32 = { f:FILE = {}; return cast(f.bogus, i32); }\n",
+        "FILE: struct[external] = {}\n" "main:proc()->i32 = { f:FILE = {}; return cast(f.bogus, i32); }\n",
         encoding="utf-8", newline="\n",
     )
     foreign = run([str(RIN_EXE), "check", str(fieldless_i)])
-    if foreign.returncode != 0:
-        print("field_access_fieldless: a cinclude'd C type must not be reported on")
+    if foreign.returncode == 0 or "declares no fields" not in foreign.stdout:
+        print("field_access_fieldless: an opaque external type must reject field access")
         print(foreign.stdout)
+        return 1
+
+    # ... and declaring the field makes it readable.
+    fieldless_i.write_text(
+        'cinclude "stdio.h"\n'
+        "Div: struct[external, no_layout_check] = { quot: i32; }\n"
+        "main:proc()->i32 = { d:Div = {}; return d.quot; }\n",
+        encoding="utf-8", newline="\n",
+    )
+    declared = run([str(RIN_EXE), "check", str(fieldless_i)])
+    if declared.returncode != 0:
+        print("field_access_fieldless: a declared external field must be readable")
+        print(declared.stdout)
         return 1
 
     # A pointer field error printed its useful `use q[0].bogus` hint and then
@@ -10368,6 +10409,7 @@ main:proc()->i32 = {
     # from a cinclude have no rin declaration and must keep resolving.
     undecl_rin.write_text(
         "cinclude \"stdio.h\"\n"
+        "FILE: struct[external] = {}\n"
         "f: proc[external](s: *FILE, n: UINT) -> i32 = {}\n"
         "main: proc() -> i32 = { return 0; }\n",
         encoding="utf-8", newline="\n")
