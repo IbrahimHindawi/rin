@@ -521,6 +521,48 @@ fastest way to become C++-shaped, so the honest answer may be a deliberate
 compile-time evaluation beyond enum values, `sizeof` and `Enum<>.count`.
 > **Later.** Deferred deliberately; no work planned this round.
 
+### 6.1 A type parameter is whatever `<...>` introduces *(fixed)*
+
+Parameter names are ordinary identifiers. All of these are the same thing:
+
+    id: proc<T>(a: T) -> T = { return a; }
+    Pair: struct<Foo, Bar> = { a: Foo; b: Bar; }
+    make: proc<Foo, Bar>(a: Foo, b: Bar) -> Pair<Foo, Bar> = { ... }
+
+**Multi-letter parameters used to be silently broken.** Which names counted as
+type parameters was decided by spelling:
+
+    /* was: */ return s.length == 1 && (s.data[0] >= 'A' && s.data[0] <= 'Z');
+
+So `struct<Foo, Bar>` was not recognised as generic. It type-checked, and then
+emitted its *uninstantiated template* into the generated C as a concrete struct
+over two types that do not exist:
+
+    Pair_Foo_Bar        <- emitted alongside the real Pair_i32_f32
+    error: unknown type name 'Foo'
+
+The failure therefore arrived from the C compiler, naming a type the author
+never wrote, in a file they never opened. `rin check` passed throughout. That is
+the backend contract in section 7 leaking: the front end accepted a program it
+had no basis to accept and let clang be the authority.
+
+Type parameters are now collected from the `<...>` lists of every declaration in
+the expanded program, once, before emission. Any identifier works, and a name
+that is *also* declared as a real type resolves to that type rather than being
+treated as a parameter. Regression-tested as `type_param_names`, which compiles
+and runs both spellings — `check` alone never caught this.
+
+**What is still lexical.** An *undeclared* parameter is not yet an error:
+
+    array_slice: proc(source: *Array<T>) -> slice<T> = { ... }   // no <T>, accepted
+
+`T` survives because `semantic_builtin_type_name` treats any all-uppercase name
+as a C typedef from a `cinclude`, which is how `FILE`, `UINT`, `HRESULT` and the
+`D3D11_*` family resolve without rin declarations — 50 distinct names across
+njinn and the compiler. Closing this hole means giving rin a way to declare
+opaque C types, or teaching `cinclude` to read headers. Worth doing, separate
+job; without it the check cannot tell `T` from `HWND`.
+
 
 ## 7. The C Backend Contract
 

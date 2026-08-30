@@ -6629,9 +6629,22 @@ static bool string8_equals_name(string8 a, string8 b) {
     return string8_equals(&a, &b);
 }
 
-static bool string8_is_symbolic_type_name(string8 s) {
+/* Which names are type parameters is a property of the declarations that
+   introduce them, not of how they are spelled. This was previously decided by
+   "the name is a single capital letter", so `Pair: struct<Foo, Bar>` was not
+   recognised as generic: its uninstantiated template leaked into the generated
+   C as a concrete `Pair_Foo_Bar` over two types that do not exist, and the
+   error surfaced from the C compiler rather than from rin.
+
+   Collected once per program before emission, because the walkers that ask this
+   question sweep every declaration looking for instantiations and have no one
+   enclosing declaration to consult. */
+static Vec_string8 g_type_param_names;
+static bool array_string8_contains(Vec_string8 *arr, string8 value);
+
+static bool type_name_is_parameter(string8 s) {
     if (!s.data || s.length == 0) return false;
-    return s.length == 1 && (s.data[0] >= 'A' && s.data[0] <= 'Z');
+    return array_string8_contains(&g_type_param_names, s);
 }
 
 static string8 type_mangle(memops_arena *arena, TypeExpr *type, TypeSub sub);
@@ -8054,7 +8067,7 @@ static bool type_is_concrete_under_sub(TypeExpr *type, TypeSub sub) {
         if (substituted) {
             return type_is_concrete_under_sub(substituted, (TypeSub){0});
         }
-        return !string8_is_symbolic_type_name(type->name);
+        return !type_name_is_parameter(type->name);
     }
     if (type->kind == Type_Ptr) {
         return type_is_concrete_under_sub(type->elem, sub);
@@ -14693,7 +14706,56 @@ static void emit_generated_file_banner(memops_arena *arena, string8 *out, const 
     emit_cstr(arena, out, "). Do not edit. */\n");
 }
 
+/* Every name introduced by a `<...>` list, from any declaration in the expanded
+   program. See `type_name_is_parameter`. */
+static void collect_type_param_names(Program *prog, memops_arena *arena) {
+    g_type_param_names = Vec_string8_reserve(arena, 8);
+    if (!prog) return;
+    for (i32 i = 0; i < prog->structs.length; i++) {
+        StructDecl *s = (StructDecl *)prog->structs.data[i];
+        for (i32 j = 0; j < s->type_params.length; j++) {
+            string8 name = s->type_params.data[j];
+            if (!array_string8_contains(&g_type_param_names, name)) {
+                Vec_string8_append(arena, &g_type_param_names, name);
+            }
+        }
+    }
+    for (i32 i = 0; i < prog->procs.length; i++) {
+        ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+        for (i32 j = 0; j < p->type_params.length; j++) {
+            string8 name = p->type_params.data[j];
+            if (!array_string8_contains(&g_type_param_names, name)) {
+                Vec_string8_append(arena, &g_type_param_names, name);
+            }
+        }
+    }
+
+    /* A name that is also declared as a real type is that type. Without this,
+       one declaration writing `struct<Node>` would make every mention of an
+       actual `Node` elsewhere look like an unbound parameter. */
+    for (i32 i = 0; i < g_type_param_names.length;) {
+        string8 name = g_type_param_names.data[i];
+        bool declared = false;
+        for (i32 j = 0; !declared && j < prog->structs.length; j++) {
+            declared = string8_equals(&((StructDecl *)prog->structs.data[j])->name, &name);
+        }
+        for (i32 j = 0; !declared && j < prog->enums.length; j++) {
+            declared = string8_equals(&((EnumDecl *)prog->enums.data[j])->name, &name);
+        }
+        for (i32 j = 0; !declared && j < prog->aliases.length; j++) {
+            declared = string8_equals(&((AliasDecl *)prog->aliases.data[j])->name, &name);
+        }
+        if (declared) {
+            g_type_param_names.data[i] = g_type_param_names.data[g_type_param_names.length - 1];
+            g_type_param_names.length--;
+        } else {
+            i++;
+        }
+    }
+}
+
 static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
+    collect_type_param_names(prog, arena);
     emit_line_directive_reset();
     emit_generated_file_banner(arena, out, "source");
     emit_cstr(arena, out, "#include <core.h>\n#include <reflect.h>\n#include <stddef.h>\n\n");
@@ -16885,6 +16947,7 @@ i32 main(i32 argc, char *argv[]) {
     if (modules_dir) {
         Vec_string8 modules = Vec_string8_reserve(&arena, 16);
         collect_module_paths(&arena, &prog, &modules);
+        collect_type_param_names(&prog, &arena);
 
         char path_buf[4096];
         string8 buf;

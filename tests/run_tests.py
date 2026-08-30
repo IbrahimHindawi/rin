@@ -10290,6 +10290,52 @@ main:proc()->i32 = {
         return 1
     print("ok import_case")
 
+    # Type parameters are whatever the `<...>` list introduces. Which names those
+    # are used to be decided by "the name is a single capital letter", so
+    # `struct<Foo, Bar>` was not recognised as generic: it type-checked, then
+    # emitted its uninstantiated template as a concrete `Pair_Foo_Bar` over two
+    # types that do not exist. `check` alone never caught it -- the error came
+    # from the C compiler -- so this compiles and runs.
+    tp_rin = TEST_DIR / "type_param_names.rin"
+    tp_c = TEST_DIR / "type_param_names.c"
+    tp_exe = TEST_DIR / "type_param_names.exe"
+    for first, second in (("Foo", "Bar"), ("T", "U")):
+        tp_rin.write_text(
+            "cinclude \"stdio.h\"\n"
+            "printf: proc[external](f: *const char, ...) -> i32 = {}\n"
+            f"Pair: struct<{first}, {second}> = {{ a: {first}; b: {second}; }}\n"
+            f"make: proc<{first}, {second}>(a: {first}, b: {second}) -> Pair<{first}, {second}> = {{\n"
+            f"    p: Pair<{first}, {second}> = {{}};\n"
+            "    p.a = a;\n"
+            "    p.b = b;\n"
+            "    return p;\n"
+            "}\n"
+            "main: proc() -> i32 = {\n"
+            "    p: Pair<i32, f32> = make<i32, f32>(9, 1.5f);\n"
+            "    printf(\"%d %.1f\\n\", p.a, p.b);\n"
+            "    return 0;\n"
+            "}\n",
+            encoding="utf-8", newline="\n")
+        gen = run([str(RIN_EXE), "compile", str(tp_rin), "-o", str(tp_c), "--no-header"])
+        if gen.returncode != 0:
+            print(f"type_param_names: <{first}, {second}> should compile")
+            print(gen.stdout)
+            return 1
+        # The template itself must never reach the output; only instantiations.
+        if f"Pair_{first}_{second}" in tp_c.read_text(encoding="utf-8"):
+            print(f"type_param_names: uninstantiated Pair_{first}_{second} leaked into the C")
+            return 1
+        built = run(["clang.exe", str(tp_c), "-I", "src", "-I", "src/std", "-o", str(tp_exe)])
+        if built.returncode != 0:
+            print(f"type_param_names: <{first}, {second}> generated C did not build")
+            print(built.stdout)
+            return 1
+        ran = run([str(tp_exe)])
+        if ran.stdout.strip() != "9 1.5":
+            print(f"type_param_names: <{first}, {second}> expected '9 1.5', got {ran.stdout.strip()!r}")
+            return 1
+    print("ok type_param_names")
+
     lsp = run([sys.executable, "tests/run_lsp_tests.py"])
     if lsp.returncode != 0:
         print(lsp.stdout)
