@@ -51,6 +51,78 @@ runs, and diffs against a recorded `.expected`.
 Negative checks in `tests/run_tests.py`: `switch_no_fallthrough`,
 `reserved_c_identifier`, `mangle_collision`.
 
+### Pass 3: crashes, and constants that were not
+
+Found by probing rather than mutation, which is why none of it had surfaced
+before: the fuzzer mutates a corpus, and a mutation cannot produce a thousand
+repetitions of one token. Every shape below needs either repetition or a
+specific pairing.
+
+**Four constructs took the process down** with `STATUS_STACK_OVERFLOW` and no
+diagnostic at all. The previous pass guarded `parse_expr`; types, statements and
+postfix chains each recurse through their own function and none was counted.
+Crash depths, bisected:
+
+| construct | crashed at | limit now |
+| --- | --- | --- |
+| `*T`, `[N]T` | 1335 | `RIN_MAX_TYPE_DEPTH` 100 |
+| `if`, `while` | 647 | `RIN_MAX_STMT_DEPTH` 200 |
+| `for` | 1098 | same |
+| `a.b.c`, `a[0][0]`, `---x` | 1045 | `RIN_MAX_EXPR_NODES` 800 |
+
+The chain case is worth separating: `parse_postfix` does not recurse, so the
+parser survives any length. It builds a left-leaning tree that the *type checker*
+walks, which is exactly what the node limit already existed for — it simply was
+not counting field links, index links or prefix operators.
+
+Counting those needed one correction, and that is the useful part. Charging a
+node on entry to `parse_unary` and `parse_postfix` looked right and was not:
+both run for every operand in the program, so an ordinary `a + b + c` paid two
+nodes per term and a legal 400-term chain — already in the suite — began
+failing. They are counted only where the operator or link is actually present.
+
+Headroom against real code: deepest type 2, deepest block 11, longest chain 8,
+across njinn, std, rin-learn and rin-playground.
+
+**Global initialisers were not required to be constant.** A file-scope
+initialiser becomes a C initialiser, and C requires those to fold. Five shapes
+were accepted here and rejected by clang:
+
+    g_a: i32 = g_b;      // another global, declared later
+    g_b: i32 = 5;        // ... or earlier; neither is constant in C
+    g_a: i32 = g_a;      // itself
+    g: i32 = f();        // a call
+    n: i32 = 4;
+    x: [n]i32 = {};      // a variable-length array at file scope
+
+This is where "order does not matter" stops being true, and the reason is worth
+stating precisely: reordering rescues none of them, because reading another
+global is not a constant expression in C even when that global comes first. The
+rule is constness, not order. Locals are untouched — a VLA inside a function is
+legal C99 and works.
+
+Two exemptions came from testing rather than reasoning, and both were wrong in
+the first draft. `E<>.count` resolves to `E_reflect.count` and the record is a
+global, so the obvious check rejected it — but it is const with a literal
+initialiser and C folds the read, confirmed by compiling the equivalent C by
+hand. And an array count is *meant* to be able to name a macro; rin's own
+`#define` lowers to one, but defines are registered in the enclosing scope for
+name resolution, so looking there rejected all of njinn. It reads
+`prog->globals` now, where only real variable declarations live.
+
+**A non-void proc with no `return` anywhere** emitted `i32 f(void) { }`. clang
+warns under `-Wreturn-type` and compiles it, so the call returns whatever was in
+the register. Only the decidable half is implemented: whether every *path*
+returns needs reachability over the statement tree, and getting it wrong rejects
+working code — `if` without `else`, terminal loops, `goto`. "Contains no return
+at all" cannot be wrong, and measuring first showed it costs nothing: none of
+887 non-void procs across all four projects trips it. An empty non-void body was
+previously on the *accepted* list as "a proc that does nothing", which it is
+not — it does nothing and then returns a value it never produced.
+
+Each guard was verified to have a test that **fails when the guard is removed**,
+which is a different claim from the test passing.
+
 ### Fixes made
 
 **Switch cases no longer fall through.** A `case` takes a block, so it is
