@@ -3912,8 +3912,10 @@ static ProcDecl *parse_proc_decl(Parser *p, Token *name_tok) {
 
     parser_expect(p, Token_Arrow, "expected '->' after params");
     decl->ret_type = parse_type(p);
-    // allow optional '=' before body
-    parser_match(p, Token_Equal);
+    /* Every other declaration is `name : kind = value`, and a proc is not a
+       special form. This was `parser_match`, which let two spellings of the same
+       declaration coexist with neither being canonical. */
+    parser_expect(p, Token_Equal, "expected '=' before proc body");
 
     parser_expect(p, Token_LBrace, "expected '{' in proc body");
     if (parser_peek(p)->kind == Token_Identifier &&
@@ -4458,6 +4460,106 @@ static void std_fatal(const char *message, const char *detail, const char *detai
     exit(1);
 }
 
+static void import_fatal(const char *message, const char *detail, const char *detail2,
+                         const char *hint) {
+    if (g_diag_json) {
+        char text[2048];
+        snprintf(text, sizeof(text), "%s: %s%s%s", message, detail ? detail : "",
+                 detail2 ? "; " : "", detail2 ? detail2 : "");
+        diag_json_error("<import>", 0, 0, "import", text);
+        diag_json_finish();
+        exit(1);
+    }
+    printf("rin: error: %s\n", message);
+    if (detail && detail[0]) printf("  %s\n", detail);
+    if (detail2 && detail2[0]) printf("  %s\n", detail2);
+    if (hint && hint[0]) printf("  %s\n", hint);
+    exit(1);
+}
+
+#if defined(_WIN32)
+/* Windows matches filenames case-insensitively, so `import "std/Slice.rin"`
+   opens slice.rin without complaint. The same source then fails to resolve on a
+   case-sensitive filesystem, which is a slow way to find out. This asks the
+   filesystem for the spelling it actually stores so the two can be compared. */
+static const char *path_true_case(memops_arena *arena, const char *path) {
+    HANDLE handle = CreateFileA(path, 0,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    if (handle == INVALID_HANDLE_VALUE) return null;
+    char buffer[4096];
+    DWORD len = GetFinalPathNameByHandleA(handle, buffer, (DWORD)sizeof(buffer),
+                                          FILE_NAME_NORMALIZED);
+    CloseHandle(handle);
+    if (len == 0 || len >= sizeof(buffer)) return null;
+    const char *text = buffer;
+    if (strncmp(text, "\\\\?\\", 4) == 0) text += 4;  /* returned in extended form */
+    string8 out = string8_reserve(arena, (u64)strlen(text) + 1);
+    string8_append_cstr(arena, &out, text);
+    string8_append_byte(arena, &out, 0);
+    return (const char *)out.data;
+}
+#endif
+
+/* Walks back over `count` path components and returns where they start. */
+static const char *path_tail_components(const char *path, u64 count) {
+    u64 len = (u64)strlen(path);
+    u64 seen = 0;
+    for (u64 i = len; i > 0; i--) {
+        char c = path[i - 1];
+        if (c == '/' || c == '\\') {
+            seen++;
+            if (seen == count) return path + i;
+        }
+    }
+    return path;
+}
+
+/* Separator-insensitive, case-sensitive: an import writes '/' where the OS
+   reports '\\', and that difference is not the one being looked for. */
+static bool path_tails_match(const char *a, const char *b) {
+    for (;; a++, b++) {
+        char x = *a;
+        char y = *b;
+        if (x == '\\') x = '/';
+        if (y == '\\') y = '/';
+        if (x != y) return false;
+        if (x == 0) return true;
+    }
+}
+
+/* Only the components that came from the import literal are compared. The
+   directories above them came from the working directory or the compiler's own
+   location, and their case is not something the source file chose. */
+static void import_require_exact_case(memops_arena *arena, const char *resolved,
+                                      string8 import_path) {
+#if defined(_WIN32)
+    if (!resolved) return;
+    u64 components = 1;
+    for (u64 i = 0; i < import_path.length; i++) {
+        u8 c = import_path.data[i];
+        if (c == '/' || c == '\\') components++;
+    }
+    const char *actual = path_true_case(arena, resolved);
+    if (!actual) return;
+    const char *want = path_tail_components(resolved, components);
+    const char *have = path_tail_components(actual, components);
+    if (path_tails_match(want, have)) return;
+
+    char asked[1024];
+    char found[1024];
+    snprintf(asked, sizeof(asked), "import says: %s", want);
+    snprintf(found, sizeof(found), "on disk it is: %s", have);
+    import_fatal("import does not match the file's name", asked, found,
+                 "spelling is part of the name; this builds here and breaks on a "
+                 "case-sensitive filesystem");
+#else
+    (void)arena;
+    (void)resolved;
+    (void)import_path;
+#endif
+}
+
 /* Joins the compiler's own directory to an import path, which is where the
    shipped library lives. */
 static const char *import_candidate(memops_arena *arena, const char *dir, string8 import_path) {
@@ -4547,16 +4649,19 @@ static const char *resolve_import_path(memops_arena *arena, string8 import_lit) 
                       found, shipped,
                       "rename that directory, or pass --no-std to use it instead");
         }
+        import_require_exact_case(arena, own, import_path);
         return own;
     }
 
     if (file_exists_cstr(source_relative)) {
+        import_require_exact_case(arena, source_relative, import_path);
         return source_relative;
     }
 
     for (i32 i = 0; i < g_import_dir_count; i++) {
         const char *canonical = import_candidate(arena, g_import_dirs[i], import_path);
         if (file_exists_cstr(canonical)) {
+            import_require_exact_case(arena, canonical, import_path);
             return canonical;
         }
     }

@@ -4834,7 +4834,7 @@ main:proc()->i32 = {
     refval_c = TEST_DIR / "reflect_of_value.c"
     refval_exe = TEST_DIR / "reflect_of_value.exe"
     refval_i.write_text(
-        "import \"std/Print.rin\"\nColour: enum = { red, green, blue, }\nP: struct = { x: i32; y: f32; }\nBox: struct<T> = { v: T; }\ng_point: P = {};\nmain: proc() -> i32 {\n    c: Colour = Colour.green;\n    p: P = {};\n    b: Box<i32> = {};\n    printfmt(\"{} {} {} {} {}\",\n        c<>.name, p<>.count, g_point<>.name, b<>.name, P<>.name);\n    return 0;\n}\n",
+        "import \"std/Print.rin\"\nColour: enum = { red, green, blue, }\nP: struct = { x: i32; y: f32; }\nBox: struct<T> = { v: T; }\ng_point: P = {};\nmain: proc() -> i32 = {\n    c: Colour = Colour.green;\n    p: P = {};\n    b: Box<i32> = {};\n    printfmt(\"{} {} {} {} {}\",\n        c<>.name, p<>.count, g_point<>.name, b<>.name, P<>.name);\n    return 0;\n}\n",
         encoding="utf-8", newline="\n")
     gen = run([str(RIN_EXE), "compile", str(refval_i), "-o", str(refval_c), "--no-header"])
     if gen.returncode != 0:
@@ -4857,7 +4857,7 @@ main:proc()->i32 = {
     # A name that is neither a type nor a value is still an error -- the
     # fallback must not turn every unknown `x<>` into something.
     refval_i.write_text(
-        "main: proc() -> i32 {\n    n: u64 = nothing_at_all<>.count;\n    return 0;\n}\n",
+        "main: proc() -> i32 = {\n    n: u64 = nothing_at_all<>.count;\n    return 0;\n}\n",
         encoding="utf-8", newline="\n")
     res = run([str(RIN_EXE), "check", str(refval_i)])
     if res.returncode == 0 or "undeclared identifier" not in res.stdout:
@@ -4879,7 +4879,7 @@ main:proc()->i32 = {
     status_c = TEST_DIR / "status_enum_errors.c"
     status_exe = TEST_DIR / "status_enum_errors.exe"
     status_i.write_text(
-        "import \"std/Print.rin\"\nimport \"std/reflect.rin\"\nmesh_status: enum = { success, file_not_found, bad_magic, }\ngeo_mesh: struct = { points: i32; }\nmesh_load: proc(mesh: *geo_mesh) -> mesh_status {\n    return mesh_status.bad_magic;\n}\nmain: proc() -> i32 {\n    mesh: geo_mesh = {};\n    e: mesh_status = mesh_load(mesh.&);\n    if (e != mesh_status.success) {\n        printfmt(\"{} {}\",\n            reflect_name_from_value_or(e<>.&, cast(e, i32), \"?\"),\n            reflect_name_from_value_or(e<>.&, 99, \"<unknown>\"));\n    }\n    return 0;\n}\n",
+        "import \"std/Print.rin\"\nimport \"std/reflect.rin\"\nmesh_status: enum = { success, file_not_found, bad_magic, }\ngeo_mesh: struct = { points: i32; }\nmesh_load: proc(mesh: *geo_mesh) -> mesh_status = {\n    return mesh_status.bad_magic;\n}\nmain: proc() -> i32 = {\n    mesh: geo_mesh = {};\n    e: mesh_status = mesh_load(mesh.&);\n    if (e != mesh_status.success) {\n        printfmt(\"{} {}\",\n            reflect_name_from_value_or(e<>.&, cast(e, i32), \"?\"),\n            reflect_name_from_value_or(e<>.&, 99, \"<unknown>\"));\n    }\n    return 0;\n}\n",
         encoding="utf-8", newline="\n")
     gen = run([str(RIN_EXE), "compile", str(status_i), "-o", str(status_c), "--no-header"])
     if gen.returncode != 0:
@@ -10237,6 +10237,58 @@ main:proc()->i32 = {
                     break
             return 1
     print(f"ok line_map_equivalence ({len(map_sources)} sources)")
+
+    # The '=' before a proc body used to be optional -- `parser_match` rather
+    # than `parser_expect` -- so two spellings of the same declaration were both
+    # legal with neither being canonical. Every other declaration form (struct,
+    # union, enum, alias) already required it.
+    eq_rin = TEST_DIR / "proc_requires_equals.rin"
+    eq_rin.write_text(
+        "f: proc() -> i32 { return 0; }\nmain: proc() -> i32 = { return f(); }\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(eq_rin)])
+    if res.returncode == 0 or "expected '=' before proc body" not in res.stdout:
+        print("proc_requires_equals: a proc body without '=' must be rejected")
+        print(res.stdout)
+        return 1
+    eq_rin.write_text(
+        "f: proc() -> i32 = { return 0; }\nmain: proc() -> i32 = { return f(); }\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(eq_rin)])
+    if res.returncode != 0:
+        print("proc_requires_equals: the '=' spelling must still be accepted")
+        print(res.stdout)
+        return 1
+    print("ok proc_requires_equals")
+
+    # Windows matches filenames case-insensitively, so `import "std/Slice.rin"`
+    # quietly opened slice.rin -- the program built here and was unbuildable on
+    # a case-sensitive filesystem. The import is now compared against the name
+    # the filesystem actually stores.
+    case_rin = TEST_DIR / "import_case.rin"
+    case_rin.write_text(
+        "import \"std/Slice.rin\"\nmain: proc() -> i32 = { return 0; }\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(case_rin)])
+    if res.returncode == 0:
+        print("import_case: a mis-cased import must be rejected")
+        print(res.stdout)
+        return 1
+    # Elsewhere the filesystem rejects it by itself; the dedicated diagnostic is
+    # what Windows would otherwise not produce.
+    if sys.platform == "win32" and "does not match the file's name" not in res.stdout:
+        print("import_case: expected the case-mismatch diagnostic")
+        print(res.stdout)
+        return 1
+    case_rin.write_text(
+        "import \"std/slice.rin\"\nmain: proc() -> i32 = { return 0; }\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(case_rin)])
+    if res.returncode != 0:
+        print("import_case: the correct spelling must still resolve")
+        print(res.stdout)
+        return 1
+    print("ok import_case")
 
     lsp = run([sys.executable, "tests/run_lsp_tests.py"])
     if lsp.returncode != 0:

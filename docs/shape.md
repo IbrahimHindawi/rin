@@ -379,6 +379,37 @@ distinction; an imported file's symbols are all visible.
 per-file.
 > **Later.** Deferred deliberately; no work planned this round.
 
+### 3.5 Every declaration is `name : kind = value` *(fixed)*
+
+The `=` is not punctuation between a signature and a body. It is what makes a
+declaration an assignment of a value to a name, and it is why these read as one
+construct rather than three:
+
+    x: i32 = 5;
+    P: struct = { a: i32; }
+    f: proc() -> i32 = { return 0; }
+
+**The parser used to disagree with that.** `struct`, `union`, `enum` and `alias`
+all reached for `parser_expect(Token_Equal, ...)`, while the proc path used
+`parser_match` under a comment reading `// allow optional '=' before body`. So
+this was legal:
+
+    f: proc() -> i32 { return 0; }     // accepted until now
+
+Nothing in the compiler, the standard library, njinn, rin-learn or the test
+suite ever wrote it that way -- the count was zero across every repository --
+but two spellings were legal with neither being canonical, which is how a style
+split starts rather than how one ends.
+
+It is now `parser_expect`, and the omitted form is a parse error:
+
+    expected '=' before proc body
+
+The alternative was to make `=` optional everywhere, and that was rejected. A
+proc is not a special form; the moment its body can appear without the `=`, it
+starts to look like a C function definition, which is the shape rin spent its
+whole grammar avoiding. Regression-tested as `proc_requires_equals`.
+
 
 ## 4. Operators And Expressions
 
@@ -435,6 +466,37 @@ answers in the implementation:
   anyway. Passing the wrong argument count through two levels does produce
   `proc 'deep' expects 0 args, got 3`, so the visibility is real.
 - **Transitive types work too**, not just procs.
+- **Imports are case-sensitive**, including on Windows *(fixed)*. See below.
+
+### 5.1 Import spelling is part of the name *(fixed)*
+
+Windows matches filenames case-insensitively, so this opened `std/slice.rin`
+and built without complaint:
+
+    import "std/Slice.rin"
+
+The same source does not resolve on a case-sensitive filesystem. That is a bad
+way to find out, because nothing is wrong locally -- the failure appears on
+someone else's machine, or in CI, at a point far from the edit that caused it.
+
+The resolved path is now compared against the spelling the filesystem actually
+stores, obtained from `GetFinalPathNameByHandleA`, and a mismatch is an error:
+
+    rin: error: import does not match the file's name
+      import says: std\Slice.rin
+      on disk it is: std\slice.rin
+      spelling is part of the name; this builds here and breaks on a case-sensitive filesystem
+
+Only the trailing components that came from the import literal are compared.
+The directories above them come from the working directory or the compiler's
+own location, and their case is not something the source file chose -- checking
+those would make every import fail for anyone whose `PATH` disagrees with the
+disk about a parent directory's case.
+
+Separators are compared insensitively, since an import writes `/` where Windows
+reports `\`, and that is not the difference being looked for. On a
+case-sensitive filesystem the check is a no-op; the OS already rejects it.
+Regression-tested as `import_case`.
 
 **Still open.** Whether importing the same file twice through different paths
 is one module or two, and what the generated header is supposed to contain
