@@ -552,16 +552,35 @@ that is *also* declared as a real type resolves to that type rather than being
 treated as a parameter. Regression-tested as `type_param_names`, which compiles
 and runs both spellings — `check` alone never caught this.
 
-**What is still lexical.** An *undeclared* parameter is not yet an error:
+**Using a parameter without introducing it is an error** *(fixed)*. This used to
+be accepted:
 
-    array_slice: proc(source: *Array<T>) -> slice<T> = { ... }   // no <T>, accepted
+    array_slice: proc(source: *Array<T>) -> slice<T> = { ... }   // no <T>
 
-`T` survives because `semantic_builtin_type_name` treats any all-uppercase name
-as a C typedef from a `cinclude`, which is how `FILE`, `UINT`, `HRESULT` and the
-`D3D11_*` family resolve without rin declarations — 50 distinct names across
-njinn and the compiler. Closing this hole means giving rin a way to declare
-opaque C types, or teaching `cinclude` to read headers. Worth doing, separate
-job; without it the check cannot tell `T` from `HWND`.
+    use of undeclared type parameter 'T'
+
+`T` survived because `semantic_builtin_type_name` answers "is this a typedef
+from a `cinclude`?" with "it is all uppercase", so it let `T` through exactly as
+it lets `FILE` and `UINT` through — and the program then failed inside clang.
+That exemption is load-bearing and cannot simply go: `FILE`, `UINT`, `HRESULT`,
+`HWND` and the `D3D11_*` family have no rin declarations, 50 distinct names
+across njinn and the compiler.
+
+The check is therefore declaration-driven rather than lexical. A name that some
+declaration in the program introduces with `<...>` is a type parameter, so using
+it where nothing introduced it is a missing parameter list, not an unknown C
+type. This runs *before* the typedef exemption, which is the only reason it can
+separate `T` from `HWND` without knowing anything about C.
+
+**The remaining limit**, stated plainly: a name that is never introduced as a
+parameter anywhere in the program is indistinguishable from a C typedef. In a
+program where nothing declares `<U>`, a stray `U` is still accepted. Closing
+that needs rin to gain a way to declare opaque C types, or `cinclude` to read
+headers — a separate job, and the last thing standing between this and a
+front end that is the sole authority on what type-checks.
+
+Regression-tested as `type_param_undeclared`, which also asserts `FILE` and
+`UINT` keep resolving.
 
 
 ## 7. The C Backend Contract

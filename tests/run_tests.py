@@ -10336,6 +10336,48 @@ main:proc()->i32 = {
             return 1
     print("ok type_param_names")
 
+    # Using a parameter without introducing it. `T` used to survive because
+    # semantic_builtin_type_name answers "is this a typedef from a cinclude?"
+    # with "it is all uppercase", so it let T through exactly as it lets FILE
+    # and UINT through -- and the program then failed inside clang. A name that
+    # some other declaration introduced with `<...>` is a parameter, so using it
+    # where nothing introduced it is a missing list, not an unknown C type.
+    undecl_rin = TEST_DIR / "type_param_undeclared.rin"
+    undecl_rin.write_text(
+        "import \"std/Array.rin\"\n"
+        "array_slice: proc(source: *Array<T>) -> i32 = { return 0; }\n"
+        "main: proc() -> i32 = { return 0; }\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(undecl_rin)])
+    if res.returncode == 0 or "undeclared type parameter" not in res.stdout:
+        print("type_param_undeclared: a parameter used without <T> must be rejected")
+        print(res.stdout)
+        return 1
+    # Declaring it is the fix, and must still be accepted.
+    undecl_rin.write_text(
+        "import \"std/Array.rin\"\n"
+        "array_slice: proc<T>(source: *Array<T>) -> i32 = { return 0; }\n"
+        "main: proc() -> i32 = { return 0; }\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(undecl_rin)])
+    if res.returncode != 0:
+        print("type_param_undeclared: declaring <T> must still be accepted")
+        print(res.stdout)
+        return 1
+    # The exemption this rides on is load-bearing for C interop: types that come
+    # from a cinclude have no rin declaration and must keep resolving.
+    undecl_rin.write_text(
+        "cinclude \"stdio.h\"\n"
+        "f: proc[external](s: *FILE, n: UINT) -> i32 = {}\n"
+        "main: proc() -> i32 = { return 0; }\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(undecl_rin)])
+    if res.returncode != 0:
+        print("type_param_undeclared: cinclude'd C types must still resolve")
+        print(res.stdout)
+        return 1
+    print("ok type_param_undeclared")
+
     lsp = run([sys.executable, "tests/run_lsp_tests.py"])
     if lsp.returncode != 0:
         print(lsp.stdout)

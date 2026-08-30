@@ -5918,12 +5918,24 @@ static void semantic_error_nongeneric_type_args(TypeExpr *type, SemanticTypeInfo
     return;
 }
 
+static bool type_name_is_parameter(string8 s);
+
 static void semantic_check_type(Program *prog, TypeExpr *type, Vec_string8 *known_types, Vec_string8 *generic_params, const char *source_path) {
     if (!type) return;
     if (type->kind == Type_Name) {
-        if (semantic_builtin_type_name(type->name)) return;
         if (generic_params && scope_has(generic_params, type->name)) return;
         if (scope_has(known_types, type->name)) return;
+        /* A name some other declaration introduced with `<...>` is a type
+           parameter, so using it here -- where nothing introduced it -- is a
+           missing parameter list rather than an unknown C type. Checked before
+           `semantic_builtin_type_name`, which answers "is this a typedef from a
+           cinclude?" with "it is all uppercase", and so would let `T` through
+           exactly like it lets `FILE` and `UINT` through. */
+        if (type_name_is_parameter(type->name)) {
+            semantic_error_name_path("use of undeclared type parameter", type->name,
+                                     source_path, type->line, type->col);
+        }
+        if (semantic_builtin_type_name(type->name)) return;
         semantic_error_name_path("use of undeclared type", type->name, source_path, type->line, type->col);
     }
     if (type->kind == Type_Ptr || type->kind == Type_Array) {
@@ -16909,6 +16921,10 @@ i32 main(i32 argc, char *argv[]) {
         profile_mark("emit symbols json", &profile_last, profile_start);
         return 0;
     }
+    /* Built before the semantic pass as well as before emission: the pass asks
+       whether an undeclared name is a type parameter someone forgot to
+       introduce, and cannot answer that with an empty set. */
+    collect_type_param_names(&prog, &arena);
     semantic_check_program(&prog, &arena);
     profile_mark("semantic check", &profile_last, profile_start);
     validate_generic_constraints(&prog, &arena);
