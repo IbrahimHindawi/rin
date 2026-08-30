@@ -4702,7 +4702,7 @@ main:proc()->i32 = {
         "main: proc() -> i32 = { return %s; }\n" % "+".join(["1"] * 8000),
         encoding="utf-8", newline="\n")
     res = run([str(RIN_EXE), "check", str(hard_rin)])
-    if res.returncode == 0 or "too many operators" not in res.stdout:
+    if res.returncode == 0 or "too large" not in res.stdout:
         print("compiler_hardening: a long operator chain must be reported, not crash")
         print(res.stdout[:400])
         return 1
@@ -4736,6 +4736,52 @@ main:proc()->i32 = {
         res = run([str(RIN_EXE), "check", str(hard_rin)])
         if res.returncode not in (0, 1):
             print(f"compiler_hardening: {label} exited {res.returncode}, not a clean result")
+            print(res.stdout[:300])
+            return 1
+
+    # Four more shapes that took the process down with STATUS_STACK_OVERFLOW and
+    # no diagnostic at all. The guard above only ever covered parse_expr; types,
+    # statements and postfix chains each recurse through their own function and
+    # none of them was counted. Measured crash depths on the build that found
+    # them: `*` and `[N]` at 1335, `if`/`while` at 647, `for` at 1098, and
+    # `.a`/`[0]` at about 1045 -- the last of those crashes in the type checker
+    # rather than the parser, because the loop that builds it does not recurse.
+    for src, needle, label in (
+        ("x: %si32 = ?;\nmain: proc() -> i32 = { return 0; }\n" % ("*" * 4000),
+         "nests too deeply", "a deep pointer type"),
+        ("x: %si32 = {};\nmain: proc() -> i32 = { return 0; }\n" % ("[2]" * 4000),
+         "nests too deeply", "a deep array type"),
+        ("main: proc() -> i32 = {%s%s return 0; }\n" % ("if (1) {" * 2000, "}" * 2000),
+         "nest too deeply", "deeply nested ifs"),
+        ("S: struct = { a: i32; }\ns: S = {};\nmain: proc() -> i32 = { return s%s; }\n" % (".a" * 3000),
+         "too large", "a long field chain"),
+    ):
+        hard_rin.write_text(src, encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(hard_rin)])
+        # A crash is a non-zero exit with nothing on stdout. The point of the
+        # test is that a diagnostic comes back at all.
+        if res.returncode == 0 or needle not in res.stdout:
+            print(f"compiler_hardening: {label} must be reported, not crash")
+            print(f"  rc={res.returncode} out={res.stdout[:200]!r}")
+            return 1
+
+    # ... and the limits have to sit far enough above real code to be invisible.
+    # The deepest anything in njinn, std, rin-learn and rin-playground reaches is
+    # a type nested 2, a block nested 11 and a chain of 8. These are well past
+    # that and must still compile -- a guard that rejects ordinary code is worse
+    # than the crash it prevents.
+    for src, label in (
+        ("x: %si32 = ?;\nmain: proc() -> i32 = { return 0; }\n" % ("*" * 16),
+         "a 16-deep pointer type"),
+        ("main: proc() -> i32 = {%s%s return 0; }\n" % ("if (1) {" * 40, "}" * 40),
+         "40 nested ifs"),
+        ("main: proc() -> i32 = { return %s; }\n" % "+".join(["1"] * 400),
+         "a 400 term chain"),
+    ):
+        hard_rin.write_text(src, encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(hard_rin)])
+        if res.returncode != 0:
+            print(f"compiler_hardening: {label} is ordinary code and must compile")
             print(res.stdout[:300])
             return 1
     print("ok compiler_hardening")

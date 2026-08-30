@@ -819,10 +819,21 @@ typedef struct Parser {
     bool pending_equal;
     bool reported_eof; // so an unclosed '{' reports once, not once per nesting level
     i32 expr_depth;    // guards the stack against pathological nesting
-    i32 expr_nodes;    // binary nodes in the expression being parsed
+    i32 expr_nodes;    // nodes in the expression being parsed
+    i32 type_depth;    // `*` and `[N]` nest the same way, and crashed the same way
+    i32 stmt_depth;    // so do if/while/for bodies
     bool reported_depth;
     Vec_voidptr *pending_array_counts; // borrowed from the Program being parsed
 } Parser;
+
+/* Types and statements recurse through their own functions, so the expression
+   limit never saw them and they went straight off the stack with no
+   diagnostic at all. Measured crash points on this build: `*`/`[N]` at 1335,
+   `if`/`while` at 647, `for` at 1098. Each limit sits well under the lowest of
+   its family, for the same reason as above -- a guard that trips after the
+   crash is not a guard. njinn's deepest type is 3 and its deepest block is 7. */
+#define RIN_MAX_TYPE_DEPTH 100
+#define RIN_MAX_STMT_DEPTH 200
 
 static bool is_alpha(u8 c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
@@ -2171,7 +2182,32 @@ static string8 parse_trailing_decl_attributes(Parser *p, TypeExpr *type) {
     return attrs.align;
 }
 
+static TypeExpr *parse_type_inner(Parser *p);
+
+/* Guarded wrapper. Every recursive path -- `*T`, `[N]T`, `const T`, generic
+   arguments, proc parameter and return types -- goes back through parse_type,
+   so counting here covers all of them without a counter at each site.
+
+   The stub keeps the parser moving instead of unwinding into the same error at
+   every level, which is what parse_expr does for the same reason. */
 static TypeExpr *parse_type(Parser *p) {
+    if (p->type_depth >= RIN_MAX_TYPE_DEPTH) {
+        if (!p->reported_depth) {
+            p->reported_depth = true;
+            parser_error_token(p, parser_peek(p),
+                               "type nests too deeply; name an intermediate type with 'alias'");
+        }
+        TypeExpr *stub = type_new(p->arena, Type_Name);
+        stub->name = string8_from_cstr(p->arena, "i32");
+        return stub;
+    }
+    p->type_depth += 1;
+    TypeExpr *t = parse_type_inner(p);
+    p->type_depth -= 1;
+    return t;
+}
+
+static TypeExpr *parse_type_inner(Parser *p) {
     if (parser_match(p, Token_Keyword_Const)) {
         Token *qualifier = parser_prev(p);
         TypeExpr *inner = parse_type(p);
@@ -2721,6 +2757,20 @@ static Expr *parse_primary(Parser *p) {
 static Expr *parse_postfix(Parser *p, Expr *base) {
     Expr *result = base;
     for (;;) {
+        /* This loop does not recurse, so the parser survives any chain length --
+           but it builds a left-leaning tree that the type checker then walks
+           recursively, and that ran out of stack at about a thousand links.
+           `a.b.c...` and `a[0][0]...` are the same shape as a long operator
+           chain and are counted the same way.
+
+           Counted only when a link is actually there: the loop runs once for
+           every primary in the program, and charging that would halve the budget
+           for expressions with no postfix at all. */
+        TokenKind ahead = parser_peek(p)->kind;
+        if ((ahead == Token_LBracket || ahead == Token_Dot) &&
+            !parser_note_expr_node(p)) {
+            return result;
+        }
         if (parser_match(p, Token_LBracket)) {
             Token *lb = parser_prev(p);
             Expr *index = parse_expr(p);
@@ -2788,6 +2838,21 @@ static Expr *parse_postfix(Parser *p, Expr *base) {
 }
 
 static Expr *parse_unary(Parser *p) {
+    /* Counted only when a prefix operator is actually there. parse_unary runs
+       for every operand in the program, so counting on entry charged an ordinary
+       `a + b + c` two nodes per term and halved the budget for expressions that
+       have no prefix operators at all -- which is what a legal 400-term chain
+       ran into. A run of `&`, `!` or `-` does need counting: it recurses as
+       deeply as the run is long and builds a tree every later pass walks. */
+    TokenKind ahead = parser_peek(p)->kind;
+    if ((ahead == Token_Ampersand || ahead == Token_Bang || ahead == Token_Minus) &&
+        !parser_note_expr_node(p)) {
+        Expr *stub = expr_new(p->arena, Expr_Number);
+        stub->number = string8_from_cstr(p->arena, "0");
+        stub->line = parser_peek(p)->line;
+        stub->col = parser_peek(p)->col;
+        return stub;
+    }
     if (parser_match(p, Token_Ampersand)) {
         Token *op_tok = parser_prev(p);
         Expr *e = expr_new(p->arena, Expr_Addr);
@@ -3077,7 +3142,7 @@ static bool parser_note_expr_node(Parser *p) {
     if (!p->reported_depth) {
         p->reported_depth = true;
         parser_error_token(p, parser_peek(p),
-                           "expression has too many operators; split it across statements");
+                           "expression is too large; split it across statements");
     }
     return false;
 }
@@ -3227,7 +3292,38 @@ static Stmt *parse_for_clause_stmt(Parser *p, bool allow_var_decl) {
     return s;
 }
 
+static Stmt *parse_stmt_inner(Parser *p);
+
+/* Guarded wrapper, for the same reason parse_type has one: an `if` body holds
+   statements, so nesting recurses here and nothing counted it. A bare `{}`
+   block does not crash because it is parsed by a loop, but `if`, `while` and
+   `for` each recurse through their body. */
 static Stmt *parse_stmt(Parser *p) {
+    if (p->stmt_depth >= RIN_MAX_STMT_DEPTH) {
+        if (!p->reported_depth) {
+            p->reported_depth = true;
+            parser_error_token(p, parser_peek(p),
+                               "statements nest too deeply; move the inner work into a proc");
+        }
+        /* A statement rather than null: callers append the result to a body and
+           a null would have to be checked at every one of them. An empty
+           directive emits as a blank line, and emission is never reached anyway
+           once an error has been reported. Consuming a token guarantees the
+           enclosing loop makes progress instead of spinning here. */
+        Stmt *stub = stmt_new(p->arena, Stmt_Directive);
+        stub->name = string8_from_cstr(p->arena, "");
+        stub->line = parser_peek(p)->line;
+        stub->col = parser_peek(p)->col;
+        parser_next(p);
+        return stub;
+    }
+    p->stmt_depth += 1;
+    Stmt *s = parse_stmt_inner(p);
+    p->stmt_depth -= 1;
+    return s;
+}
+
+static Stmt *parse_stmt_inner(Parser *p) {
     /* A preprocessor line inside a body is a statement in its own right so that
        it lands where it was written. Only in-body directives are lexed into
        tokens; file-scope ones are still hoisted to the top of the generated C. */
