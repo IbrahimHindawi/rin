@@ -96,4 +96,4 @@ that [`attributes.md`](attributes.md) already established.
 
 - [`safety.md`](safety.md) -- the runtime half.
 - [`attributes.md`](attributes.md) -- where a `format` attribute would live.
-- [`string.md`](string.md) -- the variadic hole and the string plan overlap.
+- [`strings.md`](strings.md) -- the variadic hole and the string plan overlap.

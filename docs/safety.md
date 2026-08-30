@@ -90,5 +90,5 @@ The order they would be worth doing in, if we do:
 
 - [`type-safety.md`](type-safety.md) -- the compile-time half of the same
   question: what the type checker declines to check.
-- [`string.md`](string.md) -- `*const char` is where several of these meet at
+- [`strings.md`](strings.md) -- `*const char` is where several of these meet at
   once.

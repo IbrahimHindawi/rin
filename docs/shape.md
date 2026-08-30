@@ -125,7 +125,7 @@ language."
 > **Parked, with a target.** The direction is to remove as much C string usage
 > as possible, and the measurements say how much that is: 536 `*char` /
 > `*const char` against 91 `string8` mentions in njinn, 167 `strcmp`, 51
-> `snprintf`. See [`string.md`](string.md), which also covers `char`
+> `snprintf`. See [`strings.md`](strings.md), which also covers `char`
 > signedness and records that `usize` is the only size type -- there is
 > deliberately no `isize`.
 
@@ -160,7 +160,7 @@ different categories and new words sort by which question they answer.
 [`attributes.md`](attributes.md).
 
 Slices (`[]T`) are deliberately absent -- that is the parked
-[`string.md`](string.md) question, and it is a representation decision rather
+[`strings.md`](strings.md) question, and it is a representation decision rather
 than a syntax one.
 
 ### 2.4 Missing widths
@@ -182,7 +182,7 @@ than a syntax one.
 > are 8 bytes on every target rin builds for today; the `printfmt` specs
 > assume that, and are where it would show up if that changed.
 >
-> `isize` remains deliberately absent -- reasoning in [`string.md`](string.md).
+> `isize` remains deliberately absent -- reasoning in [`strings.md`](strings.md).
 > Covered by `scalar_widths`, which asserts every width at runtime rather than
 > only that the generated C compiles.
 

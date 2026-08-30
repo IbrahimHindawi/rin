@@ -197,7 +197,7 @@ That is the honest reason not to start this now.
 
 Dogfooding, and a better argument than "self-hosting is nice." A build system is
 the first rin program that would be forced to have an opinion about errors,
-strings (parked in `string.md`), file IO and process handling -- the four
+strings (parked in `strings.md`), file IO and process handling -- the four
 weakest areas. It would surface real gaps faster than any number of torture
 tests, because it is a real program with failure modes someone has to live with.
 

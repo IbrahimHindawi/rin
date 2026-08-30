@@ -2,9 +2,8 @@
 
 > **Measured, not implemented.** This records what the dependency actually is,
 > what it costs to replace, and the one thing that cannot be replaced by
-> writing rin. Companion to [string.md](string.md) and
-> [strings-and-slices.md](strings-and-slices.md), which cover the string types
-> themselves.
+> writing rin. Companion to [strings.md](strings.md), which covers the string
+> types themselves.
 
 ## What the dependency actually is
 
