@@ -224,14 +224,28 @@ unaligned `i32`, which is the failure this whole rule exists to prevent.
 declaration-level spelling; records keep `__attribute__((aligned))` on the tag,
 because a tag is not a declaration.
 
-### An alias takes no attribute
+### An alias takes one attribute, and it goes before the `=`
 
+    HWND: alias[external] = *void;     ok
     Handle: alias = i32[attrib];       error
 
-An alias does not declare a type; it gives an existing one a second name. There
-is no declaration for the attribute to modify, and letting it through would
-raise a question with no good answer -- whether `Handle` or `i32` is the thing
-being modified.
+The error case is unchanged, and the reason still holds: after the `=` there is
+no declaration for an attribute to modify, and letting it through would raise a
+question with no good answer -- whether `Handle` or `i32` is the thing being
+modified.
+
+`external` before the `=` is a different matter, and it was originally refused
+on the grounds that an alias names an existing type rather than declaring one,
+so there is nothing to modify. That turned out to be wrong in one case, and it
+is the common one: the attribute modifies **whether the typedef is emitted**,
+exactly as it does for `struct`, `enum` and `proc`.
+
+`HWND` is `struct HWND__ *` in `windows.h`, where `HWND__` is a tag with no
+typedef of its own -- a name rin has no way to spell. A plain alias emits
+`typedef void *HWND;` and clang rejects the redefinition. `alias[external]`
+keeps the shape for type-checking and emits nothing, which is what lets a
+program hold an `HWND`, compare it against `null` and hand it to a Win32 call
+without rin having to model the handle's real spelling.
 
 ### A parameter takes no attribute
 

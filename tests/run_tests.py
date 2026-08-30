@@ -4370,7 +4370,7 @@ main:proc()->i32 = {
     decl_i = TEST_DIR / "decl_attribute_rule.rin"
     for src, needle, label in (
         ("f: proc(a: i32[align(16)])->i32 = { return a; }\nmain:proc()->i32 = { return f(1); }\n", "a parameter takes no attribute", "parameter"),
-        ("Handle: alias = i32[align(16)];\nmain:proc()->i32 = { return 0; }\n", "an alias takes no attribute", "alias"),
+        ("Handle: alias = i32[align(16)];\nmain:proc()->i32 = { return 0; }\n", "an attribute goes before the '='", "alias"),
         ("x: *proc(a: i32)->i32[align(16)] = ?;\nmain:proc()->i32 = { return 0; }\n", "cannot follow a return type", "after a return type"),
         ("x: [4](i32[align(16)]) = {};\nmain:proc()->i32 = { return 0; }\n", "", "on an element type"),
         ("x: *(i32[align(16)]) = ?;\nmain:proc()->i32 = { return 0; }\n", "", "on a pointee"),
@@ -8607,8 +8607,13 @@ main:proc()->i32 = {
     interop_c = TEST_DIR / "interop_type_compat.c"
     interop_i.write_text(r'''
 // Types from C are declared now rather than assumed from their spelling.
+// `alias[external]` names a typedef C already has, so nothing is emitted.
 D3D_FEATURE_LEVEL: enum[external] = {}
 FLOAT: alias = f32;
+HMODULE: alias[external] = *void;
+UINT8: alias[external] = u8;
+HRESULT: alias[external] = i32;
+ma_result: enum[external] = {}
 
 take_module: proc[external](m:HMODULE)->void = {}
 take_levels: proc[external](levels:*const D3D_FEATURE_LEVEL)->void = {}
@@ -10410,6 +10415,7 @@ main:proc()->i32 = {
     undecl_rin.write_text(
         "cinclude \"stdio.h\"\n"
         "FILE: struct[external] = {}\n"
+        "UINT: alias[external] = u32;\n"
         "f: proc[external](s: *FILE, n: UINT) -> i32 = {}\n"
         "main: proc() -> i32 = { return 0; }\n",
         encoding="utf-8", newline="\n")
@@ -10419,6 +10425,53 @@ main:proc()->i32 = {
         print(res.stdout)
         return 1
     print("ok type_param_undeclared")
+
+    # `alias[external]` names a typedef C already has. Emitting it again would be
+    # a redefinition, and for the Win32 handles a conflicting one: HWND is
+    # `struct HWND__ *` there and rin has no way to spell that tag. So rin takes
+    # the shape for type-checking and emits nothing.
+    ext_alias_rin = TEST_DIR / "alias_external.rin"
+    ext_alias_c = TEST_DIR / "alias_external.c"
+    ext_alias_exe = TEST_DIR / "alias_external.exe"
+    ext_alias_rin.write_text(
+        'cinclude "windows.h"\n'
+        "HWND: alias[external] = *void;\n"
+        "DWORD: alias[external] = u32;\n"
+        "f: proc(h: HWND, d: DWORD) -> i32 = { if (h == null) { return cast(d, i32); } return 0; }\n"
+        "main: proc() -> i32 = { return f(null, 7); }\n",
+        encoding="utf-8", newline="\n")
+    gen = run([str(RIN_EXE), "compile", str(ext_alias_rin), "-o", str(ext_alias_c), "--no-header"])
+    if gen.returncode != 0:
+        print("alias_external: should compile")
+        print(gen.stdout)
+        return 1
+    emitted = ext_alias_c.read_text(encoding="utf-8")
+    if "HWND;" in emitted or "DWORD;" in emitted:
+        print("alias_external: an external alias must not emit its typedef")
+        return 1
+    # windows.h really does define both, so a redefinition would fail here.
+    built = run(["clang.exe", str(ext_alias_c), "-I", "src", "-I", "src/std",
+                 "-o", str(ext_alias_exe)])
+    if built.returncode != 0:
+        print("alias_external: generated C did not build against the real header")
+        print(built.stdout)
+        return 1
+    if run([str(ext_alias_exe)]).returncode != 7:
+        print("alias_external: expected exit 7 from the built program")
+        return 1
+    # Without the attribute the typedef is emitted, and clang rejects the clash.
+    ext_alias_rin.write_text(
+        'cinclude "windows.h"\n'
+        "HWND: alias = *void;\n"
+        "main: proc() -> i32 = { return 0; }\n",
+        encoding="utf-8", newline="\n")
+    gen = run([str(RIN_EXE), "compile", str(ext_alias_rin), "-o", str(ext_alias_c), "--no-header"])
+    clash = run(["clang.exe", str(ext_alias_c), "-I", "src", "-I", "src/std",
+                 "-o", str(ext_alias_exe)])
+    if gen.returncode != 0 or clash.returncode == 0:
+        print("alias_external: a plain alias over a C typedef must still clash")
+        return 1
+    print("ok alias_external")
 
     lsp = run([sys.executable, "tests/run_lsp_tests.py"])
     if lsp.returncode != 0:

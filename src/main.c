@@ -763,6 +763,9 @@ typedef struct AliasDecl {
     const char *source_path;
     const char *import_chain;
     TypeExpr *type;
+    /* `alias[external]`: C already has this typedef, so rin needs its shape to
+       type-check but must not emit it. */
+    bool is_external;
     i32 line;
     i32 col;
 } AliasDecl;
@@ -3673,12 +3676,18 @@ static AliasDecl *parse_alias_decl(Parser *p, Token *name_tok) {
     decl->source_path = g_source_path;
     decl->line = name_tok->line;
     decl->col = name_tok->col;
+    /* `external` is the one attribute an alias can carry, and it modifies the
+       same thing it does everywhere else: whether the declaration is emitted.
+       C's own typedef stays, and rin gets the shape for type-checking without
+       redefining it -- which matters for the Win32 handles, where `HWND` is
+       `struct HWND__ *` and rin cannot spell that tag. */
+    DeclAttributes alias_attrs = parse_decl_attributes(p, false);
+    if (alias_attrs.is_external) decl->is_external = true;
     parser_expect(p, Token_Equal, "expected '=' after alias");
     decl->type = parse_type(p);
     if (parser_peek(p)->kind == Token_LBracket) {
         parser_error_token(p, parser_peek(p),
-                           "an alias takes no attribute; it names an existing type rather than "
-                           "declaring one, so there is nothing for the attribute to modify");
+                           "an attribute goes before the '=', as in 'X: alias[external] = *void;'");
     }
     parser_expect(p, Token_Semicolon, "expected ';' after alias");
     return decl;
@@ -5321,58 +5330,12 @@ static bool semantic_builtin_type_name(string8 name) {
            string8_equals_cstr(&name, "reflect_value") ||
            string8_equals_cstr(&name, "reflect_variant") ||
            string8_equals_cstr(&name, "reflect") ||
-           string8_equals_cstr(&name, "BOOL") ||
-           string8_equals_cstr(&name, "BOOLEAN") ||
-           string8_equals_cstr(&name, "ATOM") ||
-           string8_equals_cstr(&name, "BYTE") ||
-           string8_equals_cstr(&name, "CHAR") ||
-           string8_equals_cstr(&name, "DWORD") ||
-           string8_equals_cstr(&name, "HRESULT") ||
-           string8_equals_cstr(&name, "INT") ||
-           string8_equals_cstr(&name, "INT8") ||
-           string8_equals_cstr(&name, "INT16") ||
-           string8_equals_cstr(&name, "INT32") ||
-           string8_equals_cstr(&name, "INT64") ||
-           string8_equals_cstr(&name, "LONG") ||
-           string8_equals_cstr(&name, "LPARAM") ||
-           string8_equals_cstr(&name, "LRESULT") ||
-           string8_equals_cstr(&name, "SHORT") ||
-           string8_equals_cstr(&name, "UINT") ||
-           string8_equals_cstr(&name, "UINT8") ||
-           string8_equals_cstr(&name, "UINT16") ||
-           string8_equals_cstr(&name, "UINT32") ||
-           string8_equals_cstr(&name, "UINT64") ||
-           string8_equals_cstr(&name, "ULONG") ||
-           string8_equals_cstr(&name, "USHORT") ||
-           string8_equals_cstr(&name, "WPARAM") ||
-           string8_equals_cstr(&name, "WORD") ||
-           string8_equals_cstr(&name, "ma_bool32") ||
-           string8_equals_cstr(&name, "ma_channel") ||
-           string8_equals_cstr(&name, "ma_format") ||
-           string8_equals_cstr(&name, "ma_int8") ||
-           string8_equals_cstr(&name, "ma_int16") ||
-           string8_equals_cstr(&name, "ma_int32") ||
-           string8_equals_cstr(&name, "ma_int64") ||
-           string8_equals_cstr(&name, "ma_result") ||
-           string8_equals_cstr(&name, "ma_uint8") ||
-           string8_equals_cstr(&name, "ma_uint16") ||
-           string8_equals_cstr(&name, "ma_uint32") ||
-           string8_equals_cstr(&name, "ma_uint64") ||
            string8_equals_cstr(&name, "long") ||
            string8_equals_cstr(&name, "ulong") ||
            string8_equals_cstr(&name, "short") ||
            string8_equals_cstr(&name, "int") ||
            string8_equals_cstr(&name, "float") ||
-           string8_equals_cstr(&name, "double") ||
-           string8_equals_cstr(&name, "HANDLE") ||
-           string8_equals_cstr(&name, "HBRUSH") ||
-           string8_equals_cstr(&name, "HCURSOR") ||
-           string8_equals_cstr(&name, "HDC") ||
-           string8_equals_cstr(&name, "HICON") ||
-           string8_equals_cstr(&name, "HINSTANCE") ||
-           string8_equals_cstr(&name, "HMODULE") ||
-           string8_equals_cstr(&name, "HMENU") ||
-           string8_equals_cstr(&name, "HWND");
+           string8_equals_cstr(&name, "double");
 }
 
 static bool semantic_intrinsic_type_name(string8 name) {
@@ -13842,6 +13805,10 @@ static void emit_struct_decl(memops_arena *arena, string8 *out, StructDecl *decl
 }
 
 static void emit_alias_decl(memops_arena *arena, string8 *out, AliasDecl *decl) {
+    /* `alias[external]` names a typedef C already has. Emitting it again would
+       be a redefinition, and for the Win32 handles a conflicting one: `HWND` is
+       `struct HWND__ *` there and rin has no way to spell that tag. */
+    if (decl->is_external) return;
     emit_line_directive_path(arena, out, decl->source_path, decl->line);
     emit_cstr(arena, out, "typedef ");
     emit_decl(arena, out, decl->type, decl->name, (TypeSub){0});

@@ -622,13 +622,29 @@ njinn now declares 63 such types in `src/bindings/win32.rin` and
     now excluded, collected across the whole program first so the result does
     not depend on declaration order.
 
-**What is left.** The explicit list still carries about forty C spellings —
-`DWORD`, `HWND`, `ma_result` and friends. That is an allowlist rather than a
-wildcard, so it cannot accept a typo, but it is still a language compiler
-knowing names from Windows and miniaudio. Moving them out is mechanical and
-independent: declare each one in njinn the way the other 63 now are.
+**`alias[external]` completes the set.** `external` already meant "C declares
+this, do not emit it" for `struct`, `enum`, `proc` and globals; `alias` was the
+one form that could not carry it, on the reasoning that an alias names an
+existing type rather than declaring one and so has nothing to modify. That was
+wrong in exactly one case, and it is the common one:
 
-Regression-tested as `type_param_undeclared` and `field_access_fieldless`.
+    HWND: alias[external] = *void;
+
+`HWND` is `struct HWND__ *` in `windows.h`, where `HWND__` is a tag with no
+typedef — a name rin cannot spell. A plain `alias` emits `typedef void *HWND;`
+and clang rejects the redefinition; the attribute keeps the shape for
+type-checking and emits nothing. Covered by `alias_external`, which builds
+against the real header and checks that the un-attributed form still clashes.
+
+**The explicit list is now rin's own types only** — the primitives, the
+`reflect_*` records, and C's keyword spellings (`int`, `long`, `float` …) which
+pass straight through to the backend. The forty-odd Windows and miniaudio names
+it used to carry (`DWORD`, `HWND`, `HRESULT`, `ma_result` …) are declared in
+njinn alongside the other 63. A language compiler no longer knows any name from
+any C library.
+
+Regression-tested as `type_param_undeclared`, `field_access_fieldless` and
+`alias_external`.
 
 
 ## 7. The C Backend Contract
