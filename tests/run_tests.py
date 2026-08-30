@@ -4152,8 +4152,12 @@ main:proc()->i32 = {
     # different parsers -- struct bodies, struct fields, enum items and proc
     # bodies -- any of which could drift from the others. Nothing used it.
     #
-    # Note what is *not* rejected: an empty body is an ordinary proc that does
-    # nothing, and a proc that returns on only some paths is C's business.
+    # Note what is *not* rejected: a proc that returns on only some paths.
+    # Deciding that needs reachability over the statement tree, and getting it
+    # wrong rejects working code. A non-void proc with *no* return at all is
+    # decidable, and is rejected -- it used to be on the accepted list here as
+    # "a proc that does nothing", which it is not: it emits `i32 f(void) { }`
+    # and the call returns whatever was in the register.
     ext_i = TEST_DIR / "external_spelling.rin"
     for src, label in (
         ("cinclude \"stdio.h\"\ngetchar: proc()->i32 = { external; }\nmain:proc()->i32 = { return getchar(); }\n", "a proc body"),
@@ -4172,8 +4176,8 @@ main:proc()->i32 = {
         ("cinclude \"stdio.h\"\ngetchar: proc[external]()->i32 = {}\nmain:proc()->i32 = { return getchar(); }\n", "proc[external]"),
         ("cinclude \"stdio.h\"\nFILE: struct[external] = {}\nmain:proc()->i32 = { return 0; }\n", "struct[external]"),
         ("cinclude \"stdio.h\"\nE: enum[external] = { A, }\nmain:proc()->i32 = { return 0; }\n", "enum[external]"),
-        ("f: proc()->i32 = { }\nmain:proc()->i32 = { return f(); }\n", "an empty body"),
         ("f: proc(n: i32)->i32 = { if (n > 0) { return 1; } }\nmain:proc()->i32 = { return f(1); }\n", "a proc that returns on one path"),
+        ("f: proc()->void = { }\nmain:proc()->i32 = { f(); return 0; }\n", "an empty void body"),
     ):
         ext_i.write_text(src, encoding="utf-8", newline="\n")
         res = run([str(RIN_EXE), "check", str(ext_i)])
@@ -4182,6 +4186,48 @@ main:proc()->i32 = {
             print(res.stdout)
             return 1
     print("ok external_spelling")
+
+    # A non-void proc with no `return` anywhere emits `i32 f(void) { }`, and the
+    # call returns whatever happened to be in the register. clang warns under
+    # -Wreturn-type and compiles it, so nothing stops it reaching a running
+    # program.
+    #
+    # This is the decidable half of "does it return". The other half -- does
+    # every *path* return -- needs reachability over the statement tree and gets
+    # `if` without `else`, terminal loops and goto wrong in ways that reject
+    # working code, so it is deliberately not attempted. None of the 887 non-void
+    # procs across njinn, std, rin-learn and the compiler's own library trips the
+    # half that is implemented.
+    ret_rin = TEST_DIR / "proc_returns.rin"
+    ret_rin.write_text(
+        "f: proc()->i32 = { }\nmain: proc()->i32 = { return f(); }\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(ret_rin)])
+    if res.returncode == 0 or "no 'return'" not in res.stdout:
+        print("proc_returns: a non-void proc with no return must be rejected")
+        print(res.stdout[:300])
+        return 1
+
+    for src, label in (
+        ("f: proc()->void = { }\nmain: proc()->i32 = { f(); return 0; }\n",
+         "an empty void body"),
+        ("f: proc[external]()->i32 = {}\nmain: proc()->i32 = { return f(); }\n",
+         "an external proc"),
+        ("f: proc(n: i32)->i32 = { if (n > 0) { return 1; } }\nmain: proc()->i32 = { return f(1); }\n",
+         "a return on one path only"),
+        ("f: proc()->i32 = { for (i: i32 = 0; i < 2; i += 1) { return i; } }\n"
+         "main: proc()->i32 = { return f(); }\n", "a return inside a loop"),
+        ("E: enum = { A, B }\n"
+         "f: proc(e: E)->i32 = { switch (e) { case E.A: { return 1; } default: { break; } } }\n"
+         "main: proc()->i32 = { return f(E.A); }\n", "a return inside a switch case"),
+    ):
+        ret_rin.write_text(src, encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(ret_rin)])
+        if res.returncode != 0:
+            print(f"proc_returns: {label} must stay legal")
+            print(res.stdout[:300])
+            return 1
+    print("ok proc_returns")
 
     # std is the compiler's own library and lives beside the executable. Both
     # ways of losing it are silent by default, and both cost a long detour
@@ -5146,7 +5192,7 @@ MISSING_C_MONO_PARAM_TYPE: struct[external] = {}
 bad_generic:proc[external_emit]<T>(
     ok:T,
     bad:MISSING_C_MONO_PARAM_TYPE
-)->i32 = {}
+)->i32 = { return 0; }
 
 main:proc()->i32 = {
     return bad_generic<i32>(1, cast(null, MISSING_C_MONO_PARAM_TYPE));
@@ -5232,7 +5278,7 @@ MISSING_C_PARAM_TYPE: struct[external] = {}
 bad_param_proc:proc(
     ok:i32,
     bad:MISSING_C_PARAM_TYPE
-)->i32 = {}
+)->i32 = { return 0; }
 
 main:proc()->i32 = {
     return 0;

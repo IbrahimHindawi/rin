@@ -5385,7 +5385,58 @@ static void semantic_check_gotos(Stmt *stmt, Vec_string8 *labels) {
     }
 }
 
+static bool stmt_list_has_return(Vec_voidptr *body);
+
+static bool stmt_has_return(Stmt *s) {
+    if (!s) return false;
+    if (s->kind == Stmt_Return) return true;
+    if (stmt_list_has_return(&s->for_body)) return true;
+    if (stmt_list_has_return(&s->while_body)) return true;
+    if (stmt_list_has_return(&s->if_then_body)) return true;
+    if (stmt_list_has_return(&s->if_else_body)) return true;
+    if (stmt_has_return(s->if_else_if)) return true;
+    if (stmt_list_has_return(&s->switch_default_body)) return true;
+    for (i32 i = 0; i < s->switch_cases.length; i++) {
+        SwitchCase *c = (SwitchCase *)s->switch_cases.data[i];
+        if (c && stmt_list_has_return(&c->body)) return true;
+    }
+    return false;
+}
+
+static bool stmt_list_has_return(Vec_voidptr *body) {
+    if (!body) return false;
+    for (i32 i = 0; i < body->length; i++) {
+        if (stmt_has_return((Stmt *)body->data[i])) return true;
+    }
+    return false;
+}
+
+/* A non-void proc with no `return` anywhere in it cannot produce a value, and
+   rin emitted `i32 f(void) { }` for one. clang warns under -Wreturn-type and
+   compiles it anyway, so the call returns whatever happened to be in the
+   register.
+
+   Deliberately the sound half of the question rather than the whole of it. The
+   full version -- does *every path* return -- needs reachability over the
+   statement tree, and gets `if` without `else`, terminal loops and `goto` wrong
+   in ways that reject working code. "No return at all" cannot be wrong: across
+   njinn, std, rin-learn and the compiler's own library, none of 887 non-void
+   procs trips it. The remainder is a real gap, and is left named rather than
+   half-closed. */
+static void semantic_check_proc_returns(ProcDecl *proc) {
+    if (proc->is_external) return;
+    if (!proc->ret_type) return;
+    if (proc->ret_type->kind == Type_Name &&
+        string8_equals_cstr(&proc->ret_type->name, "void")) {
+        return;
+    }
+    if (stmt_list_has_return(&proc->body)) return;
+    semantic_error_name_path("proc returns a value but has no 'return'",
+                             proc->name, proc->source_path, proc->line, proc->col);
+}
+
 static void semantic_check_proc(Program *prog, ProcDecl *proc, Scope *base_scope, Vec_string8 *known_types, memops_arena *arena) {
+    semantic_check_proc_returns(proc);
     const char *prev_diag_source_path = g_diag_source_path;
     const char *prev_diag_import_chain = g_diag_import_chain;
     if (proc->source_path) {
