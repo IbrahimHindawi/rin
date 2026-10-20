@@ -25,7 +25,7 @@ slice: struct<T> = {
 
 slice<T>from_parts: proc<T>(data: *T, length: u64) -> slice<T> = {
     s: slice<T> = {};
-    if (data == null or length == 0) {
+    if (data == null || length == 0) {
         return s;
     }
     s.data = data;
@@ -48,15 +48,15 @@ slice<T>is_empty: proc<T>(s: slice<T>) -> b32 = {
 /* Aborts on a bad index. The Option form below is the one to reach for when
    the index came from outside. */
 slice<T>at: proc<T>(s: slice<T>, index: u64) -> *T = {
-    if (s.data == null or index >= s.length) {
+    if (s.data == null || index >= s.length) {
         printf("rin runtime: slice index out of bounds\n");
         exit(1);
     }
-    return s.data[index].&;
+    return s.data[index]&;
 }
 
 slice<T>get: proc<T>(s: slice<T>, index: u64) -> Option<T> = {
-    if (s.data == null or index >= s.length) {
+    if (s.data == null || index >= s.length) {
         return Option<T>none();
     }
     return Option<T>some(s.data[index]);
@@ -77,14 +77,14 @@ slice<T>last: proc<T>(s: slice<T>) -> Option<T> = {
    that exists, which is what every caller wants when scanning. */
 slice<T>sub: proc<T>(s: slice<T>, start: u64, count: u64) -> slice<T> = {
     out: slice<T> = {};
-    if (s.data == null or start >= s.length) {
+    if (s.data == null || start >= s.length) {
         return out;
     }
     remaining: u64 = s.length - start;
     if (count > remaining) {
         count = remaining;
     }
-    return slice<T>from_parts(s.data[start].&, count);
+    return slice<T>from_parts(s.data[start]&, count);
 }
 
 slice<T>skip: proc<T>(s: slice<T>, count: u64) -> slice<T> = {
@@ -108,14 +108,14 @@ slice<T>equals: proc<T>(a: slice<T>, b: slice<T>) -> b32 = {
     if (a.length == 0) {
         return 1;
     }
-    if (a.data == null or b.data == null) {
+    if (a.data == null || b.data == null) {
         return 0;
     }
     return memcmp(a.data, b.data, sizeof(T) * a.length) == 0;
 }
 
 slice<T>copy_to: proc<T>(dst: *T, s: slice<T>) -> void = {
-    if (dst == null or s.data == null or s.length == 0) {
+    if (dst == null || s.data == null || s.length == 0) {
         return;
     }
     memcpy(dst, s.data, sizeof(T) * s.length);

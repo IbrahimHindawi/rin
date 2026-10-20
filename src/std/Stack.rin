@@ -23,7 +23,7 @@ Stack<T>push: proc<T>(arena: *memops_arena, stack: *Stack<T>, data: T) -> void =
 }
 
 Stack<T>pop: proc<T>(arena: *memops_arena, stack: *Stack<T>) -> *Node<T> = {
-    if (stack == null or stack[0].head == null) {
+    if (stack == null || stack[0].head == null) {
         return null;
     }
     node: *Node<T> = stack[0].head;
@@ -48,5 +48,5 @@ Stack<T>destroy: proc<T>(arena: *memops_arena, stack: *Stack<T>) -> void = {
 }
 
 Stack<T>is_empty: proc<T>(stack: *Stack<T>) -> b32 = {
-    return stack == null or stack[0].length == 0;
+    return stack == null || stack[0].length == 0;
 }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 
 from scripts.bunyan import BuildContext, cmake_build, cmake_configure, main, run_cmd
@@ -49,6 +50,17 @@ def sync_std(ctx: BuildContext) -> None:
 
 
 def package_rin(ctx: BuildContext) -> None:
+    """Install the built compiler where RIN_HOME points.
+
+    Set RIN_NO_PACKAGE=1 to build without installing -- every rin project builds
+    against the package, so a compiler that is mid-change should stay in build/.
+    CMake's RIN_PACKAGE option is the same switch for its own copy step.
+    """
+    if os.environ.get("RIN_NO_PACKAGE"):
+        sync_std(ctx)
+        print("package skipped: RIN_NO_PACKAGE is set")
+        return
+
     package_dir = ctx.root_dir.parent / "rin-windows-x64"
     package_std_dir = package_dir / "std"
     rinbind_path = ctx.build_dir / "rinbind.exe"

@@ -1,10 +1,10 @@
 # Operators And Conversions
 
-> **Proposed, not implemented.** Decided in discussion, 2026-10-13 to 2026-10-20.
-> Memory operators become postfix (`x[0]`, `x&`), logic goes back to C's
-> `&& || !`, literals take their type from context, and implicit integer
-> conversions are allowed only when lossless. Nothing here is built yet; the
-> suggested order is at the end.
+> **Sections 1 and 2 implemented; the rest proposed.** Decided in discussion,
+> 2026-10-13 to 2026-10-20. Memory operators are postfix (`x[0]`, `x&`) and logic
+> is C's `&& || !` -- both built, with the old spellings now errors that name the
+> new form. Literals typed from context and lossless-only conversions are still
+> proposals. Progress is tracked in the suggested order at the end.
 
 Two threads that turned out to be one: making the syntax read in one direction,
 and closing the integer-conversion bug class that [`shape.md`](shape.md) 2.1
@@ -296,9 +296,18 @@ every site.
 
 ## Suggested order
 
-1. Postfix `&`, and remove `.*`, `.&` and prefix `&`. Generated C is unchanged,
-   so byte-identical output across the fixtures proves the migration.
-2. `&& || !` replace `and` / `or`.
+1. **Done.** Postfix `&`, and remove `.*`, `.&` and prefix `&`.
+2. **Done.** `&& || !` replace `and` / `or`.
+
+   Both landed together. `tools/rin_migrate.py` rewrote std, the fixtures, the
+   test runners' inline programs and njinn (3,270 `.&`, 412 `and`, 956 `or`);
+   the generated C for every fixture and all of njinn came out byte-identical
+   apart from column numbers inside `/* instantiated at */` comments. Covered by
+   `postfix_addr` and `old_pointer_spellings`. Two fixes came with it: the
+   emitter parenthesises an address used as a base, so `x&[0]` is `(&(x))[0]`
+   and not C's `&((x)[0])` (the old `x.&[0]` had the same bug); and a statement
+   that reports an error but still parses to its own `;` no longer swallows the
+   statement after it, so one file reports every old spelling at once.
 3. Write down `shr`-by-type; the fixture already pins it.
 4. Contextual literal typing, `f64` default, must-fit, and the `'` suffix.
 5. The conversion rule as a warning, plus the emitter casts for sub-`int`

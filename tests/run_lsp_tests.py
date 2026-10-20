@@ -313,12 +313,12 @@ main:proc()->i32 = {{
     values:Array<i32> = Array<i32>reserve(4);
     payload_values:Array<Payload> = Array<Payload>reserve(2);
     payload_vec:Vec<Payload> = Vec<Payload>reserve(2);
-    read_payloads:b32 = json_read<Array<Payload>>(payload_values.&);
-    read_payload_vec:b32 = json_read<Vec<Payload>>(payload_vec.&);
-    read_value:b32 = json_read<i32>(total.&);
+    read_payloads:b32 = json_read<Array<Payload>>(payload_values&);
+    read_payload_vec:b32 = json_read<Vec<Payload>>(payload_vec&);
+    read_value:b32 = json_read<i32>(total&);
     basis:Mat3 = {{}};
     basis_element:f32 = basis[0][0];
-    payload_ptr:*Payload = p.&;
+    payload_ptr:*Payload = p&;
     total:i32 = 0;
     bad_decl:i32 = p;
     p.value = 4;
@@ -333,20 +333,20 @@ main:proc()->i32 = {{
     payload_ptr[0].missing = 10;
     payload_values.data[0].missing = 11;
     values.data[0].missing = 12;
-    total = payload_add(p.&, 3);
-    total = cb(p.&, 4);
+    total = payload_add(p&, 3);
+    total = cb(p&, 4);
     total = payload_add(p, 3);
-    total = cb(p.&, p);
+    total = cb(p&, p);
     total = handler.cb(p, 4);
-    total = global_cb(p.&, p);
-    total = payload_add(p.&);
-    total = cb(p.&, 4, 5);
-    total = mix3(payload_add(p.&, 1), 2, 3);
+    total = global_cb(p&, p);
+    total = payload_add(p&);
+    total = cb(p&, 4, 5);
+    total = mix3(payload_add(p&, 1), 2, 3);
     total = text_amount("a,b", 5);
-    total = handler.cb(p.&, 4);
-    total = handler.cb(p.&);
-    total = global_cb(p.&, 4);
-    total = global_cb(p.&);
+    total = handler.cb(p&, 4);
+    total = handler.cb(p&);
+    total = global_cb(p&, 4);
+    total = global_cb(p&);
     dup:i32 = 1;
     dup:i32 = 2;
     while (total < 10) {{
@@ -909,7 +909,7 @@ main:proc()->i32 = {{
             or any(item.get("label") == "other_scope_local" for item in compiler_arg_items)
             or any(item.get("label") == "python_local" for item in compiler_arg_items)
         ):
-            print("lsp: proc argument completion should use compiler-backed proc signatures and variables")
+            print("lsp: proc argument completion should use compiler-backed proc signatures && variables")
             print(compiler_arg_items)
             return 1
         compiler_symbol_server.handle(
@@ -1967,7 +1967,7 @@ main:proc()->i32 = {
         expected_pointer_line,
         expected_pointer_col,
     )
-    if not any(item.get("label") == "payload.&" and item.get("detail") == "payload: Payload -> *Payload" for item in expected_pointer_items):
+    if not any(item.get("label") == "payload&" and item.get("detail") == "payload: Payload -> *Payload" for item in expected_pointer_items):
         print("lsp: expected pointer assignment completion to offer address sugar")
         print(expected_pointer_items)
         return 1
@@ -2141,7 +2141,7 @@ main:proc()->i32 = {
         'import "std/reflect.rin"\n'
         "Point:struct = { x:i32; }\n"
         "main:proc()->i32 = {\n"
-        "    f:*const reflect_field = reflect_fields(Point<>.&);\n"
+        "    f:*const reflect_field = reflect_fields(Point<>&);\n"
         "    return f != null ? 1 : 0;\n"
         "}\n",
         encoding="utf-8", newline="\n",
@@ -2793,7 +2793,7 @@ main:proc()->i32 = {
         print("lsp: expected generic proc declaration semantic token modifiers")
         print(module_tokens_with_modifiers)
         return 1
-    proc_ptr_call_line = next(i for i, line in enumerate(app_lines) if "total = cb(p.&, 4);" in line)
+    proc_ptr_call_line = next(i for i, line in enumerate(app_lines) if "total = cb(p&, 4);" in line)
     proc_ptr_call_col = app_lines[proc_ptr_call_line].index("cb")
     proc_ptr_call_token = (
         proc_ptr_call_line,
@@ -2801,7 +2801,7 @@ main:proc()->i32 = {
         len("cb"),
         "function",
     )
-    global_proc_ptr_call_line = next(i for i, line in enumerate(app_lines) if "global_cb(p.&, 4)" in line)
+    global_proc_ptr_call_line = next(i for i, line in enumerate(app_lines) if "global_cb(p&, 4)" in line)
     global_proc_ptr_call_col = app_lines[global_proc_ptr_call_line].index("global_cb")
     global_proc_ptr_call_token = (
         global_proc_ptr_call_line,
@@ -2809,7 +2809,7 @@ main:proc()->i32 = {
         len("global_cb"),
         "function",
     )
-    field_proc_ptr_call_line = next(i for i, line in enumerate(app_lines) if "handler.cb(p.&, 4)" in line)
+    field_proc_ptr_call_line = next(i for i, line in enumerate(app_lines) if "handler.cb(p&, 4)" in line)
     field_proc_ptr_call_col = app_lines[field_proc_ptr_call_line].index("cb")
     field_proc_ptr_call_token = (
         field_proc_ptr_call_line,
@@ -3404,7 +3404,7 @@ main:proc()->i32 = {
         print("lsp: expected enum member definition to point at source enum item")
         print(enum_location)
         return 1
-    call_line = next(i for i, line in enumerate(app_lines) if "payload_add(p.&" in line)
+    call_line = next(i for i, line in enumerate(app_lines) if "payload_add(p&" in line)
     call_col = app_lines[call_line].index("3")
     signature = lsp.signature_help_at(workspace, doc, call_line, call_col)
     if (
@@ -3418,7 +3418,7 @@ main:proc()->i32 = {
         return 1
     pointer_arg_col = app_lines[call_line].index("(") + 1
     pointer_arg_items = lsp.proc_argument_completions_at(workspace, doc, call_line, pointer_arg_col)
-    if not any(item.get("label") == "p.&" and item.get("detail") == "p: Payload -> *Payload" for item in pointer_arg_items):
+    if not any(item.get("label") == "p&" and item.get("detail") == "p: Payload -> *Payload" for item in pointer_arg_items):
         print("lsp: expected proc argument completion to offer address sugar for pointer parameter")
         print(pointer_arg_items)
         return 1
@@ -3488,7 +3488,7 @@ main:proc()->i32 = {
         print("lsp: expected generic proc signature help to show substituted concrete type")
         print(generic_signature)
         return 1
-    callback_line = next(i for i, line in enumerate(app_lines) if "cb(p.&" in line)
+    callback_line = next(i for i, line in enumerate(app_lines) if "cb(p&" in line)
     callback_col = app_lines[callback_line].index("4")
     callback_signature = lsp.signature_help_at(workspace, doc, callback_line, callback_col)
     if (
@@ -3552,7 +3552,7 @@ main:proc()->i32 = {
         print("lsp: expected comma after string literal to advance signature help parameter")
         print(string_after_signature)
         return 1
-    callback_field_line = next(i for i, line in enumerate(app_lines) if "handler.cb(p.&, 4)" in line)
+    callback_field_line = next(i for i, line in enumerate(app_lines) if "handler.cb(p&, 4)" in line)
     callback_field_col = app_lines[callback_field_line].index("4")
     callback_field_signature = lsp.signature_help_at(workspace, doc, callback_field_line, callback_field_col)
     if (

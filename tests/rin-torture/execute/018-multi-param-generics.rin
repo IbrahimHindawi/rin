@@ -63,7 +63,7 @@ repeated_param: proc() -> i32 = {
 
 out_param: proc() -> i32 = {
     seen: i32 = 0;
-    v: f32 = count_through<f32, i32>(2.5f, seen.&, 11);
+    v: f32 = count_through<f32, i32>(2.5f, seen&, 11);
     return seen + cast(v, i32);
 }
 

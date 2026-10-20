@@ -25,14 +25,14 @@ fmt_to: proc(data: *c8, capacity: u64) -> fmt = {
     f.capacity = capacity;
     f.length = 0;
     f.truncated = 0;
-    if (data != null and capacity > 0) {
+    if (data != null && capacity > 0) {
         data[0] = 0;
     }
     return f;
 }
 
 fmt_remaining: proc(f: *const fmt) -> u64 = {
-    if (f[0].data == null or f[0].capacity == 0) {
+    if (f[0].data == null || f[0].capacity == 0) {
         return 0;
     }
     /* One byte is always held back for the terminator. */
@@ -53,7 +53,7 @@ fmt_char: proc(f: *fmt, c: c8) -> void = {
 }
 
 fmt_bytes: proc(f: *fmt, src: *const c8, count: u64) -> void = {
-    if (src == null or count == 0) {
+    if (src == null || count == 0) {
         return;
     }
     room: u64 = fmt_remaining(f);
@@ -128,7 +128,7 @@ fmt_u64: proc(f: *fmt, value: u64) -> void = {
     for (i: u64 = 0; i < n; i += 1) {
         out[i] = digits[n - 1 - i];
     }
-    fmt_bytes(f, out[0].&, n);
+    fmt_bytes(f, out[0]&, n);
 }
 
 fmt_i64: proc(f: *fmt, value: i64) -> void = {
@@ -161,7 +161,7 @@ fmt_hex: proc(f: *fmt, value: u64, min_digits: u64, upper: b32) -> void = {
         v /= 16;
         n += 1;
     }
-    while (n < min_digits and n < 24) {
+    while (n < min_digits && n < 24) {
         digits[n] = cast(48, c8);
         n += 1;
     }
@@ -169,7 +169,7 @@ fmt_hex: proc(f: *fmt, value: u64, min_digits: u64, upper: b32) -> void = {
     for (i: u64 = 0; i < n; i += 1) {
         out[i] = digits[n - 1 - i];
     }
-    fmt_bytes(f, out[0].&, n);
+    fmt_bytes(f, out[0]&, n);
 }
 
 /* Fixed-point, which is all the call sites need -- %.2f and friends. Not a
@@ -226,11 +226,11 @@ fmt_expand_i64: proc(dst: *c8, capacity: u64, format: *const c8, value: i64) -> 
     }
     i: u64 = 0;
     while (format[i] != 0) {
-        if (format[i] == cast(37, c8) and format[i + 1] == cast(100, c8)) {
-            fmt_i64(f.&, value);
+        if (format[i] == cast(37, c8) && format[i + 1] == cast(100, c8)) {
+            fmt_i64(f&, value);
             i += 2;
         } else {
-            fmt_char(f.&, format[i]);
+            fmt_char(f&, format[i]);
             i += 1;
         }
     }
@@ -242,40 +242,40 @@ fmt_expand_i64: proc(dst: *c8, capacity: u64, format: *const c8, value: i64) -> 
    without a builder at the call site. Each returns the length written. */
 fmt_cat1: proc(dst: *c8, capacity: u64, a: *const c8) -> u64 = {
     f: fmt = fmt_to(dst, capacity);
-    fmt_cstr(f.&, a);
+    fmt_cstr(f&, a);
     return f.length;
 }
 
 fmt_cat2: proc(dst: *c8, capacity: u64, a: *const c8, b: *const c8) -> u64 = {
     f: fmt = fmt_to(dst, capacity);
-    fmt_cstr(f.&, a);
-    fmt_cstr(f.&, b);
+    fmt_cstr(f&, a);
+    fmt_cstr(f&, b);
     return f.length;
 }
 
 fmt_cat3: proc(dst: *c8, capacity: u64, a: *const c8, b: *const c8, c: *const c8) -> u64 = {
     f: fmt = fmt_to(dst, capacity);
-    fmt_cstr(f.&, a);
-    fmt_cstr(f.&, b);
-    fmt_cstr(f.&, c);
+    fmt_cstr(f&, a);
+    fmt_cstr(f&, b);
+    fmt_cstr(f&, c);
     return f.length;
 }
 
 fmt_cat4: proc(dst: *c8, capacity: u64, a: *const c8, b: *const c8, c: *const c8, d: *const c8) -> u64 = {
     f: fmt = fmt_to(dst, capacity);
-    fmt_cstr(f.&, a);
-    fmt_cstr(f.&, b);
-    fmt_cstr(f.&, c);
-    fmt_cstr(f.&, d);
+    fmt_cstr(f&, a);
+    fmt_cstr(f&, b);
+    fmt_cstr(f&, c);
+    fmt_cstr(f&, d);
     return f.length;
 }
 
 fmt_cat5: proc(dst: *c8, capacity: u64, a: *const c8, b: *const c8, c: *const c8, d: *const c8, e: *const c8) -> u64 = {
     f: fmt = fmt_to(dst, capacity);
-    fmt_cstr(f.&, a);
-    fmt_cstr(f.&, b);
-    fmt_cstr(f.&, c);
-    fmt_cstr(f.&, d);
-    fmt_cstr(f.&, e);
+    fmt_cstr(f&, a);
+    fmt_cstr(f&, b);
+    fmt_cstr(f&, c);
+    fmt_cstr(f&, d);
+    fmt_cstr(f&, e);
     return f.length;
 }

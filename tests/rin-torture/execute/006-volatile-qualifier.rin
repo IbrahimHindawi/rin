@@ -19,13 +19,13 @@ main: proc() -> i32 = {
     r: Regs = {};
     r.status = 7;
     cell: volatile u32 = 42;
-    r.data = cell.&;
+    r.data = cell&;
 
     local: volatile i32 = 5;
     local += 1;
     flag = 1;
 
-    cv: *const volatile u32 = cell.&;
+    cv: *const volatile u32 = cell&;
 
     printf("%u %u %u\n", r.status, poll(r.data), cv[0]);
     printf("%d %d\n", flag, local);

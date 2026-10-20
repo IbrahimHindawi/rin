@@ -22,7 +22,7 @@ reset: proc() -> void = {
 // `and` must not evaluate its right operand when the left is false.
 short_and: proc() -> i32 = {
     reset();
-    if (0 != 0 and bump(1) != 0) {
+    if (0 != 0 && bump(1) != 0) {
         g_calls += 100;
     }
     return g_calls;
@@ -31,7 +31,7 @@ short_and: proc() -> i32 = {
 // `or` must not evaluate its right operand when the left is true.
 short_or: proc() -> i32 = {
     reset();
-    if (1 != 0 or bump(1) != 0) {
+    if (1 != 0 || bump(1) != 0) {
         g_calls += 100;
     }
     return g_calls;
@@ -40,7 +40,7 @@ short_or: proc() -> i32 = {
 // When the left operand does not decide the result, the right one must run.
 full_and: proc() -> i32 = {
     reset();
-    if (1 != 0 and bump(1) != 0) {
+    if (1 != 0 && bump(1) != 0) {
         g_calls += 100;
     }
     return g_calls;

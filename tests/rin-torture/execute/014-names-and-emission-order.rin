@@ -67,7 +67,7 @@ main: proc() -> i32 = {
     l: Later = {};
     l.v = 42;
     n: Node = {};
-    n.payload = l.&;
+    n.payload = l&;
     n.tag = 1;
 
     printf("%d %d\n", is_even(10), is_odd(10));

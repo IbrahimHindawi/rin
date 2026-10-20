@@ -46,7 +46,7 @@ DList<T>prepend: proc<T>(arena: *memops_arena, list: *DList<T>, item: T) -> void
 }
 
 DList<T>insert_at: proc<T>(arena: *memops_arena, list: *DList<T>, item: T, index: i32) -> void = {
-    if (list == null or index < 0 or cast(index, usize) > list[0].length) {
+    if (list == null || index < 0 || cast(index, usize) > list[0].length) {
         printf("rin runtime: DList invalid index\n");
         return;
     }
@@ -80,18 +80,18 @@ DList<T>get_length: proc<T>(arena: *memops_arena, list: *DList<T>) -> usize = {
 }
 
 DList<T>get_at: proc<T>(arena: *memops_arena, list: *DList<T>, index: i32) -> *BiNode<T> = {
-    if (list == null or index < 0 or cast(index, usize) >= list[0].length) {
+    if (list == null || index < 0 || cast(index, usize) >= list[0].length) {
         return null;
     }
     iter: *BiNode<T> = list[0].head;
-    for (i: i32 = 0; iter != null and i < index; i += 1) {
+    for (i: i32 = 0; iter != null && i < index; i += 1) {
         iter = iter[0].next;
     }
     return iter;
 }
 
 DList<T>remove_node: proc<T>(arena: *memops_arena, list: *DList<T>, node: *BiNode<T>) -> *BiNode<T> = {
-    if (list == null or node == null or list[0].length == 0) {
+    if (list == null || node == null || list[0].length == 0) {
         return null;
     }
     if (node[0].prev != null) {
@@ -118,7 +118,7 @@ DList<T>remove_at: proc<T>(arena: *memops_arena, list: *DList<T>, index: i32) ->
 }
 
 DList<T>remove: proc<T>(arena: *memops_arena, list: *DList<T>, item: T) -> *BiNode<T> = {
-    if (list == null or list[0].length == 0) {
+    if (list == null || list[0].length == 0) {
         return null;
     }
     iter: *BiNode<T> = list[0].head;
@@ -140,5 +140,5 @@ DList<T>destroy: proc<T>(arena: *memops_arena, list: *DList<T>) -> void = {
 }
 
 DList<T>is_empty: proc<T>(list: *DList<T>) -> b32 = {
-    return list == null or list[0].length == 0;
+    return list == null || list[0].length == 0;
 }

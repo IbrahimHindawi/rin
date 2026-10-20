@@ -121,14 +121,14 @@ Map<T>destroy: proc<T>(arena: *memops_arena, hashmap: *Map<T>) -> void = {
 }
 
 Map<T>get: proc<T>(arena: *memops_arena, hashmap: *Map<T>, key: *const char) -> *T = {
-    if (hashmap == null or hashmap[0].entries == null or hashmap[0].border == 0) {
+    if (hashmap == null || hashmap[0].entries == null || hashmap[0].border == 0) {
         return null;
     }
     hash: u64 = map_hash_key(key);
     index: usize = cast(hash & cast(hashmap[0].border - 1, u64), usize);
     while (hashmap[0].entries[index].key != null) {
         if (strcmp(key, hashmap[0].entries[index].key) == 0) {
-            return hashmap[0].entries[index].val.&;
+            return hashmap[0].entries[index].val&;
         }
         index += 1;
         if (index >= hashmap[0].border) {
@@ -144,7 +144,7 @@ Map<T>set: proc<T>(arena: *memops_arena, hashmap: *Map<T>, key: *const char, val
             return null;
         }
     }
-    return Map<T>set_entry(arena, hashmap[0].entries, hashmap[0].border, key, val, hashmap[0].length.&);
+    return Map<T>set_entry(arena, hashmap[0].entries, hashmap[0].border, key, val, hashmap[0].length&);
 }
 
 Map<T>try_emplace: proc<T>(arena: *memops_arena, hashmap: *Map<T>, key: *const char, val: T) -> *T = {

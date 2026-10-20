@@ -17,7 +17,7 @@ syn keyword iStorageClass const volatile static
 syn keyword iExternal external external_emit
 syn keyword iConditional if else switch case default
 syn keyword iRepeat for while do break continue
-syn keyword iOperatorWord and or shl shr
+syn keyword iOperatorWord shl shr
 syn keyword iBoolean true false
 
 " Built-in types / primitives
@@ -67,8 +67,6 @@ syn match iNumber "\<[0-9]*\.[0-9]\+\(f32\|f64\|f\)\?\>"
 syn match iEscape "\\\(.\|x[0-9A-Fa-f]\{2}\)" contained
 
 " Operators and punctuation
-syn match iOperator "\.\*"
-syn match iOperator "\.&"
 syn match iOperator "->"
 syn match iOperator "\.\.\."
 syn match iOperator "==\|!=\|<=\|>="

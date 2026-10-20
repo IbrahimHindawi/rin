@@ -46,7 +46,7 @@ sum: proc<T>(items: *T, count: u64)->T = {
 step: proc(mode: Mode, value: i32) -> i32 = {
     while (value > 0) {
         value -= 1;
-        if (mode == Mode.Attack and value == 2) {
+        if (mode == Mode.Attack && value == 2) {
             continue;
         }
     }
@@ -94,7 +94,7 @@ const syntax = {
   storage: new Set('const external external_emit'.split(' ')),
   conditional: new Set('if else switch case default'.split(' ')),
   repeat: new Set('for while do break continue'.split(' ')),
-  operatorWord: new Set('and or shl shr'.split(' ')),
+  operatorWord: new Set('shl shr'.split(' ')),
   boolean: new Set('true false'.split(' ')),
   coreType: new Set('i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 usize b32 bool void char va_list FILE'.split(' ')),
   interopType: new Set('HWND HINSTANCE HMODULE HCURSOR HMENU HBRUSH HDC HGDIOBJ ATOM BOOL DWORD UINT INT LONG ULONG HRESULT WPARAM LPARAM LRESULT MSG WNDCLASSA PAINTSTRUCT RECT ID3D11Device ID3D11DeviceContext IDXGISwapChain ID3D11Buffer ID3D11Texture2D ID3D11RenderTargetView ID3D11DepthStencilView ID3D11ShaderResourceView ID3D11SamplerState ID3DBlob'.split(' ')),
@@ -222,7 +222,7 @@ function colorizeI(code) {
       i += 3;
       continue;
     }
-    if (['.*', '.&', '->', '==', '!=', '<=', '>=', '&&', '||', '+=', '-=', '*=', '/=', '%=', '&=', '^=', '|='].includes(two)) {
+    if (['->', '==', '!=', '<=', '>=', '&&', '||', '+=', '-=', '*=', '/=', '%=', '&=', '^=', '|='].includes(two)) {
       out += span('tok-operator', two);
       i += 2;
       continue;

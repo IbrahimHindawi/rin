@@ -86,8 +86,8 @@ Bag:struct = {
 
 main:proc()->i32={
     arena:memops_arena = {};
-    memops_arena_initialize(&arena);
-    a:array<i32> = array<i32>reserve(&arena, 4);
+    memops_arena_initialize(arena&);
+    a:array<i32> = array<i32>reserve(arena&, 4);
     for (i:i32=0; i<4; i+=1) {
         a.data[i] = i + 10;
     }
@@ -251,16 +251,16 @@ reflect_enum_name:proc(type:*const reflect, value:i32)->*const char = {
 }
 
 print:proc<Kind>(value:Kind)->void = {
-    print_cstr(reflect_enum_name(Kind<>.&, value));
+    print_cstr(reflect_enum_name(Kind<>&, value));
 }
 
 print:proc<Payload>(value:Payload)->void = {
-    printfmt("{}({}, {})", reflect_type_name(Payload<>.&), value.x, value.kind);
+    printfmt("{}({}, {})", reflect_type_name(Payload<>&), value.x, value.kind);
 }
 
 main:proc()->i32 = {
     arena:memops_arena = {};
-    memops_arena_initialize(&arena);
+    memops_arena_initialize(arena&);
 
     payload:Payload = {.x = 9, .kind = Kind_Run};
     opt:Option<Kind> = Option<Kind>some(Kind_Run);
@@ -268,7 +268,7 @@ main:proc()->i32 = {
     ok_payload:Result<Payload> = Result<Payload>ok(payload);
     bad_payload:Result<Payload> = Result<Payload>err(7);
     vec:Vec<Payload> = {};
-    Vec<Payload>append(&arena, &vec, payload);
+    Vec<Payload>append(arena&, vec&, payload);
 
     printfmt("{} {} {} {} {} {} {}\n",
         Payload<>.variant.fields[1].name,
@@ -277,7 +277,7 @@ main:proc()->i32 = {
         Result<Payload>unwrap(ok_payload),
         Result<Payload>is_err(bad_payload),
         bad_payload.error,
-        Vec<Payload>get(&vec, 0).value);
+        Vec<Payload>get(vec&, 0).value);
     return 0;
 }
 ''',
@@ -307,8 +307,8 @@ print:proc<Payload>(value:Payload)->void = {
 
 make_local:proc<T>(arena:*memops_arena, value:T)->T = {
     vec:Vec<T> = {};
-    Vec<T>append(arena, &vec, value);
-    opt:Option<T> = Vec<T>get(&vec, 0);
+    Vec<T>append(arena, vec&, value);
+    opt:Option<T> = Vec<T>get(vec&, 0);
     res:Result<T> = Result<T>ok(Option<T>unwrap(opt));
     return Result<T>unwrap(res);
 }
@@ -326,17 +326,17 @@ Holder<T>make:proc<T>(arena:*memops_arena, value:T)->Holder<T> = {
     holder.item = value;
     holder.opt = Option<T>some(value);
     holder.res = Result<T>ok(value);
-    Vec<T>append(arena, &holder.vec, value);
+    Vec<T>append(arena, holder.vec&, value);
     return holder;
 }
 
 main:proc()->i32 = {
     arena:memops_arena = {};
-    memops_arena_initialize(&arena);
+    memops_arena_initialize(arena&);
 
-    a:Payload = make_local<Payload>(&arena, {.x = 3});
+    a:Payload = make_local<Payload>(arena&, {.x = 3});
     b:Payload = id_option<Payload>(make_option<Payload>({.x = 5}));
-    holder:Holder<Payload> = Holder<Payload>make(&arena, {.x = 7});
+    holder:Holder<Payload> = Holder<Payload>make(arena&, {.x = 7});
 
     printfmt("{} {} {}\n", a, b, Result<Payload>unwrap(holder.res));
     printf("%s %llu %s %s %s %s\n",
@@ -409,14 +409,14 @@ sum: proc<T>(items: *T, count: u64) -> T = {
 
 main: proc(argc: i32, argv: **char)-> i32 = {
     arena: memops_arena = {};
-    memops_arena_initialize(arena.&);
+    memops_arena_initialize(arena&);
     // todo: this line is intentionally a rin comment, not C preprocessor output.
     printfmt("{}\n", add<i32>(1, 1));
     x: i32 = add<i32>(1, 1);
     printfmt("{}\n", x);
     y: payload = add<payload>({.x = 2}, {.x = 2});
     printfmt("{}\n", y.x);
-    payloads: Array<payload> = Array<payload>reserve(arena.&, 128);
+    payloads: Array<payload> = Array<payload>reserve(arena&, 128);
     for (i: i32 = 0; i < payloads.length; i += 1) {
         payloads.data[i] = {.x = i};
     }
@@ -487,62 +487,62 @@ import "C:/devel/rin/src/std/containers.rin"
 
 main:proc()->i32 = {
     arena:memops_arena = {};
-    memops_arena_initialize(&arena);
+    memops_arena_initialize(arena&);
 
     opt:Option<i32> = Option<i32>some(7);
     none:Option<i32> = Option<i32>none();
     ok:Result<i32> = Result<i32>ok(11);
     err:Result<i32> = Result<i32>err(404);
 
-    arr:Array<i32> = Array<i32>reserve(&arena, 3);
+    arr:Array<i32> = Array<i32>reserve(arena&, 3);
     arr.data[0] = 3;
     arr.data[1] = 5;
     arr.data[2] = 7;
-    arr_get:Option<i32> = Array<i32>get(&arr, 1);
-    arr_at:*i32 = Array<i32>at(&arr, 2);
+    arr_get:Option<i32> = Array<i32>get(arr&, 1);
+    arr_at:*i32 = Array<i32>at(arr&, 2);
 
     vec:Vec<i32> = {};
-    Vec<i32>append(&arena, &vec, 10);
-    Vec<i32>append(&arena, &vec, 20);
-    Vec<i32>append(&arena, &vec, 30);
-    vec_get:Option<i32> = Vec<i32>get(&vec, 2);
+    Vec<i32>append(arena&, vec&, 10);
+    Vec<i32>append(arena&, vec&, 20);
+    Vec<i32>append(arena&, vec&, 30);
+    vec_get:Option<i32> = Vec<i32>get(vec&, 2);
 
-    list:*List<i32> = List<i32>create(&arena);
-    List<i32>append(&arena, list, 1);
-    List<i32>append(&arena, list, 2);
-    List<i32>prepend(&arena, list, 0);
-    list_removed:*Node<i32> = List<i32>remove_at(&arena, list, 1);
-    list_removed_value:*Node<i32> = List<i32>remove(&arena, list, 2);
+    list:*List<i32> = List<i32>create(arena&);
+    List<i32>append(arena&, list, 1);
+    List<i32>append(arena&, list, 2);
+    List<i32>prepend(arena&, list, 0);
+    list_removed:*Node<i32> = List<i32>remove_at(arena&, list, 1);
+    list_removed_value:*Node<i32> = List<i32>remove(arena&, list, 2);
 
-    dlist:*DList<i32> = DList<i32>create(&arena);
-    DList<i32>append(&arena, dlist, 4);
-    DList<i32>append(&arena, dlist, 5);
-    DList<i32>prepend(&arena, dlist, 3);
-    dlist_removed:*BiNode<i32> = DList<i32>remove_at(&arena, dlist, 2);
-    dlist_removed_value:*BiNode<i32> = DList<i32>remove(&arena, dlist, 3);
+    dlist:*DList<i32> = DList<i32>create(arena&);
+    DList<i32>append(arena&, dlist, 4);
+    DList<i32>append(arena&, dlist, 5);
+    DList<i32>prepend(arena&, dlist, 3);
+    dlist_removed:*BiNode<i32> = DList<i32>remove_at(arena&, dlist, 2);
+    dlist_removed_value:*BiNode<i32> = DList<i32>remove(arena&, dlist, 3);
 
-    queue:*Queue<i32> = Queue<i32>create(&arena);
-    Queue<i32>enqueue(&arena, queue, 8);
-    Queue<i32>enqueue(&arena, queue, 9);
-    queue_removed:*Node<i32> = Queue<i32>dequeue(&arena, queue);
-    queue_peek:*Node<i32> = Queue<i32>peek(&arena, queue);
+    queue:*Queue<i32> = Queue<i32>create(arena&);
+    Queue<i32>enqueue(arena&, queue, 8);
+    Queue<i32>enqueue(arena&, queue, 9);
+    queue_removed:*Node<i32> = Queue<i32>dequeue(arena&, queue);
+    queue_peek:*Node<i32> = Queue<i32>peek(arena&, queue);
 
-    stack:*Stack<i32> = Stack<i32>create(&arena);
-    Stack<i32>push(&arena, stack, 12);
-    Stack<i32>push(&arena, stack, 13);
-    stack_removed:*Node<i32> = Stack<i32>pop(&arena, stack);
-    stack_peek:*Node<i32> = Stack<i32>peek(&arena, stack);
+    stack:*Stack<i32> = Stack<i32>create(arena&);
+    Stack<i32>push(arena&, stack, 12);
+    Stack<i32>push(arena&, stack, 13);
+    stack_removed:*Node<i32> = Stack<i32>pop(arena&, stack);
+    stack_peek:*Node<i32> = Stack<i32>peek(arena&, stack);
 
-    map:*Map<i32> = Map<i32>create(&arena);
-    Map<i32>set(&arena, map, "dog", 3);
-    Map<i32>set(&arena, map, "frog", 4);
-    Map<i32>set(&arena, map, "dog", 5);
-    map_dog:*i32 = Map<i32>try_emplace(&arena, map, "dog", 99);
-    map_bird:*i32 = Map<i32>try_emplace(&arena, map, "bird", 6);
-    it:MapIterator<i32> = MapIterator<i32>create(&arena, map);
+    map:*Map<i32> = Map<i32>create(arena&);
+    Map<i32>set(arena&, map, "dog", 3);
+    Map<i32>set(arena&, map, "frog", 4);
+    Map<i32>set(arena&, map, "dog", 5);
+    map_dog:*i32 = Map<i32>try_emplace(arena&, map, "dog", 99);
+    map_bird:*i32 = Map<i32>try_emplace(arena&, map, "bird", 6);
+    it:MapIterator<i32> = MapIterator<i32>create(arena&, map);
     map_sum:i32 = 0;
     map_count:i32 = 0;
-    while (MapIterator<i32>next(&arena, &it)) {
+    while (MapIterator<i32>next(arena&, it&)) {
         map_sum += it.val;
         map_count += 1;
     }
@@ -569,7 +569,7 @@ main:proc()->i32 = {
         stack[0].length,
         stack_removed[0].data,
         stack_peek[0].data,
-        Map<i32>length(&arena, map),
+        Map<i32>length(arena&, map),
         map_dog[0],
         map_bird[0],
         map_count,
@@ -589,25 +589,25 @@ import "C:/devel/rin/src/std/string8.rin"
 
 main:proc()->i32 = {
     arena:memops_arena = {};
-    memops_arena_initialize(&arena);
+    memops_arena_initialize(arena&);
 
-    empty:string8 = string8_from_cstr(&arena, "");
-    null_s:string8 = string8_from_cstr(&arena, null);
+    empty:string8 = string8_from_cstr(arena&, "");
+    null_s:string8 = string8_from_cstr(arena&, null);
     zero:string8 = {};
-    string8_append_cstr(&arena, &zero, "zero");
+    string8_append_cstr(arena&, zero&, "zero");
 
-    text:string8 = string8_from_cstr(&arena, "hello");
-    string8_append_byte(&arena, &text, cast(44, u8));
-    string8_append_cstr(&arena, &text, "world");
+    text:string8 = string8_from_cstr(arena&, "hello");
+    string8_append_byte(arena&, text&, cast(44, u8));
+    string8_append_cstr(arena&, text&, "world");
 
-    parts:Vec<string8slice> = string8slice_split_from_string8(&arena, text, cast(44, u8));
-    owned:Vec<string8> = string8_split_char(&arena, text, cast(44, u8));
-    copy:string8 = string8_copy_from_slice(&arena, parts.data[1].data, parts.data[1].length);
-    trim_src:string8 = string8_from_cstr(&arena, "  Hello/World.TXT  ");
+    parts:Vec<string8slice> = string8slice_split_from_string8(arena&, text, cast(44, u8));
+    owned:Vec<string8> = string8_split_char(arena&, text, cast(44, u8));
+    copy:string8 = string8_copy_from_slice(arena&, parts.data[1].data, parts.data[1].length);
+    trim_src:string8 = string8_from_cstr(arena&, "  Hello/World.TXT  ");
     trimmed:string8slice = string8_trim(trim_src);
-    lower:string8 = string8slice_lower_copy(&arena, trimmed);
-    norm:string8 = path_normalize_slashes(&arena, string8slice_from_cstr("root\\dir\\file.txt"));
-    joined:string8 = path_join(&arena, string8slice_from_cstr("root/"), string8slice_from_cstr("/child\\file.rin"));
+    lower:string8 = string8slice_lower_copy(arena&, trimmed);
+    norm:string8 = path_normalize_slashes(arena&, string8slice_from_cstr("root\\dir\\file.txt"));
+    joined:string8 = path_join(arena&, string8slice_from_cstr("root/"), string8slice_from_cstr("/child\\file.rin"));
     dir:string8slice = path_dirname(string8slice_from_string8(norm));
     base:string8slice = path_basename(string8slice_from_string8(norm));
     ext:string8slice = path_extension(string8slice_from_string8(norm));
@@ -615,20 +615,20 @@ main:proc()->i32 = {
 
     printf("%llu %d %d %d ",
         text.length,
-        string8_equals_cstr(&text, "hello,world"),
+        string8_equals_cstr(text&, "hello,world"),
         string8slice_equals_cstr(parts.data[0], "hello"),
-        string8_equals_cstr(&owned.data[1], "world"));
-    string8_print(&text);
+        string8_equals_cstr(owned.data[1]&, "world"));
+    string8_print(text&);
     printf(" ");
     string8slice_print(parts.data[0]);
-    printf(" %s %llu %llu ", string8_to_cstr_temp(&arena, copy), parts.length, owned.length);
+    printf(" %s %llu %llu ", string8_to_cstr_temp(arena&, copy), parts.length, owned.length);
     printf("%llu %llu %llu %d %d %d ",
         empty.length,
         zero.length,
         null_s.length,
-        string8_equals_cstr(&empty, ""),
-        string8_equals_cstr(&zero, "zero"),
-        string8_equals_cstr(&null_s, ""));
+        string8_equals_cstr(empty&, ""),
+        string8_equals_cstr(zero&, "zero"),
+        string8_equals_cstr(null_s&, ""));
     printf("%d %d %lld %d %d %d ",
         string8slice_starts_with(trimmed, string8slice_from_cstr("Hello")),
         string8slice_ends_with(trimmed, string8slice_from_cstr(".TXT")),
@@ -654,23 +654,23 @@ printf: proc[external](f: *const char, ...) -> i32 = {}
 main: proc() -> i32 = {
     scratch: memops_arena = {};
     perm: memops_arena = {};
-    memops_arena_initialize(scratch.&);
-    memops_arena_initialize(perm.&);
+    memops_arena_initialize(scratch&);
+    memops_arena_initialize(perm&);
     before: u64 = scratch.used;
 
-    b: string8_builder = string8_builder_begin(scratch.&);
-    string8_builder_append_cstr(b.&, "hello");
-    string8_builder_append_byte(b.&, 32);
-    string8_builder_append_slice(b.&, string8slice_from_cstr("world"));
-    s: string8slice = string8_builder_slice(b.&);
+    b: string8_builder = string8_builder_begin(scratch&);
+    string8_builder_append_cstr(b&, "hello");
+    string8_builder_append_byte(b&, 32);
+    string8_builder_append_slice(b&, string8slice_from_cstr("world"));
+    s: string8slice = string8_builder_slice(b&);
 
-    kept: string8 = string8_builder_commit(b.&, perm.&);
+    kept: string8 = string8_builder_commit(b&, perm&);
 
     // A second build, opened after the first is done with, shares the arena.
-    c: string8_builder = string8_builder_begin(scratch.&);
-    string8_builder_append_cstr(c.&, "second");
-    d: string8slice = string8_builder_slice(c.&);
-    e: string8slice = string8_builder_slice(b.&);
+    c: string8_builder = string8_builder_begin(scratch&);
+    string8_builder_append_cstr(c&, "second");
+    d: string8slice = string8_builder_slice(c&);
+    e: string8slice = string8_builder_slice(b&);
 
     printf("%.*s|%s|%llu|%.*s|%.*s\n",
         cast(s.length, i32), s.data,
@@ -700,10 +700,10 @@ printf: proc[external](f: *const char, ...) -> i32 = {}
 
 main: proc() -> i32 = {
     arena: memops_arena = {};
-    memops_arena_initialize(arena.&);
+    memops_arena_initialize(arena&);
 
     nums: [6]i32 = {10, 20, 30, 40, 50, 60};
-    s: slice<i32> = slice<i32>from_parts(nums[0].&, 6);
+    s: slice<i32> = slice<i32>from_parts(nums[0]&, 6);
 
     mid: slice<i32> = slice<i32>sub(s, 1, 3);
     tail: slice<i32> = slice<i32>skip(s, 4);
@@ -715,8 +715,8 @@ main: proc() -> i32 = {
     l: Option<i32> = slice<i32>last(s);
     oob: Option<i32> = slice<i32>get(s, 99);
 
-    same: slice<i32> = slice<i32>from_parts(nums[0].&, 6);
-    owned: Array<i32> = slice<i32>to_array(arena.&, mid);
+    same: slice<i32> = slice<i32>from_parts(nums[0]&, 6);
+    owned: Array<i32> = slice<i32>to_array(arena&, mid);
 
     printf("%llu %d%d%d %d%d %d%d %llu %d %d %d %d %d %d %llu %d%d%d\n",
         s.length,
@@ -748,42 +748,42 @@ main: proc() -> i32 = {
     buf: [128]c8 = {};
 
     // The shape almost every snprintf in njinn has: literals joined with values.
-    fmt_cat3(buf[0].&, sizeof(buf), "res/fx/", "explosion", ".json");
-    printf("%s ", buf.&);
+    fmt_cat3(buf[0]&, sizeof(buf), "res/fx/", "explosion", ".json");
+    printf("%s ", buf&);
 
     // Numbers, matching what %llu %d %.3f %08X produce.
-    f: fmt = fmt_to(buf[0].&, sizeof(buf));
-    fmt_u64(f.&, 12345);
-    fmt_char(f.&, cast(32, c8));
-    fmt_i64(f.&, -7);
-    fmt_char(f.&, cast(32, c8));
-    fmt_f64(f.&, 3.14159, 3);
-    fmt_char(f.&, cast(32, c8));
-    fmt_hex(f.&, 48879, 8, 1);
-    printf("%s ", buf.&);
+    f: fmt = fmt_to(buf[0]&, sizeof(buf));
+    fmt_u64(f&, 12345);
+    fmt_char(f&, cast(32, c8));
+    fmt_i64(f&, -7);
+    fmt_char(f&, cast(32, c8));
+    fmt_f64(f&, 3.14159, 3);
+    fmt_char(f&, cast(32, c8));
+    fmt_hex(f&, 48879, 8, 1);
+    printf("%s ", buf&);
 
     // Rounding that carries into the integer part, and a zero fraction.
-    g: fmt = fmt_to(buf[0].&, sizeof(buf));
-    fmt_f64(g.&, 9.999, 2);
-    fmt_char(g.&, cast(32, c8));
-    fmt_f64(g.&, 0.0, 2);
-    printf("%s ", buf.&);
+    g: fmt = fmt_to(buf[0]&, sizeof(buf));
+    fmt_f64(g&, 9.999, 2);
+    fmt_char(g&, cast(32, c8));
+    fmt_f64(g&, 0.0, 2);
+    printf("%s ", buf&);
 
     // Truncation stops short and still terminates.
     small: [8]c8 = {};
-    tn: u64 = fmt_cat2(small[0].&, sizeof(small), "abcdefgh", "ijkl");
-    printf("%s/%llu ", small.&, tn);
+    tn: u64 = fmt_cat2(small[0]&, sizeof(small), "abcdefgh", "ijkl");
+    printf("%s/%llu ", small&, tn);
 
     // cstr: the strcmp/strncpy/strstr/sscanf replacements.
-    cn: u64 = cstr_copy(small[0].&, sizeof(small), "abcdefghij");
+    cn: u64 = cstr_copy(small[0]&, sizeof(small), "abcdefghij");
     iv: i64 = 0;
     fv: f64 = 0.0;
     untouched: i64 = 99;
     // Sequenced deliberately: argument evaluation order is unspecified, so a
     // parse and the variable it writes must not appear in the same call.
-    ok_i: b32 = cstr_parse_i64("  -1234", iv.&);
-    ok_f: b32 = cstr_parse_f64("3.5", fv.&);
-    ok_bad: b32 = cstr_parse_i64("abc", untouched.&);
+    ok_i: b32 = cstr_parse_i64("  -1234", iv&);
+    ok_f: b32 = cstr_parse_f64("3.5", fv&);
+    ok_bad: b32 = cstr_parse_i64("abc", untouched&);
     printf("%d%d%d %lld %d %llu %d%d %d %lld %d %.2f %d %lld\n",
         cstr_equals("abc", "abc"), cstr_equals("abc", "abd"), cstr_equals_n("abcdef", "abcxxx", 3),
         cstr_find("hello world", "world"),
@@ -821,40 +821,40 @@ main: proc() -> i32 = {
     // used to write its terminator without checking there was room for it,
     // which dereferenced null and crashed rather than reporting truncation.
     one: [1]c8 = {};
-    a: fmt = fmt_to(one[0].&, 1);
-    fmt_cstr(a.&, "xyz");
+    a: fmt = fmt_to(one[0]&, 1);
+    fmt_cstr(a&, "xyz");
 
     nul: fmt = fmt_to(null, 0);
-    fmt_cstr(nul.&, "safe");
+    fmt_cstr(nul&, "safe");
 
     // Truncation keeps the most significant digits, not the last ones.
     two: [2]c8 = {};
-    b: fmt = fmt_to(two[0].&, 2);
-    fmt_u64(b.&, 12345);
+    b: fmt = fmt_to(two[0]&, 2);
+    fmt_u64(b&, 12345);
 
     // The extremes of each integer type, including the value whose negation
     // overflows.
     big: [64]c8 = {};
-    c: fmt = fmt_to(big[0].&, sizeof(big));
-    fmt_u64(c.&, 18446744073709551615);
-    fmt_char(c.&, cast(32, c8));
-    fmt_i64(c.&, -9223372036854775807 - 1);
-    printf("%s|", big.&);
+    c: fmt = fmt_to(big[0]&, sizeof(big));
+    fmt_u64(c&, 18446744073709551615);
+    fmt_char(c&, cast(32, c8));
+    fmt_i64(c&, -9223372036854775807 - 1);
+    printf("%s|", big&);
 
     // Rounding that carries all the way, and a zero-padded hex zero.
-    d: fmt = fmt_to(big[0].&, sizeof(big));
-    fmt_f64(d.&, 0.999999, 2);
-    fmt_char(d.&, cast(32, c8));
-    fmt_hex(d.&, 0, 4, 1);
-    printf("%s|", big.&);
+    d: fmt = fmt_to(big[0]&, sizeof(big));
+    fmt_f64(d&, 0.999999, 2);
+    fmt_char(d&, cast(32, c8));
+    fmt_hex(d&, 0, 4, 1);
+    printf("%s|", big&);
 
     nums: [3]i32 = {1, 2, 3};
-    s: slice<i32> = slice<i32>from_parts(nums[0].&, 3);
+    s: slice<i32> = slice<i32>from_parts(nums[0]&, 3);
     empty: slice<i32> = slice<i32>from_parts(null, 0);
 
     printf("%llu%d%d %s %llu%d %llu %lld%lld%lld %d%d %llu%llu%llu %d\n",
-        a.length, fmt_truncated(a.&), one[0] == 0,
-        two.&, b.length, fmt_truncated(b.&),
+        a.length, fmt_truncated(a&), one[0] == 0,
+        two&, b.length, fmt_truncated(b&),
         nul.length,
         cstr_find("", ""), cstr_find("abc", ""), cstr_find("", "abc"),
         cstr_equals(null, null), cstr_equals(null, "a"),
@@ -903,41 +903,41 @@ main:proc()->i32={
     p.hp = I_TEST_HP;
     p.label = "hero";
     p.score = 123;
-    hp_field:*const reflect_field = reflect_find_field(&Player_reflect, "hp");
-    hp_value_ptr:*i32 = cast(reflect_field_ptr(&p, hp_field), *i32);
+    hp_field:*const reflect_field = reflect_find_field(Player_reflect&, "hp");
+    hp_value_ptr:*i32 = cast(reflect_field_ptr(p&, hp_field), *i32);
     hp_value_ptr[0] += 1;
-    hp_offset_field:*const reflect_field = reflect_find_field_by_offset(&Player_reflect, Player_reflect.variant.fields[1].offset);
-    hp_containing_field:*const reflect_field = reflect_find_field_containing_offset(&Player_reflect, Player_reflect.variant.fields[1].offset + 1);
-    hp_index_field:*const reflect_field = reflect_field_at(&Player_reflect, 1);
-    missing_index_field:*const reflect_field = reflect_field_at(&Player_reflect, Player_reflect.count);
-    editor_field:*const reflect_field = reflect_find_field_with_attr(&Player_reflect, "editor");
-    missing_attr_field:*const reflect_field = reflect_find_field_with_attr(&Player_reflect, "missing");
-    first_editor_field:*const reflect_field = reflect_next_field_with_attr(&Player_reflect, "editor", null);
-    second_editor_field:*const reflect_field = reflect_next_field_with_attr(&Player_reflect, "editor", first_editor_field);
-    no_more_editor_field:*const reflect_field = reflect_next_field_with_attr(&Player_reflect, "editor", second_editor_field);
-    green_value:*const reflect_value = reflect_find_value_by_name(&Color_reflect, "Green");
-    blue_value:*const reflect_value = reflect_find_value_by_value(&Color_reflect, Color_Blue);
-    blue_index_value:*const reflect_value = reflect_value_at(&Color_reflect, 2);
-    missing_index_value:*const reflect_value = reflect_value_at(&Color_reflect, Color_reflect.count);
-    green_name:*const char = reflect_name_from_value(&Color_reflect, Color_Green);
-    missing_name:*const char = reflect_name_from_value(&Color_reflect, 99);
-    generic_kind_field:*const reflect_field = reflect_find_field_with_kind(&Player_reflect, 2);
-    missing_kind_field:*const reflect_field = reflect_find_field_with_kind(&Player_reflect, 4);
-    first_name_kind_field:*const reflect_field = reflect_next_field_with_kind(&Player_reflect, 0, null);
-    second_name_kind_field:*const reflect_field = reflect_next_field_with_kind(&Player_reflect, 0, first_name_kind_field);
-    third_name_kind_field:*const reflect_field = reflect_next_field_with_kind(&Player_reflect, 0, second_name_kind_field);
-    no_more_name_kind_field:*const reflect_field = reflect_next_field_with_kind(&Player_reflect, 0, third_name_kind_field);
+    hp_offset_field:*const reflect_field = reflect_find_field_by_offset(Player_reflect&, Player_reflect.variant.fields[1].offset);
+    hp_containing_field:*const reflect_field = reflect_find_field_containing_offset(Player_reflect&, Player_reflect.variant.fields[1].offset + 1);
+    hp_index_field:*const reflect_field = reflect_field_at(Player_reflect&, 1);
+    missing_index_field:*const reflect_field = reflect_field_at(Player_reflect&, Player_reflect.count);
+    editor_field:*const reflect_field = reflect_find_field_with_attr(Player_reflect&, "editor");
+    missing_attr_field:*const reflect_field = reflect_find_field_with_attr(Player_reflect&, "missing");
+    first_editor_field:*const reflect_field = reflect_next_field_with_attr(Player_reflect&, "editor", null);
+    second_editor_field:*const reflect_field = reflect_next_field_with_attr(Player_reflect&, "editor", first_editor_field);
+    no_more_editor_field:*const reflect_field = reflect_next_field_with_attr(Player_reflect&, "editor", second_editor_field);
+    green_value:*const reflect_value = reflect_find_value_by_name(Color_reflect&, "Green");
+    blue_value:*const reflect_value = reflect_find_value_by_value(Color_reflect&, Color_Blue);
+    blue_index_value:*const reflect_value = reflect_value_at(Color_reflect&, 2);
+    missing_index_value:*const reflect_value = reflect_value_at(Color_reflect&, Color_reflect.count);
+    green_name:*const char = reflect_name_from_value(Color_reflect&, Color_Green);
+    missing_name:*const char = reflect_name_from_value(Color_reflect&, 99);
+    generic_kind_field:*const reflect_field = reflect_find_field_with_kind(Player_reflect&, 2);
+    missing_kind_field:*const reflect_field = reflect_find_field_with_kind(Player_reflect&, 4);
+    first_name_kind_field:*const reflect_field = reflect_next_field_with_kind(Player_reflect&, 0, null);
+    second_name_kind_field:*const reflect_field = reflect_next_field_with_kind(Player_reflect&, 0, first_name_kind_field);
+    third_name_kind_field:*const reflect_field = reflect_next_field_with_kind(Player_reflect&, 0, second_name_kind_field);
+    no_more_name_kind_field:*const reflect_field = reflect_next_field_with_kind(Player_reflect&, 0, third_name_kind_field);
     q:Player = {};
-    copy_ok:i32 = reflect_field_copy(&q, &p, hp_field);
+    copy_ok:i32 = reflect_field_copy(q&, p&, hp_field);
     copied_hp:i32 = q.hp;
-    zero_ok:i32 = reflect_field_zero(&q, hp_field);
+    zero_ok:i32 = reflect_field_zero(q&, hp_field);
     zeroed_hp:i32 = q.hp;
-    copy_missing:i32 = reflect_field_copy(null, &p, hp_field);
-    copy_score_ok:i32 = reflect_field_copy_by_name(&q, &p, &Player_reflect, "score");
+    copy_missing:i32 = reflect_field_copy(null, p&, hp_field);
+    copy_score_ok:i32 = reflect_field_copy_by_name(q&, p&, Player_reflect&, "score");
     copied_score:i32 = q.score;
-    zero_score_ok:i32 = reflect_field_zero_by_name(&q, &Player_reflect, "score");
+    zero_score_ok:i32 = reflect_field_zero_by_name(q&, Player_reflect&, "score");
     zeroed_score:i32 = q.score;
-    copy_missing_name:i32 = reflect_field_copy_by_name(&q, &p, &Player_reflect, "missing");
+    copy_missing_name:i32 = reflect_field_copy_by_name(q&, p&, Player_reflect&, "missing");
     printf("%s %llu %llu %llu %s %d %s %d %s %d %s %llu %s %s %s %llu %d %d %s %s %s %d %s %d %d %d %llu %llu %llu %s %d %s %s %d %s %s %s %s %d %d %d %d %d %d %llu %llu %llu %llu %llu %s %d %s %s %s %d %llu %s %d %d %d %d %llu %llu %s %d %s %d %d %d %d %d %d %d %d %d %d %d\n",
         Color_reflect.name,
         Color_reflect.size,
@@ -965,9 +965,9 @@ main:proc()->i32={
         reflect_field_has_attr(hp_field, "editor"),
         reflect_field_has_attr(hp_field, "serialize"),
         reflect_field_has_attr(hp_field, "serial"),
-        reflect_count_fields_with_attr(&Player_reflect, "editor"),
-        reflect_count_fields_with_attr(&Player_reflect, "serialize"),
-        reflect_count_fields_with_attr(&Player_reflect, "missing"),
+        reflect_count_fields_with_attr(Player_reflect&, "editor"),
+        reflect_count_fields_with_attr(Player_reflect&, "serialize"),
+        reflect_count_fields_with_attr(Player_reflect&, "missing"),
         editor_field[0].name,
         missing_attr_field == null,
         first_editor_field[0].name,
@@ -977,17 +977,17 @@ main:proc()->i32={
         reflect_type_kind_name(Player_reflect.variant.fields[2].kind),
         reflect_type_kind_name(999),
         green_name,
-        reflect_value_from_name(&Color_reflect, "Blue", -1),
-        reflect_value_from_name(&Color_reflect, "Missing", -1) + (missing_name == null),
-        reflect_field_is_pointer(&Player_reflect.variant.fields[2]),
-        reflect_field_is_array(&Player_reflect.variant.fields[4]),
-        reflect_field_is_generic(&Player_reflect.variant.fields[5]),
-        reflect_field_is_pointer(&Player_reflect.variant.fields[1]),
-        reflect_count_fields_with_kind(&Player_reflect, 0),
-        reflect_count_fields_with_kind(&Player_reflect, 1),
-        reflect_count_fields_with_kind(&Player_reflect, 2),
-        reflect_count_fields_with_kind(&Player_reflect, 3),
-        reflect_count_fields_with_kind(&Player_reflect, 4),
+        reflect_value_from_name(Color_reflect&, "Blue", -1),
+        reflect_value_from_name(Color_reflect&, "Missing", -1) + (missing_name == null),
+        reflect_field_is_pointer(Player_reflect.variant.fields[2]&),
+        reflect_field_is_array(Player_reflect.variant.fields[4]&),
+        reflect_field_is_generic(Player_reflect.variant.fields[5]&),
+        reflect_field_is_pointer(Player_reflect.variant.fields[1]&),
+        reflect_count_fields_with_kind(Player_reflect&, 0),
+        reflect_count_fields_with_kind(Player_reflect&, 1),
+        reflect_count_fields_with_kind(Player_reflect&, 2),
+        reflect_count_fields_with_kind(Player_reflect&, 3),
+        reflect_count_fields_with_kind(Player_reflect&, 4),
         generic_kind_field[0].name,
         missing_kind_field == null,
         first_name_kind_field[0].name,
@@ -996,12 +996,12 @@ main:proc()->i32={
         no_more_name_kind_field == null,
         reflect_field_end_offset(hp_field),
         hp_containing_field[0].name,
-        reflect_find_field_containing_offset(&Player_reflect, Player_reflect.size) == null,
+        reflect_find_field_containing_offset(Player_reflect&, Player_reflect.size) == null,
         hp_value_ptr[0],
-        reflect_field_const_ptr(&p, hp_field) != null,
+        reflect_field_const_ptr(p&, hp_field) != null,
         reflect_field_ptr(null, hp_field) == null,
-        reflect_field_index(&Player_reflect, hp_field, 999),
-        reflect_find_field_index(&Player_reflect, "score", 999),
+        reflect_field_index(Player_reflect&, hp_field, 999),
+        reflect_find_field_index(Player_reflect&, "score", 999),
         hp_index_field[0].name,
         missing_index_field == null,
         blue_index_value[0].name,
@@ -1091,15 +1091,15 @@ main:proc()->i32={
             break;
         }
     }
-    if (!(total >= 10 and total <= 10 and p.values[2] == 0) or p.values[3] != 6) {
+    if (!(total >= 10 && total <= 10 && p.values[2] == 0) || p.values[3] != 6) {
         total = -1;
     }
     nodes:[3]Node = {};
     nodes[0].value = 11;
     nodes[1].value = 22;
     nodes[2].value = 33;
-    nodes[2].parent = &nodes[0];
-    node_index:long = &nodes[2] - nodes;
+    nodes[2].parent = nodes[0]&;
+    node_index:long = (nodes[2]&) - nodes;
     parent_index:long = nodes[2].parent - nodes;
     printf("%d %llu %llu %llu %llu %d %llu %llu %d %ld %ld %d\n",
         total + TWICE(4),
@@ -1120,6 +1120,43 @@ main:proc()->i32={
         expected_stdout="18 2 4 16 4 3 4 1 1 2 0 11\n",
         generated_contains=("i32 values[4];", "while (", "switch (", "WINCALL platform_add", "TWICE(4)", "#line 1 ", "&(nodes[2]) - nodes", "pointer_depth", "array_count"),
         header_contains=("extern const rin_reflect Packet_reflect;", "i32 values[4];", "WINCALL platform_add"),
+    ),
+    # Address-of is postfix and shares '&' with bitwise AND: it is an address
+    # when nothing that could start an operand follows it. `x&[0]` must index the
+    # address, which C only does if the emitter parenthesises it.
+    Case(
+        name="postfix_addr",
+        source=r'''
+cinclude "stdio.h"
+printf: proc[external](f: *const char, ...)->i32 = {}
+Node: struct = { value: i32; next: *Node; }
+read: proc(p: *i32) -> i32 = { return p[0]; }
+
+main: proc() -> i32 = {
+    nodes: [3]Node = {};
+    nodes[0].value = 10;
+    nodes[1].value = 20;
+    nodes[2].value = 30;
+    nodes[0].next = nodes[1]&;
+    nodes[1].next = nodes[2]&;
+    x: i32 = 6;
+    same: b32 = x&[0] == x;
+    third: i32 = nodes[0].next[0].next[0].value;
+    p: *i32 = nodes[0].next[0].value&;
+    p[0] += 1;
+    eq: b32 = p&==p&;
+    masked: i32 = x & 4;
+    neg: i32 = x & -2;
+    inv: i32 = x & ~2;
+    both: b32 = x > 0 && p& != null || x < 0;
+    second: *Node = nodes[0]&[1]&;
+    printf("%d %d %d %d %d %d %d %d %d %d\n", same, third, read(nodes[1].value&), eq,
+           masked, neg, inv, both, second[0].value, read(x&));
+    return 0;
+}
+''',
+        expected_stdout="1 30 21 1 4 6 4 1 21 6\n",
+        generated_contains=("(&(x))[0]", "(&(nodes[0]))[1]", "(x & 4)", "(x & -2)", "&(p) == &(p)"),
     ),
     Case(
         name="gin_c_surface",
@@ -1241,7 +1278,7 @@ json_read:proc<i32>(out:*i32)->b32 = {
 json_read:proc<Array<T>>(arena:*memops_arena, out:*Array<T>, count:u64)->b32 = {
     out[0] = Array<T>reserve(arena, count);
     for (i:u64 = 0; i < count; i += 1) {
-        if (json_read<T>(out[0].data[i].&) == 0) {
+        if (json_read<T>(out[0].data[i]&) == 0) {
             return 0;
         }
     }
@@ -1252,7 +1289,7 @@ json_read:proc<Vec<T>>(arena:*memops_arena, out:*Vec<T>, count:u64)->b32 = {
     out[0] = Vec<T>reserve(arena, count);
     for (i:u64 = 0; i < count; i += 1) {
         value:T = {};
-        if (json_read<T>(value.&) == 0) {
+        if (json_read<T>(value&) == 0) {
             return 0;
         }
         Vec<T>append(arena, out, value);
@@ -1264,9 +1301,9 @@ main:proc()->i32 = {
     arena:memops_arena = {};
     arr:Array<i32> = {};
     vec:Vec<i32> = {};
-    memops_arena_initialize(arena.&);
-    json_read<Array<i32>>(arena.&, arr.&, 3);
-    json_read<Vec<i32>>(arena.&, vec.&, 2);
+    memops_arena_initialize(arena&);
+    json_read<Array<i32>>(arena&, arr&, 3);
+    json_read<Vec<i32>>(arena&, vec&, 2);
     printf("%llu %d %d %llu %llu %d %d\n", arr.length, arr.data[0], arr.data[2], vec.length, vec.border, vec.data[0], vec.data[1]);
     return 0;
 }
@@ -1395,11 +1432,11 @@ main:proc()->i32 = {
     nodes:[2]Node = {};
     nodes[0].value = 10;
     nodes[1].value = 20;
-    nodes[0].next = nodes[1].&;
-    nodes[0].next.*.value += 5;
-    roundtrip:*Node = nodes[0].next.*.&;
-    roundtrip.*.value += 2;
-    printf("%d %d %d\n", nodes[0].value, nodes[1].value, roundtrip.*.value);
+    nodes[0].next = nodes[1]&;
+    nodes[0].next[0].value += 5;
+    roundtrip:*Node = nodes[0].next[0]&;
+    roundtrip[0].value += 2;
+    printf("%d %d %d\n", nodes[0].value, nodes[1].value, roundtrip[0].value);
     return 0;
 }
 ''',
@@ -1499,7 +1536,7 @@ main:proc()->i32 = {
     payload.values[0] = 3;
     payload.values[1] = 4;
     payload.values[2] = 5;
-    result:i32 = shared_sum(&payload);
+    result:i32 = shared_sum(payload&);
     printf("%d %s %llu %d\n", result, SharedPayload_reflect.variant.fields[0].name, SharedKind_reflect.count, SharedKind_Add);
     return 0;
 }
@@ -2306,7 +2343,7 @@ ok_cb:proc(x:i32)->i32 = {
 main:proc()->i32 = {
     value:i32 = 1;
     cb:Callback = ok_cb;
-    return cb(value.&);
+    return cb(value&);
 }
 ''',
             "proc pointer 'cb' argument 1 'x' expected 'i32', got 'ptr_i32'",
@@ -2438,7 +2475,7 @@ main:proc()->i32 = {
             "check_json_address_target",
             r'''
 main:proc()->i32 = {
-    value:*i32 = (1 + 2).&;
+    value:*i32 = (1 + 2)&;
     return 0;
 }
 ''',
@@ -2461,7 +2498,7 @@ main:proc()->i32 = {
             r'''
 main:proc()->i32 = {
     values:[2]i32 = {};
-    index:*i32 = values[0].&;
+    index:*i32 = values[0]&;
     return values[index];
 }
 ''',
@@ -2536,7 +2573,7 @@ main:proc()->i32 = {
             r'''
 main:proc()->i32 = {
     x:i32 = 0;
-    p:*i32 = x.&;
+    p:*i32 = x&;
     x = p;
     return x;
 }
@@ -3623,7 +3660,7 @@ main:proc()->i32 = {
     # `i32 external printf(const char *, ...);` -- invalid C from a declaration
     # that had parsed cleanly. Nothing named printf should be emitted at all.
     if "external printf" in emitted_c or "i32 printf(" in emitted_c:
-        print("decl_attributes: proc[external] must emit no definition or prototype")
+        print("decl_attributes: proc[external] must emit no definition || prototype")
         print(emitted_c)
         return 1
 
@@ -4439,7 +4476,7 @@ main:proc()->i32 = {
     decl_c = TEST_DIR / "decl_attribute_rule.c"
     decl_exe = TEST_DIR / "decl_attribute_rule.exe"
     decl_i.write_text(
-        "cinclude \"stdio.h\"\nprintf: proc[external](f: *const char, ...)->i32 = {}\nP: struct = { a: u8; b: i32[align(16)]; }\ng_buf: [4]f32[align(64)] = {};\nmain:proc()->i32 = {\n    v: i32[align(32)] = 5;\n    printf(\"%d %d %d %d\", cast(alignof(P), i32), cast(sizeof(P), i32),\n        cast(cast(g_buf.&, uintptr) % 64, i32),\n        cast(cast(v.&, uintptr) % 32, i32));\n    return 0;\n}\n",
+        "cinclude \"stdio.h\"\nprintf: proc[external](f: *const char, ...)->i32 = {}\nP: struct = { a: u8; b: i32[align(16)]; }\ng_buf: [4]f32[align(64)] = {};\nmain:proc()->i32 = {\n    v: i32[align(32)] = 5;\n    printf(\"%d %d %d %d\", cast(alignof(P), i32), cast(sizeof(P), i32),\n        cast(cast(g_buf&, uintptr) % 64, i32),\n        cast(cast(v&, uintptr) % 32, i32));\n    return 0;\n}\n",
         encoding="utf-8", newline="\n")
     gen = run([str(RIN_EXE), "compile", str(decl_i), "-o", str(decl_c), "--no-header"])
     if gen.returncode != 0:
@@ -4870,7 +4907,7 @@ main:proc()->i32 = {
         ("E: enum = { A, B }\ng: E = E.B;\nmain: proc() -> i32 = { return 0; }\n", "an enum member"),
         ("E: enum = { A, B }\ng: u64 = E<>.count;\nmain: proc() -> i32 = { return 0; }\n",
          "a reflection count"),
-        ("g_b: i32 = 5;\ng_p: *i32 = g_b.&;\nmain: proc() -> i32 = { return 0; }\n",
+        ("g_b: i32 = 5;\ng_p: *i32 = g_b&;\nmain: proc() -> i32 = { return 0; }\n",
          "the address of a global"),
         ("S: struct = { x: i32; y: i32; }\ng: S = { .x = 1, .y = 2 };\n"
          "main: proc() -> i32 = { return 0; }\n", "an initialiser list"),
@@ -4931,7 +4968,7 @@ main:proc()->i32 = {
     tf_c = TEST_DIR / "true_false.c"
     tf_exe = TEST_DIR / "true_false.exe"
     tf_i.write_text(
-        "cinclude \"stdio.h\"\nprintf: proc[external](f: *const char, ...)->i32 = {}\ng_on: b32 = true;\nmain:proc()->i32 = {\n    f: b32 = false;\n    if (g_on and !f) { printf(\"%d %d\", g_on, f); }\n    return 0;\n}\n",
+        "cinclude \"stdio.h\"\nprintf: proc[external](f: *const char, ...)->i32 = {}\ng_on: b32 = true;\nmain:proc()->i32 = {\n    f: b32 = false;\n    if (g_on && !f) { printf(\"%d %d\", g_on, f); }\n    return 0;\n}\n",
         encoding="utf-8", newline="\n")
     gen = run([str(RIN_EXE), "compile", str(tf_i), "-o", str(tf_c), "--no-header"])
     if gen.returncode != 0:
@@ -5062,7 +5099,7 @@ main:proc()->i32 = {
     status_c = TEST_DIR / "status_enum_errors.c"
     status_exe = TEST_DIR / "status_enum_errors.exe"
     status_i.write_text(
-        "import \"std/Print.rin\"\nimport \"std/reflect.rin\"\nmesh_status: enum = { success, file_not_found, bad_magic, }\ngeo_mesh: struct = { points: i32; }\nmesh_load: proc(mesh: *geo_mesh) -> mesh_status = {\n    return mesh_status.bad_magic;\n}\nmain: proc() -> i32 = {\n    mesh: geo_mesh = {};\n    e: mesh_status = mesh_load(mesh.&);\n    if (e != mesh_status.success) {\n        printfmt(\"{} {}\",\n            reflect_name_from_value_or(e<>.&, cast(e, i32), \"?\"),\n            reflect_name_from_value_or(e<>.&, 99, \"<unknown>\"));\n    }\n    return 0;\n}\n",
+        "import \"std/Print.rin\"\nimport \"std/reflect.rin\"\nmesh_status: enum = { success, file_not_found, bad_magic, }\ngeo_mesh: struct = { points: i32; }\nmesh_load: proc(mesh: *geo_mesh) -> mesh_status = {\n    return mesh_status.bad_magic;\n}\nmain: proc() -> i32 = {\n    mesh: geo_mesh = {};\n    e: mesh_status = mesh_load(mesh&);\n    if (e != mesh_status.success) {\n        printfmt(\"{} {}\",\n            reflect_name_from_value_or(e<>&, cast(e, i32), \"?\"),\n            reflect_name_from_value_or(e<>&, 99, \"<unknown>\"));\n    }\n    return 0;\n}\n",
         encoding="utf-8", newline="\n")
     gen = run([str(RIN_EXE), "compile", str(status_i), "-o", str(status_c), "--no-header"])
     if gen.returncode != 0:
@@ -5617,8 +5654,8 @@ NativeBox:struct[external]<T> = {
 
 main:proc()->i32 = {
     arena:memops_arena = {};
-    memops_arena_initialize(arena.&);
-    values:Array<i32> = Array<i32>reserve(arena.&, 3);
+    memops_arena_initialize(arena&);
+    values:Array<i32> = Array<i32>reserve(arena&, 3);
     values.data[0] = 4;
     values.data[1] = 5;
     values.data[2] = 6;
@@ -6474,7 +6511,7 @@ main:proc()->i32 = {
     if (
         type_pointer.returncode == 0
         or "type error: initializer expected 'ptr_i32', got 'i32'" not in type_pointer.stdout
-        or "note: expected a pointer; use '.&' to take the value address" not in type_pointer.stdout
+        or "note: expected a pointer; use a postfix '&' to take the value address" not in type_pointer.stdout
         or "    p:*i32 = x;" not in type_pointer.stdout
         or "    ^" not in type_pointer.stdout
     ):
@@ -6496,7 +6533,7 @@ main:proc()->i32 = {
     if (
         type_array_elem.returncode == 0
         or "type error: initializer expected 'ptr_i32', got 'i32'" not in type_array_elem.stdout
-        or "note: expected a pointer; use '.&' to take the value address" not in type_array_elem.stdout
+        or "note: expected a pointer; use a postfix '&' to take the value address" not in type_array_elem.stdout
     ):
         print("type_array_element_inference: expected fixed-array element type diagnostic")
         print(type_array_elem.stdout)
@@ -6523,7 +6560,7 @@ main:proc()->i32 = {
     type_index_value_i.write_text(r'''
 main:proc()->i32 = {
     values:[2]i32 = {};
-    index:*i32 = values[0].&;
+    index:*i32 = values[0]&;
     return values[index];
 }
 '''.strip() + "\n", encoding="utf-8", newline="\n")
@@ -6538,7 +6575,7 @@ main:proc()->i32 = {
     type_addr_literal_c = TEST_DIR / "type_address_literal.c"
     type_addr_literal_i.write_text(r'''
 main:proc()->i32 = {
-    p:*i32 = 1.&;
+    p:*i32 = 1&;
     return 0;
 }
 '''.strip() + "\n", encoding="utf-8", newline="\n")
@@ -6557,7 +6594,7 @@ main:proc()->i32 = {
     type_addr_binary_i.write_text(r'''
 main:proc()->i32 = {
     value:i32 = 1;
-    p:*i32 = (value + 1).&;
+    p:*i32 = (value + 1)&;
     return 0;
 }
 '''.strip() + "\n", encoding="utf-8", newline="\n")
@@ -6579,7 +6616,7 @@ get_value:proc()->i32 = {
 }
 
 main:proc()->i32 = {
-    p:*i32 = get_value().&;
+    p:*i32 = get_value()&;
     return 0;
 }
 '''.strip() + "\n", encoding="utf-8", newline="\n")
@@ -6602,7 +6639,7 @@ Payload:struct = {
 
 main:proc()->i32 = {
     payload:Payload = {};
-    p:*i32 = payload.value.&;
+    p:*i32 = payload.value&;
     p[0] = 7;
     return payload.value;
 }
@@ -7331,7 +7368,7 @@ main:proc()->i32 = {
     type_pointer_to_value_assign_i.write_text(r'''
 main:proc()->i32 = {
     x:i32 = 0;
-    p:*i32 = x.&;
+    p:*i32 = x&;
     x = p;
     return x;
 }
@@ -7582,7 +7619,7 @@ main:proc()->i32 = {
     type_binary_logic_c = TEST_DIR / "type_binary_logic_inference.c"
     type_binary_logic_i.write_text(r'''
 main:proc(p:*i32, q:*i32)->i32 = {
-    ok:b32 = p == null or q != null;
+    ok:b32 = p == null || q != null;
     return ok;
 }
 '''.strip() + "\n", encoding="utf-8", newline="\n")
@@ -7958,7 +7995,7 @@ main:proc()->i32 = {
     if (
         type_call.returncode == 0
         or "type error: proc 'take_ptr' argument 1 'p' expected 'ptr_i32', got 'i32'" not in type_call.stdout
-        or "note: expected a pointer; use '.&' to take the value address" not in type_call.stdout
+        or "note: expected a pointer; use a postfix '&' to take the value address" not in type_call.stdout
         or "    take_ptr(x);" not in type_call.stdout
         or "^" not in type_call.stdout
         or f"{type_call_i}:1:15: note: parameter 'p' declared here" not in type_call.stdout
@@ -8016,7 +8053,7 @@ main:proc()->i32 = {
         import_type_call.returncode == 0
         or str(import_type_call_app) not in import_type_call.stdout
         or "type error: proc 'take_ptr' argument 1 'p' expected 'ptr_i32', got 'i32'" not in import_type_call.stdout
-        or "note: expected a pointer; use '.&' to take the value address" not in import_type_call.stdout
+        or "note: expected a pointer; use a postfix '&' to take the value address" not in import_type_call.stdout
         or "    take_ptr(x);" not in import_type_call.stdout
         or "^" not in import_type_call.stdout
         or f"{import_type_call_mod}:1:15: note: parameter 'p' declared here" not in import_type_call.stdout
@@ -8061,7 +8098,7 @@ ok_cb:proc(x:i32)->i32 = {
 main:proc()->i32 = {
     value:i32 = 1;
     cb:Callback = ok_cb;
-    return cb(value.&);
+    return cb(value&);
 }
 '''.strip() + "\n", encoding="utf-8", newline="\n")
     type_proc_ptr_call_arg = run([str(RIN_EXE), str(type_proc_ptr_call_arg_i), str(type_proc_ptr_call_arg_c)])
@@ -8070,7 +8107,7 @@ main:proc()->i32 = {
         or "type error: proc pointer 'cb' argument 1 'x' expected 'i32', got 'ptr_i32'" not in type_proc_ptr_call_arg.stdout
         or "note: got a pointer; use '[0]' to access the pointed value" not in type_proc_ptr_call_arg.stdout
         or "note: expected params: x:i32" not in type_proc_ptr_call_arg.stdout
-        or "    return cb(value.&);" not in type_proc_ptr_call_arg.stdout
+        or "    return cb(value&);" not in type_proc_ptr_call_arg.stdout
         or "^" not in type_proc_ptr_call_arg.stdout
     ):
         print("type_proc_pointer_call_arg: expected proc pointer call argument diagnostic")
@@ -8421,7 +8458,7 @@ walk:proc(meta:*const reflect)->u64 = {
     return meta[0].variant.fields[0].offset;
 }
 main:proc()->i32 = {
-    return cast(walk(Point<>.&) + walk(Color<>.&) + Point<>.variant.fields[0].offset, i32);
+    return cast(walk(Point<>&) + walk(Color<>&) + Point<>.variant.fields[0].offset, i32);
 }
 """,
         encoding="utf-8", newline="\n")
@@ -8827,7 +8864,7 @@ main:proc()->i32 = {
     take_float(0);
     take_u8(1);
     take_vec(v);
-    take_vec_ptr(v.&);
+    take_vec_ptr(v&);
     return hr + result + is_ready();
 }
 '''.strip() + "\n", encoding="utf-8", newline="\n")
@@ -9563,6 +9600,26 @@ typedef struct IB_FilterPayload {
     # Error recovery: one bad construct must not hide the rest of the file, and must
     # not invent follow-on errors in code that is actually fine.
     recovery_cases = (
+        # The old pointer and logic spellings are errors that name the new form,
+        # and each still parses, so one file reports every site at once.
+        (
+            "old_pointer_spellings",
+            r'''
+S:struct = { f:i32; }
+main:proc()->i32 = {
+    s:S = {};
+    a:*S = s.&;
+    b:*S = &s;
+    c:i32 = a.*.f;
+    if (c and 1) { return 1; }
+    if (c or 1) { return 2; }
+    return 0;
+}
+''',
+            ("'.&' was removed", "prefix '&' was removed", "'.*' was removed",
+             "'and' was removed; write '&&'", "'or' was removed; write '||'"),
+            (),
+        ),
         (
             "recovery_multi_semantic",
             r'''
@@ -9738,7 +9795,7 @@ main:proc()->i32 = {
     )
     exempt = run([str(RIN_EXE), "compile", str(exempt_i), "-o", str(exempt_c), "--no-header"])
     if exempt.returncode != 0:
-        print("init_exemptions: struct fields, params, and '= ?' should all be accepted")
+        print("init_exemptions: struct fields, params, && '= ?' should all be accepted")
         print(exempt.stdout)
         return 1
     exempt_generated = exempt_c.read_text(encoding="utf-8")
@@ -9950,7 +10007,7 @@ main:proc()->i32 = {
         "    g_vtbl.add = add_impl;\n"
         "    g_vtbl.scale = scale_impl;\n"
         "    obj:Obj = {};\n"
-        "    obj.vtbl = g_vtbl.&;\n"
+        "    obj.vtbl = g_vtbl&;\n"
         "    obj.bias = 1;\n"
         "    g_table[0] = scale_impl;\n"
         "    direct:i32 = g_vtbl.add(2, 3);\n"
@@ -10130,7 +10187,7 @@ main:proc()->i32 = {
     # and the second one claimed a pointer "has no field", which is misleading.
     fieldless_i.write_text(
         "P:struct = { x: i32; }\n"
-        "main:proc()->i32 = { p:P = {}; q:*P = p.&; return q.bogus; }\n",
+        "main:proc()->i32 = { p:P = {}; q:*P = p&; return q.bogus; }\n",
         encoding="utf-8", newline="\n",
     )
     dup = run([str(RIN_EXE), "check", str(fieldless_i)])
@@ -10341,12 +10398,12 @@ main:proc()->i32 = {
     # object file would carry its own Box_i32_make and the link would fail.
     (mod_dir / "alpha.rin").write_text(
         'import "shared.rin"\n'
-        "alpha_val: proc()->i32 = { b: Box<i32> = Box<i32>make(10); return Box<i32>get(b.&); }\n",
+        "alpha_val: proc()->i32 = { b: Box<i32> = Box<i32>make(10); return Box<i32>get(b&); }\n",
         encoding="utf-8", newline="\n",
     )
     (mod_dir / "beta.rin").write_text(
         'import "shared.rin"\n'
-        "beta_val: proc()->i32 = { b: Box<i32> = Box<i32>make(32); return Box<i32>get(b.&); }\n",
+        "beta_val: proc()->i32 = { b: Box<i32> = Box<i32>make(32); return Box<i32>get(b&); }\n",
         encoding="utf-8", newline="\n",
     )
     # main imports both, so main.h includes alpha.h and beta.h -- and both of

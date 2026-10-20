@@ -78,7 +78,7 @@ struct_in_array: proc() -> i32 = {
 alias_through_pointer: proc() -> i32 = {
     a: P = {};
     a.x = 4;
-    p: *P = a.&;
+    p: *P = a&;
     p[0].x = 12;
     return a.x;
 }

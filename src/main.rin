@@ -18,7 +18,7 @@ main: proc(argc: i32, argv: **char)-> i32 = {
     // array: *[]i32 = {};
 
     arena: memops_arena = {};
-    memops_arena_initialize(&arena);
+    memops_arena_initialize(arena&);
 
     p: payload = {};
     name: *const char = payload<>.name;
@@ -28,14 +28,14 @@ main: proc(argc: i32, argv: **char)-> i32 = {
     }
 
     len: i32 = 16;
-    temp: memops_arena_temp = memops_arena_temp_begin(&arena);
+    temp: memops_arena_temp = memops_arena_temp_begin(arena&);
     payloads: Array<payload> = Array<payload>reserve(temp.arena, 128);
     for (i: i32 = 0; i < 128; i += 1) {
         payloads.data[i] = { .x = i };
     }
     memops_arena_temp_end(temp);
 
-    numbers: Array<i32> = Array<i32>reserve(&arena, len);
+    numbers: Array<i32> = Array<i32>reserve(arena&, len);
     for (i: i32 = 0; i < len; i += 1) { 
         numbers.data[i] = i; 
     }
@@ -43,15 +43,15 @@ main: proc(argc: i32, argv: **char)-> i32 = {
         printfmt("i = {}, ", numbers.data[i]); 
     }
 
-    numberchain: *List<payload> = List<payload>create(&arena);
-    List<payload>append(arena.&, numberchain, { .x = 3.16 });
-    List<payload>append(arena.&, numberchain, { .x = 8.6 });
-    List<payload>append(arena.&, numberchain, {});
+    numberchain: *List<payload> = List<payload>create(arena&);
+    List<payload>append(arena&, numberchain, { .x = 3.16 });
+    List<payload>append(arena&, numberchain, { .x = 8.6 });
+    List<payload>append(arena&, numberchain, {});
 
-    node: *Node<payload> = numberchain.*.head;
-    for (i: i32 = 0; i < numberchain.*.length; i += 1) {
-        printf("%f", node.*.data.x);
-        node = node.*.next;
+    node: *Node<payload> = numberchain[0].head;
+    for (i: i32 = 0; i < numberchain[0].length; i += 1) {
+        printf("%f", node[0].data.x);
+        node = node[0].next;
     }
 
     return 0;

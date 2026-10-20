@@ -55,21 +55,21 @@ Vec<T>append: proc<T>(arena: *memops_arena, array: *Vec<T>, elem: T) -> *T = {
         Vec<T>resize(arena, array);
     }
     array[0].data[array[0].length] = elem;
-    result: *T = array[0].data[array[0].length].&;
+    result: *T = array[0].data[array[0].length]&;
     array[0].length += 1;
     return result;
 }
 
 Vec<T>at: proc<T>(array: *Vec<T>, index: u64) -> *T = {
-    if (array == null or index >= array[0].length) {
+    if (array == null || index >= array[0].length) {
         printf("rin runtime: Vec index out of bounds\n");
         exit(1);
     }
-    return array[0].data[index].&;
+    return array[0].data[index]&;
 }
 
 Vec<T>get: proc<T>(array: *Vec<T>, index: u64) -> Option<T> = {
-    if (array == null or index >= array[0].length) {
+    if (array == null || index >= array[0].length) {
         return Option<T>none();
     }
     return Option<T>some(array[0].data[index]);
@@ -82,5 +82,5 @@ Vec<T>clear: proc<T>(array: *Vec<T>) -> void = {
 }
 
 Vec<T>is_empty: proc<T>(array: *Vec<T>) -> b32 = {
-    return array == null or array[0].length == 0;
+    return array == null || array[0].length == 0;
 }

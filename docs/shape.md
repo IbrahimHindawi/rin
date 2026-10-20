@@ -432,7 +432,7 @@ of confusion.
 > writing `x != 0 and y != 0` stays a convention. Listed with the rest of the
 > deliberately-unsafe inheritances in [`safety.md`](safety.md).
 >
-> **Spelling proposed to change:** `and` / `or` become `&&` / `||`, truthiness
+> **Spelling changed:** `and` / `or` are now `&&` / `||`, truthiness
 > unchanged. See [`operators-and-conversions.md`](operators-and-conversions.md).
 
 ### 4.2 Arithmetic right shift

@@ -38,7 +38,7 @@ torture_sum: proc(pair: TorturePair, kind: TortureKind) -> i32 = {
         total -= 1;
     } while (total > 20);
     masked: i32 = (total shl 1) shr 1;
-    return (masked == total and kind != TortureKind_C) ? total : 0;
+    return (masked == total && kind != TortureKind_C) ? total : 0;
 }
 
 main: proc() -> i32 = {

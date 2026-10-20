@@ -39,7 +39,7 @@ List<T>prepend: proc<T>(arena: *memops_arena, list: *List<T>, item: T) -> void =
 }
 
 List<T>insert_at: proc<T>(arena: *memops_arena, list: *List<T>, item: T, index: i32) -> void = {
-    if (list == null or index < 0 or cast(index, usize) > list[0].length) {
+    if (list == null || index < 0 || cast(index, usize) > list[0].length) {
         printf("rin runtime: List invalid index\n");
         return;
     }
@@ -69,7 +69,7 @@ List<T>get_length: proc<T>(arena: *memops_arena, list: *List<T>) -> usize = {
 }
 
 List<T>get_at: proc<T>(arena: *memops_arena, list: *List<T>, index: i32) -> *Node<T> = {
-    if (list == null or index < 0 or cast(index, usize) >= list[0].length) {
+    if (list == null || index < 0 || cast(index, usize) >= list[0].length) {
         return null;
     }
     iter: *Node<T> = list[0].head;
@@ -85,7 +85,7 @@ List<T>get_at: proc<T>(arena: *memops_arena, list: *List<T>, index: i32) -> *Nod
 }
 
 List<T>remove_at: proc<T>(arena: *memops_arena, list: *List<T>, index: i32) -> *Node<T> = {
-    if (list == null or index < 0 or cast(index, usize) >= list[0].length) {
+    if (list == null || index < 0 || cast(index, usize) >= list[0].length) {
         return null;
     }
     iter: *Node<T> = list[0].head;
@@ -110,7 +110,7 @@ List<T>remove_at: proc<T>(arena: *memops_arena, list: *List<T>, index: i32) -> *
 }
 
 List<T>remove: proc<T>(arena: *memops_arena, list: *List<T>, item: T) -> *Node<T> = {
-    if (list == null or list[0].length == 0) {
+    if (list == null || list[0].length == 0) {
         return null;
     }
     iter: *Node<T> = list[0].head;
@@ -140,5 +140,5 @@ List<T>destroy: proc<T>(arena: *memops_arena, list: *List<T>) -> void = {
 }
 
 List<T>is_empty: proc<T>(list: *List<T>) -> b32 = {
-    return list == null or list[0].length == 0;
+    return list == null || list[0].length == 0;
 }

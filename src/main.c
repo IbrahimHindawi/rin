@@ -397,6 +397,8 @@ typedef enum TokenKind {
     Token_Ampersand,
     Token_Caret,
     Token_Pipe,
+    Token_AmpAmp,
+    Token_PipePipe,
     Token_Dot,
     Token_Ellipsis,
     Token_At,
@@ -485,6 +487,8 @@ static const char *token_kind_name(TokenKind kind) {
         case Token_Ampersand: return "'&'";
         case Token_Caret: return "'^'";
         case Token_Pipe: return "'|'";
+        case Token_AmpAmp: return "'&&'";
+        case Token_PipePipe: return "'||'";
         case Token_Dot: return "'.'";
         case Token_Ellipsis: return "'...'";
         case Token_At: return "'@'";
@@ -824,6 +828,7 @@ typedef struct Parser {
     i32 stmt_depth;    // so do if/while/for bodies
     bool reported_depth;
     Vec_voidptr *pending_array_counts; // borrowed from the Program being parsed
+    i32 last_error_token; // token index of the most recent parse error
 } Parser;
 
 /* Types and statements recurse through their own functions, so the expression
@@ -1619,7 +1624,22 @@ static void lex_tokens(memops_arena *arena, string8 src, Vec_Token *out_tokens,
                 col += 2;
                 continue;
             }
-            if (c == '&' && p[1] == '=') {
+            if (c == '&' && p[1] == '&') {
+                Vec_Token_append(arena, out_tokens, token_make(Token_AmpAmp, string8slice_from_parts(p, 2), line, col));
+                p += 2;
+                col += 2;
+                continue;
+            }
+            if (c == '|' && p[1] == '|') {
+                Vec_Token_append(arena, out_tokens, token_make(Token_PipePipe, string8slice_from_parts(p, 2), line, col));
+                p += 2;
+                col += 2;
+                continue;
+            }
+            /* `p&==q` is the address of p compared with q, not `&=` followed by
+               `=`: with a postfix `&`, an `&` directly before `==` belongs to
+               the operand on its left. */
+            if (c == '&' && p[1] == '=' && p[2] != '=') {
                 Vec_Token_append(arena, out_tokens, token_make(Token_AmpersandEqual, string8slice_from_parts(p, 2), line, col));
                 p += 2;
                 col += 2;
@@ -1897,6 +1917,9 @@ static void parser_print_context_range(Parser *p, Token *t, i32 range_len) {
 }
 
 static void parser_print_error(Parser *p, Token *t, const char *msg, TokenKind expected, bool has_expected) {
+    if (t >= p->tokens.data && t < p->tokens.data + p->tokens.length) {
+        p->last_error_token = (i32)(t - p->tokens.data);
+    }
     if (g_diag_json) {
         char message[1024];
         if (t->text.length > 0) {
@@ -2754,6 +2777,35 @@ static Expr *parse_primary(Parser *p) {
     return null;
 }
 
+/* Whether a token can begin an operand. A postfix `&` stands where a binary
+   operator would, so it is told apart from bitwise AND by what follows it:
+   `buf[i]&)` takes an address, `flags & mask` is AND. Every token that can
+   start an operand reads as AND; everything else ends the operand. */
+static bool token_starts_operand(TokenKind kind) {
+    switch (kind) {
+        case Token_Identifier:
+        case Token_Number:
+        case Token_String:
+        case Token_Char:
+        case Token_LParen:
+        case Token_LBrace:
+        case Token_Keyword_True:
+        case Token_Keyword_False:
+        case Token_Ampersand:
+        case Token_Bang:
+        case Token_Minus:
+        case Token_Tilde:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static bool parser_at_postfix_addr(Parser *p) {
+    return parser_peek(p)->kind == Token_Ampersand &&
+           !token_starts_operand(parser_peek_n(p, 1)->kind);
+}
+
 static Expr *parse_postfix(Parser *p, Expr *base) {
     Expr *result = base;
     for (;;) {
@@ -2767,9 +2819,19 @@ static Expr *parse_postfix(Parser *p, Expr *base) {
            every primary in the program, and charging that would halve the budget
            for expressions with no postfix at all. */
         TokenKind ahead = parser_peek(p)->kind;
-        if ((ahead == Token_LBracket || ahead == Token_Dot) &&
+        bool postfix_addr = parser_at_postfix_addr(p);
+        if ((ahead == Token_LBracket || ahead == Token_Dot || postfix_addr) &&
             !parser_note_expr_node(p)) {
             return result;
+        }
+        if (postfix_addr) {
+            Token *amp = parser_next(p);
+            Expr *addr = expr_new(p->arena, Expr_Addr);
+            addr->inner = result;
+            addr->line = amp->line;
+            addr->col = amp->col;
+            result = addr;
+            continue;
         }
         if (parser_match(p, Token_LBracket)) {
             Token *lb = parser_prev(p);
@@ -2785,7 +2847,11 @@ static Expr *parse_postfix(Parser *p, Expr *base) {
         }
         if (parser_match(p, Token_Dot)) {
             Token *dot = parser_prev(p);
+            /* `.*` and `.&` were the old postfix spellings. `.` now means member
+               access and nothing else; both still build their node so checking
+               carries on past the error. */
             if (parser_match(p, Token_Star)) {
+                parser_error_token(p, parser_prev(p), "'.*' was removed; dereference with '[0]'");
                 Expr *idx = expr_new(p->arena, Expr_Index);
                 idx->base = result;
                 idx->index_expr = expr_number_zero(p->arena, dot->line, dot->col);
@@ -2795,6 +2861,7 @@ static Expr *parse_postfix(Parser *p, Expr *base) {
                 continue;
             }
             if (parser_match(p, Token_Ampersand)) {
+                parser_error_token(p, parser_prev(p), "'.&' was removed; take the address with a postfix '&', as 'x&'");
                 Expr *addr = expr_new(p->arena, Expr_Addr);
                 addr->inner = result;
                 addr->line = dot->line;
@@ -2855,6 +2922,9 @@ static Expr *parse_unary(Parser *p) {
     }
     if (parser_match(p, Token_Ampersand)) {
         Token *op_tok = parser_prev(p);
+        /* Address-of is postfix: `x&`, read left to right with `[0]` and `.f`.
+           The prefix form still parses, so one mistake does not end checking. */
+        parser_error_token(p, op_tok, "prefix '&' was removed; write the address after its operand, as 'x&'");
         Expr *e = expr_new(p->arena, Expr_Addr);
         e->inner = parse_unary(p);
         e->line = op_tok->line;
@@ -3063,8 +3133,11 @@ static Expr *parse_bitwise_or(Parser *p) {
 
 static Expr *parse_logical_and(Parser *p) {
     Expr *left = parse_equality(p);
-    while (parser_peek(p)->kind == Token_Keyword_And) {
+    while (parser_peek(p)->kind == Token_AmpAmp || parser_peek(p)->kind == Token_Keyword_And) {
         Token *op_tok = parser_peek(p);
+        if (op_tok->kind == Token_Keyword_And) {
+            parser_error_token(p, op_tok, "'and' was removed; write '&&'");
+        }
         parser_next(p);
         Expr *right = parse_equality(p);
         if (!parser_note_expr_node(p)) {
@@ -3073,7 +3146,7 @@ static Expr *parse_logical_and(Parser *p) {
         Expr *bin = expr_new(p->arena, Expr_Binary);
         bin->left = left;
         bin->right = right;
-        bin->op = Token_Keyword_And;
+        bin->op = Token_AmpAmp;
         bin->line = op_tok->line;
         bin->col = op_tok->col;
         left = bin;
@@ -3083,8 +3156,11 @@ static Expr *parse_logical_and(Parser *p) {
 
 static Expr *parse_logical_or(Parser *p) {
     Expr *left = parse_logical_and(p);
-    while (parser_peek(p)->kind == Token_Keyword_Or) {
+    while (parser_peek(p)->kind == Token_PipePipe || parser_peek(p)->kind == Token_Keyword_Or) {
         Token *op_tok = parser_peek(p);
+        if (op_tok->kind == Token_Keyword_Or) {
+            parser_error_token(p, op_tok, "'or' was removed; write '||'");
+        }
         parser_next(p);
         Expr *right = parse_logical_and(p);
         if (!parser_note_expr_node(p)) {
@@ -3093,7 +3169,7 @@ static Expr *parse_logical_or(Parser *p) {
         Expr *bin = expr_new(p->arena, Expr_Binary);
         bin->left = left;
         bin->right = right;
-        bin->op = Token_Keyword_Or;
+        bin->op = Token_PipePipe;
         bin->line = op_tok->line;
         bin->col = op_tok->col;
         left = bin;
@@ -3231,7 +3307,18 @@ static Stmt *parse_stmt_recovering(Parser *p) {
     i32 index_before = p->index;
     Stmt *s = parse_stmt(p);
     if (p->index == index_before) parser_next(p);
-    if (g_error_count > errors_before) parser_sync_to_stmt_end(p);
+    /* A statement whose error came before its own closing ';' or '}' parsed to
+       the end and is already resynchronized. Skipping ahead again would swallow
+       the next statement, and with it any error of its own -- `q = &s;` followed
+       by `r = &t;` would report only the first. When the error is *at* that last
+       token -- `return 1 }`, where the `}` was taken in place of a missing ';' --
+       the statement did not end cleanly and the old resync still applies. */
+    if (g_error_count > errors_before) {
+        TokenKind last = parser_prev(p)->kind;
+        bool ended_cleanly = (last == Token_Semicolon || last == Token_RBrace) &&
+                             p->last_error_token < p->index - 1;
+        if (!ended_cleanly) parser_sync_to_stmt_end(p);
+    }
     return s;
 }
 
@@ -9801,7 +9888,7 @@ static TypeExpr *infer_expr_type(Expr *e, TypeScope *scope, Program *prog, memop
         if (e->op == Token_LAngle || e->op == Token_RAngle ||
             e->op == Token_LessEqual || e->op == Token_GreaterEqual ||
             e->op == Token_EqualEqual || e->op == Token_BangEqual ||
-            e->op == Token_Keyword_And || e->op == Token_Keyword_Or) {
+            e->op == Token_AmpAmp || e->op == Token_PipePipe) {
             return type_name_expr(arena, "b32");
         }
         if (e->op == Token_Minus && left && right && left->kind == Type_Ptr && right->kind == Type_Ptr) {
@@ -10559,7 +10646,7 @@ static void type_note_pointer_value_mismatch(
     if (expected->kind == Type_Ptr && actual->kind != Type_Ptr && actual->kind != Type_Array) {
         if (type_expr_equal_ignoring_top_const(prog, expected->elem, actual)) {
             printf(
-                "%s:0:0: note: expected a pointer; use '.&' to take the value address\n",
+                "%s:0:0: note: expected a pointer; use a postfix '&' to take the value address\n",
                 g_diag_source_path ? g_diag_source_path : g_source_path
             );
         }
@@ -10588,7 +10675,7 @@ static void type_json_note_pointer_value_mismatch(
 
     if (expected->kind == Type_Ptr && actual->kind != Type_Ptr && actual->kind != Type_Array) {
         if (type_expr_equal_ignoring_top_const(prog, expected->elem, actual)) {
-            diag_json_note_cstr(has_note, diag_current_path(), 0, 0, "expected a pointer; use '.&' to take the value address");
+            diag_json_note_cstr(has_note, diag_current_path(), 0, 0, "expected a pointer; use a postfix '&' to take the value address");
         }
         return;
     }
@@ -12661,7 +12748,7 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
     } else if (e->op == Token_EqualEqual || e->op == Token_BangEqual) {
         ok = type_compatible(prog, left, right) ||
              type_compatible(prog, right, left);
-    } else if (e->op == Token_Keyword_And || e->op == Token_Keyword_Or) {
+    } else if (e->op == Token_AmpAmp || e->op == Token_PipePipe) {
         ok = type_is_truthy(prog, left) && type_is_truthy(prog, right);
     } else {
         ok = true;
@@ -13590,9 +13677,9 @@ static void emit_binary_op(memops_arena *arena, string8 *out, TokenKind op) {
         emit_cstr(arena, out, " ^ ");
     } else if (op == Token_Pipe) {
         emit_cstr(arena, out, " | ");
-    } else if (op == Token_Keyword_And) {
+    } else if (op == Token_AmpAmp) {
         emit_cstr(arena, out, " && ");
-    } else if (op == Token_Keyword_Or) {
+    } else if (op == Token_PipePipe) {
         emit_cstr(arena, out, " || ");
     } else if (op == Token_Keyword_Shl) {
         emit_cstr(arena, out, " << ");
@@ -13617,6 +13704,20 @@ static void emit_expr_condition(memops_arena *arena, string8 *out, Expr *e, Type
         return;
     }
     emit_expr(arena, out, e, sub, generic_name);
+}
+
+/* The base of `[i]` or `.f`. C's postfix operators bind tighter than its prefix
+   ones, so `&(x)[0]` would index x and then take the address. rin's postfix `&`
+   binds left to right, so an address or prefix-operator base is parenthesised
+   to keep C's reading the same as rin's: `x&[0]` is `(&(x))[0]`. */
+static void emit_postfix_base(memops_arena *arena, string8 *out, Expr *base, TypeSub sub, string8 generic_name) {
+    if (base && (base->kind == Expr_Addr || base->kind == Expr_Unary)) {
+        emit_cstr(arena, out, "(");
+        emit_expr(arena, out, base, sub, generic_name);
+        emit_cstr(arena, out, ")");
+        return;
+    }
+    emit_expr(arena, out, base, sub, generic_name);
 }
 
 static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
@@ -13724,14 +13825,14 @@ static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, s
         return;
     }
     if (e->kind == Expr_Index) {
-        emit_expr(arena, out, e->base, sub, generic_name);
+        emit_postfix_base(arena, out, e->base, sub, generic_name);
         emit_cstr(arena, out, "[");
         emit_expr(arena, out, e->index_expr, sub, generic_name);
         emit_cstr(arena, out, "]");
         return;
     }
     if (e->kind == Expr_Field) {
-        emit_expr(arena, out, e->base, sub, generic_name);
+        emit_postfix_base(arena, out, e->base, sub, generic_name);
         emit_cstr(arena, out, ".");
         emit_c_ident(arena, out, e->name);
         return;
@@ -13754,7 +13855,13 @@ static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, s
         if (e->base) {
             /* Indirect call: the callee is an expression, not a name, so there is
                no monomorph mangling to apply. */
-            emit_expr_value(arena, out, e->base, sub, generic_name);
+            if (e->base->kind == Expr_Addr || e->base->kind == Expr_Unary) {
+                emit_cstr(arena, out, "(");
+                emit_expr_value(arena, out, e->base, sub, generic_name);
+                emit_cstr(arena, out, ")");
+            } else {
+                emit_expr_value(arena, out, e->base, sub, generic_name);
+            }
             emit_cstr(arena, out, "(");
             for (i32 i = 0; i < e->args.length; i++) {
                 if (i > 0) emit_cstr(arena, out, ", ");

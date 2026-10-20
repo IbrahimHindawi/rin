@@ -6,6 +6,10 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # set(CMAKE_C_STANDARD 99)
 # set(CMAKE_C_STANDARD_REQUIRED True)
 set(RIN_PACKAGE_DIR "${CMAKE_SOURCE_DIR}/../rin-windows-x64" CACHE PATH "rin package output directory")
+# The package is what RIN_HOME points at, so every project that uses rin builds
+# against it. Turn this off while the compiler is mid-change, so a build stays in
+# the build directory instead of replacing the compiler everyone else is using.
+option(RIN_PACKAGE "copy rin.exe, rinbind.exe and std into RIN_PACKAGE_DIR after a build" ON)
 
 include_directories(extern/haikal/src/meta_arena/gen)
 include_directories(extern/haikal/src/runtime)
@@ -23,15 +27,19 @@ add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/src/std"
         "$<TARGET_FILE_DIR:${PROJECT_NAME}>/std"
-    COMMAND ${CMAKE_COMMAND} -E make_directory
-        "${RIN_PACKAGE_DIR}"
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:${PROJECT_NAME}>"
-        "${RIN_PACKAGE_DIR}/rin.exe"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/src/std"
-        "${RIN_PACKAGE_DIR}/std"
 )
+if (RIN_PACKAGE)
+    add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${RIN_PACKAGE_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:${PROJECT_NAME}>"
+            "${RIN_PACKAGE_DIR}/rin.exe"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/src/std"
+            "${RIN_PACKAGE_DIR}/std"
+    )
+endif()
 
 set(LLVM_ROOT "C:/Program Files/LLVM" CACHE PATH "LLVM install root")
 find_path(LIBCLANG_INCLUDE_DIR clang-c/Index.h
@@ -52,15 +60,19 @@ if (LIBCLANG_INCLUDE_DIR AND LIBCLANG_LIBRARY)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
                 "${LLVM_ROOT}/bin/libclang.dll"
                 "$<TARGET_FILE_DIR:rinbind>/libclang.dll"
-            COMMAND ${CMAKE_COMMAND} -E make_directory
-                "${RIN_PACKAGE_DIR}"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "$<TARGET_FILE:rinbind>"
-                "${RIN_PACKAGE_DIR}/rinbind.exe"
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                "${LLVM_ROOT}/bin/libclang.dll"
-                "${RIN_PACKAGE_DIR}/libclang.dll"
         )
+        if (RIN_PACKAGE)
+            add_custom_command(TARGET rinbind POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory
+                    "${RIN_PACKAGE_DIR}"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:rinbind>"
+                    "${RIN_PACKAGE_DIR}/rinbind.exe"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "${LLVM_ROOT}/bin/libclang.dll"
+                    "${RIN_PACKAGE_DIR}/libclang.dll"
+            )
+        endif()
     endif()
 else()
     message(WARNING "libclang not found; rinbind will not be built")
