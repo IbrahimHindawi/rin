@@ -86,6 +86,11 @@ code reads, so it is worth making deliberately rather than by inheritance.
 > [`type-safety.md`](type-safety.md), alongside the runtime half in
 > [`safety.md`](safety.md).
 
+> **Reopened.** Proposed in [`operators-and-conversions.md`](operators-and-conversions.md):
+> implicit only when lossless, plus int to float, with literals typed from
+> context. Ships as a warning first; njinn's count decides whether it becomes
+> an error.
+
 ### 2.2 `bool` versus `b32`
 
 > **Resolved: `b32` stays, `bool` is gone.** `bool` no longer names a type and
@@ -426,6 +431,9 @@ of confusion.
 > **Decided: keep C's truthiness.** `n and 1` stays legal. The convention of
 > writing `x != 0 and y != 0` stays a convention. Listed with the rest of the
 > deliberately-unsafe inheritances in [`safety.md`](safety.md).
+>
+> **Spelling proposed to change:** `and` / `or` become `&&` / `||`, truthiness
+> unchanged. See [`operators-and-conversions.md`](operators-and-conversions.md).
 
 ### 4.2 Arithmetic right shift
 
@@ -433,6 +441,10 @@ of confusion.
 implementation-defined. `013-integer-conversion.rin` records the behaviour but
 that is documentation of what happens, not a decision that it should.
 > **Later.** Deferred deliberately; no work planned this round.
+>
+> **Proposed: by type.** Arithmetic on signed operands, logical on unsigned --
+> what the fixture already pins. See
+> [`operators-and-conversions.md`](operators-and-conversions.md).
 
 
 ### 4.3 Emitted parentheses
