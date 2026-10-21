@@ -2,7 +2,7 @@ import "memops.rin"
 import "Option.rin"
 
 Vec: struct<T> = {
-    data: *T;
+    data: [*]T;
     length: u64;
     border: u64;
 }
@@ -28,7 +28,7 @@ Vec<T>destroy: proc<T>(arena: *memops_arena, array: *Vec<T>) -> void = {
     array[0].border = 0;
 }
 
-Vec<T>resize: proc<T>(arena: *memops_arena, array: *Vec<T>) -> *T = {
+Vec<T>resize: proc<T>(arena: *memops_arena, array: *Vec<T>) -> [*]T = {
     old_border: u64 = array[0].border;
     if (array[0].border == 0) {
         array[0].border = 1;
@@ -41,7 +41,7 @@ Vec<T>resize: proc<T>(arena: *memops_arena, array: *Vec<T>) -> *T = {
         exit(1);
     }
     if (array[0].border > old_border) {
-        memset(cast(array[0].data, *u8) + sizeof(T) * old_border, 0, sizeof(T) * (array[0].border - old_border));
+        memset(cast(array[0].data, [*]u8) + sizeof(T) * old_border, 0, sizeof(T) * (array[0].border - old_border));
     }
     return array[0].data;
 }

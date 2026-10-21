@@ -6,13 +6,13 @@ import "Vec.rin"
 
 
 string8: struct = {
-    data: *u8;
+    data: [*]u8;
     length: u64;
     capacity: u64;
 }
 
 string8slice: struct = {
-    data: *u8;
+    data: [*]u8;
     length: u64;
 }
 
@@ -71,7 +71,7 @@ string8_grow: proc(arena: *memops_arena, s: *string8, min_capacity: u64) -> void
     }
 
     old_capacity: u64 = s[0].capacity;
-    old_data: *u8 = s[0].data;
+    old_data: [*]u8 = s[0].data;
     if (old_data == null) {
         s[0].data = cast(memops_arena_push_zero(arena, new_capacity + 1, alignof(u8)), *u8);
     } else {
@@ -87,7 +87,7 @@ string8_grow: proc(arena: *memops_arena, s: *string8, min_capacity: u64) -> void
     s[0].capacity = new_capacity;
 }
 
-string8_from_cstr: proc(arena: *memops_arena, cstr: *const char) -> string8 = {
+string8_from_cstr: proc(arena: *memops_arena, cstr: [*]const char) -> string8 = {
     if (cstr == null) {
         return string8_reserve(arena, 0);
     }
@@ -101,7 +101,7 @@ string8_from_cstr: proc(arena: *memops_arena, cstr: *const char) -> string8 = {
     return s;
 }
 
-string8_copy_from_slice: proc(arena: *memops_arena, data: *const u8, length: u64) -> string8 = {
+string8_copy_from_slice: proc(arena: *memops_arena, data: [*]const u8, length: u64) -> string8 = {
     if (data == null && length > 0) {
         return string8_reserve(arena, 0);
     }
@@ -116,14 +116,14 @@ string8_copy_from_slice: proc(arena: *memops_arena, data: *const u8, length: u64
     return s;
 }
 
-string8slice_from_parts: proc(data: *u8, length: u64) -> string8slice = {
+string8slice_from_parts: proc(data: [*]u8, length: u64) -> string8slice = {
     s: string8slice = {};
     s.data = data;
     s.length = length;
     return s;
 }
 
-string8slice_from_cstr: proc(cstr: *const char) -> string8slice = {
+string8slice_from_cstr: proc(cstr: [*]const char) -> string8slice = {
     if (cstr == null) {
         return {};
     }
@@ -142,8 +142,8 @@ string8_copy: proc(arena: *memops_arena, s: string8) -> string8 = {
     return string8_copy_from_slice(arena, s.data, s.length);
 }
 
-string8_to_cstr_temp: proc(arena: *memops_arena, s: string8) -> *char = {
-    out: *char = cast(memops_arena_push_zero(arena, s.length + 1, alignof(char)), *char);
+string8_to_cstr_temp: proc(arena: *memops_arena, s: string8) -> [*]char = {
+    out: [*]char = cast(memops_arena_push_zero(arena, s.length + 1, alignof(char)), [*]char);
     if (out == null) {
         printf("rin runtime: string8 cstr allocation failure\n");
         exit(1);
@@ -155,8 +155,8 @@ string8_to_cstr_temp: proc(arena: *memops_arena, s: string8) -> *char = {
     return out;
 }
 
-string8slice_to_cstr_temp: proc(arena: *memops_arena, s: string8slice) -> *char = {
-    out: *char = cast(memops_arena_push_zero(arena, s.length + 1, alignof(char)), *char);
+string8slice_to_cstr_temp: proc(arena: *memops_arena, s: string8slice) -> [*]char = {
+    out: [*]char = cast(memops_arena_push_zero(arena, s.length + 1, alignof(char)), [*]char);
     if (out == null) {
         printf("rin runtime: string8slice cstr allocation failure\n");
         exit(1);
@@ -168,7 +168,7 @@ string8slice_to_cstr_temp: proc(arena: *memops_arena, s: string8slice) -> *char 
     return out;
 }
 
-path_to_cstr_temp: proc(arena: *memops_arena, s: string8slice) -> *char = {
+path_to_cstr_temp: proc(arena: *memops_arena, s: string8slice) -> [*]char = {
     return string8slice_to_cstr_temp(arena, s);
 }
 
@@ -179,7 +179,7 @@ string8_append_byte: proc(arena: *memops_arena, s: *string8, byte: u8) -> void =
     s[0].data[s[0].length] = 0;
 }
 
-string8_append_bytes: proc(arena: *memops_arena, s: *string8, src: *const u8, count: u64) -> void = {
+string8_append_bytes: proc(arena: *memops_arena, s: *string8, src: [*]const u8, count: u64) -> void = {
     if (count == 0) {
         return;
     }
@@ -197,7 +197,7 @@ string8_append_string8: proc(arena: *memops_arena, s: *string8, src: string8) ->
     string8_append_bytes(arena, s, src.data, src.length);
 }
 
-string8_append_cstr: proc(arena: *memops_arena, s: *string8, cstr: *const char) -> void = {
+string8_append_cstr: proc(arena: *memops_arena, s: *string8, cstr: [*]const char) -> void = {
     if (cstr == null) {
         return;
     }
@@ -215,7 +215,7 @@ string8_clear: proc(s: *string8) -> void = {
     }
 }
 
-string8_read_file: proc(arena: *memops_arena, filename: *const char) -> string8 = {
+string8_read_file: proc(arena: *memops_arena, filename: [*]const char) -> string8 = {
     file: *FILE = null;
     if (fopen_s(file&, filename, "rb") != 0) {
         return string8_reserve(arena, 0);
@@ -253,7 +253,7 @@ string8_equals: proc(a: *const string8, b: *const string8) -> b32 = {
     return memcmp(a[0].data, b[0].data, a[0].length) == 0;
 }
 
-string8_equals_cstr: proc(a: *const string8, cstr: *const char) -> b32 = {
+string8_equals_cstr: proc(a: *const string8, cstr: [*]const char) -> b32 = {
     if (a == null || cstr == null) {
         return 0;
     }
@@ -271,7 +271,7 @@ string8_print: proc(s: *const string8) -> void = {
     if (s == null || s[0].data == null) {
         return;
     }
-    printf("%.*s", cast(s[0].length, i32), cast(s[0].data, *const char));
+    printf("%.*s", cast(s[0].length, i32), cast(s[0].data, [*]const char));
 }
 
 string8slice_sub: proc(s: string8slice, start: u64, count: u64) -> string8slice = {
@@ -301,7 +301,7 @@ string8slice_equals: proc(a: string8slice, b: string8slice) -> b32 = {
     return memcmp(a.data, b.data, a.length) == 0;
 }
 
-string8slice_equals_cstr: proc(s: string8slice, cstr: *const char) -> b32 = {
+string8slice_equals_cstr: proc(s: string8slice, cstr: [*]const char) -> b32 = {
     if (cstr == null) {
         return 0;
     }
@@ -319,7 +319,7 @@ string8slice_print: proc(s: string8slice) -> void = {
     if (s.data == null) {
         return;
     }
-    printf("%.*s", cast(s.length, i32), cast(s.data, *const char));
+    printf("%.*s", cast(s.length, i32), cast(s.data, [*]const char));
 }
 
 print: proc<string8>(s: string8) -> void = {
@@ -632,7 +632,7 @@ string8slice_split_from_string8: proc(arena: *memops_arena, src: string8, sep: u
    its own memops_arena_temp scope. */
 string8_builder: struct = {
     arena: *memops_arena;
-    start: *u8;
+    start: [*]u8;
     length: u64;
 }
 
@@ -673,7 +673,7 @@ string8_builder_append_byte: proc(b: *string8_builder, byte: u8) -> void = {
     b[0].length += 1;
 }
 
-string8_builder_append_bytes: proc(b: *string8_builder, src: *const u8, count: u64) -> void = {
+string8_builder_append_bytes: proc(b: *string8_builder, src: [*]const u8, count: u64) -> void = {
     if (count == 0) {
         return;
     }
@@ -690,7 +690,7 @@ string8_builder_append_string8: proc(b: *string8_builder, src: string8) -> void 
     string8_builder_append_bytes(b, src.data, src.length);
 }
 
-string8_builder_append_cstr: proc(b: *string8_builder, cstr: *const char) -> void = {
+string8_builder_append_cstr: proc(b: *string8_builder, cstr: [*]const char) -> void = {
     if (cstr == null) {
         return;
     }

@@ -4,6 +4,8 @@
     x.*      ->  x[0]
     &x       ->  x&        (prefix address-of; the operand chain moves left of it)
     and, or  ->  &&, ||
+    1.0f, 10u      ->  1.0, 10       (the type now comes from context)
+    10ULL, 10u64   ->  10'u64        (kept explicit: printf's ... has no context)
 
 Comments, string and char literals, and `#` lines are left alone. In a .py file
 only string literals that look like rin source are rewritten, so the test
@@ -24,6 +26,38 @@ import io
 import sys
 import tokenize
 from pathlib import Path
+
+def literal_suffix_split(text: str) -> tuple[str, str]:
+    """Split a number token into its digits and any C suffix after them."""
+    if "'" in text:
+        return text, ""
+    low = text.lower()
+    if low.startswith(("0x", "0b")):
+        digits = "0123456789abcdef" if low.startswith("0x") else "01"
+        i = 2
+        while i < len(text) and text[i].lower() in digits:
+            i += 1
+        return text[:i], text[i:]
+    i = 0
+    while i < len(text) and (text[i].isdigit() or text[i] == "."):
+        i += 1
+    if i < len(text) and text[i] in "eE":
+        j = i + 1
+        if j < len(text) and text[j] in "+-":
+            j += 1
+        if j < len(text) and text[j].isdigit():
+            i = j
+            while i < len(text) and text[i].isdigit():
+                i += 1
+    return text[:i], text[i:]
+
+
+SUFFIX_REWRITE = {
+    "f": "", "u": "",
+    "ull": "'u64", "ul": "'u64", "llu": "'u64", "lu": "'u64", "u64": "'u64",
+    "ll": "'i64", "l": "'i64", "i64": "'i64",
+}
+
 
 KEYWORDS_BEFORE_OPERAND = {
     "return", "case", "and", "or", "shl", "shr", "else", "do", "if", "while",
@@ -91,8 +125,16 @@ def lex(src: str) -> list[Tok]:
             continue
         if c.isdigit():
             while i < n and (src[i].isalnum() or src[i] == "_" or
-                             (src[i] == "." and i + 1 < n and src[i + 1].isdigit())):
+                             (src[i] == "." and i + 1 < n and src[i + 1].isdigit()) or
+                             # a signed exponent: 3.4e+38f
+                             (src[i] in "+-" and src[i - 1] in "eE" and
+                              not src[start:i].lower().startswith("0x") and
+                              i + 1 < n and src[i + 1].isdigit())):
                 i += 1
+            if i < n and src[i] == "'" and i + 1 < n and src[i + 1].isalpha():
+                i += 1
+                while i < n and (src[i].isalnum() or src[i] == "_"):
+                    i += 1
             out.append(Tok("number", src[start:i], start, i))
             continue
         for op in ("...", "->", "&&", "||", "&=", "|=", "==", "!=", "<=", ">=",
@@ -196,7 +238,7 @@ def operand_chain_end(toks: list[Tok], i: int) -> int:
 class Migrator:
     def __init__(self, label: str):
         self.label = label
-        self.counts = {".&": 0, ".*": 0, "&x": 0, "and": 0, "or": 0}
+        self.counts = {".&": 0, ".*": 0, "&x": 0, "and": 0, "or": 0, "suffix": 0}
         self.manual: list[str] = []
 
     def where(self, src: str, offset: int, base_line: int) -> str:
@@ -212,6 +254,16 @@ class Migrator:
         i = lo
         while i < hi:
             t = toks[i]
+            if t.kind == "number":
+                digits, suffix = literal_suffix_split(t.text)
+                if suffix and suffix.lower() in SUFFIX_REWRITE:
+                    out.append(digits + SUFFIX_REWRITE[suffix.lower()])
+                    self.counts["suffix"] += 1
+                    i += 1
+                    continue
+                if suffix:
+                    self.manual.append(f"{self.where(src, t.start, base_line)}: unknown literal "
+                                       f"suffix '{suffix}' on '{t.text}'")
             if t.kind == "ident" and t.text in ("and", "or"):
                 out.append("&&" if t.text == "and" else "||")
                 self.counts[t.text] += 1
@@ -313,7 +365,7 @@ def main(argv: list[str]) -> int:
             continue
         p = Path(a)
         paths.extend(sorted(p.rglob("*.rin")) if p.is_dir() else [p])
-    totals = {".&": 0, ".*": 0, "&x": 0, "and": 0, "or": 0}
+    totals = {".&": 0, ".*": 0, "&x": 0, "and": 0, "or": 0, "suffix": 0}
     manual: list[str] = []
     changed_files = 0
     for p in paths:

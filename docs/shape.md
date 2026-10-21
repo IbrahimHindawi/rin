@@ -440,10 +440,8 @@ of confusion.
 **Today.** Right-shifting a negative signed value is arithmetic. C leaves this
 implementation-defined. `013-integer-conversion.rin` records the behaviour but
 that is documentation of what happens, not a decision that it should.
-> **Later.** Deferred deliberately; no work planned this round.
->
-> **Proposed: by type.** Arithmetic on signed operands, logical on unsigned --
-> what the fixture already pins. See
+> **Decided: by type.** Arithmetic on signed operands, logical on unsigned --
+> what the fixture pins, and what clang and MSVC do. See
 > [`operators-and-conversions.md`](operators-and-conversions.md).
 
 

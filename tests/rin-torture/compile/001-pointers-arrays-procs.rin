@@ -12,7 +12,7 @@ torture_visit: proc(node: *TortureNode, scale: i32) -> i32 = {
     return node[0].value * scale;
 }
 
-torture_apply: proc(nodes: *TortureNode, count: i32, cb: TortureCallback) -> i32 = {
+torture_apply: proc(nodes: [*]TortureNode, count: i32, cb: TortureCallback) -> i32 = {
     total: i32 = 0;
     for (i: i32 = 0; i < count; i += 1) {
         total += cb(nodes[i]&, i + 1);

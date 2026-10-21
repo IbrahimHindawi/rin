@@ -2,7 +2,7 @@ import "memops.rin"
 import "Option.rin"
 
 Array: struct<T> = {
-    data: *T;
+    data: [*]T;
     length: u64;
 }
 

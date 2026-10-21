@@ -2,7 +2,7 @@ cinclude "stdio.h"
 
 import "std/reflect.rin"
 
-printf: proc[external](fmt: *const char, ...) -> i32 = {}
+printf: proc[external](fmt: [*]const char, ...) -> i32 = {}
 
 // Generics and reflection are I's distinctive features, which makes them the
 // least battle-tested part of the compiler. Monomorphisation in particular has
@@ -48,7 +48,7 @@ Slot: enum = {
 Point: struct = {
     x: i32;
     y: i32;
-    label: *const char;
+    label: [*]const char;
 }
 
 // Union members overlap. Reflection reports a union as its own kind rather than
@@ -85,7 +85,7 @@ Node: struct = {
 // storage. If they collided, one of these reads would return the other's value.
 distinct_instantiations: proc() -> i32 = {
     bi: Box<i32> = Box<i32>make(7, 1);
-    bf: Box<f32> = Box<f32>make(2.5f, 2);
+    bf: Box<f32> = Box<f32>make(2.5, 2);
     return Box<i32>get(bi&) * 100 + bi.tag * 10 + bf.tag;
 }
 

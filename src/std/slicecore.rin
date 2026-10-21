@@ -1,0 +1,11 @@
+/* The struct behind `[]T`. The compiler imports this file by itself wherever a
+   program writes `[]T` or a subrange, so it imports nothing: writing a slice
+   should not pull in stdio. The procs that work on slices are in slice.rin.
+
+   `[]T` and `slice<T>` are one type, and so are `[]const T` and
+   `slice<const T>`. Indexing a slice, `s[i]`, is bounds checked unless NDEBUG
+   is defined; `s.data[i]` is the raw, unchecked access. */
+slice: struct<T> = {
+    data: [*]T;
+    length: u64;
+}

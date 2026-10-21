@@ -306,16 +306,24 @@ static char *emit_type(CXType type) {
         }
         char *inner = emit_type(pointee);
         string_builder sb = {0};
+        /* A C pointer does not say whether it points at one element or many,
+           so it binds as rin's raw pointer, `[*]T`. A void pointer has no
+           elements, and a pointer to an incomplete type -- an opaque handle --
+           cannot be indexed or moved, so both stay `*`. */
+        int is_void = streq(inner, "void") || streq(inner, "const void");
+        int is_opaque = clang_Type_getSizeOf(pointee_canon) < 0;
+        const char *star = (is_void || is_opaque) ? "*" : "[*]";
         if (clang_isConstQualifiedType(pointee)) {
             if (starts_with(inner, "const ")) {
-                sb_append(&sb, "*");
+                sb_append(&sb, star);
                 sb_append(&sb, inner);
             } else {
-                sb_append(&sb, "*const ");
+                sb_append(&sb, star);
+                sb_append(&sb, "const ");
                 sb_append(&sb, inner);
             }
         } else {
-            sb_append(&sb, "*");
+            sb_append(&sb, star);
             sb_append(&sb, inner);
         }
         free(inner);
@@ -326,7 +334,7 @@ static char *emit_type(CXType type) {
         CXType elem = clang_getArrayElementType(type);
         char *elem_s = emit_type(elem);
         string_builder sb = {0};
-        sb_append(&sb, "*");
+        sb_append(&sb, "[*]");
         sb_append(&sb, elem_s);
         free(elem_s);
         return sb.data;

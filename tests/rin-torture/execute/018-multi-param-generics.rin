@@ -1,6 +1,6 @@
 cinclude "stdio.h"
 
-printf: proc[external](fmt: *const char, ...) -> i32 = {}
+printf: proc[external](fmt: [*]const char, ...) -> i32 = {}
 
 // A generic proc can take several type parameters. Each instantiation
 // monomorphises to one symbol whose suffix joins the arguments in order, so
@@ -40,21 +40,21 @@ identity: proc<T>(v: T) -> T = {
 // mangled to the same symbol one would silently win, which is the failure this
 // whole scheme exists to avoid.
 distinct_instantiations: proc() -> i32 = {
-    a: i32 = pick_first<i32, f32>(7, 2.5f);
-    b: i32 = pick_second<f32, i32>(2.5f, 9);
+    a: i32 = pick_first<i32, f32>(7, 2.5);
+    b: i32 = pick_second<f32, i32>(2.5, 9);
     return a * 10 + b;
 }
 
 // Order matters: <i32, f32> and <f32, i32> are separate types.
 order_matters: proc() -> i32 = {
-    from_left: i32 = pick_first<i32, f32>(3, 1.5f);
-    from_right: i32 = pick_second<f32, i32>(1.5f, 4);
+    from_left: i32 = pick_first<i32, f32>(3, 1.5);
+    from_right: i32 = pick_second<f32, i32>(1.5, 4);
     return from_left * 10 + from_right;
 }
 
 // The return type follows whichever parameter the signature names.
 returns_middle: proc() -> i32 = {
-    return middle<f32, i32, char>(1.5f, 42, 65);
+    return middle<f32, i32, char>(1.5, 42, 65);
 }
 
 repeated_param: proc() -> i32 = {
@@ -63,12 +63,12 @@ repeated_param: proc() -> i32 = {
 
 out_param: proc() -> i32 = {
     seen: i32 = 0;
-    v: f32 = count_through<f32, i32>(2.5f, seen&, 11);
+    v: f32 = count_through<f32, i32>(2.5, seen&, 11);
     return seen + cast(v, i32);
 }
 
 single_param_unchanged: proc() -> i32 = {
-    return identity<i32>(5) + cast(identity<f32>(0.5f), i32);
+    return identity<i32>(5) + cast(identity<f32>(0.5), i32);
 }
 
 // Structs take several parameters too, and monomorphise the same way: the
@@ -94,8 +94,8 @@ Boxed: struct<T> = {
 // Swapping the arguments is a different type with its own layout, which is the
 // thing a joined name has to keep separate.
 generic_struct_pair: proc() -> i32 = {
-    a: Pair<i32, f32> = Pair<i32, f32>make(7, 2.5f);
-    b: Pair<f32, i32> = Pair<f32, i32>make(1.5f, 9);
+    a: Pair<i32, f32> = Pair<i32, f32>make(7, 2.5);
+    b: Pair<f32, i32> = Pair<f32, i32>make(1.5, 9);
     return a.key * 10 + b.value;
 }
 
@@ -107,8 +107,8 @@ generic_struct_reflection: proc() -> i32 = {
 nested_generic_struct: proc() -> i32 = {
     b: Boxed<Pair<i32, f32>> = {};
     b.inner.key = 4;
-    b.inner.value = 0.5f;
-    return b.inner.key * 10 + cast(b.inner.value * 2.0f, i32);
+    b.inner.value = 0.5;
+    return b.inner.key * 10 + cast(b.inner.value * 2.0, i32);
 }
 
 main: proc() -> i32 = {

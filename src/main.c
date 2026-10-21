@@ -80,6 +80,11 @@ static bool g_profile = false;
    past that point the errors are usually cascades from the first few. */
 #define I_MAX_REPORTED_ERRORS 25
 static i32 g_error_count = 0;
+/* Warnings are reported the same way but never stop the build. A rule ships as a
+   warning first so its cost can be counted before it becomes an error. */
+static i32 g_warning_count = 0;
+static const char *g_diag_json_severity = "error";
+static bool g_warnings_off = false; // the LSP asks for symbols, not diagnostics
 static bool g_json_array_open = false;
 
 static void diag_json_finish(void) {
@@ -239,7 +244,9 @@ static void diag_json_open_range(
     if (end_col <= 0) {
         end_col = col > 0 ? col + 1 : col;
     }
-    printf(g_json_array_open ? ",{\"severity\":\"error\",\"file\":" : "[{\"severity\":\"error\",\"file\":");
+    printf(g_json_array_open ? ",{\"severity\":" : "[{\"severity\":");
+    diag_json_print_cstr(g_diag_json_severity);
+    printf(",\"file\":");
     g_json_array_open = true;
     diag_json_print_cstr(path ? path : g_source_path);
     printf(",\"line\":%d,\"column\":%d,\"end_line\":%d,\"end_column\":%d,\"category\":", line, col, end_line, end_col);
@@ -401,6 +408,7 @@ typedef enum TokenKind {
     Token_PipePipe,
     Token_Dot,
     Token_Ellipsis,
+    Token_DotDot,
     Token_At,
     Token_Question,
     Token_Bang,
@@ -491,6 +499,7 @@ static const char *token_kind_name(TokenKind kind) {
         case Token_PipePipe: return "'||'";
         case Token_Dot: return "'.'";
         case Token_Ellipsis: return "'...'";
+        case Token_DotDot: return "'..'";
         case Token_At: return "'@'";
         case Token_Question: return "'?'";
         case Token_Bang: return "'!'";
@@ -558,8 +567,14 @@ struct TypeExpr {
     string8 array_count;
     bool is_const;
     bool is_volatile;
+    /* `[*]T`, a raw pointer: a Type_Ptr that may be indexed anywhere and moved
+       with arithmetic, unchecked. A plain `*T` points at one element. Both are
+       the same C pointer, so they are equal as types and only the operations
+       allowed on them differ. */
+    bool is_raw;
     i32 line;
     i32 col;
+    const char *decl_path; // where a `*` was written, so a diagnostic can point at it
     TypeExpr *elem;
     TypeExpr *ret_type;
     bool is_variadic;
@@ -616,9 +631,48 @@ struct Expr {
     Expr *base;
     Expr *index_expr;
     TypeExpr *cast_type;
+    /* A number written without a `'` type takes its type from where it is used.
+       The checker records that type here so the emitter can write the C literal
+       that means the same thing: `0.5` used as an f32 is `0.5f`. A generic body
+       is checked once per instance; if the instances disagree the literal is
+       emitted as written. `lit_wide` marks a literal that C would otherwise
+       evaluate as an int -- an operand of constant arithmetic, or the left of a
+       shift -- so it needs a suffix (`1ULL << 40`, `1.0f / 3.0f`). */
+    TypeExpr *lit_type;
+    bool lit_type_varies;
+    bool lit_wide;
+    /* Arithmetic whose rin type is narrower than int. C computes it in int, so
+       `a + b` on two u8 can be 300 there and 44 in rin; the emitter casts the
+       result back to this type so both agree. Null when not needed, and ignored
+       when generic instances disagree. */
+    TypeExpr *narrow_type;
+    bool narrow_type_varies;
+    /* `s[a..b]`: the end of a subrange, on an Expr_Index whose index_expr is
+       the start. */
+    Expr *index_end;
+    /* What the checker learned about an Expr_Index, for the emitter: what is
+       being indexed, whether the index needs a runtime bounds check, and the
+       length to check against when the base is an array. */
+    u8 index_base;          // IndexBase_*
+    bool index_checked;
+    bool index_varies;      // generic instances disagree; emit it as written
+    string8 index_count;
+    TypeExpr *range_type;   // the slice type a subrange produces
+    /* A conversion the emitter writes out: an array or a slice becoming another
+       slice type. `coerce_count` is the array's length when the source is one. */
+    TypeExpr *coerce_to;
+    bool coerce_varies;
+    string8 coerce_count;
     i32 line;
     i32 col;
 };
+
+typedef enum IndexBase {
+    IndexBase_Unknown = 0,
+    IndexBase_Ptr,
+    IndexBase_Array,
+    IndexBase_Slice,
+} IndexBase;
 
 typedef enum StmtKind {
     Stmt_Var = 0,
@@ -829,6 +883,7 @@ typedef struct Parser {
     bool reported_depth;
     Vec_voidptr *pending_array_counts; // borrowed from the Program being parsed
     i32 last_error_token; // token index of the most recent parse error
+    bool uses_slice_type; // `[]T` was written, so the slice struct is imported
 } Parser;
 
 /* Types and statements recurse through their own functions, so the expression
@@ -1470,6 +1525,17 @@ static void lex_tokens(memops_arena *arena, string8 src, Vec_Token *out_tokens,
                 p++;
                 col++;
             }
+            /* `1024'u64`: a `'` straight after a number names the literal's
+               type. It can never start a char literal there, so no context is
+               needed to tell the two apart. */
+            if (p + 1 < end && *p == '\'' && is_alpha(p[1])) {
+                p++;
+                col++;
+                while (p < end && is_alnum(*p)) {
+                    p++;
+                    col++;
+                }
+            }
             string8slice text = string8slice_from_parts(start, (u64)(p - start));
             Vec_Token_append(arena, out_tokens, token_make(Token_Number, text, line, start_col));
             continue;
@@ -1568,6 +1634,13 @@ static void lex_tokens(memops_arena *arena, string8 src, Vec_Token *out_tokens,
                 Vec_Token_append(arena, out_tokens, token_make(Token_Ellipsis, string8slice_from_parts(p, 3), line, col));
                 p += 3;
                 col += 3;
+                continue;
+            }
+            /* `s[a..b]`, a subrange. */
+            if (c == '.' && p[1] == '.') {
+                Vec_Token_append(arena, out_tokens, token_make(Token_DotDot, string8slice_from_parts(p, 2), line, col));
+                p += 2;
+                col += 2;
                 continue;
             }
             if (c == '=' && p[1] == '=') {
@@ -2297,6 +2370,36 @@ static TypeExpr *parse_type_inner(Parser *p) {
         return t;
     }
 
+    if (parser_peek(p)->kind == Token_LBracket && parser_peek_n(p, 1)->kind == Token_Star &&
+        parser_peek_n(p, 2)->kind == Token_RBracket) {
+        /* `[*]T`: a pointer to an unknown number of elements, unchecked. */
+        Token *lb = parser_next(p);
+        parser_next(p);
+        parser_next(p);
+        TypeExpr *ptr = type_new(p->arena, Type_Ptr);
+        ptr->is_raw = true;
+        ptr->line = lb->line;
+        ptr->col = lb->col;
+        ptr->decl_path = g_source_path;
+        ptr->elem = parse_type(p);
+        return ptr;
+    }
+
+    if (parser_peek(p)->kind == Token_LBracket && parser_peek_n(p, 1)->kind == Token_RBracket) {
+        /* `[]T` is the built-in spelling of `slice<T>`: the same type and the same
+           C struct, so std's slice procs work on it unchanged. */
+        Token *lb = parser_next(p);
+        parser_next(p);
+        p->uses_slice_type = true;
+        TypeExpr *t = type_new(p->arena, Type_Generic);
+        t->name = string8_from_cstr(p->arena, "slice");
+        t->line = lb->line;
+        t->col = lb->col;
+        t->args = ptr_array_reserve(p->arena, 1);
+        ptr_array_append(p->arena, &t->args, parse_type(p));
+        return t;
+    }
+
     if (parser_match(p, Token_LBracket)) {
         TypeExpr *array = type_new(p->arena, Type_Array);
         bool symbolic = false;
@@ -2347,9 +2450,13 @@ static TypeExpr *parse_type_inner(Parser *p) {
     }
 
     if (parser_match(p, Token_Star)) {
+        Token *star = parser_prev(p);
         TypeExpr *inner = parse_type(p);
         TypeExpr *ptr = type_new(p->arena, Type_Ptr);
         ptr->elem = inner;
+        ptr->line = star->line;
+        ptr->col = star->col;
+        ptr->decl_path = g_source_path;
         return ptr;
     }
 
@@ -2464,6 +2571,100 @@ static Expr *expr_new(memops_arena *arena, ExprKind kind) {
     return e;
 }
 
+/* Where a number's digits end: past the digits, the fraction and the exponent,
+   or past the hex digits. Whatever letters follow, up to a `'`, are a C suffix. */
+static u64 number_digits_end(string8 n) {
+    u64 i = 0;
+    bool hex = n.length > 1 && n.data[0] == '0' && (n.data[1] == 'x' || n.data[1] == 'X');
+    bool bin = n.length > 1 && n.data[0] == '0' && (n.data[1] == 'b' || n.data[1] == 'B');
+    if (hex || bin) {
+        i = 2;
+        while (i < n.length && (hex ? is_hex_digit(n.data[i]) : (n.data[i] == '0' || n.data[i] == '1'))) i++;
+        return i;
+    }
+    while (i < n.length && (is_digit(n.data[i]) || n.data[i] == '.')) i++;
+    if (i < n.length && (n.data[i] == 'e' || n.data[i] == 'E')) {
+        u64 j = i + 1;
+        if (j < n.length && (n.data[j] == '+' || n.data[j] == '-')) j++;
+        if (j < n.length && is_digit(n.data[j])) {
+            i = j;
+            while (i < n.length && is_digit(n.data[i])) i++;
+        }
+    }
+    return i;
+}
+
+/* The digits of a number token, without any `'type`. */
+static string8 number_digits(string8 n) {
+    for (u64 i = 0; i < n.length; i++) {
+        if (n.data[i] == '\'') return (string8){ .data = n.data, .length = i };
+    }
+    return n;
+}
+
+/* The type a `'` names, or empty. */
+static string8 number_suffix_type(string8 n) {
+    for (u64 i = 0; i < n.length; i++) {
+        if (n.data[i] == '\'') return (string8){ .data = n.data + i + 1, .length = n.length - i - 1 };
+    }
+    return (string8){0};
+}
+
+static bool number_is_float_form(string8 digits) {
+    if (digits.length > 1 && digits.data[0] == '0' &&
+        (digits.data[1] == 'x' || digits.data[1] == 'X' || digits.data[1] == 'b' || digits.data[1] == 'B')) {
+        return false;
+    }
+    for (u64 i = 0; i < digits.length; i++) {
+        if (digits.data[i] == '.' || digits.data[i] == 'e' || digits.data[i] == 'E') return true;
+    }
+    return false;
+}
+
+static bool string8_equals_ci(string8 s, const char *c) {
+    u64 n = strlen(c);
+    if (s.length != n) return false;
+    for (u64 i = 0; i < n; i++) {
+        u8 a = s.data[i], b = (u8)c[i];
+        if (a >= 'A' && a <= 'Z') a = (u8)(a - 'A' + 'a');
+        if (a != b) return false;
+    }
+    return true;
+}
+
+/* rin removed C's literal suffixes: the type comes from context, and `'` names
+   it when there is none. The error names the replacement, and the literal is
+   kept as that replacement so checking carries on. */
+static string8 parse_number_literal(Parser *p, Token *t) {
+    string8 n = token_to_string8(p->arena, t);
+    string8 digits = number_digits(n);
+    u64 end = number_digits_end(digits);
+    if (end >= digits.length) return n;
+
+    string8 suffix = { .data = digits.data + end, .length = digits.length - end };
+    string8 body = { .data = digits.data, .length = end };
+    const char *type = null;
+    if (string8_equals_ci(suffix, "f")) type = "f32";
+    else if (string8_equals_ci(suffix, "u")) type = "u32";
+    else if (string8_equals_ci(suffix, "u64") || string8_equals_ci(suffix, "ul") || string8_equals_ci(suffix, "ull") || string8_equals_ci(suffix, "lu") || string8_equals_ci(suffix, "llu")) type = "u64";
+    else if (string8_equals_ci(suffix, "i64") || string8_equals_ci(suffix, "l") || string8_equals_ci(suffix, "ll")) type = "i64";
+
+    char msg[512];
+    if (type) {
+        snprintf(msg, sizeof(msg),
+                 "C literal suffix '%.*s' was removed; the type comes from context, or write '%.*s'%s'",
+                 (int)suffix.length, suffix.data, (int)body.length, body.data, type);
+    } else {
+        snprintf(msg, sizeof(msg), "unknown literal suffix '%.*s'; name a type with ', as '%.*s'u32'",
+                 (int)suffix.length, suffix.data, (int)body.length, body.data);
+    }
+    parser_error_token(p, t, msg);
+    if (!type) return body;
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%.*s'%s", (int)body.length, body.data, type);
+    return string8_from_cstr(p->arena, buf);
+}
+
 static Expr *expr_number_zero(memops_arena *arena, i32 line, i32 col) {
     Expr *e = expr_new(arena, Expr_Number);
     e->number = string8_from_cstr(arena, "0");
@@ -2573,7 +2774,7 @@ static Expr *parse_primary(Parser *p) {
     if (parser_match(p, Token_Number)) {
         Token *t = parser_prev(p);
         Expr *e = expr_new(p->arena, Expr_Number);
-        e->number = token_to_string8(p->arena, t);
+        e->number = parse_number_literal(p, t);
         e->line = t->line;
         e->col = t->col;
         return parse_postfix(p, e);
@@ -2836,10 +3037,16 @@ static Expr *parse_postfix(Parser *p, Expr *base) {
         if (parser_match(p, Token_LBracket)) {
             Token *lb = parser_prev(p);
             Expr *index = parse_expr(p);
+            Expr *index_end = null;
+            if (parser_match(p, Token_DotDot)) {
+                index_end = parse_expr(p);
+                p->uses_slice_type = true;
+            }
             parser_expect(p, Token_RBracket, "expected ']'");
             Expr *idx = expr_new(p->arena, Expr_Index);
             idx->base = result;
             idx->index_expr = index;
+            idx->index_end = index_end;
             idx->line = lb->line;
             idx->col = lb->col;
             result = idx;
@@ -4302,6 +4509,16 @@ static Program parse_program(Parser *p) {
         ptr_array_append(p->arena, &prog.globals, s);
     }
 
+    /* `[]T` needs the struct behind it. slicecore.rin has nothing else in it,
+       so writing a slice does not pull in the rest of std. */
+    if (p->uses_slice_type && !g_no_std) {
+        string8 path = string8_from_cstr(p->arena, "\"std/slicecore.rin\"");
+        Vec_string8_append(p->arena, &prog.i_imports, path);
+        Vec_i32_append(p->arena, &prog.i_import_lines, 0);
+        Vec_i32_append(p->arena, &prog.i_import_cols, 0);
+        Vec_string8_append(p->arena, &prog.imports, path);
+    }
+
     return prog;
 }
 
@@ -4418,6 +4635,24 @@ static void diag_note_import_chain(void) {
                g_diag_source_path ? g_diag_source_path : g_source_path,
                g_diag_import_chain);
     }
+}
+
+/* Unused while no rule is in its warning phase; kept for the next one. */
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((unused))
+#endif
+static void diag_warning(const char *category, const char *message, i32 line, i32 col) {
+    if (g_warnings_off) return;
+    g_warning_count++;
+    if (g_diag_json) {
+        g_diag_json_severity = "warning";
+        diag_json_error(diag_current_path(), line, col, category, message);
+        g_diag_json_severity = "error";
+        return;
+    }
+    printf("%s:%d:%d: warning: %s\n", diag_current_path(), line, col, message);
+    diag_print_file_context(diag_current_path(), line, col);
+    diag_note_import_chain();
 }
 
 static void semantic_error_name(const char *msg, string8 name, i32 line, i32 col) {
@@ -7289,7 +7524,7 @@ static void format_type_i(memops_arena *arena, string8 *out, TypeExpr *type, Typ
         return;
     }
     if (type->kind == Type_Ptr) {
-        emit_cstr(arena, out, "*");
+        emit_cstr(arena, out, type->is_raw ? "[*]" : "*");
         format_type_i(arena, out, type->elem, sub);
         return;
     }
@@ -9104,8 +9339,12 @@ static TypeExpr *type_ptr_to(memops_arena *arena, TypeExpr *elem) {
     return ptr;
 }
 
+/* A raw pointer to const `name`: the reflection records' strings and tables
+   point at many elements, like C's. */
 static TypeExpr *type_ptr_to_const_name(memops_arena *arena, const char *name) {
-    return type_ptr_to(arena, type_name_expr_const(arena, name));
+    TypeExpr *ptr = type_ptr_to(arena, type_name_expr_const(arena, name));
+    ptr->is_raw = true;
+    return ptr;
 }
 
 static TypeExpr *clone_type_expr(memops_arena *arena, TypeExpr *src) {
@@ -9115,6 +9354,10 @@ static TypeExpr *clone_type_expr(memops_arena *arena, TypeExpr *src) {
     dst->array_count = src->array_count;
     dst->is_const = src->is_const;
     dst->is_volatile = src->is_volatile;
+    dst->is_raw = src->is_raw;
+    dst->line = src->line;
+    dst->col = src->col;
+    dst->decl_path = src->decl_path;
     dst->is_variadic = src->is_variadic;
     if (src->elem) {
         dst->elem = clone_type_expr(arena, src->elem);
@@ -9158,6 +9401,10 @@ static TypeExpr *substitute_type_param(memops_arena *arena, TypeExpr *src, strin
     dst->array_count = src->array_count;
     dst->is_const = src->is_const;
     dst->is_volatile = src->is_volatile;
+    dst->is_raw = src->is_raw;
+    dst->line = src->line;
+    dst->col = src->col;
+    dst->decl_path = src->decl_path;
     dst->is_variadic = src->is_variadic;
     if (src->elem) {
         dst->elem = substitute_type_param(arena, src->elem, param, arg);
@@ -9216,8 +9463,8 @@ static TypeExpr *reflect_builtin_field_type(TypeExpr *base_type, string8 field_n
        kind is what says which one is live. reflect_fields/reflect_values in
        std/reflect.h are the checked way in. */
     if (string8_equals_cstr(&base_name, "reflect_variant")) {
-        if (string8_equals_cstr(&field_name, "fields")) return type_ptr_to(arena, type_name_expr_const(arena, "reflect_field"));
-        if (string8_equals_cstr(&field_name, "values")) return type_ptr_to(arena, type_name_expr_const(arena, "reflect_value"));
+        if (string8_equals_cstr(&field_name, "fields")) return type_ptr_to_const_name(arena, "reflect_field");
+        if (string8_equals_cstr(&field_name, "values")) return type_ptr_to_const_name(arena, "reflect_value");
         return null;
     }
 
@@ -9746,7 +9993,57 @@ static TypeExpr *type_proc_from_callable_type(Program *prog, TypeExpr *type) {
     return null;
 }
 
+/* A number written without a `'` type has none of its own yet: it takes one from
+   the other operand or from where the value goes. Until it does, it reports a
+   default -- i32, or f64 for a float -- and its kind, so the checker can tell
+   `len > 0` (the 0 becomes u64) from `len > n`. Constant arithmetic on such
+   literals stays untyped, and so does an integer variable times a float literal,
+   whose result is a float of whatever kind the context wants. */
+typedef enum LitKind {
+    Lit_None = 0,
+    Lit_Int,
+    Lit_Float,
+} LitKind;
+
+static bool type_is_numeric(TypeExpr *type);
+static bool type_is_integer(TypeExpr *type);
+static TypeExpr *resolve_alias_type(Program *prog, TypeExpr *type);
+static TypeExpr *binary_numeric_result(Program *prog, memops_arena *arena, TypeExpr *left, LitKind lk,
+                                       TypeExpr *right, LitKind rk, LitKind *kind);
+static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena, LitKind *kind);
+
+/* The element type of `[]T` (written `slice<T>` too), or null for anything else. */
+static TypeExpr *type_slice_elem(TypeExpr *type) {
+    if (!type || type->kind != Type_Generic || type->args.length != 1) return null;
+    if (!string8_equals_cstr(&type->name, "slice")) return null;
+    return (TypeExpr *)type->args.data[0];
+}
+
+static TypeExpr *type_slice_of(memops_arena *arena, TypeExpr *elem) {
+    TypeExpr *t = type_new(arena, Type_Generic);
+    t->name = string8_from_cstr(arena, "slice");
+    t->args = ptr_array_reserve(arena, 1);
+    ptr_array_append(arena, &t->args, elem);
+    return t;
+}
+
+/* `Enum<>.count`: how many members an enum has, known when it is compiled. */
+static bool expr_is_reflect_count(Expr *e) {
+    if (!e || e->kind != Expr_Field || !string8_equals_cstr(&e->name, "count")) return false;
+    if (!e->base || e->base->kind != Expr_Name) return false;
+    string8 n = e->base->name;
+    const char *suffix = "_reflect";
+    u64 len = strlen(suffix);
+    return n.length > len && memcmp(n.data + n.length - len, suffix, len) == 0;
+}
+
 static TypeExpr *infer_expr_type(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena) {
+    LitKind kind = Lit_None;
+    return infer_expr_type_k(e, scope, prog, arena, &kind);
+}
+
+static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena, LitKind *kind) {
+    *kind = Lit_None;
     if (!e) return null;
     if (e->kind == Expr_Name) {
         if (string8_equals_cstr(&e->name, "null")) {
@@ -9786,30 +10083,36 @@ static TypeExpr *infer_expr_type(Expr *e, TypeScope *scope, Program *prog, memop
         return proc_decl_pointer_type(arena, lookup_proc_decl(prog, e->name));
     }
     if (e->kind == Expr_Number) {
-        string8 n = e->number;
-        for (u64 i = 0; i < n.length; i++) {
-            if (n.data[i] == '.') {
-                return type_name_expr(arena, "f32");
-            }
+        string8 suffix = number_suffix_type(e->number);
+        if (suffix.length > 0) {
+            return type_name_expr_from_string(arena, suffix);
         }
-        if (n.length > 3 &&
-            n.data[n.length - 3] == 'u' &&
-            n.data[n.length - 2] == '6' &&
-            n.data[n.length - 1] == '4') {
-            return type_name_expr(arena, "u64");
+        if (number_is_float_form(number_digits(e->number))) {
+            *kind = Lit_Float;
+            return type_name_expr(arena, "f64");
         }
+        *kind = Lit_Int;
         return type_name_expr(arena, "i32");
     }
     if (e->kind == Expr_String) {
+        /* A string literal is many chars, so it is a raw pointer. */
         TypeExpr *char_t = type_name_expr(arena, "c8");
         TypeExpr *ptr_t = type_new(arena, Type_Ptr);
         ptr_t->elem = char_t;
+        ptr_t->is_raw = true;
         return ptr_t;
     }
     if (e->kind == Expr_Char) {
+        /* A char literal is a small integer constant: `c == ' '` is fine for a
+           u8. C reads it as an int, so it needs no annotation to emit. */
+        *kind = Lit_Int;
         return type_name_expr(arena, "c8");
     }
     if (e->kind == Expr_SizeofType || e->kind == Expr_AlignofType) {
+        /* A size is a constant C knows and rin does not, so it adapts to its
+           context the way a literal does: `desc.ByteWidth = sizeof(V)` needs no
+           cast. The emitter writes the cast, so C sees the same type. */
+        *kind = Lit_Int;
         return type_name_expr(arena, "usize");
     }
     if ((e->kind == Expr_ZeroInit || e->kind == Expr_InitList) && e->cast_type) {
@@ -9823,7 +10126,10 @@ static TypeExpr *infer_expr_type(Expr *e, TypeScope *scope, Program *prog, memop
         return ptr_t;
     }
     if (e->kind == Expr_Unary) {
-        return infer_expr_type(e->inner, scope, prog, arena);
+        LitKind inner_kind = Lit_None;
+        TypeExpr *inner = infer_expr_type_k(e->inner, scope, prog, arena, &inner_kind);
+        if (e->op != Token_Bang) *kind = inner_kind;
+        return inner;
     }
     if (e->kind == Expr_Cast) {
         return type_scope_apply_sub(scope, arena, e->cast_type);
@@ -9833,9 +10139,12 @@ static TypeExpr *infer_expr_type(Expr *e, TypeScope *scope, Program *prog, memop
     }
     if (e->kind == Expr_Index) {
         TypeExpr *base = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
-        if (base && base->kind == Type_Ptr) return base->elem;
-        if (base && base->kind == Type_Array) return base->elem;
-        return null;
+        TypeExpr *elem = null;
+        if (base && (base->kind == Type_Ptr || base->kind == Type_Array)) elem = base->elem;
+        else elem = type_slice_elem(base);
+        if (!elem) return null;
+        if (e->index_end) return type_slice_of(arena, elem);  // `x[a..b]` is a slice
+        return elem;
     }
     if (e->kind == Expr_Field) {
         EnumDecl *enum_decl = null;
@@ -9844,11 +10153,20 @@ static TypeExpr *infer_expr_type(Expr *e, TypeScope *scope, Program *prog, memop
             return enum_item ? type_name_expr_from_string(arena, enum_decl->name) : null;
         }
         TypeExpr *base = infer_expr_type(e->base, scope, prog, arena);
+        if (expr_is_reflect_count(e)) *kind = Lit_Int;
         return lookup_field_type(prog, base, e->name, arena);
     }
     if (e->kind == Expr_Ternary) {
-        TypeExpr *right = infer_expr_type(e->right, scope, prog, arena);
-        TypeExpr *third = infer_expr_type(e->third, scope, prog, arena);
+        LitKind right_kind = Lit_None;
+        LitKind third_kind = Lit_None;
+        TypeExpr *right = infer_expr_type_k(e->right, scope, prog, arena, &right_kind);
+        TypeExpr *third = infer_expr_type_k(e->third, scope, prog, arena, &third_kind);
+        if (right_kind && third_kind) {
+            *kind = right_kind > third_kind ? right_kind : third_kind;
+            return *kind == right_kind ? right : third;
+        }
+        if (right_kind && third) return third;
+        if (third_kind && right) return right;
         if (right && third && type_compatible(prog, right, third)) return right;
         if (right && third && type_compatible(prog, third, right)) return third;
         return right;
@@ -9883,8 +10201,10 @@ static TypeExpr *infer_expr_type(Expr *e, TypeScope *scope, Program *prog, memop
         }
     }
     if (e->kind == Expr_Binary) {
-        TypeExpr *left = infer_expr_type(e->left, scope, prog, arena);
-        TypeExpr *right = infer_expr_type(e->right, scope, prog, arena);
+        LitKind left_kind = Lit_None;
+        LitKind right_kind = Lit_None;
+        TypeExpr *left = infer_expr_type_k(e->left, scope, prog, arena, &left_kind);
+        TypeExpr *right = infer_expr_type_k(e->right, scope, prog, arena, &right_kind);
         if (e->op == Token_LAngle || e->op == Token_RAngle ||
             e->op == Token_LessEqual || e->op == Token_GreaterEqual ||
             e->op == Token_EqualEqual || e->op == Token_BangEqual ||
@@ -9900,10 +10220,15 @@ static TypeExpr *infer_expr_type(Expr *e, TypeScope *scope, Program *prog, memop
         if (e->op == Token_Minus && left && right && left->kind == Type_Array && right->kind == Type_Ptr && type_expr_equal_resolved(prog, left->elem, right->elem)) {
             return type_name_expr(arena, "long");
         }
-        /* `left` is this exact call. Recomputing it here made every binary node
-           infer its left subtree twice, so a chain of n operators cost 2^n --
-           forty terms of `1 + 1 + ...` took over a minute to type-check. */
-        return left;
+        /* A shift has the type of what is shifted; the amount is separate. */
+        if (e->op == Token_Keyword_Shl || e->op == Token_Keyword_Shr) {
+            *kind = left_kind == Lit_Int ? Lit_Int : Lit_None;
+            return left;
+        }
+        /* Each operand is inferred exactly once. Recomputing one made every
+           binary node infer a subtree twice, so a chain of n operators cost 2^n
+           -- forty terms of `1 + 1 + ...` took over a minute to type-check. */
+        return binary_numeric_result(prog, arena, left, left_kind, right, right_kind, kind);
     }
     return null;
 }
@@ -10002,6 +10327,86 @@ static bool type_is_boolish(TypeExpr *type) {
            string8_equals_cstr(&type->name, "b8") ||
            string8_equals_cstr(&type->name, "b16") ||
            string8_equals_cstr(&type->name, "b64");
+}
+
+/* Width and signedness of an integer type, for the literal and conversion rules.
+   False for a type rin does not know the width of, and for the boolean types,
+   which convert by truthiness rather than by value -- both are left alone. */
+static bool type_int_info(TypeExpr *type, i32 *bits, bool *is_signed) {
+    if (!type || type->kind != Type_Name) return false;
+    static const struct { const char *name; i32 bits; bool is_signed; } table[] = {
+        { "i8", 8, true }, { "INT8", 8, true }, { "ma_int8", 8, true }, { "CHAR", 8, true },
+        { "char", 8, true }, { "c8", 8, true },
+        { "u8", 8, false }, { "BYTE", 8, false }, { "UINT8", 8, false }, { "ma_uint8", 8, false },
+        { "i16", 16, true }, { "short", 16, true }, { "SHORT", 16, true }, { "INT16", 16, true },
+        { "ma_int16", 16, true },
+        { "u16", 16, false }, { "USHORT", 16, false }, { "WORD", 16, false }, { "UINT16", 16, false },
+        { "ma_uint16", 16, false }, { "ATOM", 16, false },
+        { "i32", 32, true }, { "int", 32, true }, { "long", 32, true }, { "INT", 32, true },
+        { "INT32", 32, true }, { "LONG", 32, true }, { "HRESULT", 32, true }, { "ma_int32", 32, true },
+        { "u32", 32, false }, { "UINT", 32, false }, { "UINT32", 32, false }, { "DWORD", 32, false },
+        { "ULONG", 32, false }, { "ma_uint32", 32, false },
+        { "i64", 64, true }, { "INT64", 64, true }, { "ma_int64", 64, true }, { "intptr", 64, true },
+        { "ptrdiff", 64, true }, { "intmax", 64, true }, { "LPARAM", 64, true }, { "LRESULT", 64, true },
+        { "u64", 64, false }, { "usize", 64, false }, { "uintptr", 64, false }, { "uintmax", 64, false },
+        { "UINT64", 64, false }, { "ma_uint64", 64, false }, { "WPARAM", 64, false },
+        { "int8_t", 8, true }, { "uint8_t", 8, false }, { "int16_t", 16, true }, { "uint16_t", 16, false },
+        { "int32_t", 32, true }, { "uint32_t", 32, false }, { "int64_t", 64, true }, { "uint64_t", 64, false },
+        { "size_t", 64, false }, { "intptr_t", 64, true }, { "uintptr_t", 64, false }, { "ptrdiff_t", 64, true },
+    };
+    for (u64 i = 0; i < sizeof(table) / sizeof(table[0]); i++) {
+        if (string8_equals_cstr(&type->name, table[i].name)) {
+            *bits = table[i].bits;
+            *is_signed = table[i].is_signed;
+            return true;
+        }
+    }
+    return false;
+}
+
+static i32 type_float_bits(TypeExpr *type) {
+    if (!type || type->kind != Type_Name) return 0;
+    if (string8_equals_cstr(&type->name, "f32") || string8_equals_cstr(&type->name, "float") ||
+        string8_equals_cstr(&type->name, "FLOAT")) return 32;
+    if (string8_equals_cstr(&type->name, "f64") || string8_equals_cstr(&type->name, "double") ||
+        string8_equals_cstr(&type->name, "DOUBLE")) return 64;
+    return 0;
+}
+
+/* The type of `a op b` for arithmetic. An untyped literal takes the other
+   operand's type. Between two typed numbers the wider one wins, a float over an
+   integer, and at equal width unsigned over signed, as in C. Anything this does
+   not understand keeps the old answer, the left operand. */
+static TypeExpr *binary_numeric_result(Program *prog, memops_arena *arena, TypeExpr *left, LitKind lk,
+                                       TypeExpr *right, LitKind rk, LitKind *kind) {
+    if (lk && rk) {
+        *kind = lk > rk ? lk : rk;
+        return type_name_expr(arena, *kind == Lit_Float ? "f64" : "i32");
+    }
+    if (lk || rk) {
+        LitKind lit = lk ? lk : rk;
+        TypeExpr *typed = lk ? right : left;
+        if (lit == Lit_Float && type_is_integer(resolve_alias_type(prog, typed))) {
+            *kind = Lit_Float;
+            return type_name_expr(arena, "f64");
+        }
+        return typed;
+    }
+    TypeExpr *l = resolve_alias_type(prog, left);
+    TypeExpr *r = resolve_alias_type(prog, right);
+    if (!l || !r || !type_is_numeric(l) || !type_is_numeric(r)) return left;
+    i32 lf = type_float_bits(l);
+    i32 rf = type_float_bits(r);
+    if (lf || rf) {
+        if (lf && rf) return rf > lf ? right : left;
+        return lf ? left : right;
+    }
+    i32 lb = 0, rb = 0;
+    bool ls = false, rs = false;
+    if (!type_int_info(l, &lb, &ls) || !type_int_info(r, &rb, &rs)) return left;
+    if (lb != rb) return rb > lb ? right : left;
+    if (ls != rs) return ls ? right : left;
+    return left;
 }
 
 static bool type_is_void_type(Program *prog, TypeExpr *type) {
@@ -10253,6 +10658,11 @@ static bool type_compatible(Program *prog, TypeExpr *dst, TypeExpr *src) {
     if (dst->kind == Type_Ptr && src->kind == Type_Array) {
         if (type_is_void_pointer(dst)) return type_void_pointer_const_compatible(prog, dst, src);
         if (type_expr_assignable_qualified(prog, dst->elem, src->elem, true)) return true;
+    }
+    /* An array is a slice whose length is in its type. */
+    if (type_slice_elem(dst) && src->kind == Type_Array &&
+        type_expr_assignable_qualified(prog, type_slice_elem(dst), src->elem, true)) {
+        return true;
     }
     if (dst->kind == Type_Ptr && src->kind == Type_Ptr) {
         if (type_is_void_pointer(src)) return type_void_pointer_const_compatible(prog, dst, src);
@@ -12197,11 +12607,469 @@ static string8 string8_from_i64(memops_arena *arena, i64 value) {
     return string8_copy_from_slice(arena, (u8 *)buf, (u64)strlen(buf));
 }
 
+static void type_error_message(const char *message, i32 line, i32 col) {
+    if (g_diag_json) {
+        diag_json_error(diag_current_path(), line, col, "type", message);
+        diag_record_error();
+        return;
+    }
+    printf("%s:%d:%d: type error: %s\n", diag_current_path(), line, col, message);
+    diag_finish_at(line, col);
+}
+
+static void lit_set_type(Program *prog, Expr *e, TypeExpr *type, bool wide) {
+    if (e->lit_type_varies) return;
+    if (!e->lit_type) {
+        e->lit_type = type;
+        e->lit_wide = wide;
+        return;
+    }
+    if (!type_expr_equal_resolved(prog, e->lit_type, type)) {
+        e->lit_type_varies = true;
+        return;
+    }
+    if (wide) e->lit_wide = true;
+}
+
+static bool binary_op_is_arith(TokenKind op) {
+    return op == Token_Plus || op == Token_Minus || op == Token_Star || op == Token_Slash ||
+           op == Token_Percent || op == Token_Ampersand || op == Token_Pipe || op == Token_Caret;
+}
+
+/* Gives every untyped literal under `e` the type `type`. Literals combined only
+   with each other are marked wide: C would evaluate `1 << 40` or `1 / 3` in int,
+   whatever type the result lands in. */
+static void lit_annotate(Program *prog, Expr *e, TypeExpr *type, bool in_const_arith, TypeScope *scope, memops_arena *arena) {
+    if (!e) return;
+    LitKind kind = Lit_None;
+    infer_expr_type_k(e, scope, prog, arena, &kind);
+    if (kind == Lit_None) return;
+    if (e->kind == Expr_Number) {
+        lit_set_type(prog, e, type, in_const_arith);
+        return;
+    }
+    if (e->kind == Expr_SizeofType || e->kind == Expr_AlignofType || e->kind == Expr_Field) {
+        lit_set_type(prog, e, type, false);
+        return;
+    }
+    if (e->kind == Expr_Unary) {
+        lit_annotate(prog, e->inner, type, in_const_arith, scope, arena);
+        return;
+    }
+    if (e->kind == Expr_Ternary) {
+        lit_annotate(prog, e->right, type, false, scope, arena);
+        lit_annotate(prog, e->third, type, false, scope, arena);
+        return;
+    }
+    if (e->kind == Expr_Binary) {
+        if (e->op == Token_Keyword_Shl || e->op == Token_Keyword_Shr) {
+            lit_annotate(prog, e->left, type, true, scope, arena);
+            return;
+        }
+        if (!binary_op_is_arith(e->op)) return;
+        LitKind left_kind = Lit_None;
+        LitKind right_kind = Lit_None;
+        infer_expr_type_k(e->left, scope, prog, arena, &left_kind);
+        infer_expr_type_k(e->right, scope, prog, arena, &right_kind);
+        /* Bitwise operators give the same bits in int as in the target type;
+           only arithmetic can overflow int or truncate a division. */
+        bool widens = left_kind && right_kind &&
+                      e->op != Token_Ampersand && e->op != Token_Pipe && e->op != Token_Caret;
+        if (left_kind) lit_annotate(prog, e->left, type, widens || in_const_arith, scope, arena);
+        if (right_kind) lit_annotate(prog, e->right, type, widens || in_const_arith, scope, arena);
+    }
+}
+
+/* The value of a constant integer expression, when it can be worked out exactly.
+   `big` is a literal above i64's range, which only u64 can hold. */
+typedef struct ConstVal {
+    bool ok;
+    bool is_float;
+    bool big;
+    i64 value;
+} ConstVal;
+
+static ConstVal const_eval(Expr *e) {
+    ConstVal none = {0};
+    if (!e) return none;
+    if (e->kind == Expr_Number) {
+        string8 digits = number_digits(e->number);
+        ConstVal c = { .ok = true };
+        if (number_is_float_form(digits)) {
+            c.is_float = true;
+            return c;
+        }
+        u64 base = 10;
+        u64 i = 0;
+        if (digits.length > 1 && digits.data[0] == '0' && (digits.data[1] == 'x' || digits.data[1] == 'X')) {
+            base = 16;
+            i = 2;
+        } else if (digits.length > 1 && digits.data[0] == '0' && (digits.data[1] == 'b' || digits.data[1] == 'B')) {
+            base = 2;
+            i = 2;
+        } else if (digits.length > 1 && digits.data[0] == '0') {
+            base = 8;
+            i = 1;
+        }
+        u64 value = 0;
+        for (; i < digits.length; i++) {
+            u8 ch = digits.data[i];
+            u64 d = 0;
+            if (ch >= '0' && ch <= '9') d = (u64)(ch - '0');
+            else if (ch >= 'a' && ch <= 'f') d = (u64)(ch - 'a' + 10);
+            else if (ch >= 'A' && ch <= 'F') d = (u64)(ch - 'A' + 10);
+            else return none;
+            if (d >= base) return none;
+            if (value > (UINT64_MAX - d) / base) return none;
+            value = value * base + d;
+        }
+        if (value > (u64)INT64_MAX) {
+            c.big = true;
+        } else {
+            c.value = (i64)value;
+        }
+        return c;
+    }
+    if (e->kind == Expr_Unary) {
+        ConstVal c = const_eval(e->inner);
+        if (!c.ok || c.is_float) return c;
+        /* `~0` means all ones in whatever type it lands in, which no single
+           value here can say, so it is left unchecked. */
+        if (e->op != Token_Minus || c.big) return none;
+        c.value = -c.value;
+        return c;
+    }
+    if (e->kind == Expr_Binary) {
+        ConstVal a = const_eval(e->left);
+        ConstVal b = const_eval(e->right);
+        if (!a.ok || !b.ok || a.big || b.big) return none;
+        if (a.is_float || b.is_float) {
+            ConstVal f = { .ok = true, .is_float = true };
+            return binary_op_is_arith(e->op) ? f : none;
+        }
+        i64 x = a.value;
+        i64 y = b.value;
+        ConstVal c = { .ok = true };
+        switch (e->op) {
+            case Token_Plus:
+                if ((y > 0 && x > INT64_MAX - y) || (y < 0 && x < INT64_MIN - y)) return none;
+                c.value = x + y;
+                return c;
+            case Token_Minus:
+                if ((y < 0 && x > INT64_MAX + y) || (y > 0 && x < INT64_MIN + y)) return none;
+                c.value = x - y;
+                return c;
+            case Token_Star: {
+                double estimate = (double)x * (double)y;
+                if (estimate > 9.0e18 || estimate < -9.0e18) return none;
+                c.value = x * y;
+                return c;
+            }
+            case Token_Slash:
+                if (y == 0) return none;
+                c.value = x / y;
+                return c;
+            case Token_Percent:
+                if (y == 0) return none;
+                c.value = x % y;
+                return c;
+            case Token_Keyword_Shl:
+                if (x < 0 || y < 0 || y > 62 || x > (INT64_MAX >> y)) return none;
+                c.value = x << y;
+                return c;
+            case Token_Keyword_Shr:
+                if (x < 0 || y < 0 || y > 63) return none;
+                c.value = x >> y;
+                return c;
+            case Token_Ampersand: c.value = x & y; return c;
+            case Token_Pipe: c.value = x | y; return c;
+            case Token_Caret: c.value = x ^ y; return c;
+            default: return none;
+        }
+    }
+    return none;
+}
+
+/* A literal must fit where it goes: `300` is not a u8 and `-1` is not a u64. */
+static void lit_check_fits(Program *prog, TypeExpr *dst, Expr *e) {
+    dst = resolve_alias_type(prog, dst);
+    ConstVal c = const_eval(e);
+    if (!c.ok) return;
+    i32 bits = 0;
+    bool is_signed = false;
+    if (!type_int_info(dst, &bits, &is_signed)) return;
+    string8 dst_name = dst->name;
+    char message[512];
+    if (c.is_float) {
+        snprintf(message, sizeof(message),
+                 "a float literal cannot become the integer type '%.*s'; write an integer, or cast it",
+                 (int)dst_name.length, dst_name.data);
+        type_error_message(message, e->line, e->col);
+        return;
+    }
+    bool fits = false;
+    i64 min = 0;
+    i64 max = 0;
+    if (c.big) {
+        fits = bits == 64 && !is_signed;
+    } else if (string8_equals_cstr(&dst_name, "c8") || string8_equals_cstr(&dst_name, "char") ||
+               string8_equals_cstr(&dst_name, "CHAR")) {
+        /* A byte of text: either reading of the bits is fine. */
+        fits = c.value >= -128 && c.value <= 255;
+        min = -128;
+        max = 255;
+    } else if (is_signed) {
+        min = bits == 64 ? INT64_MIN : -((i64)1 << (bits - 1));
+        max = bits == 64 ? INT64_MAX : ((i64)1 << (bits - 1)) - 1;
+        fits = c.value >= min && c.value <= max;
+    } else {
+        max = bits == 64 ? INT64_MAX : (i64)(((u64)1 << bits) - 1);
+        fits = c.value >= 0 && (bits == 64 || c.value <= max);
+    }
+    if (fits) return;
+    if (!c.big && c.value < 0 && !is_signed) {
+        snprintf(message, sizeof(message), "literal %lld does not fit in '%.*s': an unsigned type has no negative values",
+                 (long long)c.value, (int)dst_name.length, dst_name.data);
+    } else if (c.big) {
+        snprintf(message, sizeof(message), "literal does not fit in '%.*s'", (int)dst_name.length, dst_name.data);
+    } else if (bits == 64) {
+        snprintf(message, sizeof(message), "literal %lld does not fit in '%.*s'",
+                 (long long)c.value, (int)dst_name.length, dst_name.data);
+    } else {
+        snprintf(message, sizeof(message), "literal %lld does not fit in '%.*s' (%lld to %lld)",
+                 (long long)c.value, (int)dst_name.length, dst_name.data, (long long)min, (long long)max);
+    }
+    type_error_message(message, e->line, e->col);
+}
+
+/* `src` goes where a `dst` is expected: its untyped literals become `dst`, and a
+   constant must fit. A cast skips the fit check -- it asked for the bits. */
+static void lit_into(Program *prog, TypeExpr *dst, Expr *src, bool check_fit, TypeScope *scope, memops_arena *arena) {
+    TypeExpr *resolved = resolve_alias_type(prog, dst);
+    if (!resolved || !src || !type_is_numeric(resolved)) return;
+    LitKind kind = Lit_None;
+    infer_expr_type_k(src, scope, prog, arena, &kind);
+    if (kind == Lit_None) return;
+    lit_annotate(prog, src, resolved, false, scope, arena);
+    if (check_fit) lit_check_fits(prog, resolved, src);
+}
+
+/* Implicit numeric conversions are allowed when they cannot lose anything:
+   widening within a signedness, unsigned into a wider signed type, and any
+   integer into a float. Narrowing, a change of sign, float to integer and f64 to
+   f32 need a cast. It shipped as a warning first; njinn had one real site, so it
+   is an error. */
+static void check_numeric_conversion(Program *prog, TypeExpr *dst, TypeExpr *src, Expr *src_expr,
+                                     TypeScope *scope, i32 line, i32 col, memops_arena *arena) {
+    TypeExpr *d = resolve_alias_type(prog, dst);
+    TypeExpr *s = resolve_alias_type(prog, src);
+    if (!d || !s || !type_is_numeric(d) || !type_is_numeric(s)) return;
+    LitKind kind = Lit_None;
+    if (src_expr) infer_expr_type_k(src_expr, scope, prog, arena, &kind);
+    if (kind == Lit_Int) return;            // a literal takes the type it goes into
+    i32 d_bits = 0, s_bits = 0;
+    bool d_signed = false, s_signed = false;
+    bool d_int = type_int_info(d, &d_bits, &d_signed);
+    bool s_int = type_int_info(s, &s_bits, &s_signed);
+    i32 d_float = type_float_bits(d);
+    i32 s_float = kind == Lit_Float ? 0 : type_float_bits(s);
+    if (kind == Lit_Float && !d_int) return;  // a float literal adapts to any float
+    if (kind == Lit_Float && const_eval(src_expr).ok) return;  // the fit check reports it
+    const char *why = null;
+    if ((s_float || kind == Lit_Float) && d_int) {
+        why = "drops the fraction";
+    } else if (s_float == 64 && d_float == 32) {
+        why = "loses precision";
+    } else if (s_int && d_int) {
+        if (s_signed == d_signed && d_bits >= s_bits) return;
+        if (!s_signed && d_signed && d_bits > s_bits) return;
+        why = d_bits < s_bits ? "can lose bits" : "changes sign";
+    }
+    if (!why) return;
+    string8 d_name = type_mangle(arena, d, (TypeSub){0});
+    string8 s_name = kind == Lit_Float ? string8_from_cstr(arena, "float") : type_mangle(arena, s, (TypeSub){0});
+    char message[512];
+    snprintf(message, sizeof(message), "implicit conversion from '%.*s' to '%.*s' %s; write cast(x, %.*s)",
+             (int)s_name.length, s_name.data, (int)d_name.length, d_name.data, why,
+             (int)d_name.length, d_name.data);
+    type_error_message(message, src_expr ? src_expr->line : line, src_expr ? src_expr->col : col);
+}
+
+/* An expression the generated C may read twice without changing what it
+   means: names, fields, indexes and arithmetic, but no calls. */
+static bool expr_is_pure(Expr *e) {
+    if (!e) return true;
+    switch (e->kind) {
+        case Expr_Name:
+        case Expr_Number:
+        case Expr_Char:
+        case Expr_String:
+        case Expr_SizeofType:
+        case Expr_AlignofType:
+            return true;
+        case Expr_Field:
+            return expr_is_pure(e->base);
+        case Expr_Index:
+            return expr_is_pure(e->base) && expr_is_pure(e->index_expr) && expr_is_pure(e->index_end);
+        case Expr_Unary:
+        case Expr_Addr:
+        case Expr_Cast:
+            return expr_is_pure(e->inner);
+        case Expr_Binary:
+            return expr_is_pure(e->left) && expr_is_pure(e->right);
+        case Expr_Ternary:
+            return expr_is_pure(e->left) && expr_is_pure(e->right) && expr_is_pure(e->third);
+        default:
+            return false;
+    }
+}
+
+static void coerce_set(Program *prog, Expr *e, TypeExpr *type, string8 count) {
+    if (e->coerce_varies) return;
+    if (!e->coerce_to) {
+        e->coerce_to = type;
+        e->coerce_count = count;
+        return;
+    }
+    if (!type_expr_equal_resolved(prog, e->coerce_to, type)) e->coerce_varies = true;
+}
+
+/* An array or a slice going where a different slice type is expected: `[N]T`
+   into `[]T` gets its length from the type, and `[]T` widens to `[]const T`.
+   The two slice types are different C structs, so the emitter writes the
+   conversion. */
+static void slice_coerce(Program *prog, TypeExpr *dst, TypeExpr *src, Expr *src_expr) {
+    if (!src_expr) return;
+    TypeExpr *d = resolve_alias_type(prog, dst);
+    TypeExpr *s = resolve_alias_type(prog, src);
+    if (!d || !s || !type_slice_elem(d)) return;
+    if (s->kind == Type_Array) {
+        coerce_set(prog, src_expr, d, s->array_count);
+        return;
+    }
+    if (type_slice_elem(s) && !type_expr_equal_resolved(prog, d, s)) {
+        if (!src_expr->index_end && !expr_is_pure(src_expr)) {
+            type_error_message("this slice is read twice to convert it; store it in a local first",
+                               src_expr->line, src_expr->col);
+            return;
+        }
+        coerce_set(prog, src_expr, d, (string8){0});
+    }
+}
+
+/* A plain `*T` points at one element. Indexing it anywhere but `[0]`, taking a
+   range of it or moving it with arithmetic treats it as many, which is what
+   `[]T` (with a length) and `[*]T` (without one) are for. */
+/* The rules shipped as warnings first, with this note pointing at each `*` to
+   change; njinn's 900-odd sites became `[*]T` or a slice, so they are errors. */
+static void pointer_declared_note(TypeExpr *ptr) {
+    if (g_diag_json || !ptr || !ptr->decl_path || ptr->line <= 0) return;
+    printf("%s:%d:%d: note: the pointer type is written here\n", ptr->decl_path, ptr->line, ptr->col);
+}
+
+static void pointer_one_violation(const char *what, TypeExpr *ptr, i32 line, i32 col) {
+    char message[512];
+    snprintf(message, sizeof(message), "%s; '*T' points at one element -- use a slice '[]T', or '[*]T' for a raw pointer", what);
+    type_error_message(message, line, col);
+    pointer_declared_note(ptr);
+}
+
+static bool type_is_void_pointer(TypeExpr *type);
+
+/* A raw pointer names no particular element, so it becomes a `*T` only by
+   saying which one: `q[0]&`. A void pointer is exempt -- it has no element. */
+static void check_raw_to_one(Program *prog, TypeExpr *dst, TypeExpr *src, i32 line, i32 col) {
+    TypeExpr *d = resolve_alias_type(prog, dst);
+    TypeExpr *s = resolve_alias_type(prog, src);
+    if (!d || !s || d->kind != Type_Ptr || s->kind != Type_Ptr) return;
+    if (d->is_raw || !s->is_raw || type_is_void_pointer(d) || type_is_void_pointer(s)) return;
+    type_error_message("a raw '[*]T' becomes a '*T' only by naming the element, as q[0]&", line, col);
+    pointer_declared_note(dst);
+}
+
+static bool type_is_one_pointer(TypeExpr *type) {
+    return type && type->kind == Type_Ptr && !type->is_raw;
+}
+
+static bool expr_is_literal_zero(Expr *e) {
+    return e && e->kind == Expr_Number && string8_equals_cstr(&e->number, "0");
+}
+
+static void index_set(Expr *e, IndexBase base, bool checked, string8 count) {
+    if (e->index_varies) return;
+    if (e->index_base == IndexBase_Unknown) {
+        e->index_base = (u8)base;
+        e->index_checked = checked;
+        e->index_count = count;
+        return;
+    }
+    if (e->index_base != base || e->index_checked != checked) e->index_varies = true;
+}
+
+/* How `x[i]` and `x[a..b]` are bounds-checked. A constant index into an array
+   is decided now; anything else into an array or a slice is checked at run
+   time, unless NDEBUG is defined. A raw pointer has no length to check. */
+static void type_check_index_bounds(Expr *e, TypeExpr *base, Program *prog, memops_arena *arena) {
+    if (type_is_one_pointer(base)) {
+        if (e->index_end) pointer_one_violation("a range of a pointer", base, e->line, e->col);
+        else if (!expr_is_literal_zero(e->index_expr)) pointer_one_violation("indexing a pointer past [0]", base, e->line, e->col);
+    }
+    TypeExpr *slice_elem = type_slice_elem(base);
+    if (!base || (base->kind != Type_Array && !slice_elem)) {
+        index_set(e, IndexBase_Ptr, false, (string8){0});
+        if (e->index_end && base) e->range_type = type_slice_of(arena, base->elem);
+        return;
+    }
+    TypeExpr *elem = slice_elem ? slice_elem : base->elem;
+    if (e->index_end) {
+        e->range_type = type_slice_of(arena, elem);
+        if (!expr_is_pure(e->index_expr) || !expr_is_pure(e->index_end)) {
+            type_error_message("a subrange reads its bounds twice; store them in locals first",
+                               e->line, e->col);
+        }
+    }
+    if (slice_elem) {
+        if (!expr_is_pure(e->base)) {
+            type_error_message("this slice is read twice by its bounds check; store it in a local first",
+                               e->line, e->col);
+        }
+        index_set(e, IndexBase_Slice, true, (string8){0});
+        return;
+    }
+    i64 count = parse_nonnegative_i64(base->array_count);
+    ConstVal start = const_eval(e->index_expr);
+    ConstVal end = e->index_end ? const_eval(e->index_end) : (ConstVal){0};
+    string8 base_name = type_mangle(arena, base, (TypeSub){0});
+    char message[512];
+    if (!e->index_end && start.ok && !start.is_float) {
+        if (start.big || start.value < 0 || (count >= 0 && start.value >= count)) {
+            snprintf(message, sizeof(message), "index %lld is out of bounds for '%.*s'",
+                     start.big ? (long long)INT64_MAX : (long long)start.value,
+                     (int)base_name.length, base_name.data);
+            type_error_message(message, e->index_expr->line, e->index_expr->col);
+        }
+        index_set(e, IndexBase_Array, false, base->array_count);
+        return;
+    }
+    if (e->index_end && start.ok && end.ok && !start.is_float && !end.is_float && count >= 0) {
+        if (start.big || end.big || start.value < 0 || end.value < start.value || end.value > count) {
+            snprintf(message, sizeof(message), "range %lld..%lld is out of bounds for '%.*s'",
+                     (long long)start.value, (long long)end.value, (int)base_name.length, base_name.data);
+            type_error_message(message, e->line, e->col);
+        }
+        index_set(e, IndexBase_Array, false, base->array_count);
+        return;
+    }
+    index_set(e, IndexBase_Array, true, base->array_count);
+}
+
 static void check_assignment_compatible(
     const char *context,
     Program *prog,
     TypeExpr *dst,
     TypeExpr *src,
+    Expr *src_expr,
+    TypeScope *scope,
     i32 line,
     i32 col,
     memops_arena *arena
@@ -12209,11 +13077,17 @@ static void check_assignment_compatible(
     if (!dst || !src) return;
     if (!type_compatible(prog, dst, src)) {
         type_error_incompatible(context, prog, dst, src, line, col, arena);
+        return;
     }
+    lit_into(prog, dst, src_expr, true, scope, arena);
+    check_numeric_conversion(prog, dst, src, src_expr, scope, line, col, arena);
+    slice_coerce(prog, dst, src, src_expr);
+    check_raw_to_one(prog, dst, src, src_expr ? src_expr->line : line, src_expr ? src_expr->col : col);
 }
 
 static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena);
 static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena);
+static void narrow_set_type(Program *prog, Expr *e, TypeExpr *type);
 static void type_check_ternary(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena);
 
 static void type_check_initializer_against(
@@ -12288,7 +13162,7 @@ static void type_check_initializer_against(
             type_check_expr(value, scope, prog, arena);
             type_check_initializer_against(value, expected->elem, scope, prog, arena);
             TypeExpr *actual = infer_expr_type(value, scope, prog, arena);
-            check_assignment_compatible("array initializer", prog, expected->elem, actual, init->line, init->col, arena);
+            check_assignment_compatible("array initializer", prog, expected->elem, actual, value, scope, init->line, init->col, arena);
         }
         return;
     }
@@ -12360,7 +13234,7 @@ static void type_check_initializer_against(
         TypeExpr *field_type = substitute_type_sub(arena, field->type, sub);
         type_check_initializer_against(value, field_type, scope, prog, arena);
         TypeExpr *actual = infer_expr_type(value, scope, prog, arena);
-        check_assignment_compatible("field initializer", prog, field_type, actual, init->line, init->col, arena);
+        check_assignment_compatible("field initializer", prog, field_type, actual, value, scope, init->line, init->col, arena);
     }
 }
 
@@ -12434,6 +13308,11 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
             if (expected && actual && !type_compatible(prog, expected, actual)) {
                 type_error_proc_pointer_argument(prog, callee_name, proc_type, i, expected, actual,
                                                  arg ? arg->line : call->line, arg ? arg->col : call->col, arena);
+            } else {
+                lit_into(prog, expected, arg, true, scope, arena);
+                check_numeric_conversion(prog, expected, actual, arg, scope, call->line, call->col, arena);
+                slice_coerce(prog, expected, actual, arg);
+                check_raw_to_one(prog, expected, actual, arg->line, arg->col);
             }
         }
         if (proc_type->is_variadic) {
@@ -12519,6 +13398,11 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
             TypeExpr *actual = infer_expr_type(arg, scope, prog, arena);
             if (expected && actual && !type_compatible(prog, expected, actual)) {
                 type_error_proc_pointer_argument(prog, call->name, proc_type, i, expected, actual, arg ? arg->line : call->line, arg ? arg->col : call->col, arena);
+            } else {
+                lit_into(prog, expected, arg, true, scope, arena);
+                check_numeric_conversion(prog, expected, actual, arg, scope, call->line, call->col, arena);
+                slice_coerce(prog, expected, actual, arg);
+                check_raw_to_one(prog, expected, actual, arg->line, arg->col);
             }
         }
         if (proc_type->is_variadic) {
@@ -12563,6 +13447,11 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
         TypeExpr *actual = infer_expr_type(arg, scope, prog, arena);
         if (expected && actual && !type_compatible(prog, expected, actual)) {
             type_error_proc_argument(prog, decl, param, i, type_arg, expected, actual, arg ? arg->line : call->line, arg ? arg->col : call->col, arena);
+        } else {
+            lit_into(prog, expected, arg, true, scope, arena);
+            check_numeric_conversion(prog, expected, actual, arg, scope, call->line, call->col, arena);
+            slice_coerce(prog, expected, actual, arg);
+            check_raw_to_one(prog, expected, actual, arg->line, arg->col);
         }
     }
     if (decl->is_variadic) {
@@ -12604,6 +13493,23 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         TypeExpr *cast_type = type_scope_apply_sub(scope, arena, e->cast_type);
         if (!type_allows_cast(prog, cast_type, actual)) {
             type_error_cast(prog, cast_type, actual, e->line, e->col, arena);
+        } else {
+            lit_into(prog, cast_type, e->inner, false, scope, arena);
+        }
+        return;
+    }
+    if (e->kind == Expr_Number) {
+        string8 suffix = number_suffix_type(e->number);
+        if (suffix.length > 0) {
+            TypeExpr *named = type_name_expr_from_string(arena, suffix);
+            if (!type_is_numeric(named)) {
+                char message[512];
+                snprintf(message, sizeof(message), "'%.*s' is not a number type; a literal's ' names one, as 1024'u64",
+                         (int)suffix.length, suffix.data);
+                type_error_message(message, e->line, e->col);
+            } else {
+                lit_check_fits(prog, named, e);
+            }
         }
         return;
     }
@@ -12617,19 +13523,37 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
     }
     if (e->kind == Expr_Unary) {
         type_check_expr(e->inner, scope, prog, arena);
+        if (e->op == Token_Minus || e->op == Token_Tilde) {
+            LitKind inner_kind = Lit_None;
+            TypeExpr *inner = resolve_alias_type(prog, infer_expr_type_k(e->inner, scope, prog, arena, &inner_kind));
+            i32 bits = 0;
+            bool is_signed = false;
+            if (!inner_kind && type_int_info(inner, &bits, &is_signed) && bits < 32) {
+                narrow_set_type(prog, e, inner);
+            }
+        }
         return;
     }
     if (e->kind == Expr_Index) {
         type_check_expr(e->base, scope, prog, arena);
         type_check_expr(e->index_expr, scope, prog, arena);
+        type_check_expr(e->index_end, scope, prog, arena);
         TypeExpr *base = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
-        if (base && base->kind != Type_Ptr && base->kind != Type_Array) {
+        if (base && base->kind != Type_Ptr && base->kind != Type_Array && !type_slice_elem(base)) {
             type_error_index_base(base, e->line, e->col, arena);
+            return;
         }
         TypeExpr *index_type = resolve_alias_type(prog, infer_expr_type(e->index_expr, scope, prog, arena));
         if (index_type && !type_is_numeric(index_type) && !type_is_program_enum(prog, index_type)) {
             type_error_index_value(index_type, e->index_expr->line, e->index_expr->col, arena);
         }
+        if (e->index_end) {
+            TypeExpr *end_type = resolve_alias_type(prog, infer_expr_type(e->index_end, scope, prog, arena));
+            if (end_type && !type_is_numeric(end_type) && !type_is_program_enum(prog, end_type)) {
+                type_error_index_value(end_type, e->index_end->line, e->index_end->col, arena);
+            }
+        }
+        type_check_index_bounds(e, base, prog, arena);
         return;
     }
     if (e->kind == Expr_Field) {
@@ -12708,10 +13632,72 @@ static bool type_pointer_compare_compatible(Program *prog, TypeExpr *left, TypeE
            type_expr_assignable_qualified(prog, right->elem, left->elem, true);
 }
 
+static void narrow_set_type(Program *prog, Expr *e, TypeExpr *type) {
+    if (e->narrow_type_varies) return;
+    if (!e->narrow_type) {
+        e->narrow_type = type;
+        return;
+    }
+    if (!type_expr_equal_resolved(prog, e->narrow_type, type)) e->narrow_type_varies = true;
+}
+
 static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena) {
-    TypeExpr *left = resolve_alias_type(prog, infer_expr_type(e->left, scope, prog, arena));
-    TypeExpr *right = resolve_alias_type(prog, infer_expr_type(e->right, scope, prog, arena));
+    LitKind left_kind = Lit_None;
+    LitKind right_kind = Lit_None;
+    TypeExpr *left = resolve_alias_type(prog, infer_expr_type_k(e->left, scope, prog, arena, &left_kind));
+    TypeExpr *right = resolve_alias_type(prog, infer_expr_type_k(e->right, scope, prog, arena, &right_kind));
     if (!left || !right) return;
+
+    /* `len > 0`: the literal becomes the other operand's type, and must fit in
+       it. A shift amount is its own value, and an integer next to a float
+       literal makes the whole expression a float, typed by its context. */
+    if (e->op != Token_Keyword_Shl && e->op != Token_Keyword_Shr &&
+        e->op != Token_AmpAmp && e->op != Token_PipePipe &&
+        (left_kind == Lit_None) != (right_kind == Lit_None)) {
+        Expr *lit = left_kind ? e->left : e->right;
+        LitKind lit_kind = left_kind ? left_kind : right_kind;
+        TypeExpr *typed = left_kind ? right : left;
+        if (type_is_numeric(typed) && !(lit_kind == Lit_Float && type_is_integer(typed))) {
+            lit_annotate(prog, lit, typed, false, scope, arena);
+            lit_check_fits(prog, typed, lit);
+        }
+    }
+
+    /* `i < len` with i signed and len unsigned compares in unsigned, so -1 is
+       larger than everything. Fine when the signed side is wider -- it then
+       holds every unsigned value -- and a literal adapts, so `len > 0` is fine. */
+    i32 left_bits = 0, right_bits = 0;
+    bool left_signed = false, right_signed = false;
+    if ((e->op == Token_LAngle || e->op == Token_RAngle || e->op == Token_LessEqual ||
+         e->op == Token_GreaterEqual || e->op == Token_EqualEqual || e->op == Token_BangEqual) &&
+        !left_kind && !right_kind &&
+        type_int_info(left, &left_bits, &left_signed) && type_int_info(right, &right_bits, &right_signed) &&
+        left_signed != right_signed) {
+        i32 signed_bits = left_signed ? left_bits : right_bits;
+        i32 unsigned_bits = left_signed ? right_bits : left_bits;
+        if (unsigned_bits >= signed_bits) {
+            string8 l_name = type_mangle(arena, left, (TypeSub){0});
+            string8 r_name = type_mangle(arena, right, (TypeSub){0});
+            char message[512];
+            snprintf(message, sizeof(message),
+                     "comparison between '%.*s' and '%.*s' mixes signed and unsigned; cast one side",
+                     (int)l_name.length, l_name.data, (int)r_name.length, r_name.data);
+            type_error_message(message, e->line, e->col);
+        }
+    }
+
+    /* Arithmetic on types narrower than int wraps in rin's type; C would do it
+       in int, so the emitter casts the result back. */
+    if (e->op == Token_Plus || e->op == Token_Minus || e->op == Token_Star ||
+        e->op == Token_Keyword_Shl) {
+        LitKind result_kind = Lit_None;
+        TypeExpr *result = resolve_alias_type(prog, infer_expr_type_k(e, scope, prog, arena, &result_kind));
+        i32 bits = 0;
+        bool is_signed = false;
+        if (!result_kind && type_int_info(result, &bits, &is_signed) && bits < 32) {
+            narrow_set_type(prog, e, result);
+        }
+    }
 
     bool left_enum = type_is_program_enum(prog, left);
     bool right_enum = type_is_program_enum(prog, right);
@@ -12721,6 +13707,11 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
     bool integer_or_same_enum = type_is_integer_or_enum(prog, left) &&
                                 type_is_integer_or_enum(prog, right) &&
                                 (!(left_enum && right_enum) || type_expr_equal_resolved(prog, left, right));
+
+    if ((e->op == Token_Plus || e->op == Token_Minus) &&
+        (type_is_one_pointer(left) || type_is_one_pointer(right))) {
+        pointer_one_violation("pointer arithmetic", type_is_one_pointer(left) ? left : right, e->line, e->col);
+    }
 
     bool ok = false;
     if (e->op == Token_Star || e->op == Token_Slash) {
@@ -12769,7 +13760,14 @@ static void type_check_ternary(Expr *e, TypeScope *scope, Program *prog, memops_
     if (!right || !third) return;
     if (!type_compatible(prog, right, third) && !type_compatible(prog, third, right)) {
         type_error_ternary_arms(right, third, e->line, e->col, arena);
+        return;
     }
+    LitKind right_kind = Lit_None;
+    LitKind third_kind = Lit_None;
+    infer_expr_type_k(e->right, scope, prog, arena, &right_kind);
+    infer_expr_type_k(e->third, scope, prog, arena, &third_kind);
+    if (right_kind && !third_kind) lit_into(prog, third, e->right, true, scope, arena);
+    if (third_kind && !right_kind) lit_into(prog, right, e->third, true, scope, arena);
 }
 
 static void type_check_condition(
@@ -12816,7 +13814,7 @@ static void type_check_stmt(
         type_check_expr(s->expr, scope, prog, arena);
         type_check_initializer_against(s->expr, local_type, scope, prog, arena);
         TypeExpr *actual = infer_expr_type(s->expr, scope, prog, arena);
-        check_assignment_compatible("initializer", prog, local_type, actual, s->line, s->col, arena);
+        check_assignment_compatible("initializer", prog, local_type, actual, s->expr, scope, s->line, s->col, arena);
         type_scope_add(arena, scope, s->name, local_type);
         g_diag_source_path = prev_diag_source_path;
         g_diag_import_chain = prev_diag_import_chain;
@@ -12835,11 +13833,22 @@ static void type_check_stmt(
         }
         type_check_initializer_against(s->expr, expected, scope, prog, arena);
         TypeExpr *actual = infer_expr_type(s->expr, scope, prog, arena);
+        if ((s->assign_op == Token_PlusEqual || s->assign_op == Token_MinusEqual) &&
+            type_is_one_pointer(resolve_alias_type(prog, expected))) {
+            pointer_one_violation("pointer arithmetic", resolve_alias_type(prog, expected), s->line, s->col);
+        }
         if (!type_allows_compound_assign(prog, s->assign_op, expected, actual)) {
             if (s->assign_op == Token_Equal) {
                 type_error_incompatible("assignment", prog, expected, actual, s->line, s->col, arena);
             } else {
                 type_error_compound_assignment(s->assign_op, prog, expected, actual, s->line, s->col, arena);
+            }
+        } else if (s->assign_op != Token_ShlEqual && s->assign_op != Token_ShrEqual) {
+            lit_into(prog, expected, s->expr, true, scope, arena);
+            check_numeric_conversion(prog, expected, actual, s->expr, scope, s->line, s->col, arena);
+            if (s->assign_op == Token_Equal) {
+                slice_coerce(prog, expected, actual, s->expr);
+                check_raw_to_one(prog, expected, actual, s->line, s->col);
             }
         }
         g_diag_source_path = prev_diag_source_path;
@@ -12858,7 +13867,7 @@ static void type_check_stmt(
         if (s->expr) {
             type_check_initializer_against(s->expr, return_type, scope, prog, arena);
             TypeExpr *actual = infer_expr_type(s->expr, scope, prog, arena);
-            check_assignment_compatible("return", prog, return_type, actual, s->line, s->col, arena);
+            check_assignment_compatible("return", prog, return_type, actual, s->expr, scope, s->line, s->col, arena);
         }
         g_diag_source_path = prev_diag_source_path;
         g_diag_import_chain = prev_diag_import_chain;
@@ -12939,6 +13948,8 @@ static void type_check_stmt(
                                (type_is_program_enum(prog, switch_type) && type_is_integer(case_type));
                 if (!case_ok) {
                     type_error_incompatible("switch case", prog, switch_type, case_type, sc->expr->line, sc->expr->col, arena);
+                } else {
+                    lit_into(prog, switch_type, sc->expr, true, scope, arena);
                 }
             }
             TypeScope case_scope = type_scope_copy(arena, scope);
@@ -13081,7 +14092,7 @@ static void type_check_program(Program *prog, memops_arena *arena) {
         type_check_expr(g->expr, &globals, prog, arena);
         type_check_initializer_against(g->expr, g->type, &globals, prog, arena);
         TypeExpr *actual = infer_expr_type(g->expr, &globals, prog, arena);
-        check_assignment_compatible("global initializer", prog, g->type, actual, g->line, g->col, arena);
+        check_assignment_compatible("global initializer", prog, g->type, actual, g->expr, &globals, g->line, g->col, arena);
         type_scope_add(arena, &globals, g->name, g->type);
         g_diag_source_path = prev_diag_source_path;
         g_diag_import_chain = prev_diag_import_chain;
@@ -13690,12 +14701,36 @@ static void emit_binary_op(memops_arena *arena, string8 *out, TokenKind op) {
     }
 }
 
+/* A size or a count that took a type from its context is cast to it, unless the
+   type is a 64-bit unsigned one, which is what C already gives it. */
+static bool emit_const_cast_open(memops_arena *arena, string8 *out, Expr *e) {
+    TypeExpr *type = e->lit_type;
+    if (!type || e->lit_type_varies || type->kind != Type_Name) return false;
+    i32 bits = 0;
+    bool is_signed = false;
+    if (type_int_info(type, &bits, &is_signed) && bits == 64 && !is_signed) return false;
+    emit_cstr(arena, out, "((");
+    emit_string8(arena, out, type->name);
+    emit_cstr(arena, out, ")");
+    return true;
+}
+
+static bool emit_narrow_open(memops_arena *arena, string8 *out, Expr *e) {
+    if (!e->narrow_type || e->narrow_type_varies || e->narrow_type->kind != Type_Name) return false;
+    emit_cstr(arena, out, "((");
+    emit_string8(arena, out, e->narrow_type->name);
+    emit_cstr(arena, out, ")");
+    return true;
+}
+
 static void emit_binary_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name, bool wrap) {
-    if (wrap) emit_cstr(arena, out, "(");
+    bool narrow = emit_narrow_open(arena, out, e);
+    if (wrap || narrow) emit_cstr(arena, out, "(");
     emit_expr(arena, out, e->left, sub, generic_name);
     emit_binary_op(arena, out, e->op);
     emit_expr(arena, out, e->right, sub, generic_name);
-    if (wrap) emit_cstr(arena, out, ")");
+    if (wrap || narrow) emit_cstr(arena, out, ")");
+    if (narrow) emit_cstr(arena, out, ")");
 }
 
 static void emit_expr_condition(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
@@ -13720,21 +14755,129 @@ static void emit_postfix_base(memops_arena *arena, string8 *out, Expr *base, Typ
     emit_expr(arena, out, base, sub, generic_name);
 }
 
-static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
-    if (!e) return;
-    if (e->kind == Expr_Number) {
-        string8 n = e->number;
-        if (n.length > 3 &&
-            n.data[n.length - 3] == 'u' &&
-            n.data[n.length - 2] == '6' &&
-            n.data[n.length - 1] == '4') {
-            emit_cstr(arena, out, "((u64)");
-            string8 digits = string8_copy_from_slice(arena, n.data, n.length - 3);
+/* A literal is written as the C literal of the type it has in rin. Mostly that
+   is the digits as written; it differs where C would read them differently:
+   `0.5` as an f32 is `0.5f`, and a u64 that C would compute in int -- `1 << 40`
+   -- gets `ULL`. A literal typed with `'` always gets its C spelling, because
+   it may be going somewhere with no type to convert to, like printf's `...`. */
+static void emit_number(memops_arena *arena, string8 *out, Expr *e) {
+    string8 digits = number_digits(e->number);
+    string8 suffix = number_suffix_type(e->number);
+    TypeExpr *type = null;
+    bool explicit_type = suffix.length > 0;
+    if (explicit_type) {
+        type = type_name_expr_from_string(arena, suffix);
+    } else if (e->lit_type && !e->lit_type_varies) {
+        type = e->lit_type;
+    }
+    bool wide = explicit_type || e->lit_wide;
+    i32 float_bits = type_float_bits(type);
+    i32 bits = 0;
+    bool is_signed = false;
+    bool hex = digits.length > 1 && digits.data[0] == '0' &&
+               (digits.data[1] == 'x' || digits.data[1] == 'X' || digits.data[1] == 'b' || digits.data[1] == 'B');
+    if (float_bits) {
+        if (number_is_float_form(digits)) {
+            emit_string8(arena, out, digits);
+            if (float_bits == 32) emit_cstr(arena, out, "f");
+        } else if (wide && !hex) {
+            emit_string8(arena, out, digits);
+            emit_cstr(arena, out, float_bits == 32 ? ".0f" : ".0");
+        } else if (wide) {
+            emit_cstr(arena, out, float_bits == 32 ? "((f32)" : "((f64)");
             emit_string8(arena, out, digits);
             emit_cstr(arena, out, ")");
         } else {
-            emit_string8(arena, out, n);
+            emit_string8(arena, out, digits);
         }
+        return;
+    }
+    if (type && type_int_info(type, &bits, &is_signed) && !number_is_float_form(digits)) {
+        if (explicit_type && bits < 32) {
+            emit_cstr(arena, out, "((");
+            emit_string8(arena, out, type->name);
+            emit_cstr(arena, out, ")");
+            emit_string8(arena, out, digits);
+            emit_cstr(arena, out, ")");
+            return;
+        }
+        emit_string8(arena, out, digits);
+        if (wide && bits == 64) emit_cstr(arena, out, is_signed ? "LL" : "ULL");
+        else if (wide && bits == 32 && !is_signed) emit_cstr(arena, out, "U");
+        return;
+    }
+    emit_string8(arena, out, digits);
+}
+
+static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name);
+
+/* `x[a..b]` builds the slice in place: its data starts at `a` and it is `b - a`
+   long. The bounds are checked first, against the array's length or the
+   slice's; a raw pointer has neither, so its range is taken on trust. */
+static void emit_range(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
+    TypeExpr *type = (e->coerce_to && !e->coerce_varies) ? e->coerce_to : e->range_type;
+    bool slice_base = e->index_base == IndexBase_Slice;
+    emit_cstr(arena, out, "((");
+    if (type) emit_string8(arena, out, type_mangle(arena, type, sub));
+    emit_cstr(arena, out, "){ ");
+    emit_postfix_base(arena, out, e->base, sub, generic_name);
+    if (slice_base) emit_cstr(arena, out, ".data");
+    emit_cstr(arena, out, " + ");
+    if (e->index_checked && !e->index_varies) {
+        emit_cstr(arena, out, "RIN_RANGE(");
+        emit_expr(arena, out, e->index_expr, sub, generic_name);
+        emit_cstr(arena, out, ", ");
+        emit_expr(arena, out, e->index_end, sub, generic_name);
+        emit_cstr(arena, out, ", ");
+        if (slice_base) {
+            emit_postfix_base(arena, out, e->base, sub, generic_name);
+            emit_cstr(arena, out, ".length");
+        } else {
+            emit_string8(arena, out, e->index_count);
+        }
+        emit_cstr(arena, out, ")");
+    } else {
+        emit_cstr(arena, out, "(");
+        emit_expr(arena, out, e->index_expr, sub, generic_name);
+        emit_cstr(arena, out, ")");
+    }
+    emit_cstr(arena, out, ", (");
+    emit_expr(arena, out, e->index_end, sub, generic_name);
+    emit_cstr(arena, out, ") - (");
+    emit_expr(arena, out, e->index_expr, sub, generic_name);
+    emit_cstr(arena, out, ") })");
+}
+
+/* Writes a conversion the checker asked for around the expression: an array
+   becomes a slice with its length from its type, and a slice becomes another
+   slice type -- `[]T` to `[]const T` -- field by field. */
+static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
+    if (!e) return;
+    if (e->coerce_to && !e->coerce_varies && !e->index_end) {
+        emit_cstr(arena, out, "((");
+        emit_string8(arena, out, type_mangle(arena, e->coerce_to, sub));
+        emit_cstr(arena, out, "){ ");
+        if (e->coerce_count.length > 0) {
+            emit_expr_plain(arena, out, e, sub, generic_name);
+            emit_cstr(arena, out, ", ");
+            emit_string8(arena, out, e->coerce_count);
+        } else {
+            emit_cstr(arena, out, "(");
+            emit_expr_plain(arena, out, e, sub, generic_name);
+            emit_cstr(arena, out, ").data, (");
+            emit_expr_plain(arena, out, e, sub, generic_name);
+            emit_cstr(arena, out, ").length");
+        }
+        emit_cstr(arena, out, " })");
+        return;
+    }
+    emit_expr_plain(arena, out, e, sub, generic_name);
+}
+
+static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
+    if (!e) return;
+    if (e->kind == Expr_Number) {
+        emit_number(arena, out, e);
         return;
     }
     if (e->kind == Expr_String || e->kind == Expr_Char) {
@@ -13742,6 +14885,7 @@ static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, s
         return;
     }
     if (e->kind == Expr_SizeofType || e->kind == Expr_AlignofType) {
+        bool cast = emit_const_cast_open(arena, out, e);
         emit_cstr(arena, out, e->kind == Expr_SizeofType ? "sizeof(" : "_Alignof(");
         if (e->cast_type) {
             emit_type(arena, out, e->cast_type, sub);
@@ -13749,6 +14893,7 @@ static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, s
             emit_expr(arena, out, e->inner, sub, generic_name);
         }
         emit_cstr(arena, out, ")");
+        if (cast) emit_cstr(arena, out, ")");
         return;
     }
     if (e->kind == Expr_ZeroInit) {
@@ -13818,23 +14963,47 @@ static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, s
         return;
     }
     if (e->kind == Expr_Unary) {
+        bool narrow = emit_narrow_open(arena, out, e);
         if (e->op == Token_Bang) emit_cstr(arena, out, "!");
         else if (e->op == Token_Minus) emit_cstr(arena, out, "-");
         else if (e->op == Token_Tilde) emit_cstr(arena, out, "~");
         emit_expr(arena, out, e->inner, sub, generic_name);
+        if (narrow) emit_cstr(arena, out, ")");
         return;
     }
     if (e->kind == Expr_Index) {
+        if (e->index_end) {
+            emit_range(arena, out, e, sub, generic_name);
+            return;
+        }
+        /* RIN_INDEX checks the index and yields it; core.h compiles it away
+           under NDEBUG. A slice is indexed through its data. */
+        bool known = !e->index_varies && e->index_base != IndexBase_Unknown;
+        bool slice_base = known && e->index_base == IndexBase_Slice;
+        bool checked = known && e->index_checked;
         emit_postfix_base(arena, out, e->base, sub, generic_name);
-        emit_cstr(arena, out, "[");
+        emit_cstr(arena, out, slice_base ? ".data[" : "[");
+        if (checked) emit_cstr(arena, out, "RIN_INDEX(");
         emit_expr(arena, out, e->index_expr, sub, generic_name);
+        if (checked) {
+            emit_cstr(arena, out, ", ");
+            if (slice_base) {
+                emit_postfix_base(arena, out, e->base, sub, generic_name);
+                emit_cstr(arena, out, ".length");
+            } else {
+                emit_string8(arena, out, e->index_count);
+            }
+            emit_cstr(arena, out, ")");
+        }
         emit_cstr(arena, out, "]");
         return;
     }
     if (e->kind == Expr_Field) {
+        bool cast = emit_const_cast_open(arena, out, e);
         emit_postfix_base(arena, out, e->base, sub, generic_name);
         emit_cstr(arena, out, ".");
         emit_c_ident(arena, out, e->name);
+        if (cast) emit_cstr(arena, out, ")");
         return;
     }
     if (e->kind == Expr_Binary) {
@@ -17320,6 +18489,7 @@ i32 main(i32 argc, char *argv[]) {
     profile_mark("semantic check", &profile_last, profile_start);
     validate_generic_constraints(&prog, &arena);
     profile_mark("generic constraints", &profile_last, profile_start);
+    g_warnings_off = lsp_json;
     type_check_program(&prog, &arena);
     profile_mark("type check", &profile_last, profile_start);
     rewrite_printfmt_formats(&prog, &arena);
@@ -17337,9 +18507,17 @@ i32 main(i32 argc, char *argv[]) {
         return 0;
     }
 
+    if (!g_diag_json && g_warning_count > 0) {
+        printf("rin: %d warning%s\n", g_warning_count, g_warning_count == 1 ? "" : "s");
+    }
+    if (g_diag_json && g_json_array_open && !check_only) {
+        diag_json_finish();
+    }
+
     if (check_only) {
         if (g_diag_json) {
-            printf("[]\n");
+            if (g_json_array_open) diag_json_finish();
+            else printf("[]\n");
         } else {
             printf("rin: checked %s\n", input_path);
         }

@@ -1,10 +1,11 @@
 # Operators And Conversions
 
-> **Sections 1 and 2 implemented; the rest proposed.** Decided in discussion,
-> 2026-10-13 to 2026-10-20. Memory operators are postfix (`x[0]`, `x&`) and logic
-> is C's `&& || !` -- both built, with the old spellings now errors that name the
-> new form. Literals typed from context and lossless-only conversions are still
-> proposals. Progress is tracked in the suggested order at the end.
+> **Implemented, except `x'T` (section 5), which waits for cast counts.**
+> Decided in discussion, 2026-10-13 to 2026-10-21. Memory operators are postfix
+> (`x[0]`, `x&`), logic is C's `&& || !`, literals take their type from context,
+> and implicit conversions must be lossless -- an error, not a warning. The old
+> spellings are errors that name the new form. Progress and what was measured
+> are in the suggested order at the end.
 
 Two threads that turned out to be one: making the syntax read in one direction,
 and closing the integer-conversion bug class that [`shape.md`](shape.md) 2.1
@@ -148,6 +149,10 @@ believes it is float.
   no lexer context.
 - `_` as a digit separator if wanted: `1_000_000'u64`. `'` is taken, so C++14's
   `1'000'000` is not available.
+- **C's suffixes are removed** (decided 2026-10-21): `1.0f`, `10u`, `10u64` and
+  the rest are errors that name the replacement -- usually nothing, because the
+  context supplies the type, otherwise `'`. One spelling per literal, the same
+  rule that removed `.&`.
 
 ## 4. Conversions
 
@@ -260,6 +265,10 @@ anything.
 
 ## 6. Considered and dropped: every pointer a slice
 
+> **Succeeded by [pointers-and-slices.md](pointers-and-slices.md):** `*T` stays
+> one word but points at exactly one element, `[]T` is the checked slice, and
+> `[*]T` is the raw pointer.
+
 Making `*T` a pointer plus a length would make `[0]` literally true and every
 index checkable. It breaks too much of [`rin-soul.md`](rin-soul.md):
 
@@ -308,12 +317,30 @@ every site.
    and not C's `&((x)[0])` (the old `x.&[0]` had the same bug); and a statement
    that reports an error but still parses to its own `;` no longer swallows the
    statement after it, so one file reports every old spelling at once.
-3. Write down `shr`-by-type; the fixture already pins it.
-4. Contextual literal typing, `f64` default, must-fit, and the `'` suffix.
-5. The conversion rule as a warning, plus the emitter casts for sub-`int`
-   results. Count njinn.
-6. Decide warning versus error from that count.
-7. Revisit `x'T` with real cast counts in hand.
+3. **Done.** `shr` is by type -- arithmetic on signed, logical on unsigned --
+   recorded in [`shape.md`](shape.md) 4.2 and pinned by
+   `013-integer-conversion.rin`.
+4. **Done.** Contextual literal typing, the `f64` default, must-fit and `'`.
+   A literal remembers the type its context gave it and is emitted as that
+   type's C literal: `0.5` into an f32 is `0.5f`, and constant arithmetic that C
+   would do in int gets a suffix -- `1 shl 40` into a u64 is `1ULL << 40`,
+   `1 / 3` into an f32 is `1.0f / 3.0f`. C's suffixes are errors;
+   `tools/rin_migrate.py` removed 3,226 of them (`f` and `u` dropped, `ULL` and
+   friends kept as `'u64`). Covered by `contextual_literals`,
+   `old_literal_suffixes` and `literal_fit`.
+5. **Done.** The conversion rule, and the emitter casts for sub-`int` results:
+   `a + b` on two u8 is emitted `((u8)(a + b))`. Counted on njinn: **142**
+   sites. 139 of them were `sizeof(...)` or an enum's `<>.count` landing in a
+   D3D `u32` -- constants C knows and rin does not. Those now adapt like
+   literals (Zig treats its compile-time integers the same way), with the
+   emitter writing the cast so C agrees: `((u32)sizeof(V))`. Char literals
+   adapt too. That left one real site, `fmt_cat3`'s u64 length stored in an
+   i32, now fixed. Covered by `lossy_conversions` and `narrow_arithmetic`.
+6. **Done: an error.** One site is well under "dozens", so the rule is an
+   error. The warning machinery stays for the next rule that needs counting.
+7. Revisit `x'T`. The count so far: njinn has 1,297 casts in 24,185 lines, and
+   the strict rules added none -- every site the warning found was a constant
+   or one fix.
 
 ## See also
 

@@ -12,9 +12,9 @@ memops_os_commit: proc[external](ptr: *void, size: u64) -> *void = {}
 memops_os_debug_break: proc[external]() -> void = {}
 
 memops_arena: struct = {
-    base: *u8;
-    cursor: *u8;
-    previous: *u8;
+    base: [*]u8;
+    cursor: [*]u8;
+    previous: [*]u8;
     used: u64;
     pagesize: u64;
     npages: u64;

@@ -29,7 +29,7 @@ typedef size_t usize;
 /* `bool` is one byte, so a boolean family whose names carry a width could not be
    built on it -- b8 and b32 would have been the same type twice. Each is the
    matching fixed-width integer instead. b32 is the default boolean: it is what
-   comparisons and `and`/`or` produce, and it matches Win32's BOOL. Note these do
+   comparisons and `&&`/`||` produce, and it matches Win32's BOOL. Note these do
    not normalise to 0/1 the way C's bool does. */
 typedef uint8_t  b8;
 typedef uint16_t b16;
@@ -78,6 +78,42 @@ typedef str *strptr;
 #define structdef(structname) typedef struct structname structname; struct structname
 
 #define template(...)
+
+/* rin's bounds checks. Indexing an array with a value only known at run time,
+   or indexing a slice, goes through RIN_INDEX; a subrange `x[a..b]` goes
+   through RIN_RANGE. Both are checked unless NDEBUG is defined -- C's own
+   switch, which a Release build already sets -- and then they are the plain
+   index. A failed check names the rin line, because the generated C carries
+   #line directives, and aborts. A negative index is checked as unsigned, so it
+   fails the same comparison as one past the end. */
+#ifdef NDEBUG
+#define RIN_INDEX(i, n) (i)
+#define RIN_RANGE(a, b, n) (a)
+#else
+static inline u64 rin_index_check(u64 i, u64 n, const char *file, int line) {
+    if (i >= n) {
+        if ((i64)i < 0) {
+            fprintf(stderr, "%s:%d: index %lld out of bounds (length %llu)\n", file, line,
+                    (long long)(i64)i, (unsigned long long)n);
+        } else {
+            fprintf(stderr, "%s:%d: index %llu out of bounds (length %llu)\n", file, line,
+                    (unsigned long long)i, (unsigned long long)n);
+        }
+        abort();
+    }
+    return i;
+}
+static inline u64 rin_range_check(u64 a, u64 b, u64 n, const char *file, int line) {
+    if (a > b || b > n) {
+        fprintf(stderr, "%s:%d: range %llu..%llu out of bounds (length %llu)\n", file, line,
+                (unsigned long long)a, (unsigned long long)b, (unsigned long long)n);
+        abort();
+    }
+    return a;
+}
+#define RIN_INDEX(i, n) rin_index_check((u64)(i), (u64)(n), __FILE__, __LINE__)
+#define RIN_RANGE(a, b, n) rin_range_check((u64)(a), (u64)(b), (u64)(n), __FILE__, __LINE__)
+#endif
 
 #ifdef __cplusplus
     #define haikal_alignof(type) alignof(type)

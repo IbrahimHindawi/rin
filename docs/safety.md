@@ -12,6 +12,10 @@ we chose C's behaviour, and each has a price we are choosing to defer.
 
 ### Out-of-bounds indexing
 
+> **Implemented, see [pointers-and-slices.md](pointers-and-slices.md):** a
+> constant index out of range is a compile error, and a variable index into an
+> array or a slice is checked at run time unless NDEBUG is defined.
+
     xs: [4]i32 = {};
     xs[9] = 1;          // accepted; writes past the array
 
@@ -73,6 +77,10 @@ that a person can read, for a codebase (njinn) where the generated C is compiled
 with the same expectations as hand-written C. Bounds checks and null checks are
 runtime code that would have to appear in that output, and a `-fno-checks` flag
 that turns them off is a second language, not a safety feature.
+
+> **Reversed for bounds checks** in [pointers-and-slices.md](pointers-and-slices.md)
+> section 5: a correct program behaves the same with checks on or off, so a
+> Debug/Release switch is not a second language.
 
 The order they would be worth doing in, if we do:
 

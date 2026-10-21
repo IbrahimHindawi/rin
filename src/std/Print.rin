@@ -1,7 +1,7 @@
 cinclude "stdio.h"
 import "cstd.rin"
 
-print_cstr: proc(text: *const char) -> void = {
+print_cstr: proc(text: [*]const char) -> void = {
     if (text == null) {
         printf("(null)");
         return;
@@ -65,10 +65,10 @@ print: proc<b32>(x: b32) -> void = {
     }
 }
 
-print: proc<*char>(x: *char) -> void = {
+print: proc<[*]char>(x: [*]char) -> void = {
     print_cstr(x);
 }
 
-print: proc<*const char>(x: *const char) -> void = {
+print: proc<[*]const char>(x: [*]const char) -> void = {
     print_cstr(x);
 }

@@ -179,7 +179,7 @@ function colorizeI(code) {
       continue;
     }
 
-    const numberMatch = code.slice(i).match(/^(?:0x[0-9A-Fa-f]+|0b[01]+|(?:[0-9]+\.[0-9]*|[0-9]*\.[0-9]+)(?:f32|f64|f)?|[0-9]+(?:[uif][0-9]+)?)/);
+    const numberMatch = code.slice(i).match(/^(?:0x[0-9A-Fa-f]+|0b[01]+|(?:[0-9]+\.[0-9]*|[0-9]*\.[0-9]+|[0-9]+)(?:[eE][+-]?[0-9]+)?)(?:'[A-Za-z_]\w*)?/);
     if (numberMatch) {
       out += span('tok-number', numberMatch[0]);
       i += numberMatch[0].length;

@@ -173,6 +173,10 @@ now is paying for a benefit that has not arrived.
 
 ## Should slices become a language feature?
 
+> **Answered: yes, and built -- see [pointers-and-slices.md](pointers-and-slices.md).**
+> `[]T` is spelling for `slice<T>`, `s[i]` is checked, an array converts to a
+> slice and `[]T` widens to `[]const T`. The three sharp edges below are gone.
+
 Probably, eventually -- but **`[]T` syntax is the smaller half of the win, and
 the wrong half to do first.**
 

@@ -56,12 +56,12 @@ syn match iGenericDelimiter "[<>]" contained
 " Calls. Do not color the proc keyword in declarations like name:proc(...).
 syn match iProcCallName "\(^\|[^:]\)\zs\<[A-Za-z_][A-Za-z0-9_]*\>\ze\s*("
 
-" Numbers
-syn match iNumber "\<0x[0-9A-Fa-f]\+\>"
-syn match iNumber "\<0b[01]\+\>"
-syn match iNumber "\<[0-9]\+\([uif][0-9]\+\)\?\>"
-syn match iNumber "\<[0-9]\+\.[0-9]*\(f32\|f64\|f\)\?\>"
-syn match iNumber "\<[0-9]*\.[0-9]\+\(f32\|f64\|f\)\?\>"
+" Numbers, with an optional type after a tick: 1024'u64, 1.0'f32
+syn match iNumber "\<0x[0-9A-Fa-f]\+\('\h\w*\)\?"
+syn match iNumber "\<0b[01]\+\('\h\w*\)\?"
+syn match iNumber "\<[0-9]\+\([eE][+-]\?[0-9]\+\)\?\('\h\w*\)\?"
+syn match iNumber "\<[0-9]\+\.[0-9]*\([eE][+-]\?[0-9]\+\)\?\('\h\w*\)\?"
+syn match iNumber "\<[0-9]*\.[0-9]\+\([eE][+-]\?[0-9]\+\)\?\('\h\w*\)\?"
 
 " Strings (the regions themselves are defined near the end, for priority)
 syn match iEscape "\\\(.\|x[0-9A-Fa-f]\{2}\)" contained
@@ -82,10 +82,12 @@ syn keyword iQualifierInType const volatile static contained nextgroup=iTypePoin
 " Declaration kinds are not type names either.
 syn keyword iDeclKindInType proc struct enum union alias label contained
 syn match iTypeName "\%(\<proc\>\|\<struct\>\|\<enum\>\|\<union\>\|\<alias\>\|\<label\>\|\<const\>\|\<volatile\>\|\<static\>\|\<external\>\|\<external_emit\>\)\@!\<[A-Za-z_][A-Za-z0-9_]*\>\%(\s*<\)\@!" contained
-syn match iTypePrefix ":\|->" nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iCoreTypeInType,iQualifierInType,iDeclKindInType,iTypeName skipwhite
-syn match iTypePointerPrefix "\*" contained nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iCoreTypeInType,iQualifierInType,iTypeName skipwhite
+syn match iTypePrefix ":\|->" nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iRawPointerPrefix,iCoreTypeInType,iQualifierInType,iDeclKindInType,iTypeName skipwhite
+syn match iTypePointerPrefix "\*" contained nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iRawPointerPrefix,iCoreTypeInType,iQualifierInType,iTypeName skipwhite
 syn match iArrayIndexNumber "\[\s*\zs[0-9]\+\ze\s*]"
-syn match iFixedArrayPrefix "\[\s*[0-9]*\s*]" contained contains=iFixedArrayNumber,iFixedArrayDelimiter transparent nextgroup=iTypePointerPrefix,iCoreTypeInType,iTypeName skipwhite
+syn match iFixedArrayPrefix "\[\s*[0-9]*\s*]" contained contains=iFixedArrayNumber,iFixedArrayDelimiter transparent nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iRawPointerPrefix,iQualifierInType,iCoreTypeInType,iTypeName skipwhite
+" `[*]T`, a raw pointer
+syn match iRawPointerPrefix "\[\*]" contained nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iRawPointerPrefix,iCoreTypeInType,iQualifierInType,iTypeName skipwhite
 syn match iFixedArrayNumber "[0-9]\+" contained
 syn match iFixedArrayDelimiter "[\[\]]" contained
 
@@ -129,6 +131,7 @@ hi def link iDeclName Structure
 hi def link iTypeName Structure
 hi def link iTypePrefix Operator
 hi def link iTypePointerPrefix Operator
+hi def link iRawPointerPrefix Operator
 hi def link iFixedArrayPrefix Delimiter
 hi def link iFixedArrayNumber Number
 hi def link iFixedArrayDelimiter Delimiter
