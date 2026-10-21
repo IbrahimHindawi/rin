@@ -338,9 +338,10 @@ every site.
    i32, now fixed. Covered by `lossy_conversions` and `narrow_arithmetic`.
 6. **Done: an error.** One site is well under "dozens", so the rule is an
    error. The warning machinery stays for the next rule that needs counting.
-7. Revisit `x'T`. The count so far: njinn has 1,297 casts in 24,185 lines, and
-   the strict rules added none -- every site the warning found was a constant
-   or one fix.
+7. Revisit `x'T`. Measured in [`conversion-report-00.md`](conversion-report-00.md):
+   the strict rules added no casts, binding njinn's C enums removed 228, and
+   the 1,065 left are about 780 numeric and 280 pointer or enum casts.
+   Recommendation for now: keep `cast(x, T)`.
 
 ## See also
 
