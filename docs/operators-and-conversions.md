@@ -103,7 +103,9 @@ regroup it ([`shape.md`](shape.md) 4.3).
   `&` rule above.
 - **`& | ^ ~` stay.**
 - **`shl` / `shr` stay words.** `>>` would close generics: `Vec<Option<T>>`. That
-  is the one deliberate departure from C's symbols, and it has a reason.
+  is the one deliberate departure from C's symbols, and it has a reason. The
+  parser recognises C's `>>`, `<<`, `>>=` and `<<=` (two touching angles in
+  operator position) and points to the word spelling.
 - **`shr` is defined by type**: arithmetic on signed operands, logical on
   unsigned. That is what `013-integer-conversion.rin` already pins (`logical_shr`,
   `arith_shr`) and what clang and MSVC do; it closes [`shape.md`](shape.md) 4.2.

@@ -3242,6 +3242,28 @@ static Expr *parse_relational(Parser *p) {
         Token *op_tok = parser_peek(p);
         TokenKind op = op_tok->kind;
         parser_next(p);
+        /* C's '>>' and '<<' arrive here as two touching angles, because '>>'
+           also closes generics and the lexer never fuses it. No operand starts
+           with an angle, so a touching second one is always a C shift: point at
+           the word spelling instead of failing on the second angle. */
+        Token *next = parser_peek(p);
+        if ((op == Token_LAngle || op == Token_RAngle) &&
+            next->line == op_tok->line && next->col == op_tok->col + 1) {
+            bool right_shift = op == Token_RAngle;
+            const char *hint = null;
+            if (next->kind == op) {
+                hint = right_shift ? "rin has no '>>'; right shift is 'shr' (x shr 16)"
+                                   : "rin has no '<<'; left shift is 'shl' (x shl 16)";
+            } else if (next->kind == (right_shift ? Token_GreaterEqual : Token_LessEqual)) {
+                hint = right_shift ? "rin has no '>>='; use 'shr=' (x shr= 16)"
+                                   : "rin has no '<<='; use 'shl=' (x shl= 16)";
+            }
+            if (hint) {
+                parser_error_token(p, op_tok, hint);
+                parser_next(p);
+                op = right_shift ? Token_Keyword_Shr : Token_Keyword_Shl;
+            }
+        }
         Expr *right = parse_bitwise_or(p);
         if (!parser_note_expr_node(p)) {
             return left;

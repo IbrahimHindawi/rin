@@ -6047,6 +6047,36 @@ main:proc()->i32 = {
         return 1
     print("ok parse_expected_expression")
 
+    # C's shift spellings get a hint at the operator instead of a generic
+    # error on the second angle. A generic closer `>>` must stay clean.
+    shift_hint_i = TEST_DIR / "parse_shift_hint.rin"
+    shift_hint_c = TEST_DIR / "parse_shift_hint.c"
+    for src, expected in (
+        ("x >> 16", "right shift is 'shr'"),
+        ("x << 16", "left shift is 'shl'"),
+        ("x >>= 16", "use 'shr='"),
+        ("x <<= 16", "use 'shl='"),
+    ):
+        shift_hint_i.write_text(
+            "main:proc()->i32 = {\n    x:u32 = 1;\n    " + src + ";\n    return 0;\n}\n",
+            encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), str(shift_hint_i), str(shift_hint_c)])
+        if res.returncode == 0 or expected not in res.stdout or "expected expression" in res.stdout:
+            print(f"parse_shift_hint: '{src}' should point at the word spelling")
+            print(res.stdout)
+            return 1
+    shift_hint_i.write_text(
+        'import "C:/devel/rin/src/std/containers.rin"\n'
+        "main:proc()->i32 = {\n    x:u32 = 256;\n    nested: Array<Array<i32>> = {};\n"
+        "    x shr= 4;\n    return cast(x shr 2, i32) + cast(x > 1, i32);\n}\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(shift_hint_i)])
+    if res.returncode != 0:
+        print("parse_shift_hint: word shifts and a nested generic closer should check clean")
+        print(res.stdout)
+        return 1
+    print("ok parse_shift_hint")
+
     parse_eof_context_i = TEST_DIR / "parse_eof_context.rin"
     parse_eof_context_c = TEST_DIR / "parse_eof_context.c"
     parse_eof_context_i.write_text(r'''
