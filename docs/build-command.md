@@ -28,19 +28,19 @@ an output.
 
 | global | type | meaning |
 |---|---|---|
-| `build_name` | `*const char` | target name; **required** |
-| `build_entry` | `*const char` | the module to transpile; **required** unless `build_entries` |
-| `build_entries` | `[N]*const char` | several independent programs, one executable each |
-| `build_dir` | `*const char` | output root, default `build` |
-| `build_generator` | `*const char` | cmake generator, default `Ninja` |
-| `build_compiler` | `*const char` | C compiler, default `clang-cl` |
-| `build_type` | `*const char` | cmake build type, default `Debug` |
-| `build_pch` | `*const char` | one precompiled header |
-| `build_c_sources` | `[N]*const char` | C files compiled alongside the generated one |
-| `build_include_dirs` | `[N]*const char` | extra include roots |
-| `build_libraries` | `[N]*const char` | link libraries |
-| `build_defines` | `[N]*const char` | preprocessor defines |
-| `build_c_flags` | `[N]*const char` | flags passed to the C compiler |
+| `build_name` | `[*]const char` | target name; **required** |
+| `build_entry` | `[*]const char` | the module to transpile; **required** unless `build_entries` |
+| `build_entries` | `[N][*]const char` | several independent programs, one executable each |
+| `build_dir` | `[*]const char` | output root, default `build` |
+| `build_generator` | `[*]const char` | cmake generator, default `Ninja` |
+| `build_compiler` | `[*]const char` | C compiler, default `clang-cl` |
+| `build_type` | `[*]const char` | cmake build type, default `Debug` |
+| `build_pch` | `[*]const char` | one precompiled header |
+| `build_c_sources` | `[N][*]const char` | C files compiled alongside the generated one |
+| `build_include_dirs` | `[N][*]const char` | extra include roots |
+| `build_libraries` | `[N][*]const char` | link libraries |
+| `build_defines` | `[N][*]const char` | preprocessor defines |
+| `build_c_flags` | `[N][*]const char` | flags passed to the C compiler |
 
 Paths are relative to the directory holding `build.rin`. The compiler's own
 directory and its `std` are added to the include path automatically, so a
