@@ -110,8 +110,8 @@ What the compiler adds on top of the struct:
   pointer becomes a slice. `slice<T>sub` stays as the library form that clamps.
 
 **The struct must be available without `std/slice.rin`'s imports.** That file
-pulls in `stdio.h`, `stdlib.h`, `string.h`, `memops`, `Option`, `Array` and
-`Vec`. Writing `[]T` should not. The likely shape is a minimal core declaration
+pulls in `stdio.h`, `stdlib.h`, `string.h`, `memops`, `option`, `array` and
+`vec`. Writing `[]T` should not. The likely shape is a minimal core declaration
 the compiler knows about, with `std/slice.rin` building its procs on it.
 
 ## 5. Bounds checks

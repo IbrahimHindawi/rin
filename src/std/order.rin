@@ -1,0 +1,71 @@
+/* Comparators for heap, sort and the searches.
+
+   A comparator is an ordinary proc, as with qsort: `less_i64` sorts ascending,
+   `greater_i64` descending, and a struct gets one written next to it:
+
+       by_cost: proc(a: edge, b: edge) -> b32 = { return a.cost < b.cost; }
+
+   They are concrete rather than one generic `less<T>` because a proc address
+   has to name a single instance. */
+
+less_i32: proc(a: i32, b: i32) -> b32 = {
+    return a < b;
+}
+
+less_i64: proc(a: i64, b: i64) -> b32 = {
+    return a < b;
+}
+
+less_u32: proc(a: u32, b: u32) -> b32 = {
+    return a < b;
+}
+
+less_u64: proc(a: u64, b: u64) -> b32 = {
+    return a < b;
+}
+
+less_f32: proc(a: f32, b: f32) -> b32 = {
+    return a < b;
+}
+
+less_f64: proc(a: f64, b: f64) -> b32 = {
+    return a < b;
+}
+
+less_c8: proc(a: c8, b: c8) -> b32 = {
+    return a < b;
+}
+
+greater_i32: proc(a: i32, b: i32) -> b32 = {
+    return a > b;
+}
+
+greater_i64: proc(a: i64, b: i64) -> b32 = {
+    return a > b;
+}
+
+greater_u32: proc(a: u32, b: u32) -> b32 = {
+    return a > b;
+}
+
+greater_u64: proc(a: u64, b: u64) -> b32 = {
+    return a > b;
+}
+
+greater_f32: proc(a: f32, b: f32) -> b32 = {
+    return a > b;
+}
+
+greater_f64: proc(a: f64, b: f64) -> b32 = {
+    return a > b;
+}
+
+greater_c8: proc(a: c8, b: c8) -> b32 = {
+    return a > b;
+}
+
+swap: proc<T>(a: *T, b: *T) -> void = {
+    t: T = a[0];
+    a[0] = b[0];
+    b[0] = t;
+}

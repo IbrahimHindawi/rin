@@ -3,13 +3,13 @@ cinclude "stdlib.h"
 cinclude "string.h"
 
 import "memops.rin"
-import "Option.rin"
-import "Array.rin"
-import "Vec.rin"
+import "option.rin"
+import "array.rin"
+import "vec.rin"
 
 /* A view over contiguous elements that owns nothing.
 
-   Array<T> and Vec<T> already carry data + length, but both allocate: their
+   array<T> and vec<T> already carry data + length, but both allocate: their
    constructors push from an arena, so passing one around passes a container.
    slice<T> is the borrowed half of that -- it names a range someone else owns,
    and sub-slicing is free because there is nothing to copy or reserve.
@@ -32,11 +32,11 @@ slice<T>from_parts: proc<T>(data: [*]T, length: u64) -> slice<T> = {
     return s;
 }
 
-slice<T>from_array: proc<T>(array: Array<T>) -> slice<T> = {
+slice<T>from_array: proc<T>(array: array<T>) -> slice<T> = {
     return slice<T>from_parts(array.data, array.length);
 }
 
-slice<T>from_vec: proc<T>(vec: Vec<T>) -> slice<T> = {
+slice<T>from_vec: proc<T>(vec: vec<T>) -> slice<T> = {
     return slice<T>from_parts(vec.data, vec.length);
 }
 
@@ -44,7 +44,7 @@ slice<T>is_empty: proc<T>(s: slice<T>) -> b32 = {
     return s.length == 0;
 }
 
-/* Aborts on a bad index. The Option form below is the one to reach for when
+/* Aborts on a bad index. The option form below is the one to reach for when
    the index came from outside. */
 slice<T>at: proc<T>(s: slice<T>, index: u64) -> *T = {
     if (s.data == null || index >= s.length) {
@@ -54,20 +54,20 @@ slice<T>at: proc<T>(s: slice<T>, index: u64) -> *T = {
     return s.data[index]&;
 }
 
-slice<T>get: proc<T>(s: slice<T>, index: u64) -> Option<T> = {
+slice<T>get: proc<T>(s: slice<T>, index: u64) -> option<T> = {
     if (s.data == null || index >= s.length) {
-        return Option<T>none();
+        return option<T>none();
     }
-    return Option<T>some(s.data[index]);
+    return option<T>some(s.data[index]);
 }
 
-slice<T>first: proc<T>(s: slice<T>) -> Option<T> = {
+slice<T>first: proc<T>(s: slice<T>) -> option<T> = {
     return slice<T>get(s, 0);
 }
 
-slice<T>last: proc<T>(s: slice<T>) -> Option<T> = {
+slice<T>last: proc<T>(s: slice<T>) -> option<T> = {
     if (s.length == 0) {
-        return Option<T>none();
+        return option<T>none();
     }
     return slice<T>get(s, s.length - 1);
 }
@@ -121,8 +121,8 @@ slice<T>copy_to: proc<T>(dst: [*]T, s: slice<T>) -> void = {
 }
 
 /* The owning copy, when a view has to outlive what it borrowed from. */
-slice<T>to_array: proc<T>(arena: *memops_arena, s: slice<T>) -> Array<T> = {
-    out: Array<T> = Array<T>reserve(arena, s.length);
+slice<T>to_array: proc<T>(arena: *memops_arena, s: slice<T>) -> array<T> = {
+    out: array<T> = array<T>reserve(arena, s.length);
     slice<T>copy_to(out.data, s);
     return out;
 }

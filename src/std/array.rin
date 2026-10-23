@@ -1,0 +1,46 @@
+import "memops.rin"
+import "option.rin"
+
+array: struct<T> = {
+    data: [*]T;
+    length: u64;
+}
+
+array<T>reserve: proc<T>(arena: *memops_arena, length: u64) -> array<T> = {
+    arr: array<T> = {};
+    if (length == 0) {
+        return arr;
+    }
+    arr.data = cast(memops_arena_push_zero(arena, sizeof(T) * length, alignof(T)), *T);
+    if (arr.data == null) {
+        printf("rin runtime: array reserve allocation failure\n");
+        exit(1);
+        return arr;
+    }
+    arr.length = length;
+    return arr;
+}
+
+array<T>destroy: proc<T>(arena: *memops_arena, array: *array<T>) -> void = {
+    array[0].data = null;
+    array[0].length = 0;
+}
+
+array<T>at: proc<T>(array: *array<T>, index: u64) -> *T = {
+    if (array == null || index >= array[0].length) {
+        printf("rin runtime: array index out of bounds\n");
+        exit(1);
+    }
+    return array[0].data[index]&;
+}
+
+array<T>get: proc<T>(array: *array<T>, index: u64) -> option<T> = {
+    if (array == null || index >= array[0].length) {
+        return option<T>none();
+    }
+    return option<T>some(array[0].data[index]);
+}
+
+array<T>is_empty: proc<T>(array: *array<T>) -> b32 = {
+    return array == null || array[0].length == 0;
+}

@@ -39,7 +39,7 @@ Every construct the compiler leans on already works. Checked, not assumed:
 | `union` | yes |
 | recursion | yes |
 | proc pointers in structs | yes |
-| nested generics (`Vec<Vec<T>>`) | yes |
+| nested generics (`vec<vec<T>>`) | yes |
 | varargs in a declaration | yes |
 | tagged structs, enums, arrays of them | yes |
 | `goto` and labels | **no** |
@@ -49,8 +49,8 @@ Both gaps are one use each in `main.c`, and both are avoidable -- the `goto` is 
 single cleanup jump, and the `va_list` is one diagnostic wrapper that `printfmt`
 already replaces. Neither is a reason to add a feature.
 
-The containers are there too: `Vec`, `Array`, `Map`, `string8`, `slice<T>`, the
-arena, and since the string work, `fmt` and `cstr`. `main.c` uses `Vec` heavily
+The containers are there too: `vec`, `array`, `map`, `string8`, `slice<T>`, the
+arena, and since the string work, `fmt` and `cstr`. `main.c` uses `vec` heavily
 and little else that std lacks.
 
 So the honest position is that **rin could express this compiler today**. What
@@ -97,7 +97,7 @@ Not the usual reasons. Specifically:
   * **When the std is load-bearing enough that the compiler using it keeps it
     honest.** Today njinn is that pressure. A self-hosted compiler would be a
     second, very different consumer -- and the one most likely to find the sharp
-    edges in `Map`, `string8` and the arena.
+    edges in `map`, `string8` and the arena.
 
 ## What to do instead, for now
 

@@ -1,7 +1,7 @@
 const examples = {
   basics: {
     title: 'Basics',
-    code: `import "std/Print.rin"
+    code: `import "std/print.rin"
 
 add: proc<i32>(x: i32, y: i32)->i32 = {
     return x + y;
@@ -16,7 +16,7 @@ main: proc(argc: i32, argv: **char)->i32 = {
   generics: {
     title: 'Generics',
     code: `import "std/memops.rin"
-import "std/Array.rin"
+import "std/array.rin"
 
 Payload: struct = {
     x: f32;

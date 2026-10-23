@@ -36,18 +36,24 @@ def run(cmd: list[str], cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
     )
 
 
-def check_one(cc: str, suite: Path, source: Path, build_dir: Path, bless: bool) -> Result:
+def check_one(cc: str, suite: Path, source: Path, build_dir: Path, bless: bool, single_file: bool) -> Result:
     case_dir = build_dir / source.stem
     case_dir.mkdir(parents=True, exist_ok=True)
     c_path = case_dir / f"{source.stem}.c"
     h_path = case_dir / f"{source.stem}.h"
     exe_path = case_dir / f"{source.stem}.exe"
 
-    translate = run([str(RIN_EXE), "compile", str(source), "-o", str(c_path), "--header", str(h_path)])
+    if single_file:
+        # No -I: the one file has to stand on its own, the way a judge gets it.
+        translate = run([str(RIN_EXE), "compile", str(source), "-o", str(c_path), "--single-file"])
+        include_dirs: list[str] = []
+    else:
+        translate = run([str(RIN_EXE), "compile", str(source), "-o", str(c_path), "--header", str(h_path)])
+        include_dirs = ["-I", "src", "-I", "src/std"]
     if translate.returncode != 0:
         return Result(source, "translate", False, translate.stdout)
 
-    link = run([cc, str(c_path), "-I", "src", "-I", "src/std", "-o", str(exe_path), "-Wno-everything"])
+    link = run([cc, str(c_path), *include_dirs, "-o", str(exe_path), "-Wno-everything"])
     if link.returncode != 0:
         return Result(source, "link", False, link.stdout)
 
@@ -78,6 +84,8 @@ def main() -> int:
     parser.add_argument("--cc", default=os.environ.get("CC", "clang.exe"))
     parser.add_argument("--jobs", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--bless", action="store_true", help="Record current stdout as expected.")
+    parser.add_argument("--single-file", action="store_true",
+                        help="Compile with rin --single-file and build without include paths.")
     args = parser.parse_args()
 
     if not RIN_EXE.exists():
@@ -92,19 +100,21 @@ def main() -> int:
         print(f"rin-torture/execute: no .rin files under {args.suite}")
         return 1
 
-    build_dir = ROOT / "build" / "i_execute"
+    build_dir = ROOT / "build" / ("i_execute_single" if args.single_file else "i_execute")
     build_dir.mkdir(parents=True, exist_ok=True)
 
     failures: list[Result] = []
     with ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-        futures = [pool.submit(check_one, args.cc, args.suite, s, build_dir, args.bless) for s in sources]
+        futures = [pool.submit(check_one, args.cc, args.suite, s, build_dir, args.bless, args.single_file)
+                   for s in sources]
         for future in as_completed(futures):
             result = future.result()
             if not result.ok:
                 failures.append(result)
 
     passed = len(sources) - len(failures)
-    print(f"rin-torture/execute: {passed}/{len(sources)} passed with {args.cc}")
+    mode = " --single-file" if args.single_file else ""
+    print(f"rin-torture/execute{mode}: {passed}/{len(sources)} passed with {args.cc}")
     for failure in failures[:20]:
         print(f"\nFAIL {failure.phase} {failure.path.name}")
         print(failure.detail.rstrip())

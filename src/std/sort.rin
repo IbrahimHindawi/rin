@@ -1,0 +1,104 @@
+import "order.rin"
+
+/* In-place sorting and binary search over a slice, ordered by a comparator
+   from order.rin or one of your own. `sort` is not stable. */
+
+sort_insertion: proc<T>(xs: []T, less: *proc(a: T, b: T) -> b32) -> void = {
+    for (i: u64 = 1; i < xs.length; i += 1) {
+        x: T = xs[i];
+        j: u64 = i;
+        while (j > 0 && less(x, xs[j - 1])) {
+            xs[j] = xs[j - 1];
+            j -= 1;
+        }
+        xs[j] = x;
+    }
+}
+
+// Hoare partition around the median of the first, middle and last elements, so
+// sorted and reversed input stay O(n log n), and runs of equal keys split evenly.
+// Recursing into the smaller half keeps the stack at O(log n).
+sort: proc<T>(xs: []T, less: *proc(a: T, b: T) -> b32) -> void = {
+    while (xs.length > 16) {
+        n: u64 = xs.length;
+        mid: u64 = n / 2;
+        if (less(xs[mid], xs[0])) {
+            swap<T>(xs[mid]&, xs[0]&);
+        }
+        if (less(xs[n - 1], xs[0])) {
+            swap<T>(xs[n - 1]&, xs[0]&);
+        }
+        if (less(xs[n - 1], xs[mid])) {
+            swap<T>(xs[n - 1]&, xs[mid]&);
+        }
+        pivot: T = xs[mid];
+        i: u64 = 0;
+        j: u64 = n - 1;
+        while (1) {
+            while (less(xs[i], pivot)) {
+                i += 1;
+            }
+            while (less(pivot, xs[j])) {
+                j -= 1;
+            }
+            if (i >= j) {
+                break;
+            }
+            swap<T>(xs[i]&, xs[j]&);
+            i += 1;
+            j -= 1;
+        }
+        // xs[0..j+1] holds nothing greater than the pivot, xs[j+1..n] nothing less.
+        if (j + 1 < n - j - 1) {
+            sort<T>(xs[0..j + 1], less);
+            xs = xs[j + 1..n];
+        } else {
+            sort<T>(xs[j + 1..n], less);
+            xs = xs[0..j + 1];
+        }
+    }
+    sort_insertion<T>(xs, less);
+}
+
+// The first index whose element is not less than x, or xs.length.
+lower_bound: proc<T>(xs: []T, x: T, less: *proc(a: T, b: T) -> b32) -> u64 = {
+    lo: u64 = 0;
+    hi: u64 = xs.length;
+    while (lo < hi) {
+        mid: u64 = lo + (hi - lo) / 2;
+        if (less(xs[mid], x)) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
+// The first index whose element is greater than x, or xs.length.
+upper_bound: proc<T>(xs: []T, x: T, less: *proc(a: T, b: T) -> b32) -> u64 = {
+    lo: u64 = 0;
+    hi: u64 = xs.length;
+    while (lo < hi) {
+        mid: u64 = lo + (hi - lo) / 2;
+        if (less(x, xs[mid])) {
+            hi = mid;
+        } else {
+            lo = mid + 1;
+        }
+    }
+    return lo;
+}
+
+reverse: proc<T>(xs: []T) -> void = {
+    if (xs.length < 2) {
+        return;
+    }
+    i: u64 = 0;
+    j: u64 = xs.length - 1;
+    while (i < j) {
+        swap<T>(xs[i]&, xs[j]&);
+        i += 1;
+        j -= 1;
+    }
+}

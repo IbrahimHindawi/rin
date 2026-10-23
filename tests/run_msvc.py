@@ -65,7 +65,10 @@ def main() -> int:
                         default=pathlib.Path(os.environ.get("CL_EXE", DEFAULT_CL)))
     parser.add_argument("--vcvars", type=pathlib.Path,
                         default=pathlib.Path(os.environ.get("VCVARS", DEFAULT_VCVARS)))
+    parser.add_argument("--single-file", action="store_true",
+                        help="Compile with rin --single-file and build without include paths.")
     args = parser.parse_args()
+    build_dir = BUILD_DIR.with_name(BUILD_DIR.name + "_single") if args.single_file else BUILD_DIR
 
     if not args.cl.exists():
         print("msvc: skipped, cl.exe not found")
@@ -78,7 +81,7 @@ def main() -> int:
         print(f"msvc: missing compiler {RIN_EXE}")
         return 1
 
-    BUILD_DIR.mkdir(parents=True, exist_ok=True)
+    build_dir.mkdir(parents=True, exist_ok=True)
     passed = 0
     failures: list[tuple[str, str]] = []
 
@@ -86,23 +89,25 @@ def main() -> int:
         expected_path = case.with_suffix(".expected")
         if not expected_path.exists():
             continue
-        c_path = BUILD_DIR / (case.stem + ".c")
-        exe_path = BUILD_DIR / (case.stem + ".exe")
+        c_path = build_dir / (case.stem + ".c")
+        exe_path = build_dir / (case.stem + ".exe")
 
+        mode = "--single-file" if args.single_file else "--no-header"
         generated = subprocess.run(
-            [str(RIN_EXE), "compile", str(case), "-o", str(c_path), "--no-header"],
+            [str(RIN_EXE), "compile", str(case), "-o", str(c_path), mode],
             capture_output=True, text=True)
         if generated.returncode != 0:
             failures.append((case.name, "rin: " + generated.stdout.strip()[:300]))
             continue
 
+        include_dirs = [] if args.single_file else ["-I", str(ROOT / "src" / "std"), "-I", str(ROOT / "src")]
         built = subprocess.run(
             [str(args.cl), "-nologo",
-             "-I", str(ROOT / "src" / "std"), "-I", str(ROOT / "src"),
+             *include_dirs,
              str(c_path),
              "-Fe:" + str(exe_path),
-             "-Fo:" + str(BUILD_DIR / (case.stem + ".obj"))],
-            capture_output=True, text=True, env=env, cwd=str(BUILD_DIR))
+             "-Fo:" + str(build_dir / (case.stem + ".obj"))],
+            capture_output=True, text=True, env=env, cwd=str(build_dir))
         if built.returncode != 0:
             diagnostics = [line.strip() for line in
                            ((built.stdout or "") + (built.stderr or "")).splitlines()
@@ -119,12 +124,13 @@ def main() -> int:
         passed += 1
 
     total = passed + len(failures)
+    label = "msvc --single-file" if args.single_file else "msvc"
     if failures:
-        print(f"msvc: {passed}/{total} matched .expected with cl")
+        print(f"{label}: {passed}/{total} matched .expected with cl")
         for name, why in failures:
             print(f"  {name}: {why}")
         return 1
-    print(f"msvc: {passed}/{total} passed with cl.exe (same .expected as clang)")
+    print(f"{label}: {passed}/{total} passed with cl.exe (same .expected as clang)")
     return 0
 
 

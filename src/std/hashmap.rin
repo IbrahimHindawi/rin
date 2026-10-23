@@ -1,0 +1,165 @@
+import "memops.rin"
+import "cstd.rin"
+import "hash.rin"
+
+/* A hash map over any key type that has `hash` and `equal` (see hash.rin).
+
+   Open addressing with linear probing, a power-of-two capacity, and the table
+   grown before it is three quarters full. A zeroed hashmap is empty and ready:
+
+       seen: hashmap<i64, u64> = {};
+       hashmap<i64, u64>put(arena, seen&, x, i);
+       at: *u64 = hashmap<i64, u64>get(seen&, target - x);   // null when absent
+
+   Counting is `hashmap<K, V>slot(arena, m&, key)[0] += 1`, which inserts a
+   zero the first time. Iterate with first/next over the slot indexes:
+
+       for (i: u64 = hashmap<K, V>first(m&); i < m.capacity; i = hashmap<K, V>next(m&, i)) {
+           use(m.keys[i], m.values[i]);
+       }
+
+   `put` and `slot` may grow the table, which moves every value: a pointer from
+   `get` or `slot` is good until the next insert. Removed slots are marked rather
+   than emptied so later keys in the same probe run stay reachable. */
+
+hashmap: struct<K, V> = {
+    keys: [*]K;
+    values: [*]V;
+    states: [*]u8;
+    length: u64;
+    removed: u64;
+    capacity: u64;
+}
+
+hashmap<K, V>find: proc<K, V>(m: *hashmap<K, V>, key: K) -> u64 = {
+    if (m[0].capacity == 0) {
+        return 0;
+    }
+    mask: u64 = m[0].capacity - 1;
+    i: u64 = hash<K>(key) & mask;
+    while (m[0].states[i] != 0) {
+        if (m[0].states[i] == 1 && equal<K>(m[0].keys[i], key)) {
+            return i;
+        }
+        i = (i + 1) & mask;
+    }
+    return m[0].capacity;
+}
+
+hashmap<K, V>grow: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>) -> void = {
+    old_keys: [*]K = m[0].keys;
+    old_values: [*]V = m[0].values;
+    old_states: [*]u8 = m[0].states;
+    old_capacity: u64 = m[0].capacity;
+    capacity: u64 = 16;
+    while (capacity * 3 <= (m[0].length + 1) * 8) {
+        capacity *= 2;
+    }
+    m[0].keys = cast(memops_arena_push(arena, sizeof(K) * capacity, alignof(K)), [*]K);
+    m[0].values = cast(memops_arena_push(arena, sizeof(V) * capacity, alignof(V)), [*]V);
+    m[0].states = cast(memops_arena_push_zero(arena, capacity, 1), [*]u8);
+    if (m[0].keys == null || m[0].values == null || m[0].states == null) {
+        printf("rin runtime: hashmap allocation failure\n");
+        exit(1);
+    }
+    m[0].capacity = capacity;
+    m[0].removed = 0;
+    mask: u64 = capacity - 1;
+    for (j: u64 = 0; j < old_capacity; j += 1) {
+        if (old_states[j] != 1) {
+            continue;
+        }
+        i: u64 = hash<K>(old_keys[j]) & mask;
+        while (m[0].states[i] != 0) {
+            i = (i + 1) & mask;
+        }
+        m[0].keys[i] = old_keys[j];
+        m[0].values[i] = old_values[j];
+        m[0].states[i] = 1;
+    }
+}
+
+// The value slot for key, inserting a zeroed value when it is not there yet.
+hashmap<K, V>slot: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>, key: K) -> *V = {
+    found: u64 = hashmap<K, V>find(m, key);
+    if (found < m[0].capacity) {
+        return m[0].values[found]&;
+    }
+    if ((m[0].length + m[0].removed + 1) * 4 > m[0].capacity * 3) {
+        hashmap<K, V>grow(arena, m);
+    }
+    mask: u64 = m[0].capacity - 1;
+    i: u64 = hash<K>(key) & mask;
+    while (m[0].states[i] == 1) {
+        i = (i + 1) & mask;
+    }
+    if (m[0].states[i] == 2) {
+        m[0].removed -= 1;
+    }
+    m[0].keys[i] = key;
+    memset(m[0].values[i]&, 0, sizeof(V));
+    m[0].states[i] = 1;
+    m[0].length += 1;
+    return m[0].values[i]&;
+}
+
+hashmap<K, V>put: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>, key: K, value: V) -> *V = {
+    slot: *V = hashmap<K, V>slot(arena, m, key);
+    slot[0] = value;
+    return slot;
+}
+
+hashmap<K, V>get: proc<K, V>(m: *hashmap<K, V>, key: K) -> *V = {
+    i: u64 = hashmap<K, V>find(m, key);
+    if (i >= m[0].capacity) {
+        return null;
+    }
+    return m[0].values[i]&;
+}
+
+hashmap<K, V>get_or: proc<K, V>(m: *hashmap<K, V>, key: K, fallback: V) -> V = {
+    i: u64 = hashmap<K, V>find(m, key);
+    if (i >= m[0].capacity) {
+        return fallback;
+    }
+    return m[0].values[i];
+}
+
+hashmap<K, V>has: proc<K, V>(m: *hashmap<K, V>, key: K) -> b32 = {
+    return hashmap<K, V>find(m, key) < m[0].capacity;
+}
+
+hashmap<K, V>remove: proc<K, V>(m: *hashmap<K, V>, key: K) -> b32 = {
+    i: u64 = hashmap<K, V>find(m, key);
+    if (i >= m[0].capacity) {
+        return 0;
+    }
+    m[0].states[i] = 2;
+    m[0].length -= 1;
+    m[0].removed += 1;
+    return 1;
+}
+
+hashmap<K, V>clear: proc<K, V>(m: *hashmap<K, V>) -> void = {
+    if (m[0].capacity > 0) {
+        memset(m[0].states, 0, m[0].capacity);
+    }
+    m[0].length = 0;
+    m[0].removed = 0;
+}
+
+// The first occupied slot at or after i, or capacity when there is none.
+hashmap<K, V>scan: proc<K, V>(m: *hashmap<K, V>, i: u64) -> u64 = {
+    while (i < m[0].capacity && m[0].states[i] != 1) {
+        i += 1;
+    }
+    return i;
+}
+
+hashmap<K, V>first: proc<K, V>(m: *hashmap<K, V>) -> u64 = {
+    return hashmap<K, V>scan(m, 0);
+}
+
+hashmap<K, V>next: proc<K, V>(m: *hashmap<K, V>, i: u64) -> u64 = {
+    return hashmap<K, V>scan(m, i + 1);
+}

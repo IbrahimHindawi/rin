@@ -43,7 +43,7 @@ be an attribute (`proc[must_use]`), which the slot already supports.
 ### Error handling: decided
 
 **A status enum per domain, the value through an out-parameter, the message from
-reflection.** `Result<T>` is not the direction.
+reflection.** `result<T>` is not the direction.
 
     mesh_status: enum = { success, file_not_found, bad_magic, truncated, }
 
@@ -66,7 +66,7 @@ What it gets right:
   Every C codebase has a hand-written `switch (err)` returning strings that
   goes stale; this one cannot.
 - **It costs nothing.** It is an int, and it compiles to an int.
-- **The out-parameter avoids a copy.** `Result<geo_mesh, E>` returns the mesh by
+- **The out-parameter avoids a copy.** `result<geo_mesh, E>` returns the mesh by
   value, and rin has no moves, so that is a copy of everything in it.
 
 Two pieces of the pattern live in the language rather than in each project.
@@ -76,19 +76,19 @@ wrong for the common use, since passing null to a `%s` is undefined. And `<>`
 works on a *value*, not only a type, so the status variable names its own
 record. Covered by `status_enum_errors` and `reflect_of_value`.
 
-### Why not `Result<T, E>`
+### Why not `result<T, E>`
 
 Worth writing down, because the obvious argument for it does not survive
 contact.
 
-`Result` does *not* remove cross-domain conversion. Rust's `?` requires
+`result` does *not* remove cross-domain conversion. Rust's `?` requires
 `impl From<FileError> for MeshError` -- you still write the mapping, `?` just
 calls it. The gain is that it is declared once per pair rather than spelled at
 each call site. Real, but modest.
 
 What actually makes errors compose in Rust is **payload-carrying enums**
 (`enum MeshError { File(FileError), BadMagic }`), which is a separate feature
-from `Result`. And rin can already express that by hand -- a struct with a
+from `result`. And rin can already express that by hand -- a struct with a
 tag field and a payload:
 
     mesh_status: struct = {
@@ -99,18 +99,18 @@ tag field and a payload:
 More verbose, and nothing checks that `file` is read only when `kind` says so,
 but it works today with no new feature.
 
-So `Result` would buy three things, and two of them are not `Result`: value and
+So `result` would buy three things, and two of them are not `result`: value and
 error travelling together (needs exhaustive matching to enforce), composition in
 expressions (needs a propagation form), and forced handling (needs must-use).
 Without those it is a struct whose value can be read after a failure -- which is
-what `std/Result.rin` is, and why it has three uses.
+what `std/result.rin` is, and why it has three uses.
 
 ### What would strengthen the decided design
 
 **Enum exhaustiveness in `switch`** -- item 1 in the order below, and now with a
 concrete motivation rather than an abstract one. Handle a `mesh_status` with a
 `switch`, add `truncated` to the enum, and every handler that does not cover it
-fails to compile. That is the property people actually want from `Result` plus
+fails to compile. That is the property people actually want from `result` plus
 `match`, on a plain enum, with no generics, no propagation operator and no
 copies.
 
@@ -198,5 +198,5 @@ off that is.
 **Decided, not deferred:** no methods, in any form.
 
 **Decided:** errors are a status enum per domain, the value comes back through
-an out-parameter, and the message comes from reflection. `Result<T>` is not the
+an out-parameter, and the message comes from reflection. `result<T>` is not the
 direction, and neither is a propagation form. Reasoning in §1.

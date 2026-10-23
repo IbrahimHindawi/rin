@@ -1,9 +1,9 @@
 // Exercises the import graph, generic instantiation, requirements, reflection, and
 // printfmt rewriting, which are the analysis paths with their own error handling.
 import "std/memops.rin"
-import "std/Array.rin"
-import "std/List.rin"
-import "std/Print.rin"
+import "std/array.rin"
+import "std/list.rin"
+import "std/print.rin"
 
 Payload: struct = {
     id: i32;
@@ -34,15 +34,15 @@ main: proc() -> i32 = {
     arena: memops_arena = {};
     memops_arena_initialize(arena&);
 
-    numbers: Array<i32> = Array<i32>reserve(arena&, 4);
+    numbers: array<i32> = array<i32>reserve(arena&, 4);
     for (i: i32 = 0; i < 4; i += 1) {
         numbers.data[i] = i;
     }
     printfmt("sum = {}\n", sum<i32>(numbers.data, numbers.length));
     printfmt("hash = {}\n", needs_hash<i32>(7));
 
-    chain: *List<Payload> = List<Payload>create(arena&);
-    List<Payload>append(arena&, chain, { .id = 1, .weight = 0.5 });
+    chain: *list<Payload> = list<Payload>create(arena&);
+    list<Payload>append(arena&, chain, { .id = 1, .weight = 0.5 });
 
     printfmt("{} has {} fields\n", Payload<>.name, Payload<>.count);
     for (i: i32 = 0; i < Payload<>.count; i += 1) {

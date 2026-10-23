@@ -1,5 +1,24 @@
 # I TODO
 
+## Recently Landed: Defaults, A Linux Arena, Single-File Output
+
+- [x] Proc parameter defaults: `f: proc(a: i32, b: i32 = 2)`. Trailing only, not
+      with `...`, not in proc types, and constant (literals, `null`, `#define`
+      names, operators over those). The checker appends the missing defaults to
+      the call, so emitted C always passes every argument. Arity errors read
+      "expects 1 to 2 args", and notes and signature help show `b:i32 = 2`.
+- [x] `memops_arena_initialize(arena, reserve = max_alloc_size)`. A refused
+      reservation halves until one fits (down to 1 MB), `memops_arena.reserved`
+      records what was granted, and `memops_arena_push` checks it before
+      committing rather than after.
+- [x] The arena works outside Windows: `memops_os.h` reserves with
+      `mmap(PROT_NONE, MAP_NORESERVE)` and commits with `mprotect`, where it used
+      to `malloc` the whole 1 TB reservation.
+- [x] `string8_read_file` uses `fopen`; `fopen_s` does not exist in glibc.
+- [x] `rin compile --single-file`: one `.c` with rin's headers inlined and no
+      `#line`, which builds with no `-I`. The execute suite runs in this mode too,
+      under clang and cl.
+
 ## Recently Landed: Recoverable Diagnostics And The Missing C Surface
 
 - [x] Diagnostics are collected instead of fatal. `diag_record_error()` replaced the
@@ -37,12 +56,12 @@
       unclosed braces in both terminal and JSON modes.
 
 - [x] `volatile` type qualifier, for memory-mapped registers and signal-visible
-      state. Carried through generics and mangled distinctly, so `Array<volatile T>`
-      and `Array<T>` stay separate monomorphs.
+      state. Carried through generics and mangled distinctly, so `array<volatile T>`
+      and `array<T>` stay separate monomorphs.
 - [x] Fixed a long-standing monomorph bug: a generic instantiated on anything other
       than a plain name emitted the mangled spelling as a C type name, so
-      `Array<*i32>` generated `ptr_i32 * data;` and did not compile. The same held
-      for `Array<const i32>` and `Array<*const char>`. Mangles are now recorded
+      `array<*i32>` generated `ptr_i32 * data;` and did not compile. The same held
+      for `array<const i32>` and `array<*const char>`. Mangles are now recorded
       against the type they came from, and emission recovers the real type.
 - [x] Passthrough `#if`/`#endif` balance is validated, so an unterminated conditional
       or a stray `#endif`/`#else`/`#elif` is an I diagnostic pointing at the `.i`
@@ -243,7 +262,7 @@ Generated C only needs to be valid, stable enough, and debuggable when necessary
 - [x] LSP semantic requests no longer reapply the same compiler workspace symbol graph on every request, and reference/rename/highlight paths use a warmed workspace identifier index.
 - [x] Gini reference requests are sub-millisecond locally after background warmup (`gin_update` ~0.3ms, `gops_update` ~0.5ms).
 - [x] Workspace-symbol prefetch defaults to a longer idle debounce, applies compiler workspace symbols, and warms the reference index without blocking the live diagnostic path.
-- [x] The LSP reference index stores precise generic spans without duplicate simple-identifier locations, keeping `Array` and `Payload` references inside `Array<Payload>` distinct.
+- [x] The LSP reference index stores precise generic spans without duplicate simple-identifier locations, keeping `Array` and `Payload` references inside `array<Payload>` distinct.
 - [x] The LSP reference-index builder skips expensive sanitizing/normalization on ordinary lines and simple identifiers, cutting Gini index construction from ~120ms to ~35-42ms and idle symbol prefetch from ~206ms to ~146ms locally.
 - [x] Dirty `didChange` now uses a text-only hot path that preserves the warmed symbol graph immediately, defers compiler symbol refresh to the idle timer, and cuts large Gini file edit handling from ~12-32ms to ~0.2-0.4ms locally.
 - [x] Compiler diagnostics and symbol extraction support dirty imported modules through `--stdin-path`, so the LSP can check the real project entry while overriding the edited buffer text.
@@ -309,7 +328,7 @@ The current LSP is good enough to use. Future work should keep Python as transpo
 - [ ] Add a headless Neovim smoke test for `*.rin` filetype detection, `i-lsp` attachment, and a real `publishDiagnostics` red-squiggle flow.
 - [ ] Move hover/definition/completion edge cases that still depend on Python inference into compiler `--lsp=json` metadata, especially generic instantiated fields, proc-pointer calls, enum members, aliases, and expected-type contexts.
 - [ ] Add compiler-provided completion contexts for proc args, struct literals, enum values, field access, and typed assignment so Python mostly formats completion items instead of deciding semantic matches.
-- [ ] Add compiler-provided reference/rename spans for project files, including generic names like `Array<T>reserve`, enum generated values, fields, globals, locals, and imported modules.
+- [ ] Add compiler-provided reference/rename spans for project files, including generic names like `array<T>reserve`, enum generated values, fields, globals, locals, and imported modules.
 - [ ] Add cancellable compiler-check workers or generation-aware subprocess cancellation if large projects make stale `rin.exe --check` runs pile up during typing.
 - [ ] Keep semantic tokens lexical by default; only expand rich semantic tokens if the compiler can emit token data cheaply enough to stay invisible during editing.
 - [ ] Add optional trace timing summaries for `didOpen`, `didChange`, diagnostics, completion, symbols, semantic tokens, references, and rename, with Gini as the default perf fixture.
@@ -340,7 +359,7 @@ The current type-operation model works and should stay simple:
 - [N] Revisit concepts only if missing-operation diagnostics become too noisy. Concepts should group and document required type operations, not become a second dispatch system.
 - [x] Fix direct formatted printing of generic call results: `printfmt("{}\n", add<i32>(1, 1));` should infer the placeholder argument type from the resolved `add<i32>` return type without requiring a temporary local.
 - [x] Fix expected-type propagation for designated literals in call arguments: `add<payload>({.x = 2}, {.x = 2})` should infer each literal as `payload` from the concrete proc parameter type and lower to valid C compound literals.
-- [x] Add the full playground type-operation sample as a regression test: std imports, `payload`, `add<i32>`, `add<payload>`, `sum<T>`, direct `printfmt(add<i32>(...))`, direct designated-literal call args, `Array<payload>reserve`, and accumulation.
+- [x] Add the full playground type-operation sample as a regression test: std imports, `payload`, `add<i32>`, `add<payload>`, `sum<T>`, direct `printfmt(add<i32>(...))`, direct designated-literal call args, `array<payload>reserve`, and accumulation.
 
 Generated C from the playground proves the model works, but the output needs cleanup:
 

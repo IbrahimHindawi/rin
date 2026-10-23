@@ -1,0 +1,71 @@
+import "memops.rin"
+import "cstd.rin"
+
+/* Union-find over the elements 0..n-1: which elements are connected, merged a
+   pair at a time. Union by size with path halving, so both operations are
+   effectively constant time. `sets` counts the components still apart. */
+
+dsu: struct = {
+    parent: [*]u64;
+    size: [*]u64;
+    count: u64;
+    sets: u64;
+}
+
+dsu_make: proc(arena: *memops_arena, n: u64) -> dsu = {
+    d: dsu = {};
+    if (n == 0) {
+        return d;
+    }
+    d.parent = cast(memops_arena_push(arena, sizeof(u64) * n, alignof(u64)), [*]u64);
+    d.size = cast(memops_arena_push(arena, sizeof(u64) * n, alignof(u64)), [*]u64);
+    if (d.parent == null || d.size == null) {
+        printf("rin runtime: dsu allocation failure\n");
+        exit(1);
+    }
+    for (i: u64 = 0; i < n; i += 1) {
+        d.parent[i] = i;
+        d.size[i] = 1;
+    }
+    d.count = n;
+    d.sets = n;
+    return d;
+}
+
+dsu_find: proc(d: *dsu, x: u64) -> u64 = {
+    if (x >= d[0].count) {
+        printf("rin runtime: dsu element out of range\n");
+        exit(1);
+    }
+    while (d[0].parent[x] != x) {
+        d[0].parent[x] = d[0].parent[d[0].parent[x]];
+        x = d[0].parent[x];
+    }
+    return x;
+}
+
+// Joins the sets holding a and b; returns false when they were already one.
+dsu_unite: proc(d: *dsu, a: u64, b: u64) -> b32 = {
+    ra: u64 = dsu_find(d, a);
+    rb: u64 = dsu_find(d, b);
+    if (ra == rb) {
+        return 0;
+    }
+    if (d[0].size[ra] < d[0].size[rb]) {
+        t: u64 = ra;
+        ra = rb;
+        rb = t;
+    }
+    d[0].parent[rb] = ra;
+    d[0].size[ra] += d[0].size[rb];
+    d[0].sets -= 1;
+    return 1;
+}
+
+dsu_same: proc(d: *dsu, a: u64, b: u64) -> b32 = {
+    return dsu_find(d, a) == dsu_find(d, b);
+}
+
+dsu_set_size: proc(d: *dsu, x: u64) -> u64 = {
+    return d[0].size[dsu_find(d, x)];
+}

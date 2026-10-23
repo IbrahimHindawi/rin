@@ -18,7 +18,7 @@ A library defines a generic container:
         count: i32;
     }
 
-    Stack<T>push: proc<T>(s: *Stack<T>, v: T) -> void = { ... }
+    stack<T>push: proc<T>(s: *stack<T>, v: T) -> void = { ... }
 
 A stranger uses it with a type the library has never heard of:
 
@@ -26,8 +26,8 @@ A stranger uses it with a type the library has never heard of:
 
     Point: struct = { x: i32; y: i32; }
 
-    numbers: Stack<i32> = {};
-    points: Stack<Point> = {};
+    numbers: stack<i32> = {};
+    points: stack<Point> = {};
 
 Monomorphisation means the compiler generates a concrete `Stack_i32_push` and a
 concrete `Stack_Point_push`. Somebody has to decide where those land, and each
@@ -102,10 +102,10 @@ It is also what Rust, Go and Zig do, and what C++ does in practice, since a
 header containing a template *is* source.
 
 **B. Declare provided instantiations in the shipped header.** The library states
-that it already provides `Stack<i32>`, and the consumer's sweep skips emitting
+that it already provides `stack<i32>`, and the consumer's sweep skips emitting
 it. This is `extern template` under another name. Precise and cheap at runtime;
 the cost is that the author maintains the list, and a consumer who wants
-`Stack<TheirType>` is out of luck unless the generic source ships too.
+`stack<TheirType>` is out of luck unless the generic source ships too.
 
 **C. Weak or COMDAT linkage.** `__attribute__((weak))`, `__declspec(selectany)`.
 Reproduces C++'s behaviour exactly: duplicates are permitted and folded, and

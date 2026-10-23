@@ -1,0 +1,58 @@
+import "std/memops.rin"
+
+// A trailing parameter may have a default. A call that leaves it off gets the
+// default filled in, so the C a call becomes always passes every argument.
+
+#define base_offset 1000
+
+add3: proc(a: i64, b: i64 = 2, c: i64 = base_offset + 1) -> i64 = {
+    return a + b + c;
+}
+
+// The default takes the parameter's type the way an initializer would, so an
+// integer literal becomes an f64 here.
+scale: proc(x: f64, by: f64 = 2) -> f64 = {
+    return x * by;
+}
+
+flags: proc(value: u32, mask: u32 = ~0, shift: u32 = 1 shl 2) -> u32 = {
+    return (value & mask) shr shift;
+}
+
+name_or: proc(name: [*]const char = null) -> [*]const char = {
+    if (name == null) {
+        return "anonymous";
+    }
+    return name;
+}
+
+// A generic proc can default a parameter whose type is not a type parameter.
+count_or: proc<T>(xs: []T, fallback: i64 = -1) -> i64 = {
+    if (xs.length == 0) {
+        return fallback;
+    }
+    return cast(xs.length, i64);
+}
+
+main: proc() -> i32 = {
+    printf("%lld %lld %lld\n", add3(1), add3(1, 10), add3(1, 10, 100));
+    printf("%g %g\n", scale(1.5), scale(1.5, 4));
+    printf("%u %u %u\n", flags(255), flags(255, 15), flags(255, 15, 0));
+    printf("%s %s\n", name_or(), name_or("rin"));
+
+    empty: []i32 = {};
+    three: [3]f64 = {1.0, 2.0, 3.0};
+    printf("%lld %lld %lld\n", count_or<i32>(empty), count_or<i32>(empty, 7), count_or<f64>(three));
+
+    // The arena's reserve is a default: max_alloc_size unless a size is given.
+    // Pushing past a small reserve exits, so this stays inside it.
+    big: memops_arena = {};
+    memops_arena_initialize(big&);
+    small: memops_arena = {};
+    memops_arena_initialize(small&, 1 shl 20);
+    block: [*]u8 = cast(memops_arena_push(small&, 512 * 1024, 16), [*]u8);
+    block[512 * 1024 - 1] = 9;
+    printf("%d %d %d\n", cast(big.reserved == max_alloc_size, i32), cast(small.reserved == (1 shl 20), i32),
+           cast(block[512 * 1024 - 1], i32));
+    return 0;
+}

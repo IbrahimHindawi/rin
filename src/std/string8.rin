@@ -2,7 +2,7 @@ cinclude "stdio.h"
 cinclude "string.h"
 
 import "memops.rin"
-import "Vec.rin"
+import "vec.rin"
 
 
 string8: struct = {
@@ -216,10 +216,7 @@ string8_clear: proc(s: *string8) -> void = {
 }
 
 string8_read_file: proc(arena: *memops_arena, filename: [*]const char) -> string8 = {
-    file: *FILE = null;
-    if (fopen_s(file&, filename, "rb") != 0) {
-        return string8_reserve(arena, 0);
-    }
+    file: *FILE = fopen(filename, "rb");
     if (file == null) {
         return string8_reserve(arena, 0);
     }
@@ -570,14 +567,14 @@ path_strip_extension: proc(path: string8slice) -> string8slice = {
     return path;
 }
 
-string8_split_byte: proc(arena: *memops_arena, src: string8, sep: u8) -> Vec<string8> = {
-    out: Vec<string8> = {};
+string8_split_byte: proc(arena: *memops_arena, src: string8, sep: u8) -> vec<string8> = {
+    out: vec<string8> = {};
     start: u64 = 0;
     i: u64 = 0;
     while (i <= src.length) {
         if (i == src.length || src.data[i] == sep) {
             piece: string8 = string8_copy_from_slice(arena, src.data + start, i - start);
-            Vec<string8>append(arena, out&, piece);
+            vec<string8>append(arena, out&, piece);
             start = i + 1;
         }
         i += 1;
@@ -585,18 +582,18 @@ string8_split_byte: proc(arena: *memops_arena, src: string8, sep: u8) -> Vec<str
     return out;
 }
 
-string8_split_char: proc(arena: *memops_arena, src: string8, sep: u8) -> Vec<string8> = {
+string8_split_char: proc(arena: *memops_arena, src: string8, sep: u8) -> vec<string8> = {
     return string8_split_byte(arena, src, sep);
 }
 
-string8slice_split: proc(arena: *memops_arena, src: string8slice, sep: u8) -> Vec<string8slice> = {
-    out: Vec<string8slice> = {};
+string8slice_split: proc(arena: *memops_arena, src: string8slice, sep: u8) -> vec<string8slice> = {
+    out: vec<string8slice> = {};
     start: u64 = 0;
     i: u64 = 0;
     while (i <= src.length) {
         if (i == src.length || src.data[i] == sep) {
             piece: string8slice = string8slice_sub(src, start, i - start);
-            Vec<string8slice>append(arena, out&, piece);
+            vec<string8slice>append(arena, out&, piece);
             start = i + 1;
         }
         i += 1;
@@ -604,7 +601,7 @@ string8slice_split: proc(arena: *memops_arena, src: string8slice, sep: u8) -> Ve
     return out;
 }
 
-string8slice_split_from_string8: proc(arena: *memops_arena, src: string8, sep: u8) -> Vec<string8slice> = {
+string8slice_split_from_string8: proc(arena: *memops_arena, src: string8, sep: u8) -> vec<string8slice> = {
     return string8slice_split(arena, string8slice_from_string8(src), sep);
 }
 

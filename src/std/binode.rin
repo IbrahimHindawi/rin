@@ -1,0 +1,31 @@
+import "memops.rin"
+import "option.rin"
+
+binode: struct<T> = {
+    next: *binode<T>;
+    prev: *binode<T>;
+    data: T;
+}
+
+binode<T>create: proc<T>(arena: *memops_arena, data: T) -> *binode<T> = {
+    node: *binode<T> = cast(memops_arena_push_zero(arena, sizeof(binode<T>), alignof(binode<T>)), *binode<T>);
+    if (node == null) {
+        printf("rin runtime: binode allocation failure\n");
+        exit(1);
+    }
+    node[0].next = null;
+    node[0].prev = null;
+    node[0].data = data;
+    return node;
+}
+
+binode<T>destroy: proc<T>(arena: *memops_arena, node: **binode<T>) -> void = {
+    node[0] = null;
+}
+
+binode<T>value: proc<T>(node: *binode<T>) -> option<T> = {
+    if (node == null) {
+        return option<T>none();
+    }
+    return option<T>some(node[0].data);
+}

@@ -1,0 +1,47 @@
+cinclude "stdio.h"
+cinclude "stdlib.h"
+import "cstd.rin"
+
+result: struct<T> = {
+    ok: b32;
+    value: T;
+    error: i32;
+}
+
+result<T>ok: proc<T>(value: T) -> result<T> = {
+    result: result<T> = {};
+    result.ok = 1;
+    result.value = value;
+    result.error = 0;
+    return result;
+}
+
+result<T>err: proc<T>(error: i32) -> result<T> = {
+    result: result<T> = {};
+    result.ok = 0;
+    result.error = error;
+    return result;
+}
+
+result<T>is_ok: proc<T>(result: result<T>) -> b32 = {
+    return result.ok;
+}
+
+result<T>is_err: proc<T>(result: result<T>) -> b32 = {
+    return !result.ok;
+}
+
+result<T>unwrap: proc<T>(result: result<T>) -> T = {
+    if (!result.ok) {
+        printf("rin runtime: result unwrap on error %d\n", result.error);
+        exit(1);
+    }
+    return result.value;
+}
+
+result<T>unwrap_or: proc<T>(result: result<T>, fallback: T) -> T = {
+    if (result.ok) {
+        return result.value;
+    }
+    return fallback;
+}

@@ -147,7 +147,7 @@ Candidate programs:
 - `06_enums_tables.rin`: enum members as indexes, `[Kind<>.value_count]`
 - `07_pointers.rin`: addresses, pointer fields, pointer parameters
 - `08_arena.rin`: allocate several records from `memops_arena`
-- `09_array_std.rin`: `Array<T>` reserve/append/use
+- `09_array_std.rin`: `array<T>` reserve/append/use
 - `10_print_reflect.rin`: derive simple print behavior from reflection metadata
 - `11_c_interop.rin`: bind one tiny C function or header
 - `12_tiny_grep.rin`: scan lines and print matches
@@ -224,7 +224,7 @@ Chapter shape:
    - bitfields and anonymous members for C interop
 
 7. **Generics**
-   - `Array<T>`
+   - `array<T>`
    - generic procs
    - concrete instantiation
    - requirement-style constraints

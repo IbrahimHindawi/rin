@@ -17,7 +17,8 @@ cinclude "string.h"
 FILE: struct[external] = {}
 
 printf: proc[external](fmt: [*]const char, ...) -> i32 = {}
-fopen_s: proc[external](stream: **FILE, filename: [*]const char, mode: [*]const char) -> i32 = {}
+// fopen rather than fopen_s, which glibc and macOS do not have.
+fopen: proc[external](filename: [*]const char, mode: [*]const char) -> *FILE = {}
 fclose: proc[external](stream: *FILE) -> i32 = {}
 // C spells these with `long`, which is 32-bit on Windows. Declaring them
 // as i64 here disagreed with njinn's declaration of the same functions,

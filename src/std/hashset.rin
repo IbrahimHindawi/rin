@@ -1,0 +1,39 @@
+import "hashmap.rin"
+
+/* A set of keys, as a hashmap with nothing in the values. A zeroed hashset is
+   empty; iterate it like a hashmap, reading `s.map.keys[i]`. */
+
+hashset: struct<K> = {
+    map: hashmap<K, u8>;
+}
+
+// Adds key; returns whether it was new.
+hashset<K>add: proc<K>(arena: *memops_arena, s: *hashset<K>, key: K) -> b32 = {
+    before: u64 = s[0].map.length;
+    hashmap<K, u8>slot(arena, s[0].map&, key);
+    return s[0].map.length != before;
+}
+
+hashset<K>has: proc<K>(s: *hashset<K>, key: K) -> b32 = {
+    return hashmap<K, u8>has(s[0].map&, key);
+}
+
+hashset<K>remove: proc<K>(s: *hashset<K>, key: K) -> b32 = {
+    return hashmap<K, u8>remove(s[0].map&, key);
+}
+
+hashset<K>length: proc<K>(s: *hashset<K>) -> u64 = {
+    return s[0].map.length;
+}
+
+hashset<K>clear: proc<K>(s: *hashset<K>) -> void = {
+    hashmap<K, u8>clear(s[0].map&);
+}
+
+hashset<K>first: proc<K>(s: *hashset<K>) -> u64 = {
+    return hashmap<K, u8>first(s[0].map&);
+}
+
+hashset<K>next: proc<K>(s: *hashset<K>, i: u64) -> u64 = {
+    return hashmap<K, u8>next(s[0].map&, i);
+}

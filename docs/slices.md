@@ -30,11 +30,11 @@ This is the rule the type exists to make expressible:
 
 | the proc needs to | it takes |
 |---|---|
-| append, remove, resize | `*Vec<T>` or `*Array<T>` |
+| append, remove, resize | `*vec<T>` or `*array<T>` |
 | read and write elements, no resizing | `slice<T>` |
 | read only | `slice<const T>` |
 
-It is not novel. Rust reaches `&mut Vec<T>` / `&mut [T]` / `&[T]` and Zig
+It is not novel. Rust reaches `&mut vec<T>` / `&mut [T]` / `&[T]` and Zig
 reaches `*ArrayList(T)` / `[]T` / `[]const T`. Two communities converged on it
 because a signature then states what the function does to the caller's data,
 which an owner-struct pointer never can.

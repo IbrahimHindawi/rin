@@ -186,7 +186,7 @@ portable surface living in `std`.
 
 ### The blocker is error handling, not the syscalls
 
-Every one of those calls can fail, and rin has no design for that. `Result<T>`
+Every one of those calls can fail, and rin has no design for that. `result<T>`
 exists in `std` and nothing uses it. Writing the OS layer first would mean
 settling the error story under pressure from a build system rather than on its
 own terms, and that decision is not even on the open list in `shape.md` yet.

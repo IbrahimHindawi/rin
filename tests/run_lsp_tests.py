@@ -106,33 +106,33 @@ Handler:struct = {
 global_payload:Payload = {};
 global_cb:Callback = payload_add;
 
-Array:struct<T> = {
+array:struct<T> = {
     length:u64;
     data:*T;
 }
 
-Array<T>reserve:proc<T>(length:u64)->Array<T> = {
-    out:Array<T> = {};
+array<T>reserve:proc<T>(length:u64)->array<T> = {
+    out:array<T> = {};
     out.length = length;
     return out;
 }
 
-Vec:struct<T> = {
+vec:struct<T> = {
     length:u64;
     data:*T;
 }
 
-Vec<T>reserve:proc<T>(length:u64)->Vec<T> = {
-    out:Vec<T> = {};
+vec<T>reserve:proc<T>(length:u64)->vec<T> = {
+    out:vec<T> = {};
     out.length = length;
     return out;
 }
 
 json_read:proc[external]<i32>(out:*i32)->b32 = {}
 
-json_read:proc[external]<Array<T>>(out:*Array<T>)->b32 = {}
+json_read:proc[external]<array<T>>(out:*array<T>)->b32 = {}
 
-json_read:proc[external]<Vec<T>>(out:*Vec<T>)->b32 = {}
+json_read:proc[external]<vec<T>>(out:*vec<T>)->b32 = {}
 
 Other:struct = {
     value:i32;
@@ -275,9 +275,9 @@ main:proc()->i32 = {{
     payload_variant_member:u64 = Payload<>.variant.fields[0].;
     kind_variant_member:u64 = Kind<>.variant.values[0].;
     call_struct_field:i32 = consume_payload({{ . }});
-    payload_array:Array<Payload> = Array<Payload>r;
-    payload_array_empty:Array<Payload> = Array<Payload>;
-    read_payloads:b32 = json_read<Array<Payload>>(
+    payload_array:array<Payload> = array<Payload>r;
+    payload_array_empty:array<Payload> = array<Payload>;
+    read_payloads:b32 = json_read<array<Payload>>(
     read_value:b32 = json_read<i32>(
     return 0;
 }}
@@ -310,11 +310,11 @@ main:proc()->i32 = {{
     cb:Callback = payload_add;
     handler:Handler = {{}};
     k:Kind = Kind_Ready;
-    values:Array<i32> = Array<i32>reserve(4);
-    payload_values:Array<Payload> = Array<Payload>reserve(2);
-    payload_vec:Vec<Payload> = Vec<Payload>reserve(2);
-    read_payloads:b32 = json_read<Array<Payload>>(payload_values&);
-    read_payload_vec:b32 = json_read<Vec<Payload>>(payload_vec&);
+    values:array<i32> = array<i32>reserve(4);
+    payload_values:array<Payload> = array<Payload>reserve(2);
+    payload_vec:vec<Payload> = vec<Payload>reserve(2);
+    read_payloads:b32 = json_read<array<Payload>>(payload_values&);
+    read_payload_vec:b32 = json_read<vec<Payload>>(payload_vec&);
     read_value:b32 = json_read<i32>(total&);
     basis:Mat3 = {{}};
     basis_element:f32 = basis[0][0];
@@ -2196,7 +2196,7 @@ main:proc()->i32 = {
         print(reflect_completion_response)
         return 1
     generic_owner_proc_line = next(i for i, line in enumerate(completion_context_lines) if "payload_array" in line)
-    generic_owner_proc_col = completion_context_lines[generic_owner_proc_line].index("Array<Payload>r") + len("Array<Payload>r")
+    generic_owner_proc_col = completion_context_lines[generic_owner_proc_line].index("array<Payload>r") + len("array<Payload>r")
     generic_owner_proc_items = lsp.generic_owner_proc_completions_at(
         workspace,
         completion_context_doc,
@@ -2204,11 +2204,11 @@ main:proc()->i32 = {
         generic_owner_proc_col,
     )
     if not any(
-        item.name == "Array<Payload>reserve"
-        and lsp.proc_signature_label_for_symbol(item, item.name) == "Array<Payload>reserve:proc(length:u64)->Array<Payload>"
+        item.name == "array<Payload>reserve"
+        and lsp.proc_signature_label_for_symbol(item, item.name) == "array<Payload>reserve:proc(length:u64)->array<Payload>"
         for item in generic_owner_proc_items
     ):
-        print("lsp: expected generic owner proc completion after Array<Payload>r")
+        print("lsp: expected generic owner proc completion after array<Payload>r")
         print(generic_owner_proc_items)
         return 1
     generic_owner_proc_context_items = lsp.generic_owner_proc_completion_items_at(
@@ -2217,10 +2217,10 @@ main:proc()->i32 = {
         generic_owner_proc_line,
         generic_owner_proc_col,
     )
-    typed_member_start = completion_context_lines[generic_owner_proc_line].index("Array<Payload>r") + len("Array<Payload>")
+    typed_member_start = completion_context_lines[generic_owner_proc_line].index("array<Payload>r") + len("array<Payload>")
     if not any(
         item.get("label") == "reserve"
-        and item.get("detail") == "Array<Payload>reserve:proc(length:u64)->Array<Payload>"
+        and item.get("detail") == "array<Payload>reserve:proc(length:u64)->array<Payload>"
         and item.get("insertTextFormat") == 2
         and item.get("insertText") == "reserve(${1:length})$0"
         and item.get("textEdit", {}).get("range", {}).get("start", {}).get("character") == typed_member_start
@@ -2231,7 +2231,7 @@ main:proc()->i32 = {
         print(generic_owner_proc_context_items)
         return 1
     generic_owner_empty_line = next(i for i, line in enumerate(completion_context_lines) if "payload_array_empty" in line)
-    generic_owner_empty_col = completion_context_lines[generic_owner_empty_line].index("Array<Payload>;") + len("Array<Payload>")
+    generic_owner_empty_col = completion_context_lines[generic_owner_empty_line].index("array<Payload>;") + len("array<Payload>")
     generic_owner_empty_items = lsp.generic_owner_proc_completion_items_at(
         workspace,
         completion_context_doc,
@@ -2245,7 +2245,7 @@ main:proc()->i32 = {
         and item.get("textEdit", {}).get("newText") == "reserve(${1:length})$0"
         for item in generic_owner_empty_items
     ):
-        print("lsp: expected generic owner proc context item after Array<Payload> to insert reserve snippet")
+        print("lsp: expected generic owner proc context item after array<Payload> to insert reserve snippet")
         print(generic_owner_empty_items)
         return 1
     generic_owner_completion_server = CaptureServer()
@@ -2267,14 +2267,14 @@ main:proc()->i32 = {
         generic_owner_completion_response.get("id") != 26
         or not any(
             item.get("label") == "reserve"
-            and item.get("detail") == "Array<Payload>reserve:proc(length:u64)->Array<Payload>"
+            and item.get("detail") == "array<Payload>reserve:proc(length:u64)->array<Payload>"
             and item.get("insertTextFormat") == 2
             and item.get("textEdit", {}).get("newText") == "reserve(${1:length})$0"
             for item in generic_owner_completion_items
         )
         or any(item.get("label") == "Payload" for item in generic_owner_completion_items)
     ):
-        print("lsp: expected textDocument/completion after Array<Payload>r to return owner proc items")
+        print("lsp: expected textDocument/completion after array<Payload>r to return owner proc items")
         print(generic_owner_completion_response)
         return 1
 
@@ -2503,8 +2503,8 @@ main:proc()->i32 = {
         print("lsp: expected imported Payload.value field")
         return 1
     app_lines = doc.text.splitlines()
-    generic_payload_decl_line = next(i for i, line in enumerate(app_lines) if "payload_values:Array<Payload>" in line)
-    generic_array_decl_col = app_lines[generic_payload_decl_line].index("Array")
+    generic_payload_decl_line = next(i for i, line in enumerate(app_lines) if "payload_values:array<Payload>" in line)
+    generic_array_decl_col = app_lines[generic_payload_decl_line].index("array")
     generic_payload_decl_col = app_lines[generic_payload_decl_line].index("Payload")
     if not any(
         ref["uri"] == doc.uri
@@ -2516,12 +2516,12 @@ main:proc()->i32 = {
         print("lsp: expected Payload references to include generic type argument range")
         print(refs)
         return 1
-    array_refs = workspace.references("Array")
+    array_refs = workspace.references("array")
     if not any(
         ref["uri"] == doc.uri
         and ref["range"]["start"]["line"] == generic_payload_decl_line
         and ref["range"]["start"]["character"] == generic_array_decl_col
-        and ref["range"]["end"]["character"] == generic_array_decl_col + len("Array")
+        and ref["range"]["end"]["character"] == generic_array_decl_col + len("array")
         for ref in array_refs
     ):
         print("lsp: expected Array references to include only the generic base range")
@@ -2722,14 +2722,14 @@ main:proc()->i32 = {
         print("lsp: expected enum member semantic token")
         print(decoded_tokens)
         return 1
-    generic_line = next(i for i, line in enumerate(app_lines) if "Array<i32>reserve" in line)
-    generic_array_col = app_lines[generic_line].index("Array<i32>reserve")
-    generic_arg_col = generic_array_col + len("Array<")
-    generic_proc_col = generic_array_col + len("Array<i32>")
+    generic_line = next(i for i, line in enumerate(app_lines) if "array<i32>reserve" in line)
+    generic_array_col = app_lines[generic_line].index("array<i32>reserve")
+    generic_arg_col = generic_array_col + len("array<")
+    generic_proc_col = generic_array_col + len("array<i32>")
     generic_type_token = (
         generic_line,
         generic_array_col,
-        len("Array"),
+        len("array"),
         "type",
     )
     generic_arg_token = (
@@ -2749,21 +2749,21 @@ main:proc()->i32 = {
         print(decoded_tokens)
         return 1
     if (
-        not has_semantic_token(decoded_tokens_with_modifiers, generic_line, generic_array_col, len("Array"), "type", "generic")
+        not has_semantic_token(decoded_tokens_with_modifiers, generic_line, generic_array_col, len("array"), "type", "generic")
         or not has_semantic_token(decoded_tokens_with_modifiers, generic_line, generic_arg_col, len("i32"), "type", "defaultLibrary")
         or not has_semantic_token(decoded_tokens_with_modifiers, generic_line, generic_proc_col, len("reserve"), "function", "generic")
     ):
         print("lsp: expected generic proc semantic token modifiers")
         print(decoded_tokens_with_modifiers)
         return 1
-    generic_decl_line = next(i for i, line in enumerate(module_lines) if "Array<T>reserve:proc<T>" in line)
-    generic_decl_array_col = module_lines[generic_decl_line].index("Array<T>reserve")
-    generic_decl_arg_col = generic_decl_array_col + len("Array<")
-    generic_decl_proc_col = generic_decl_array_col + len("Array<T>")
+    generic_decl_line = next(i for i, line in enumerate(module_lines) if "array<T>reserve:proc<T>" in line)
+    generic_decl_array_col = module_lines[generic_decl_line].index("array<T>reserve")
+    generic_decl_arg_col = generic_decl_array_col + len("array<")
+    generic_decl_proc_col = generic_decl_array_col + len("array<T>")
     generic_decl_type_token = (
         generic_decl_line,
         generic_decl_array_col,
-        len("Array"),
+        len("array"),
         "type",
     )
     generic_decl_arg_token = (
@@ -2787,7 +2787,7 @@ main:proc()->i32 = {
         print(module_tokens)
         return 1
     if (
-        not has_semantic_token(module_tokens_with_modifiers, generic_decl_line, generic_decl_array_col, len("Array"), "type", "generic")
+        not has_semantic_token(module_tokens_with_modifiers, generic_decl_line, generic_decl_array_col, len("array"), "type", "generic")
         or not has_semantic_token(module_tokens_with_modifiers, generic_decl_line, generic_decl_proc_col, len("reserve"), "function", "definition", "generic")
     ):
         print("lsp: expected generic proc declaration semantic token modifiers")
@@ -2907,10 +2907,10 @@ main:proc()->i32 = {
     nested_data_field = lsp.field_access_at(workspace, doc, nested_field_line, nested_data_col)
     if (
         nested_data_field is None
-        or nested_data_field.owner != "Array"
+        or nested_data_field.owner != "array"
         or nested_data_field.name != "data"
         or nested_data_field.type_name != "*Payload"
-        or nested_data_field.detail != "Array<Payload>.data: *Payload"
+        or nested_data_field.detail != "array<Payload>.data: *Payload"
     ):
         print("lsp: expected generic field access hover detail to substitute concrete type")
         print(nested_data_field)
@@ -2926,13 +2926,13 @@ main:proc()->i32 = {
     if (
         generic_data_completion is None
         or generic_data_completion.type_name != "*Payload"
-        or generic_data_completion.detail != "Array<Payload>.data: *Payload"
+        or generic_data_completion.detail != "array<Payload>.data: *Payload"
     ):
         print("lsp: expected generic field completion to show substituted concrete type")
         print(generic_data_completions)
         return 1
     generic_data_completion_lsp = lsp.field_completion_to_lsp(workspace, generic_data_completion)
-    if generic_data_completion_lsp.get("detail") != "Array<Payload>.data: *Payload":
+    if generic_data_completion_lsp.get("detail") != "array<Payload>.data: *Payload":
         print("lsp: expected generic field completion item detail to use substituted concrete type")
         print(generic_data_completion_lsp)
         return 1
@@ -3002,31 +3002,31 @@ main:proc()->i32 = {
         print([item.name for item in completion_items])
         return 1
     generic_completion = next(
-        item for item in completion_items if isinstance(item, lsp.Symbol) and item.name == "Array<T>reserve"
+        item for item in completion_items if isinstance(item, lsp.Symbol) and item.name == "array<T>reserve"
     )
     generic_completion_lsp = lsp.completion_to_lsp(workspace, generic_completion)
     if (
-        generic_completion_lsp.get("label") != "Array<T>reserve"
+        generic_completion_lsp.get("label") != "array<T>reserve"
         or generic_completion_lsp.get("insertTextFormat") != 2
-        or generic_completion_lsp.get("insertText") != "Array<T>reserve(${1:length})$0"
-        or generic_completion_lsp.get("filterText") != "Arrayreserve"
+        or generic_completion_lsp.get("insertText") != "array<T>reserve(${1:length})$0"
+        or generic_completion_lsp.get("filterText") != "arrayreserve"
         or generic_completion_lsp.get("data", {}).get("kind") != "proc"
-        or generic_completion_lsp.get("data", {}).get("name") != "Array<T>reserve"
+        or generic_completion_lsp.get("data", {}).get("name") != "array<T>reserve"
         or generic_completion_lsp.get("data", {}).get("uri") != module_doc.uri
     ):
         print("lsp: expected generic completion to provide simplified filterText")
         print(generic_completion_lsp)
         return 1
     stale_generic_completion = {
-        "label": "Array<T>reserve",
+        "label": "array<T>reserve",
         "data": generic_completion_lsp["data"],
     }
     resolved_generic_completion = lsp.resolve_completion_item(workspace, stale_generic_completion)
     if (
-        resolved_generic_completion.get("detail") != "Array<T>reserve:proc(length:u64)->Array<T>"
-        or resolved_generic_completion.get("filterText") != "Arrayreserve"
+        resolved_generic_completion.get("detail") != "array<T>reserve:proc(length:u64)->array<T>"
+        or resolved_generic_completion.get("filterText") != "arrayreserve"
         or resolved_generic_completion.get("insertTextFormat") != 2
-        or resolved_generic_completion.get("insertText") != "Array<T>reserve(${1:length})$0"
+        or resolved_generic_completion.get("insertText") != "array<T>reserve(${1:length})$0"
         or resolved_generic_completion.get("data") != generic_completion_lsp["data"]
     ):
         print("lsp: expected completionItem/resolve to rehydrate generic proc completion")
@@ -3105,22 +3105,22 @@ main:proc()->i32 = {
         return 1
     server = lsp.LspServer()
     server.workspace = workspace
-    generic_payload_line = next(i for i, line in enumerate(app_lines) if "Array<Payload>reserve" in line)
-    generic_payload_call_col = app_lines[generic_payload_line].rindex("Array<Payload>reserve")
+    generic_payload_line = next(i for i, line in enumerate(app_lines) if "array<Payload>reserve" in line)
+    generic_payload_call_col = app_lines[generic_payload_line].rindex("array<Payload>reserve")
     generic_base_resolved = server.symbol_at_request(
         {
             "textDocument": {"uri": doc.uri},
             "position": {"line": generic_payload_line, "character": generic_payload_call_col},
         }
     )
-    if not isinstance(generic_base_resolved, lsp.Symbol) or generic_base_resolved.name != "Array":
+    if not isinstance(generic_base_resolved, lsp.Symbol) or generic_base_resolved.name != "array":
         print("lsp: expected generic base type lookup to resolve Array")
         print(generic_base_resolved)
         return 1
     generic_arg_resolved = server.symbol_at_request(
         {
             "textDocument": {"uri": doc.uri},
-            "position": {"line": generic_payload_line, "character": generic_payload_call_col + len("Array<")},
+            "position": {"line": generic_payload_line, "character": generic_payload_call_col + len("array<")},
         }
     )
     if not isinstance(generic_arg_resolved, lsp.Symbol) or generic_arg_resolved.name != "Payload":
@@ -3130,23 +3130,23 @@ main:proc()->i32 = {
     generic_proc_resolved = server.symbol_at_request(
         {
             "textDocument": {"uri": doc.uri},
-            "position": {"line": generic_payload_line, "character": generic_payload_call_col + len("Array<Payload>")},
+            "position": {"line": generic_payload_line, "character": generic_payload_call_col + len("array<Payload>")},
         }
     )
     if (
         not isinstance(generic_proc_resolved, lsp.Symbol)
-        or generic_proc_resolved.name != "Array<Payload>reserve"
-        or "Array<Payload>reserve:proc(length:u64)->Array<Payload>" not in generic_proc_resolved.detail
+        or generic_proc_resolved.name != "array<Payload>reserve"
+        or "array<Payload>reserve:proc(length:u64)->array<Payload>" not in generic_proc_resolved.detail
     ):
-        print("lsp: expected generic proc tail lookup to resolve Array<T>reserve")
+        print("lsp: expected generic proc tail lookup to resolve array<T>reserve")
         print(generic_proc_resolved)
         return 1
     generic_proc_hover = lsp.hover_markdown_for_symbol(workspace, generic_proc_resolved)
-    if "Array<Payload>reserve:proc(length:u64)->Array<Payload>" not in generic_proc_hover:
+    if "array<Payload>reserve:proc(length:u64)->array<Payload>" not in generic_proc_hover:
         print("lsp: expected generic proc hover to show substituted concrete type")
         print(generic_proc_hover)
         return 1
-    json_array_line = next(i for i, line in enumerate(app_lines) if "json_read<Array<Payload>>(payload_values" in line)
+    json_array_line = next(i for i, line in enumerate(app_lines) if "json_read<array<Payload>>(payload_values" in line)
     json_array_col = app_lines[json_array_line].index("json_read")
     json_array_resolved = server.symbol_at_request(
         {
@@ -3156,13 +3156,13 @@ main:proc()->i32 = {
     )
     if (
         not isinstance(json_array_resolved, lsp.Symbol)
-        or json_array_resolved.name != "json_read<Array<Payload>>"
-        or "json_read<Array<Payload>>:proc(out:*Array<Payload>)->b32" not in json_array_resolved.detail
+        or json_array_resolved.name != "json_read<array<Payload>>"
+        or "json_read<array<Payload>>:proc(out:*array<Payload>)->b32" not in json_array_resolved.detail
     ):
-        print("lsp: expected generic pattern proc lookup to resolve json_read<Array<Payload>>")
+        print("lsp: expected generic pattern proc lookup to resolve json_read<array<Payload>>")
         print(json_array_resolved)
         return 1
-    json_vec_line = next(i for i, line in enumerate(app_lines) if "json_read<Vec<Payload>>(payload_vec" in line)
+    json_vec_line = next(i for i, line in enumerate(app_lines) if "json_read<vec<Payload>>(payload_vec" in line)
     json_vec_col = app_lines[json_vec_line].index("json_read")
     json_vec_signature = lsp.signature_help_at(
         workspace,
@@ -3174,10 +3174,10 @@ main:proc()->i32 = {
         json_vec_signature is None
         or json_vec_signature.get("activeParameter") != 0
         or not json_vec_signature.get("signatures")
-        or json_vec_signature["signatures"][0].get("label") != "json_read<Vec<Payload>>:proc(out:*Vec<Payload>)->b32"
-        or json_vec_signature["signatures"][0].get("parameters") != [{"label": "out:*Vec<Payload>"}]
+        or json_vec_signature["signatures"][0].get("label") != "json_read<vec<Payload>>:proc(out:*vec<Payload>)->b32"
+        or json_vec_signature["signatures"][0].get("parameters") != [{"label": "out:*vec<Payload>"}]
     ):
-        print("lsp: expected generic pattern proc signature help for json_read<Vec<Payload>>")
+        print("lsp: expected generic pattern proc signature help for json_read<vec<Payload>>")
         print(json_vec_signature)
         return 1
     json_value_line = next(i for i, line in enumerate(app_lines) if "json_read<i32>(total" in line)
@@ -3216,7 +3216,7 @@ main:proc()->i32 = {
     )
     if (
         (json_array_line, json_array_col, len("json_read"), "function") not in json_tokens
-        or (json_array_line, app_lines[json_array_line].index("Array"), len("Array"), "type") not in json_tokens
+        or (json_array_line, app_lines[json_array_line].index("array"), len("array"), "type") not in json_tokens
         or (json_array_line, app_lines[json_array_line].index("Payload"), len("Payload"), "type") not in json_tokens
     ):
         print("lsp: expected semantic tokens for nested generic proc call")
@@ -3482,7 +3482,7 @@ main:proc()->i32 = {
         generic_signature is None
         or generic_signature.get("activeParameter") != 0
         or not generic_signature.get("signatures")
-        or "Array<Payload>reserve:proc(length:u64)->Array<Payload>" not in generic_signature["signatures"][0].get("label", "")
+        or "array<Payload>reserve:proc(length:u64)->array<Payload>" not in generic_signature["signatures"][0].get("label", "")
         or generic_signature["signatures"][0].get("parameters") != [{"label": "length:u64"}]
     ):
         print("lsp: expected generic proc signature help to show substituted concrete type")

@@ -18,6 +18,7 @@ memops_arena: struct = {
     used: u64;
     pagesize: u64;
     npages: u64;
+    reserved: u64; // address space held for the arena; it never grows past this
 }
 
 memops_arena_temp: struct = {
@@ -39,12 +40,23 @@ memops_align_forward: proc(ptr: usize, align: usize) -> usize = {
     return p;
 }
 
-memops_arena_initialize: proc(arena: *memops_arena) -> void = {
+/* Reserves address space only; pages are committed as the arena grows. A
+   judge that caps address space refuses a reservation that size even though
+   none of it is used, so a refusal halves the request until one fits, down to
+   a megabyte. `reserved` says what was granted. */
+memops_arena_initialize: proc(arena: *memops_arena, reserve: u64 = max_alloc_size) -> void = {
     arena[0].pagesize = memops_os_page_size();
-    arena[0].base = memops_os_reserve(max_alloc_size);
+    size: u64 = memops_align_forward(cast(reserve, usize), cast(arena[0].pagesize, usize));
+    arena[0].base = memops_os_reserve(size);
+    while (arena[0].base == null && size > 0x100000) {
+        size = memops_align_forward(cast(size / 2, usize), cast(arena[0].pagesize, usize));
+        arena[0].base = memops_os_reserve(size);
+    }
     if (arena[0].base == null) {
+        printf("memops_arena could not reserve %llu bytes!\n", reserve);
         exit(1);
     }
+    arena[0].reserved = size;
     arena[0].cursor = arena[0].base;
     arena[0].previous = arena[0].base;
     arena[0].used = 0;
@@ -59,6 +71,13 @@ memops_arena_push: proc(arena: *memops_arena, alloc_size: u64, align: u64) -> *v
     needed: u64 = arena[0].used + alloc_size + diff;
     committed: u64 = arena[0].pagesize * arena[0].npages;
 
+    /* Before committing: past the reservation, the commit would be asking for
+       pages the arena does not own. */
+    if (needed > arena[0].reserved) {
+        printf("memops_arena maximum size exceeded!\n");
+        exit(1);
+    }
+
     if (needed > committed) {
         missing_bytes: u64 = needed - committed;
         pages_to_commit: u64 = (missing_bytes + arena[0].pagesize - 1) / arena[0].pagesize;
@@ -70,11 +89,6 @@ memops_arena_push: proc(arena: *memops_arena, alloc_size: u64, align: u64) -> *v
             exit(1);
         }
         arena[0].npages += pages_to_commit;
-    }
-
-    if (needed > max_alloc_size) {
-        printf("memops_arena maximum size exceeded!\n");
-        exit(1);
     }
 
     arena[0].used += alloc_size + diff;

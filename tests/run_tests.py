@@ -117,7 +117,7 @@ main:proc()->i32={
 ''',
         expected_stdout="10 11 12 13 array_i32 8 3 length u64 0 0 data ptr_i32 1 1 2 array i32 i32 i32\n",
         generated_contains=("array_i32_reflect", "memops_arena_push_array_i32", "generic_arg_type", "I monomorph: struct array<T> -> array_i32;", "I monomorph: proc array<T>reserve -> array_i32_reserve;", "instantiated at"),
-        header_contains=("void memops_arena_initialize(memops_arena * arena);", "I monomorph: struct array<T> -> array_i32;", "I monomorph: proc array<T>reserve -> array_i32_reserve;"),
+        header_contains=("void memops_arena_initialize(memops_arena * arena, u64 reserve);", "I monomorph: struct array<T> -> array_i32;", "I monomorph: proc array<T>reserve -> array_i32_reserve;"),
     ),
     Case(
         name="comments",
@@ -178,7 +178,7 @@ main:proc()->i32 = {
         name="printfmt",
         source=r'''
 cinclude "stdio.h"
-import "C:/devel/rin/src/std/Print.rin"
+import "C:/devel/rin/src/std/print.rin"
 
 Payload: struct = {
     x: i32;
@@ -223,7 +223,10 @@ main: proc()->i32 = {
         name="reflection_print_runtime",
         source=r'''
 cinclude "stdio.h"
-import "C:/devel/rin/src/std/containers.rin"
+import "C:/devel/rin/src/std/option.rin"
+import "C:/devel/rin/src/std/result.rin"
+import "C:/devel/rin/src/std/vec.rin"
+import "C:/devel/rin/src/std/print.rin"
 
 import "C:/devel/rin/src/std/reflect.rin"
 
@@ -263,32 +266,35 @@ main:proc()->i32 = {
     memops_arena_initialize(arena&);
 
     payload:Payload = {.x = 9, .kind = Kind_Run};
-    opt:Option<Kind> = Option<Kind>some(Kind_Run);
-    missing:Option<Kind> = Option<Kind>none();
-    ok_payload:Result<Payload> = Result<Payload>ok(payload);
-    bad_payload:Result<Payload> = Result<Payload>err(7);
-    vec:Vec<Payload> = {};
-    Vec<Payload>append(arena&, vec&, payload);
+    opt:option<Kind> = option<Kind>some(Kind_Run);
+    missing:option<Kind> = option<Kind>none();
+    ok_payload:result<Payload> = result<Payload>ok(payload);
+    bad_payload:result<Payload> = result<Payload>err(7);
+    vec:vec<Payload> = {};
+    vec<Payload>append(arena&, vec&, payload);
 
     printfmt("{} {} {} {} {} {} {}\n",
         Payload<>.variant.fields[1].name,
-        Option<Kind>unwrap(opt),
-        Option<Kind>is_none(missing),
-        Result<Payload>unwrap(ok_payload),
-        Result<Payload>is_err(bad_payload),
+        option<Kind>unwrap(opt),
+        option<Kind>is_none(missing),
+        result<Payload>unwrap(ok_payload),
+        result<Payload>is_err(bad_payload),
         bad_payload.error,
-        Vec<Payload>get(vec&, 0).value);
+        vec<Payload>get(vec&, 0).value);
     return 0;
 }
 ''',
         expected_stdout="kind Run true Payload(9, Run) true 7 Payload(9, Run)\n",
-        generated_contains=("&(Kind_reflect)", "&(Payload_reflect)", "print_Kind", "print_Payload", "Payload_reflect.variant.fields[1].name", "Option_Kind_reflect", "Result_Payload_reflect", "Vec_Payload_reflect", "Option_Kind_some", "Result_Payload_ok", "Vec_Payload_append"),
+        generated_contains=("&(Kind_reflect)", "&(Payload_reflect)", "print_Kind", "print_Payload", "Payload_reflect.variant.fields[1].name", "option_Kind_reflect", "result_Payload_reflect", "vec_Payload_reflect", "option_Kind_some", "result_Payload_ok", "vec_Payload_append"),
     ),
     Case(
         name="generic_dependency_closure",
         source=r'''
 cinclude "stdio.h"
-import "C:/devel/rin/src/std/containers.rin"
+import "C:/devel/rin/src/std/option.rin"
+import "C:/devel/rin/src/std/result.rin"
+import "C:/devel/rin/src/std/vec.rin"
+import "C:/devel/rin/src/std/print.rin"
 
 Payload:struct = {
     x:i32;
@@ -296,9 +302,9 @@ Payload:struct = {
 
 Holder:struct<T> = {
     item:T;
-    opt:Option<T>;
-    res:Result<T>;
-    vec:Vec<T>;
+    opt:option<T>;
+    res:result<T>;
+    vec:vec<T>;
 }
 
 print:proc<Payload>(value:Payload)->void = {
@@ -306,27 +312,27 @@ print:proc<Payload>(value:Payload)->void = {
 }
 
 make_local:proc<T>(arena:*memops_arena, value:T)->T = {
-    vec:Vec<T> = {};
-    Vec<T>append(arena, vec&, value);
-    opt:Option<T> = Vec<T>get(vec&, 0);
-    res:Result<T> = Result<T>ok(Option<T>unwrap(opt));
-    return Result<T>unwrap(res);
+    vec:vec<T> = {};
+    vec<T>append(arena, vec&, value);
+    opt:option<T> = vec<T>get(vec&, 0);
+    res:result<T> = result<T>ok(option<T>unwrap(opt));
+    return result<T>unwrap(res);
 }
 
-make_option:proc<T>(value:T)->Option<T> = {
-    return Option<T>some(value);
+make_option:proc<T>(value:T)->option<T> = {
+    return option<T>some(value);
 }
 
-id_option:proc<T>(value:Option<T>)->T = {
-    return Option<T>unwrap(value);
+id_option:proc<T>(value:option<T>)->T = {
+    return option<T>unwrap(value);
 }
 
 Holder<T>make:proc<T>(arena:*memops_arena, value:T)->Holder<T> = {
     holder:Holder<T> = {};
     holder.item = value;
-    holder.opt = Option<T>some(value);
-    holder.res = Result<T>ok(value);
-    Vec<T>append(arena, holder.vec&, value);
+    holder.opt = option<T>some(value);
+    holder.res = result<T>ok(value);
+    vec<T>append(arena, holder.vec&, value);
     return holder;
 }
 
@@ -338,7 +344,7 @@ main:proc()->i32 = {
     b:Payload = id_option<Payload>(make_option<Payload>({.x = 5}));
     holder:Holder<Payload> = Holder<Payload>make(arena&, {.x = 7});
 
-    printfmt("{} {} {}\n", a, b, Result<Payload>unwrap(holder.res));
+    printfmt("{} {} {}\n", a, b, result<Payload>unwrap(holder.res));
     printf("%s %llu %s %s %s %s\n",
         Holder_Payload_reflect.name,
         Holder_Payload_reflect.count,
@@ -350,7 +356,7 @@ main:proc()->i32 = {
 }
 ''',
         expected_stdout="Payload(3) Payload(5) Payload(7)\nHolder_Payload 4 item opt res vec\n",
-        generated_contains=("make_local_Payload", "make_option_Payload", "id_option_Payload", "Holder_Payload_make", "Holder_Payload_reflect", "Option_Payload_reflect", "Result_Payload_reflect", "Vec_Payload_reflect", "Option_Payload_some", "Result_Payload_ok", "Vec_Payload_get"),
+        generated_contains=("make_local_Payload", "make_option_Payload", "id_option_Payload", "Holder_Payload_make", "Holder_Payload_reflect", "option_Payload_reflect", "result_Payload_reflect", "vec_Payload_reflect", "option_Payload_some", "result_Payload_ok", "vec_Payload_get"),
     ),
     Case(
         name="generic_delayed_numeric_algorithms",
@@ -381,10 +387,10 @@ main:proc()->i32 = {
         name="type_operations_playground",
         source=r'''
 import "C:/devel/rin/src/std/memops.rin"
-import "C:/devel/rin/src/std/Array.rin"
-import "C:/devel/rin/src/std/Node.rin"
-import "C:/devel/rin/src/std/List.rin"
-import "C:/devel/rin/src/std/Print.rin"
+import "C:/devel/rin/src/std/array.rin"
+import "C:/devel/rin/src/std/node.rin"
+import "C:/devel/rin/src/std/list.rin"
+import "C:/devel/rin/src/std/print.rin"
 
 payload: struct = {
     x: f32;
@@ -416,7 +422,7 @@ main: proc(argc: i32, argv: *[*]char)-> i32 = {
     printfmt("{}\n", x);
     y: payload = add<payload>({.x = 2}, {.x = 2});
     printfmt("{}\n", y.x);
-    payloads: Array<payload> = Array<payload>reserve(arena&, 128);
+    payloads: array<payload> = array<payload>reserve(arena&, 128);
     for (i: u64 = 0; i < payloads.length; i += 1) {
         payloads.data[i] = {.x = i};
     }
@@ -438,7 +444,7 @@ main: proc(argc: i32, argv: *[*]char)-> i32 = {
         name="nested_generic_reflection",
         source=r'''
 cinclude "stdio.h"
-import "C:/devel/rin/src/std/containers.rin"
+import "C:/devel/rin/src/std/option.rin"
 
 Payload:struct = {
     x:i32;
@@ -450,7 +456,7 @@ Pair:struct<T> = {
 
 Wrap:struct<T> = {
     pair:Pair<T>;
-    maybe:Option<Pair<T>>;
+    maybe:option<Pair<T>>;
 }
 
 Pair<T>make:proc<T>(value:T)->Pair<T> = {
@@ -462,101 +468,111 @@ main:proc()->i32 = {
     pair:Pair<Payload> = Pair<Payload>make({.x = 11});
     wrap:Wrap<Payload> = {};
     wrap.pair = pair;
-    wrap.maybe = Option<Pair<Payload>>some(pair);
-    unboxed:Pair<Payload> = Option<Pair<Payload>>unwrap(wrap.maybe);
+    wrap.maybe = option<Pair<Payload>>some(pair);
+    unboxed:Pair<Payload> = option<Pair<Payload>>unwrap(wrap.maybe);
 
     printf("%d %s %s %s %s %s %s\n",
         unboxed.value.x,
         Pair_Payload_reflect.name,
         Wrap_Payload_reflect.name,
-        Option_Pair_Payload_reflect.name,
+        option_Pair_Payload_reflect.name,
         Wrap_Payload_reflect.variant.fields[0].type,
         Wrap_Payload_reflect.variant.fields[1].type,
         Wrap_Payload_reflect.variant.fields[1].generic_arg_type);
     return 0;
 }
 ''',
-        expected_stdout="11 Pair_Payload Wrap_Payload Option_Pair_Payload Pair_Payload Option_Pair_Payload Pair_Payload\n",
-        generated_contains=("Pair_Payload_reflect", "Wrap_Payload_reflect", "Option_Pair_Payload_reflect", "Pair_Payload_make", "Option_Pair_Payload_some", "Option_Pair_Payload_unwrap"),
+        expected_stdout="11 Pair_Payload Wrap_Payload option_Pair_Payload Pair_Payload option_Pair_Payload Pair_Payload\n",
+        generated_contains=("Pair_Payload_reflect", "Wrap_Payload_reflect", "option_Pair_Payload_reflect", "Pair_Payload_make", "option_Pair_Payload_some", "option_Pair_Payload_unwrap"),
     ),
     Case(
         name="runtime_containers",
         source=r'''
 cinclude "stdio.h"
-import "C:/devel/rin/src/std/containers.rin"
+import "C:/devel/rin/src/std/option.rin"
+import "C:/devel/rin/src/std/result.rin"
+import "C:/devel/rin/src/std/array.rin"
+import "C:/devel/rin/src/std/vec.rin"
+import "C:/devel/rin/src/std/node.rin"
+import "C:/devel/rin/src/std/binode.rin"
+import "C:/devel/rin/src/std/list.rin"
+import "C:/devel/rin/src/std/dlist.rin"
+import "C:/devel/rin/src/std/queue.rin"
+import "C:/devel/rin/src/std/stack.rin"
+import "C:/devel/rin/src/std/map.rin"
 
 main:proc()->i32 = {
     arena:memops_arena = {};
     memops_arena_initialize(arena&);
 
-    opt:Option<i32> = Option<i32>some(7);
-    none:Option<i32> = Option<i32>none();
-    ok:Result<i32> = Result<i32>ok(11);
-    err:Result<i32> = Result<i32>err(404);
+    opt:option<i32> = option<i32>some(7);
+    none:option<i32> = option<i32>none();
+    ok:result<i32> = result<i32>ok(11);
+    err:result<i32> = result<i32>err(404);
 
-    arr:Array<i32> = Array<i32>reserve(arena&, 3);
+    arr:array<i32> = array<i32>reserve(arena&, 3);
     arr.data[0] = 3;
     arr.data[1] = 5;
     arr.data[2] = 7;
-    arr_get:Option<i32> = Array<i32>get(arr&, 1);
-    arr_at:*i32 = Array<i32>at(arr&, 2);
+    arr_get:option<i32> = array<i32>get(arr&, 1);
+    arr_at:*i32 = array<i32>at(arr&, 2);
 
-    vec:Vec<i32> = {};
-    Vec<i32>append(arena&, vec&, 10);
-    Vec<i32>append(arena&, vec&, 20);
-    Vec<i32>append(arena&, vec&, 30);
-    vec_get:Option<i32> = Vec<i32>get(vec&, 2);
+    vec:vec<i32> = {};
+    vec<i32>append(arena&, vec&, 10);
+    vec<i32>append(arena&, vec&, 20);
+    vec<i32>append(arena&, vec&, 30);
+    vec_get:option<i32> = vec<i32>get(vec&, 2);
 
-    list:*List<i32> = List<i32>create(arena&);
-    List<i32>append(arena&, list, 1);
-    List<i32>append(arena&, list, 2);
-    List<i32>prepend(arena&, list, 0);
-    list_removed:*Node<i32> = List<i32>remove_at(arena&, list, 1);
-    list_removed_value:*Node<i32> = List<i32>remove(arena&, list, 2);
+    list:*list<i32> = list<i32>create(arena&);
+    list<i32>append(arena&, list, 1);
+    list<i32>append(arena&, list, 2);
+    list<i32>prepend(arena&, list, 0);
+    list_removed:*node<i32> = list<i32>remove_at(arena&, list, 1);
+    list_removed_value:*node<i32> = list<i32>remove(arena&, list, 2);
 
-    dlist:*DList<i32> = DList<i32>create(arena&);
-    DList<i32>append(arena&, dlist, 4);
-    DList<i32>append(arena&, dlist, 5);
-    DList<i32>prepend(arena&, dlist, 3);
-    dlist_removed:*BiNode<i32> = DList<i32>remove_at(arena&, dlist, 2);
-    dlist_removed_value:*BiNode<i32> = DList<i32>remove(arena&, dlist, 3);
+    dlist:*dlist<i32> = dlist<i32>create(arena&);
+    dlist<i32>append(arena&, dlist, 4);
+    dlist<i32>append(arena&, dlist, 5);
+    dlist<i32>prepend(arena&, dlist, 3);
+    dlist_removed:*binode<i32> = dlist<i32>remove_at(arena&, dlist, 2);
+    dlist_removed_value:*binode<i32> = dlist<i32>remove(arena&, dlist, 3);
 
-    queue:*Queue<i32> = Queue<i32>create(arena&);
-    Queue<i32>enqueue(arena&, queue, 8);
-    Queue<i32>enqueue(arena&, queue, 9);
-    queue_removed:*Node<i32> = Queue<i32>dequeue(arena&, queue);
-    queue_peek:*Node<i32> = Queue<i32>peek(arena&, queue);
+    queue:*queue<i32> = queue<i32>create(arena&);
+    queue<i32>enqueue(arena&, queue, 8);
+    queue<i32>enqueue(arena&, queue, 9);
+    queue_removed:*node<i32> = queue<i32>dequeue(arena&, queue);
+    queue_peek:*node<i32> = queue<i32>peek(arena&, queue);
 
-    stack:*Stack<i32> = Stack<i32>create(arena&);
-    Stack<i32>push(arena&, stack, 12);
-    Stack<i32>push(arena&, stack, 13);
-    stack_removed:*Node<i32> = Stack<i32>pop(arena&, stack);
-    stack_peek:*Node<i32> = Stack<i32>peek(arena&, stack);
+    stack:*stack<i32> = stack<i32>create(arena&);
+    stack<i32>push(arena&, stack, 12);
+    stack<i32>push(arena&, stack, 13);
+    stack_removed:*node<i32> = stack<i32>pop(arena&, stack);
+    stack_peek:*node<i32> = stack<i32>peek(arena&, stack);
 
-    map:*Map<i32> = Map<i32>create(arena&);
-    Map<i32>set(arena&, map, "dog", 3);
-    Map<i32>set(arena&, map, "frog", 4);
-    Map<i32>set(arena&, map, "dog", 5);
-    map_dog:*i32 = Map<i32>try_emplace(arena&, map, "dog", 99);
-    map_bird:*i32 = Map<i32>try_emplace(arena&, map, "bird", 6);
-    it:MapIterator<i32> = MapIterator<i32>create(arena&, map);
+    map:*map<i32> = map<i32>create(arena&);
+    map<i32>set(arena&, map, "dog", 3);
+    map<i32>set(arena&, map, "frog", 4);
+    map<i32>set(arena&, map, "dog", 5);
+    map_dog:*i32 = map<i32>try_emplace(arena&, map, "dog", 99);
+    map_bird:*i32 = map<i32>try_emplace(arena&, map, "bird", 6);
+    it:map_iterator<i32> = map_iterator<i32>create(arena&, map);
     map_sum:i32 = 0;
     map_count:i32 = 0;
-    while (MapIterator<i32>next(arena&, it&)) {
+    while (map_iterator<i32>next(arena&, it&)) {
         map_sum += it.val;
         map_count += 1;
     }
 
     printf("%d %d %d %d %llu %d %d %llu %d %llu %d %d %llu %d %d %llu %d %d %llu %d %d %llu %d %d %d %d\n",
-        Option<i32>unwrap(opt),
-        Option<i32>is_none(none),
-        Result<i32>unwrap(ok),
-        Result<i32>is_err(err),
+        option<i32>unwrap(opt),
+        option<i32>is_none(none),
+        result<i32>unwrap(ok),
+        result<i32>is_err(err),
         arr.length,
-        Option<i32>unwrap(arr_get),
+        option<i32>unwrap(arr_get),
         arr_at[0],
         vec.length,
-        Option<i32>unwrap(vec_get),
+        option<i32>unwrap(vec_get),
         list[0].length,
         list_removed[0].data,
         list_removed_value[0].data,
@@ -569,7 +585,7 @@ main:proc()->i32 = {
         stack[0].length,
         stack_removed[0].data,
         stack_peek[0].data,
-        Map<i32>length(arena&, map),
+        map<i32>length(arena&, map),
         map_dog[0],
         map_bird[0],
         map_count,
@@ -578,13 +594,13 @@ main:proc()->i32 = {
 }
 ''',
         expected_stdout="7 1 11 1 3 5 7 3 30 1 1 2 1 5 3 1 8 9 1 13 12 3 5 6 3 15\n",
-        generated_contains=("Option_i32_reflect", "Result_i32_reflect", "Array_i32_reflect", "Vec_i32_reflect", "List_i32_reflect", "DList_i32_reflect", "Queue_i32_reflect", "Stack_i32_reflect", "Map_i32_reflect"),
+        generated_contains=("option_i32_reflect", "result_i32_reflect", "array_i32_reflect", "vec_i32_reflect", "list_i32_reflect", "dlist_i32_reflect", "queue_i32_reflect", "stack_i32_reflect", "map_i32_reflect"),
     ),
     Case(
         name="runtime_string8",
         source=r'''
 cinclude "stdio.h"
-import "C:/devel/rin/src/std/Print.rin"
+import "C:/devel/rin/src/std/print.rin"
 import "C:/devel/rin/src/std/string8.rin"
 
 main:proc()->i32 = {
@@ -600,8 +616,8 @@ main:proc()->i32 = {
     string8_append_byte(arena&, text&, cast(44, u8));
     string8_append_cstr(arena&, text&, "world");
 
-    parts:Vec<string8slice> = string8slice_split_from_string8(arena&, text, cast(44, u8));
-    owned:Vec<string8> = string8_split_char(arena&, text, cast(44, u8));
+    parts:vec<string8slice> = string8slice_split_from_string8(arena&, text, cast(44, u8));
+    owned:vec<string8> = string8_split_char(arena&, text, cast(44, u8));
     copy:string8 = string8_copy_from_slice(arena&, parts.data[1].data, parts.data[1].length);
     trim_src:string8 = string8_from_cstr(arena&, "  Hello/World.TXT  ");
     trimmed:string8slice = string8_trim(trim_src);
@@ -641,7 +657,7 @@ main:proc()->i32 = {
 }
 ''',
         expected_stdout="11 1 1 1 hello,world hello world 2 2 0 4 0 1 1 1 1 1 6 1 1 1 Hello/World.TXT hello/world.txt root/dir/file.txt root/child/file.rin root/dir file.txt .txt root/dir/file\n",
-        generated_contains=("string8_reflect", "string8slice_reflect", "Vec_string8_reflect", "Vec_string8slice_reflect", "print_string8", "print_string8slice"),
+        generated_contains=("string8_reflect", "string8slice_reflect", "vec_string8_reflect", "vec_string8slice_reflect", "print_string8", "print_string8slice"),
     ),
     Case(
         name="string8_builder",
@@ -711,12 +727,12 @@ main: proc() -> i32 = {
     // A count running past the end clamps to what exists rather than aborting.
     clamped: slice<i32> = slice<i32>sub(s, 4, 99);
 
-    f: Option<i32> = slice<i32>first(s);
-    l: Option<i32> = slice<i32>last(s);
-    oob: Option<i32> = slice<i32>get(s, 99);
+    f: option<i32> = slice<i32>first(s);
+    l: option<i32> = slice<i32>last(s);
+    oob: option<i32> = slice<i32>get(s, 99);
 
     same: slice<i32> = slice<i32>from_parts(nums[0]&, 6);
-    owned: Array<i32> = slice<i32>to_array(arena&, mid);
+    owned: array<i32> = slice<i32>to_array(arena&, mid);
 
     printf("%llu %d%d%d %d%d %d%d %llu %d %d %d %d %d %d %llu %d%d%d\n",
         s.length,
@@ -724,7 +740,7 @@ main: proc() -> i32 = {
         slice<i32>at(tail, 0)[0], slice<i32>at(tail, 1)[0],
         slice<i32>at(head, 0)[0], slice<i32>at(head, 1)[0],
         clamped.length,
-        Option<i32>unwrap(f), Option<i32>unwrap(l), Option<i32>is_none(oob),
+        option<i32>unwrap(f), option<i32>unwrap(l), option<i32>is_none(oob),
         slice<i32>equals(s, same), slice<i32>equals(s, mid), slice<i32>is_empty(mid),
         owned.length, owned.data[0], owned.data[1], owned.data[2]);
     return 0;
@@ -1362,8 +1378,8 @@ main:proc()->i32 = {
         source=r'''
 cinclude "stdio.h"
 import "C:/devel/rin/src/std/memops.rin"
-import "C:/devel/rin/src/std/Array.rin"
-import "C:/devel/rin/src/std/Vec.rin"
+import "C:/devel/rin/src/std/array.rin"
+import "C:/devel/rin/src/std/vec.rin"
 
 g_counter:i32 = 1;
 
@@ -1373,8 +1389,8 @@ json_read:proc<i32>(out:*i32)->b32 = {
     return 1;
 }
 
-json_read:proc<Array<T>>(arena:*memops_arena, out:*Array<T>, count:u64)->b32 = {
-    out[0] = Array<T>reserve(arena, count);
+json_read:proc<array<T>>(arena:*memops_arena, out:*array<T>, count:u64)->b32 = {
+    out[0] = array<T>reserve(arena, count);
     for (i:u64 = 0; i < count; i += 1) {
         if (json_read<T>(out[0].data[i]&) == 0) {
             return 0;
@@ -1383,32 +1399,32 @@ json_read:proc<Array<T>>(arena:*memops_arena, out:*Array<T>, count:u64)->b32 = {
     return 1;
 }
 
-json_read:proc<Vec<T>>(arena:*memops_arena, out:*Vec<T>, count:u64)->b32 = {
-    out[0] = Vec<T>reserve(arena, count);
+json_read:proc<vec<T>>(arena:*memops_arena, out:*vec<T>, count:u64)->b32 = {
+    out[0] = vec<T>reserve(arena, count);
     for (i:u64 = 0; i < count; i += 1) {
         value:T = {};
         if (json_read<T>(value&) == 0) {
             return 0;
         }
-        Vec<T>append(arena, out, value);
+        vec<T>append(arena, out, value);
     }
     return 1;
 }
 
 main:proc()->i32 = {
     arena:memops_arena = {};
-    arr:Array<i32> = {};
-    vec:Vec<i32> = {};
+    arr:array<i32> = {};
+    vec:vec<i32> = {};
     memops_arena_initialize(arena&);
-    json_read<Array<i32>>(arena&, arr&, 3);
-    json_read<Vec<i32>>(arena&, vec&, 2);
+    json_read<array<i32>>(arena&, arr&, 3);
+    json_read<vec<i32>>(arena&, vec&, 2);
     printf("%llu %d %d %llu %llu %d %d\n", arr.length, arr.data[0], arr.data[2], vec.length, vec.border, vec.data[0], vec.data[1]);
     return 0;
 }
 ''',
         expected_stdout="3 1 3 2 2 4 5\n",
-        generated_contains=("json_read_Array_i32", "json_read_Vec_i32", "Array_i32_reserve", "Vec_i32_append", "json_read_i32"),
-        header_contains=("b32 json_read_Array_i32(memops_arena * arena, Array_i32 * out, u64 count);", "b32 json_read_Vec_i32(memops_arena * arena, Vec_i32 * out, u64 count);"),
+        generated_contains=("json_read_array_i32", "json_read_vec_i32", "array_i32_reserve", "vec_i32_append", "json_read_i32"),
+        header_contains=("b32 json_read_array_i32(memops_arena * arena, array_i32 * out, u64 count);", "b32 json_read_vec_i32(memops_arena * arena, vec_i32 * out, u64 count);"),
     ),
     Case(
         name="initializer_lists",
@@ -2445,6 +2461,48 @@ main:proc()->i32 = {
             ("expected params: a:i32, b:i32", "proc declared here"),
         ),
         (
+            "check_json_proc_default_too_few",
+            r'''
+add:proc(a:i32, b:i32 = 2, c:i32 = 3)->i32 = {
+    return a + b + c;
+}
+
+main:proc()->i32 = {
+    return add();
+}
+''',
+            "proc 'add' expects 1 to 3 args, got 0",
+            ("expected params: a:i32, b:i32 = 2, c:i32 = 3", "proc declared here"),
+        ),
+        (
+            "check_json_proc_default_too_many",
+            r'''
+add:proc(a:i32, b:i32 = 2)->i32 = {
+    return a + b;
+}
+
+main:proc()->i32 = {
+    return add(1, 2, 3);
+}
+''',
+            "proc 'add' expects 1 to 2 args, got 3",
+            "expected params: a:i32, b:i32 = 2",
+        ),
+        (
+            "check_json_proc_default_type",
+            r'''
+take:proc(p:*i32 = "text")->i32 = {
+    return 0;
+}
+
+main:proc()->i32 = {
+    return take();
+}
+''',
+            "parameter default expected 'ptr_i32'",
+            "",
+        ),
+        (
             "check_json_return_presence",
             r'''
 main:proc()->i32 = {
@@ -3081,6 +3139,54 @@ shared_value:i32 = 2;
 
     check_json_semantic_cases = (
         (
+            "check_json_param_default_not_constant",
+            r'''
+limit:i32 = 3;
+
+take:proc(n:i32 = limit)->i32 = {
+    return n;
+}
+
+main:proc()->i32 = {
+    return take();
+}
+''',
+            "a parameter default must be a constant",
+            "",
+        ),
+        (
+            "check_json_param_default_call",
+            r'''
+three:proc()->i32 = {
+    return 3;
+}
+
+take:proc(n:i32 = three())->i32 = {
+    return n;
+}
+
+main:proc()->i32 = {
+    return take();
+}
+''',
+            "a parameter default must be a constant",
+            "",
+        ),
+        (
+            "check_json_param_default_type_param",
+            r'''
+pick:proc<T>(x:T = 0)->i32 = {
+    return 0;
+}
+
+main:proc()->i32 = {
+    return pick<i32>(1);
+}
+''',
+            "a parameter whose type uses a type parameter cannot have a default",
+            "",
+        ),
+        (
             "check_json_undeclared_type",
             r'''
 main:proc()->i32 = {
@@ -3256,17 +3362,17 @@ main:proc()->i32 = {
         (
             "check_json_generic_type_arity",
             r'''
-Array:struct<T> = {
+array:struct<T> = {
     data:*T;
 }
 
 main:proc()->i32 = {
-    a:Array<i32, f32> = {};
+    a:array<i32, f32> = {};
     return 0;
 }
 ''',
-            "generic type 'Array' expects 1 type arg, got 2",
-            "struct 'Array' declared here",
+            "generic type 'array' expects 1 type arg, got 2",
+            "struct 'array' declared here",
         ),
         (
             "check_json_nongeneric_type_arg",
@@ -3305,6 +3411,44 @@ main:proc()->i32 = {
             or (note_message and not any(note_message in note.get("message", "") for note in notes if isinstance(note, dict)))
         ):
             print(f"{case_name}: expected structured semantic diagnostic")
+            print(result.stdout)
+            return 1
+        print(f"ok {case_name}")
+
+    for case_name, source, message in (
+        (
+            "check_json_param_default_not_trailing",
+            "f:proc(a:i32 = 1, b:i32)->i32 = {\n    return a + b;\n}\n",
+            "a parameter without a default cannot follow one with a default",
+        ),
+        (
+            "check_json_param_default_variadic",
+            "f:proc(a:i32 = 1, ...)->i32 = {\n    return a;\n}\n",
+            "a variadic proc cannot have parameter defaults",
+        ),
+        (
+            "check_json_param_default_proc_type",
+            "f:*proc(a:i32 = 1)->i32 = null;\n",
+            "a proc type's parameters take no default",
+        ),
+    ):
+        case_i = TEST_DIR / f"{case_name}.rin"
+        case_i.write_text(source, encoding="utf-8", newline="\n")
+        result = run([str(RIN_EXE), "--check", str(case_i), "--diagnostics=json"])
+        try:
+            data = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            print(f"{case_name}: expected JSON parse diagnostic")
+            print(result.stdout)
+            return 1
+        if (
+            result.returncode == 0
+            or not isinstance(data, list)
+            or not data
+            or data[0].get("category") != "parse"
+            or message not in data[0].get("message", "")
+        ):
+            print(f"{case_name}: expected structured parse diagnostic")
             print(result.stdout)
             return 1
         print(f"ok {case_name}")
@@ -4295,7 +4439,7 @@ main:proc()->i32 = {
 
     for src, label in (
         ("P: struct = { next: *P; }\nmain:proc()->i32 = { p: P = {}; return 0; }\n", "pointer to itself"),
-        ("Node: struct<T> = { next: *Node<T>; v: T; }\nmain:proc()->i32 = { n: Node<i32> = {}; return 0; }\n", "generic pointer"),
+        ("node: struct<T> = { next: *node<T>; v: T; }\nmain:proc()->i32 = { n: node<i32> = {}; return 0; }\n", "generic pointer"),
         ("Pair: struct<K, V> = { a: K; b: V; }\nmain:proc()->i32 = { p: Pair<Pair<i32, i32>, i32> = {}; return 0; }\n", "nested generic argument"),
         ("C: struct = { v: i32; } A: struct = { c: C; } B: struct = { c: C; a: A; }\nmain:proc()->i32 = { b: B = {}; return b.c.v; }\n", "one type used by two others"),
     ):
@@ -5188,7 +5332,7 @@ main:proc()->i32 = {
     refval_c = TEST_DIR / "reflect_of_value.c"
     refval_exe = TEST_DIR / "reflect_of_value.exe"
     refval_i.write_text(
-        "import \"std/Print.rin\"\nColour: enum = { red, green, blue, }\nP: struct = { x: i32; y: f32; }\nBox: struct<T> = { v: T; }\ng_point: P = {};\nmain: proc() -> i32 = {\n    c: Colour = Colour.green;\n    p: P = {};\n    b: Box<i32> = {};\n    printfmt(\"{} {} {} {} {}\",\n        c<>.name, p<>.count, g_point<>.name, b<>.name, P<>.name);\n    return 0;\n}\n",
+        "import \"std/print.rin\"\nColour: enum = { red, green, blue, }\nP: struct = { x: i32; y: f32; }\nBox: struct<T> = { v: T; }\ng_point: P = {};\nmain: proc() -> i32 = {\n    c: Colour = Colour.green;\n    p: P = {};\n    b: Box<i32> = {};\n    printfmt(\"{} {} {} {} {}\",\n        c<>.name, p<>.count, g_point<>.name, b<>.name, P<>.name);\n    return 0;\n}\n",
         encoding="utf-8", newline="\n")
     gen = run([str(RIN_EXE), "compile", str(refval_i), "-o", str(refval_c), "--no-header"])
     if gen.returncode != 0:
@@ -5233,7 +5377,7 @@ main:proc()->i32 = {
     status_c = TEST_DIR / "status_enum_errors.c"
     status_exe = TEST_DIR / "status_enum_errors.exe"
     status_i.write_text(
-        "import \"std/Print.rin\"\nimport \"std/reflect.rin\"\nmesh_status: enum = { success, file_not_found, bad_magic, }\ngeo_mesh: struct = { points: i32; }\nmesh_load: proc(mesh: *geo_mesh) -> mesh_status = {\n    return mesh_status.bad_magic;\n}\nmain: proc() -> i32 = {\n    mesh: geo_mesh = {};\n    e: mesh_status = mesh_load(mesh&);\n    if (e != mesh_status.success) {\n        printfmt(\"{} {}\",\n            reflect_name_from_value_or(e<>&, cast(e, i32), \"?\"),\n            reflect_name_from_value_or(e<>&, 99, \"<unknown>\"));\n    }\n    return 0;\n}\n",
+        "import \"std/print.rin\"\nimport \"std/reflect.rin\"\nmesh_status: enum = { success, file_not_found, bad_magic, }\ngeo_mesh: struct = { points: i32; }\nmesh_load: proc(mesh: *geo_mesh) -> mesh_status = {\n    return mesh_status.bad_magic;\n}\nmain: proc() -> i32 = {\n    mesh: geo_mesh = {};\n    e: mesh_status = mesh_load(mesh&);\n    if (e != mesh_status.success) {\n        printfmt(\"{} {}\",\n            reflect_name_from_value_or(e<>&, cast(e, i32), \"?\"),\n            reflect_name_from_value_or(e<>&, 99, \"<unknown>\"));\n    }\n    return 0;\n}\n",
         encoding="utf-8", newline="\n")
     gen = run([str(RIN_EXE), "compile", str(status_i), "-o", str(status_c), "--no-header"])
     if gen.returncode != 0:
@@ -5780,7 +5924,7 @@ main:proc()->i32 = {{
     native_exe = TEST_DIR / "native_monomorph.exe"
     native_i.write_text(r'''
 cinclude "stdio.h"
-import "C:/devel/rin/src/std/containers.rin"
+import "C:/devel/rin/src/std/array.rin"
 
 NativeBox:struct[external]<T> = {
     value:T;
@@ -5789,7 +5933,7 @@ NativeBox:struct[external]<T> = {
 main:proc()->i32 = {
     arena:memops_arena = {};
     memops_arena_initialize(arena&);
-    values:Array<i32> = Array<i32>reserve(arena&, 3);
+    values:array<i32> = array<i32>reserve(arena&, 3);
     values.data[0] = 4;
     values.data[1] = 5;
     values.data[2] = 6;
@@ -5849,6 +5993,71 @@ main:proc()->i32 = {
 
     print("ok native_monomorph")
 
+    # --single-file: the same program as one .c that builds with no include
+    # paths. Rin's headers, the generated NativeBox ones included, are inlined;
+    # system headers stay, with <windows.h> still under its #ifdef.
+    single_dir = TEST_DIR / "single_file_out"
+    if single_dir.exists():
+        shutil.rmtree(single_dir)
+    single_dir.mkdir(parents=True)
+    single_c = single_dir / "native_monomorph.c"
+    single_exe = single_dir / "native_monomorph.exe"
+    translate = run([str(RIN_EXE), "compile", str(native_i), "-o", str(single_c), "--single-file"])
+    if translate.returncode != 0:
+        print(translate.stdout)
+        return translate.returncode
+    if sorted(p.name for p in single_dir.iterdir()) != ["native_monomorph.c"]:
+        print("single_file: expected only the .c to be written")
+        print(sorted(p.name for p in single_dir.iterdir()))
+        return 1
+    single_text = single_c.read_text(encoding="utf-8")
+    single_lines = [line.strip() for line in single_text.splitlines()]
+    for forbidden in ("#include <core.h>", "#include <reflect.h>", '#include "std/memops_os.h"',
+                      '#include "NativeBox.h"', '#include "NativeBox_i32.h"', "#pragma once"):
+        if forbidden in single_lines:
+            print(f"single_file: '{forbidden}' left in the output")
+            return 1
+    if any(line.startswith("#line ") for line in single_text.splitlines()):
+        print("single_file: #line directive in the output")
+        return 1
+    # The file travels with a submission, so it names no local directory: the
+    # source is under TEST_DIR and the std it inlines is under ROOT.
+    for local in (str(ROOT), str(ROOT).replace("\\", "/"), str(ROOT).replace("\\", "\\\\")):
+        if local.lower() in single_text.lower():
+            print(f"single_file: local path {local} in the output")
+            return 1
+    if "declared at native_monomorph.rin:" not in single_text and "; declared at array.rin:" not in single_text:
+        print("single_file: monomorph comments should name files without their directories")
+        return 1
+    if "structdef(NativeBox_i32)" not in single_text or single_text.count("/* ---- rin: core.h ---- */") != 1:
+        print("single_file: generated header or core.h not inlined exactly once")
+        return 1
+    win32 = single_lines.index("#ifdef _WIN32")
+    windows_h = single_lines.index("#include <windows.h>")
+    posix = single_lines.index("#include <sys/mman.h>")
+    if not win32 < windows_h < posix:
+        print("single_file: platform includes moved out of their #ifdef")
+        return 1
+    compile_result = run(["clang.exe", str(single_c), "-o", str(single_exe)])
+    if compile_result.returncode != 0:
+        print(compile_result.stdout)
+        return compile_result.returncode
+    program = run([str(single_exe)])
+    if program.returncode != 0 or program.stdout != "3 15\n":
+        print("single_file: stdout mismatch")
+        print(program.stdout)
+        return 1
+    for extra, message in (
+        (["--header", str(single_dir / "x.h")], "--single-file writes no header"),
+        (["--modules", str(single_dir / "mods")], "--single-file cannot be used with --modules"),
+    ):
+        conflict = run([str(RIN_EXE), "compile", str(native_i), "-o", str(single_c), "--single-file", *extra])
+        if conflict.returncode == 0 or message not in conflict.stdout:
+            print(f"single_file: expected '{message}'")
+            print(conflict.stdout)
+            return 1
+    print("ok single_file")
+
     native_json_dir = TEST_DIR / "native_monomorph_json_out"
     if native_json_dir.exists():
         shutil.rmtree(native_json_dir)
@@ -5856,7 +6065,7 @@ main:proc()->i32 = {
     native_json_i = TEST_DIR / "native_monomorph_json.rin"
     native_json_c = native_json_dir / "native_monomorph_json.c"
     native_json_i.write_text(r'''
-import "C:/devel/rin/src/std/containers.rin"
+import "C:/devel/rin/src/std/memops.rin"
 
 NativeBox:struct[external]<T> = {
     value:T;
@@ -6066,8 +6275,8 @@ main:proc()->i32 = {
             print(res.stdout)
             return 1
     shift_hint_i.write_text(
-        'import "C:/devel/rin/src/std/containers.rin"\n'
-        "main:proc()->i32 = {\n    x:u32 = 256;\n    nested: Array<Array<i32>> = {};\n"
+        'import "C:/devel/rin/src/std/array.rin"\n'
+        "main:proc()->i32 = {\n    x:u32 = 256;\n    nested: array<array<i32>> = {};\n"
         "    x shr= 4;\n    return cast(x shr 2, i32) + cast(x > 1, i32);\n}\n",
         encoding="utf-8", newline="\n")
     res = run([str(RIN_EXE), "check", str(shift_hint_i)])
@@ -6380,12 +6589,12 @@ main:proc()->i32 = {
     undeclared_generic_arg_i = TEST_DIR / "undeclared_generic_arg.rin"
     undeclared_generic_arg_c = TEST_DIR / "undeclared_generic_arg.c"
     undeclared_generic_arg_i.write_text(r'''
-Array:struct<T> = {
+array:struct<T> = {
     data:*T;
 }
 
 main:proc()->i32 = {
-    arr:Array<MissingType> = {};
+    arr:array<MissingType> = {};
     return 0;
 }
 '''.strip() + "\n", encoding="utf-8", newline="\n")
@@ -6403,20 +6612,20 @@ main:proc()->i32 = {
     generic_type_extra_arg_i = TEST_DIR / "generic_type_extra_arg.rin"
     generic_type_extra_arg_c = TEST_DIR / "generic_type_extra_arg.c"
     generic_type_extra_arg_i.write_text(r'''
-Array:struct<T> = {
+array:struct<T> = {
     data:*T;
 }
 
 main:proc()->i32 = {
-    arr:Array<i32, f32> = {};
+    arr:array<i32, f32> = {};
     return 0;
 }
 '''.strip() + "\n", encoding="utf-8", newline="\n")
     generic_type_extra_arg = run([str(RIN_EXE), str(generic_type_extra_arg_i), str(generic_type_extra_arg_c)])
     if (
         generic_type_extra_arg.returncode == 0
-        or "semantic error: generic type 'Array' expects 1 type arg, got 2" not in generic_type_extra_arg.stdout
-        or f"{generic_type_extra_arg_i}:1:1: note: struct 'Array' declared here" not in generic_type_extra_arg.stdout
+        or "semantic error: generic type 'array' expects 1 type arg, got 2" not in generic_type_extra_arg.stdout
+        or f"{generic_type_extra_arg_i}:1:1: note: struct 'array' declared here" not in generic_type_extra_arg.stdout
     ):
         print("generic_type_extra_arg: expected generic type arity diagnostic")
         print(generic_type_extra_arg.stdout)
@@ -9165,12 +9374,12 @@ main:proc()->i32 = {
     import_semantic_generic_app = TEST_DIR / "import_semantic_generic_app.rin"
     import_semantic_generic_c = TEST_DIR / "import_semantic_generic_app.c"
     import_semantic_generic_bad.write_text(r'''
-Array:struct<T> = {
+array:struct<T> = {
     data:*T;
 }
 
 Bad:struct = {
-    arr:Array<i32, f32>;
+    arr:array<i32, f32>;
 }
 '''.strip() + "\n", encoding="utf-8", newline="\n")
     import_semantic_generic_mid.write_text(r'''
@@ -9187,12 +9396,12 @@ main:proc()->i32 = {
     if (
         import_semantic_generic.returncode == 0
         or str(import_semantic_generic_bad) not in import_semantic_generic.stdout
-        or "semantic error: generic type 'Array' expects 1 type arg, got 2" not in import_semantic_generic.stdout
+        or "semantic error: generic type 'array' expects 1 type arg, got 2" not in import_semantic_generic.stdout
         or "note: imported through:" not in import_semantic_generic.stdout
         or str(import_semantic_generic_app) not in import_semantic_generic.stdout
         or "import_semantic_generic_mid.rin" not in import_semantic_generic.stdout
         or "import_semantic_generic_bad.rin" not in import_semantic_generic.stdout
-        or "note: struct 'Array' declared here" not in import_semantic_generic.stdout
+        or "note: struct 'array' declared here" not in import_semantic_generic.stdout
     ):
         print("import_semantic_generic_diagnostic: expected imported generic type diagnostic")
         print(import_semantic_generic.stdout)
@@ -10905,8 +11114,8 @@ main:proc()->i32 = {
     # where nothing introduced it is a missing list, not an unknown C type.
     undecl_rin = TEST_DIR / "type_param_undeclared.rin"
     undecl_rin.write_text(
-        "import \"std/Array.rin\"\n"
-        "array_slice: proc(source: *Array<T>) -> i32 = { return 0; }\n"
+        "import \"std/array.rin\"\n"
+        "array_slice: proc(source: *array<T>) -> i32 = { return 0; }\n"
         "main: proc() -> i32 = { return 0; }\n",
         encoding="utf-8", newline="\n")
     res = run([str(RIN_EXE), "check", str(undecl_rin)])
@@ -10916,8 +11125,8 @@ main:proc()->i32 = {
         return 1
     # Declaring it is the fix, and must still be accepted.
     undecl_rin.write_text(
-        "import \"std/Array.rin\"\n"
-        "array_slice: proc<T>(source: *Array<T>) -> i32 = { return 0; }\n"
+        "import \"std/array.rin\"\n"
+        "array_slice: proc<T>(source: *array<T>) -> i32 = { return 0; }\n"
         "main: proc() -> i32 = { return 0; }\n",
         encoding="utf-8", newline="\n")
     res = run([str(RIN_EXE), "check", str(undecl_rin)])
@@ -11006,6 +11215,14 @@ main:proc()->i32 = {
         return rin_execute.returncode
     print(rin_execute.stdout.rstrip())
 
+    # The same cases as one self-contained file each, built with no include
+    # paths: what a judge that takes a single file would compile.
+    rin_execute_single = run([sys.executable, "tests/run_rin_execute.py", "--single-file"])
+    if rin_execute_single.returncode != 0:
+        print(rin_execute_single.stdout)
+        return rin_execute_single.returncode
+    print(rin_execute_single.stdout.rstrip())
+
     # A second C compiler, because the backend contract in shape.md section 7 was
     # a claim with nothing behind it until one existed. Skips itself when cl is
     # not installed.
@@ -11014,6 +11231,12 @@ main:proc()->i32 = {
         print(msvc.stdout)
         return msvc.returncode
     print(msvc.stdout.rstrip())
+
+    msvc_single = run([sys.executable, "tests/run_msvc.py", "--single-file"])
+    if msvc_single.returncode != 0:
+        print(msvc_single.stdout)
+        return msvc_single.returncode
+    print(msvc_single.stdout.rstrip())
 
     rin_debuginfo = run([sys.executable, "tests/run_rin_debuginfo.py"])
     if rin_debuginfo.returncode != 0:

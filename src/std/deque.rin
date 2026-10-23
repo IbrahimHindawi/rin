@@ -1,0 +1,88 @@
+import "memops.rin"
+import "cstd.rin"
+
+/* A double-ended queue in a ring buffer: push and pop at either end in O(1),
+   and index from the front. A zeroed deque is empty. Unlike `queue`, which
+   allocates a node per element, this is one growing block, so it suits BFS
+   frontiers and sliding windows. */
+
+deque: struct<T> = {
+    data: [*]T;
+    head: u64;
+    length: u64;
+    border: u64;
+}
+
+deque<T>grow: proc<T>(arena: *memops_arena, d: *deque<T>) -> void = {
+    border: u64 = d[0].border == 0 ? 16 : d[0].border * 2;
+    data: [*]T = cast(memops_arena_push(arena, sizeof(T) * border, alignof(T)), [*]T);
+    if (data == null) {
+        printf("rin runtime: deque allocation failure\n");
+        exit(1);
+    }
+    for (i: u64 = 0; i < d[0].length; i += 1) {
+        data[i] = d[0].data[(d[0].head + i) % d[0].border];
+    }
+    d[0].data = data;
+    d[0].head = 0;
+    d[0].border = border;
+}
+
+deque<T>push_back: proc<T>(arena: *memops_arena, d: *deque<T>, x: T) -> void = {
+    if (d[0].length == d[0].border) {
+        deque<T>grow(arena, d);
+    }
+    d[0].data[(d[0].head + d[0].length) % d[0].border] = x;
+    d[0].length += 1;
+}
+
+deque<T>push_front: proc<T>(arena: *memops_arena, d: *deque<T>, x: T) -> void = {
+    if (d[0].length == d[0].border) {
+        deque<T>grow(arena, d);
+    }
+    d[0].head = (d[0].head + d[0].border - 1) % d[0].border;
+    d[0].data[d[0].head] = x;
+    d[0].length += 1;
+}
+
+deque<T>at: proc<T>(d: *deque<T>, index: u64) -> *T = {
+    if (index >= d[0].length) {
+        printf("rin runtime: deque index out of bounds\n");
+        exit(1);
+    }
+    return d[0].data[(d[0].head + index) % d[0].border]&;
+}
+
+deque<T>front: proc<T>(d: *deque<T>) -> T = {
+    return deque<T>at(d, 0)[0];
+}
+
+deque<T>back: proc<T>(d: *deque<T>) -> T = {
+    if (d[0].length == 0) {
+        printf("rin runtime: deque back on an empty deque\n");
+        exit(1);
+    }
+    return deque<T>at(d, d[0].length - 1)[0];
+}
+
+deque<T>pop_front: proc<T>(d: *deque<T>) -> T = {
+    x: T = deque<T>front(d);
+    d[0].head = (d[0].head + 1) % d[0].border;
+    d[0].length -= 1;
+    return x;
+}
+
+deque<T>pop_back: proc<T>(d: *deque<T>) -> T = {
+    x: T = deque<T>back(d);
+    d[0].length -= 1;
+    return x;
+}
+
+deque<T>is_empty: proc<T>(d: *deque<T>) -> b32 = {
+    return d[0].length == 0;
+}
+
+deque<T>clear: proc<T>(d: *deque<T>) -> void = {
+    d[0].head = 0;
+    d[0].length = 0;
+}

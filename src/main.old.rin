@@ -1,7 +1,7 @@
 import "std/memops.rin"
-import "std/Array.rin"
-import "std/Node.rin"
-import "std/List.rin"
+import "std/array.rin"
+import "std/node.rin"
+import "std/list.rin"
 
 payload: struct = {
     x: f32;
@@ -28,13 +28,13 @@ main: proc(argc: i32, argv: **char)-> i32 = {
 
     len: i32 = 16;
     temp: memops_arena_temp = memops_arena_temp_begin(&arena);
-    payloads: Array<payload> = Array<payload>reserve(temp.arena, 128);
+    payloads: array<payload> = array<payload>reserve(temp.arena, 128);
     for (i: i32 = 0; i < 128; i += 1) {
         payloads.data[i] = { .x = i };
     }
     memops_arena_temp_end(temp);
 
-    numbers: Array<i32> = Array<i32>reserve(&arena, len);
+    numbers: array<i32> = array<i32>reserve(&arena, len);
     for (i: i32 = 0; i < len; i += 1) { 
         numbers.data[i] = i; 
     }
@@ -42,12 +42,12 @@ main: proc(argc: i32, argv: **char)-> i32 = {
         printf("i = {}, ", numbers.data[i]); 
     }
 
-    numberchain: *List<payload> = {};
-    numberchain = List<payload>create(&arena);
-    List<payload>append(arena.&, numberchain, { .x = 3.16 });
-    List<payload>append(arena.&, numberchain, { .x = 8.6 });
+    numberchain: *list<payload> = {};
+    numberchain = list<payload>create(&arena);
+    list<payload>append(arena.&, numberchain, { .x = 3.16 });
+    list<payload>append(arena.&, numberchain, { .x = 8.6 });
 
-    node: *Node<payload> = numberchain.*.head;
+    node: *node<payload> = numberchain.*.head;
     for (i: i32 = 0; i < numberchain.*.length; i += 1) {
         printf("%f", node.*.data.x);
         node = node.*.next;

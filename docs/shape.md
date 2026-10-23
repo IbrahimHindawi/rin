@@ -565,7 +565,7 @@ and runs both spellings — `check` alone never caught this.
 **Using a parameter without introducing it is an error** *(fixed)*. This used to
 be accepted:
 
-    array_slice: proc(source: *Array<T>) -> slice<T> = { ... }   // no <T>
+    array_slice: proc(source: *array<T>) -> slice<T> = { ... }   // no <T>
 
     use of undeclared type parameter 'T'
 
@@ -1012,7 +1012,7 @@ Recorded so they do not get re-litigated:
 
 - **Errors are a status enum per domain**, the value returned through an
   out-parameter, and the message produced by reflection rather than a
-  hand-written table. `Result<T>` is not the direction: it does not remove
+  hand-written table. `result<T>` is not the direction: it does not remove
   cross-domain conversion (Rust's `?` still needs a declared `From`), it returns
   values by copy in a language with no moves, and it is only *safe* after
   must-use and exhaustive matching exist. Full reasoning in

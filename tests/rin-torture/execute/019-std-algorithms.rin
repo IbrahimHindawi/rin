@@ -1,0 +1,177 @@
+cinclude "stdio.h"
+import "std/memops.rin"
+import "std/vec.rin"
+import "std/sort.rin"
+import "std/hashmap.rin"
+import "std/hashset.rin"
+import "std/heap.rin"
+import "std/deque.rin"
+import "std/dsu.rin"
+
+printf: proc[external](fmt: [*]const char, ...) -> i32 = {}
+
+edge: struct = {
+    to: i64;
+    cost: i64;
+}
+
+cheaper: proc(a: edge, b: edge) -> b32 = {
+    return a.cost < b.cost;
+}
+
+point: struct = {
+    x: i64;
+    y: i64;
+}
+
+hash: proc<point>(p: point) -> u64 = {
+    return hash<i64>(p.x * 1000003 + p.y);
+}
+
+equal: proc<point>(a: point, b: point) -> b32 = {
+    return a.x == b.x && a.y == b.y;
+}
+
+// A small LCG, so the sort sees the same scrambled input on every compiler.
+next_random: proc(state: *u64) -> u64 = {
+    state[0] = state[0] * 6364136223846793005'u64 + 1442695040888963407'u64;
+    return state[0] shr 33;
+}
+
+main: proc() -> i32 = {
+    arena: memops_arena = {};
+    memops_arena_initialize(arena&);
+
+    // sort: scrambled, sorted, reversed and all-equal inputs, past the insertion cutoff
+    xs: vec<i64> = {};
+    seed: u64 = 7;
+    for (i: u64 = 0; i < 1000; i += 1) {
+        vec<i64>append(arena&, xs&, cast(next_random(seed&) % 100, i64) - 50);
+    }
+    sort<i64>(vec<i64>items(xs&), less_i64);
+    sorted: b32 = 1;
+    for (i: u64 = 1; i < xs.length; i += 1) {
+        if (xs.data[i - 1] > xs.data[i]) {
+            sorted = 0;
+        }
+    }
+    sort<i64>(vec<i64>items(xs&), greater_i64);
+    descending: b32 = xs.data[0] >= xs.data[999] && xs.data[0] == 49;
+    reverse<i64>(vec<i64>items(xs&));
+    sort<i64>(vec<i64>items(xs&), less_i64);
+    same: [40]i64 = {};
+    sort<i64>(same[0..40], less_i64);
+    printf("sort %d %d %lld %lld\n", sorted, descending, xs.data[0], xs.data[999]);
+
+    small: [7]i64 = {1, 3, 3, 3, 5, 8, 13};
+    printf("bounds %llu %llu %llu %llu\n",
+        lower_bound<i64>(small[0..7], 3, less_i64), upper_bound<i64>(small[0..7], 3, less_i64),
+        lower_bound<i64>(small[0..7], 0, less_i64), lower_bound<i64>(small[0..7], 99, less_i64));
+
+    // hashmap: two-sum, counting, removal and growth past several resizes
+    nums: [4]i64 = {2, 7, 11, 15};
+    seen: hashmap<i64, u64> = {};
+    answer_a: u64 = 0;
+    answer_b: u64 = 0;
+    for (i: u64 = 0; i < 4; i += 1) {
+        at: *u64 = hashmap<i64, u64>get(seen&, 9 - nums[i]);
+        if (at != null) {
+            answer_a = at[0];
+            answer_b = i;
+        }
+        hashmap<i64, u64>put(arena&, seen&, nums[i], i);
+    }
+    printf("two-sum %llu %llu\n", answer_a, answer_b);
+
+    counts: hashmap<i64, i64> = {};
+    for (i: i64 = 0; i < 5000; i += 1) {
+        hashmap<i64, i64>slot(arena&, counts&, i % 1237)[0] += 1;
+    }
+    hashmap<i64, i64>remove(counts&, 0);
+    total: i64 = 0;
+    keys: u64 = 0;
+    for (i: u64 = hashmap<i64, i64>first(counts&); i < counts.capacity; i = hashmap<i64, i64>next(counts&, i)) {
+        total += counts.values[i];
+        keys += 1;
+    }
+    printf("counts %llu %llu %lld %lld %d\n", counts.length, keys, total,
+        hashmap<i64, i64>get_or(counts&, 5, -1), hashmap<i64, i64>has(counts&, 0));
+
+    word: [5]c8 = {'h', 'e', 'l', 'l', 'o'};
+    other: [5]c8 = {'h', 'e', 'l', 'l', 'o'};
+    words: hashmap<[]c8, i32> = {};
+    hashmap<[]c8, i32>put(arena&, words&, word[0..5], 1);
+    hashmap<[]c8, i32>slot(arena&, words&, other[0..5])[0] += 1;
+    hashmap<[]c8, i32>slot(arena&, words&, other[0..4])[0] += 1;
+    printf("words %llu %d\n", words.length, hashmap<[]c8, i32>get(words&, word[0..5])[0]);
+
+    // hashset with a struct key
+    visited: hashset<point> = {};
+    p: point = {};
+    p.x = 3;
+    p.y = 4;
+    first_add: b32 = hashset<point>add(arena&, visited&, p);
+    second_add: b32 = hashset<point>add(arena&, visited&, p);
+    p.y = 5;
+    printf("set %d %d %d %llu\n", first_add, second_add, hashset<point>has(visited&, p), hashset<point>length(visited&));
+
+    // heap: max-heap of ints, min-heap of structs
+    top: heap<i64> = heap<i64>make(greater_i64);
+    for (i: i64 = 0; i < 100; i += 1) {
+        heap<i64>push(arena&, top&, (i * 37) % 101);
+    }
+    largest: i64 = heap<i64>pop(top&);
+    second: i64 = heap<i64>pop(top&);
+    printf("heap %lld %lld %lld %llu\n", largest, second, heap<i64>top(top&), top.length);
+    frontier: heap<edge> = heap<edge>make(cheaper);
+    costs: [5]i64 = {9, 4, 7, 1, 4};
+    for (i: u64 = 0; i < 5; i += 1) {
+        e: edge = {};
+        e.to = cast(i, i64);
+        e.cost = costs[i];
+        heap<edge>push(arena&, frontier&, e);
+    }
+    order: i64 = 0;
+    while (!heap<edge>is_empty(frontier&)) {
+        order = order * 10 + heap<edge>pop(frontier&).cost % 10;
+    }
+    printf("dijkstra order %lld\n", order);
+
+    // deque: wraps around the ring and grows while wrapped
+    window: deque<i64> = {};
+    for (i: i64 = 0; i < 12; i += 1) {
+        deque<i64>push_back(arena&, window&, i);
+    }
+    for (i: i64 = 0; i < 10; i += 1) {
+        deque<i64>pop_front(window&);
+    }
+    for (i: i64 = 0; i < 20; i += 1) {
+        deque<i64>push_front(arena&, window&, 100 + i);
+    }
+    printf("deque %llu %lld %lld %lld\n", window.length, deque<i64>front(window&), deque<i64>back(window&), deque<i64>at(window&, 20)[0]);
+
+    // dsu
+    groups: dsu = dsu_make(arena&, 6);
+    dsu_unite(groups&, 0, 1);
+    dsu_unite(groups&, 2, 3);
+    dsu_unite(groups&, 1, 3);
+    again: b32 = dsu_unite(groups&, 0, 2);
+    printf("dsu %llu %d %d %llu %d\n", groups.sets, dsu_same(groups&, 0, 3), dsu_same(groups&, 0, 5), dsu_set_size(groups&, 2), again);
+
+    // vec pop and last
+    stack: vec<i64> = {};
+    vec<i64>append(arena&, stack&, 1);
+    vec<i64>append(arena&, stack&, 2);
+    popped: i64 = vec<i64>pop(stack&);
+    printf("vec %lld %lld %llu\n", popped, vec<i64>last(stack&)[0], stack.length);
+
+    // A second instance of the same generic subrange: `items` once emitted the
+    // slice type of whichever instance was checked last, for every instance.
+    weights: vec<f64> = {};
+    vec<f64>append(arena&, weights&, 2.5);
+    vec<f64>append(arena&, weights&, 0.5);
+    sort<f64>(vec<f64>items(weights&), less_f64);
+    sorted_weights: []f64 = vec<f64>items(weights&);
+    printf("items %.1f %.1f\n", sorted_weights[0], sorted_weights[1]);
+    return 0;
+}

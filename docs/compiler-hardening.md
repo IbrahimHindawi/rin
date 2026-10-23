@@ -274,8 +274,8 @@ the entry is still here.
 >
 > **Deliberate false negative:** generic type *arguments* are not walked, only
 > the base name. Walking them would be unsound without substituting them into
-> the generic's fields -- `P: struct = { items: Vec<P>; }` is legal whenever
-> `Vec` holds its elements behind a pointer, and rejecting it would be a false
+> the generic's fields -- `P: struct = { items: vec<P>; }` is legal whenever
+> `vec` holds its elements behind a pointer, and rejecting it would be a false
 > positive on correct code. A generic that does hold its argument by value is
 > still missed, which is where this already was.
 >

@@ -1,0 +1,93 @@
+import "string8.rin"
+
+/* Key operations for hashmap and hashset, specialised per type the way `print`
+   is. A struct key gets its own pair:
+
+       hash: proc<point>(p: point) -> u64 = { return hash<i64>(p.x * 31 + p.y); }
+       equal: proc<point>(a: point, b: point) -> b32 = { return a.x == b.x && a.y == b.y; }
+
+   Integers go through splitmix64's finalizer, so keys that differ only in their
+   high bits, or that are all multiples of a power of two, still spread across
+   the table. Strings use FNV-1a. */
+
+hash_mix: proc(x: u64) -> u64 = {
+    x ^= x shr 30;
+    x *= 0xbf58476d1ce4e5b9'u64;
+    x ^= x shr 27;
+    x *= 0x94d049bb133111eb'u64;
+    x ^= x shr 31;
+    return x;
+}
+
+hash_bytes: proc(data: [*]const u8, count: u64) -> u64 = {
+    h: u64 = 14695981039346656037'u64;
+    for (i: u64 = 0; i < count; i += 1) {
+        h ^= cast(data[i], u64);
+        h *= 1099511628211'u64;
+    }
+    return h;
+}
+
+hash: proc<i32>(x: i32) -> u64 = {
+    return hash_mix(cast(cast(x, i64), u64));
+}
+
+hash: proc<i64>(x: i64) -> u64 = {
+    return hash_mix(cast(x, u64));
+}
+
+hash: proc<u32>(x: u32) -> u64 = {
+    return hash_mix(cast(x, u64));
+}
+
+hash: proc<u64>(x: u64) -> u64 = {
+    return hash_mix(x);
+}
+
+hash: proc<c8>(x: c8) -> u64 = {
+    return hash_mix(cast(cast(x, u8), u64));
+}
+
+hash: proc<[]c8>(s: []c8) -> u64 = {
+    return hash_bytes(cast(s.data, [*]const u8), s.length);
+}
+
+hash: proc<string8slice>(s: string8slice) -> u64 = {
+    return hash_bytes(cast(s.data, [*]const u8), s.length);
+}
+
+equal: proc<i32>(a: i32, b: i32) -> b32 = {
+    return a == b;
+}
+
+equal: proc<i64>(a: i64, b: i64) -> b32 = {
+    return a == b;
+}
+
+equal: proc<u32>(a: u32, b: u32) -> b32 = {
+    return a == b;
+}
+
+equal: proc<u64>(a: u64, b: u64) -> b32 = {
+    return a == b;
+}
+
+equal: proc<c8>(a: c8, b: c8) -> b32 = {
+    return a == b;
+}
+
+equal: proc<[]c8>(a: []c8, b: []c8) -> b32 = {
+    if (a.length != b.length) {
+        return 0;
+    }
+    for (i: u64 = 0; i < a.length; i += 1) {
+        if (a[i] != b[i]) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+equal: proc<string8slice>(a: string8slice, b: string8slice) -> b32 = {
+    return string8slice_equals(a, b);
+}

@@ -28,10 +28,11 @@ Rin is C-shaped code with a smaller syntax surface and compile-time metaprogramm
 - `rin.exe [input.i] [output.c] [output.h]` still works as the legacy compile form
 - compile defaults: `src\main.rin` -> `build\rin_gen\main.c`
 - the compiler also writes a companion header beside the output C file, for example `build\rin_gen\main.h`
+- `--single-file` writes one self-contained `.c` instead: rin's own headers (`core.h`, `reflect.h`, `std/memops_os.h`, generated monomorph headers) are inlined, system headers stay as includes, and there is no `#line`. It builds with no `-I`, for an online judge that takes a single file
 - `check` parses, imports, validates, and type-checks without writing generated C
 - `symbols` emits compiler symbol metadata as JSON
 - `lsp` emits diagnostics plus compiler symbol metadata as JSON
-- `import "std/Print.rin"` resolves through the `std` folder beside `rin.exe`
+- `import "std/print.rin"` resolves through the `std` folder beside `rin.exe`
 - `--importdir` adds an extra import search root for project-local libraries
 - `import "foo.rin"` emits `#include "foo.h"` and lets the current file type-check against `foo.i` declarations
 
@@ -62,8 +63,10 @@ Every declaration is `name : kind = value`, and every body is a block:
 - switch cases and defaults take a block, giving each case its own scope
 - labels take a block: `done: label = { ... }`
 
-Struct fields and proc parameters have nothing to initialize, so the rule does not
-reach them.
+Struct fields have nothing to initialize, so the rule does not reach them. A
+proc parameter may have a default, `reserve: u64 = max_alloc_size`, which a call
+can leave off. Defaults are trailing and constant: a literal, `null`, a
+`#define` name, or operators over those.
 
 ## Comments And The Preprocessor
 
@@ -102,6 +105,9 @@ array: struct<T> = {
 
 // proc
 make: proc(x: i32) -> i32 = { return x; }
+
+// trailing parameters with defaults: clamp(v) is clamp(v, 0, 255)
+clamp: proc(v: i32, lo: i32 = 0, hi: i32 = 255) -> i32 = { return v < lo ? lo : (v > hi ? hi : v); }
 
 // proc with internal linkage, not exported in the generated header
 helper: static proc(x: i32) -> i32 = { return x + 1; }

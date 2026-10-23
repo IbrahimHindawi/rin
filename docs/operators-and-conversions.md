@@ -102,7 +102,7 @@ regroup it ([`shape.md`](shape.md) 4.3).
   `&&` is one token and cannot start an operand, so it works with the postfix
   `&` rule above.
 - **`& | ^ ~` stay.**
-- **`shl` / `shr` stay words.** `>>` would close generics: `Vec<Option<T>>`. That
+- **`shl` / `shr` stay words.** `>>` would close generics: `vec<option<T>>`. That
   is the one deliberate departure from C's symbols, and it has a reason. The
   parser recognises C's `>>`, `<<`, `>>=` and `<<=` (two touching angles in
   operator position) and points to the word spelling.
@@ -252,7 +252,7 @@ constant source must fit, a runtime value converts), and it avoids Rust's
   char literal (`'a'`, `'\n'`) wins.
 - **Generic cast types need parentheses.** In `n'u32 < max` the `<` must be a
   comparison, and the parser cannot know which names are generic, so
-  `p'(*Node<T>)`.
+  `p'(*node<T>)`.
 - **Highlighting.** `nvim/syntax/rin.vim:99` opens a char region at every `'` and
   needs a cast-tick match ahead of it. Naive highlighters elsewhere will get it
   wrong; LSP semantic tokens come from the compiler and will not.

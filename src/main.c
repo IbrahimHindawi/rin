@@ -199,6 +199,21 @@ static bool file_exists_cstr(const char *path) {
    deliberately does not use the shipped library. */
 static bool g_no_std = false;
 static const char *g_exe_import_root = null;
+/* --single-file: one .c that includes none of rin's own headers, for a judge
+   that takes a single file. Paths in it are this machine's and would only
+   travel with the submission, so #line is off and comments name files only. */
+static bool g_single_file = false;
+
+/* A source path as a generated comment shows it: in full, or with
+   --single-file just the file name. */
+static const char *comment_path(const char *path) {
+    if (!path || !g_single_file) return path;
+    const char *name = path;
+    for (const char *c = path; *c; c++) {
+        if (*c == '/' || *c == '\\') name = c + 1;
+    }
+    return name;
+}
 
 static void add_import_dir(const char *dir) {
     if (!dir || !dir[0]) return;
@@ -658,6 +673,12 @@ struct Expr {
     bool index_varies;      // generic instances disagree; emit it as written
     string8 index_count;
     TypeExpr *range_type;   // the slice type a subrange produces
+    /* In a generic body every instance makes its own slice type, `[]i64` in one
+       and `[]f64` in the next, so those are kept per instance, keyed by the
+       instance's type arguments. range_type alone held whichever was checked
+       last, and every other instance emitted it. */
+    Vec_string8 range_keys;
+    Vec_voidptr range_types;
     /* A conversion the emitter writes out: an array or a slice becoming another
        slice type. `coerce_count` is the array's length when the source is one. */
     TypeExpr *coerce_to;
@@ -745,6 +766,11 @@ struct Field {
 struct Param {
     string8 name;
     TypeExpr *type;
+    /* `reserve: u64 = max_alloc_size`. A call that leaves the trailing
+       arguments off gets these appended by the checker, so the emitter and C
+       never see a default. Null when the parameter has none. */
+    Expr *default_value;
+    string8 default_text; // as written, for diagnostics and signature help
     i32 line;
     i32 col;
 };
@@ -1805,6 +1831,26 @@ static Token *parser_prev(Parser *p) {
     return &p->tokens.data[0];
 }
 
+/* The source text of tokens [start, end), for echoing an expression back in a
+   diagnostic. Tokens slice the source, so this is the span from the first to
+   the end of the last; tokens that are not laid out in order are joined with
+   spaces instead. */
+static string8 parser_token_span_text(Parser *p, i32 start, i32 end) {
+    if (start >= end || end > p->tokens.length) return (string8){0};
+    Token *first = &p->tokens.data[start];
+    Token *last = &p->tokens.data[end - 1];
+    if (last->text.data >= first->text.data) {
+        u64 length = (u64)(last->text.data - first->text.data) + last->text.length;
+        if (length < 256) return string8_copy_from_slice(p->arena, first->text.data, length);
+    }
+    string8 out = string8_reserve(p->arena, 64);
+    for (i32 i = start; i < end; i++) {
+        if (i > start) string8_append_byte(p->arena, &out, ' ');
+        string8_append_bytes(p->arena, &out, p->tokens.data[i].text.data, p->tokens.data[i].text.length);
+    }
+    return out;
+}
+
 static Token *parser_peek_n(Parser *p, i32 n) {
     i32 idx = p->index + n;
     if (idx < p->tokens.length) {
@@ -2155,6 +2201,7 @@ static TypeExpr *type_new(memops_arena *arena, TypeKind kind) {
 }
 
 static TypeExpr *parse_type(Parser *p);
+static Expr *parse_expr(Parser *p);
 static string8 concat_name2(memops_arena *arena, string8 a, const char *sep, string8 b);
 
 static string8 type_mangle_concrete(memops_arena *arena, TypeExpr *type) {
@@ -2359,6 +2406,13 @@ static TypeExpr *parse_type_inner(Parser *p) {
                 }
 
                 TypeExpr *arg = parse_type(p);
+                if (parser_peek(p)->kind == Token_Equal) {
+                    parser_error_token(p, parser_peek(p),
+                                       "a proc type's parameters take no default; a call through a "
+                                       "proc pointer passes every argument");
+                    parser_next(p);
+                    parse_expr(p);
+                }
                 ptr_array_append(p->arena, &t->args, arg);
                 Vec_string8_append(p->arena, &t->arg_names, param_name);
             } while (parser_match(p, Token_Comma));
@@ -2673,7 +2727,6 @@ static Expr *expr_number_zero(memops_arena *arena, i32 line, i32 col) {
     return e;
 }
 
-static Expr *parse_expr(Parser *p);
 static bool parser_note_expr_node(Parser *p);
 static Expr *parse_unary(Parser *p);
 static Expr *parse_multiplicative(Parser *p);
@@ -4309,9 +4362,18 @@ static ProcDecl *parse_proc_decl(Parser *p, Token *name_tok) {
 
     parser_expect(p, Token_LParen, "expected '(' after proc");
     if (!parser_match(p, Token_RParen)) {
+        Param *first_default = null;
         do {
             if (parser_match(p, Token_Ellipsis)) {
                 decl->is_variadic = true;
+                /* Both would claim the arguments after the last required one:
+                   is a third argument the default's replacement or the first
+                   variadic one? */
+                if (first_default) {
+                    parser_error_token(p, parser_prev(p),
+                                       "a variadic proc cannot have parameter defaults; the extra "
+                                       "arguments could fill either");
+                }
                 break;
             }
             Token *param_name = parser_expect(p, Token_Identifier, "expected param name");
@@ -4323,6 +4385,19 @@ static ProcDecl *parse_proc_decl(Parser *p, Token *name_tok) {
                 parser_error_token(p, parser_peek(p),
                                    "a parameter takes no attribute; what a parameter wants is a "
                                    "type qualifier, and those belong to the type");
+            }
+            /* parser_match, not a peek: after `v: vec<T>` the lexer's `>=` has
+               already been split and its `=` is pending. */
+            if (parser_match(p, Token_Equal)) {
+                i32 start = p->index;
+                param->default_value = parse_expr(p);
+                param->default_text = parser_token_span_text(p, start, p->index);
+                if (!first_default) first_default = param;
+            } else if (first_default) {
+                parser_error_token(p, param_name,
+                                   "a parameter without a default cannot follow one with a default; "
+                                   "arguments fill parameters left to right, so only trailing ones "
+                                   "can be left off");
             }
             param->line = param_name->line;
             param->col = param_name->col;
@@ -5779,6 +5854,79 @@ static void semantic_check_proc_returns(ProcDecl *proc) {
                              proc->name, proc->source_path, proc->line, proc->col);
 }
 
+static bool program_defines_object_macro(Program *prog, string8 name, memops_arena *arena) {
+    for (i32 i = 0; i < prog->preprocessor_lines.length; i++) {
+        string8 line = prog->preprocessor_lines.data[i];
+        if (preprocessor_define_is_function_like(line)) continue;
+        string8 defined = preprocessor_define_name(arena, line);
+        if (defined.data && string8_equals(&defined, &name)) return true;
+    }
+    for (i32 i = 0; i < prog->defines.length; i++) {
+        string8 defined = string_lit_inner(arena, prog->defines.data[i]);
+        if (defined.data && string8_equals(&defined, &name)) return true;
+    }
+    return false;
+}
+
+/* A default is appended to every call that leaves it off, as the same Expr
+   node, and emitted in the caller's scope. Holding defaults to constants is
+   what makes that safe: a constant has one type wherever it lands, generates
+   no generic instances, and names nothing a caller's local could shadow --
+   `#define` names are expanded by cpp before C scoping applies. */
+static bool param_default_is_constant(Program *prog, Expr *e, memops_arena *arena) {
+    if (!e) return false;
+    switch (e->kind) {
+        case Expr_Number:
+        case Expr_String:
+        case Expr_Char:
+        case Expr_SizeofType:
+        case Expr_AlignofType:
+            return true;
+        case Expr_Name:
+            return string8_equals_cstr(&e->name, "null") || program_defines_object_macro(prog, e->name, arena);
+        case Expr_Unary:
+            if (e->op != Token_Minus && e->op != Token_Bang && e->op != Token_Tilde) return false;
+            return param_default_is_constant(prog, e->inner, arena);
+        case Expr_Binary:
+            return param_default_is_constant(prog, e->left, arena) && param_default_is_constant(prog, e->right, arena);
+        case Expr_Ternary:
+            return param_default_is_constant(prog, e->left, arena) && param_default_is_constant(prog, e->right, arena) &&
+                   param_default_is_constant(prog, e->third, arena);
+        case Expr_Cast:
+            return param_default_is_constant(prog, e->inner, arena);
+        default:
+            return false;
+    }
+}
+
+static bool array_string8_contains(Vec_string8 *arr, string8 value);
+
+static bool type_mentions_name_in(TypeExpr *type, Vec_string8 *names) {
+    if (!type || !names) return false;
+    if ((type->kind == Type_Name || type->kind == Type_Generic) && array_string8_contains(names, type->name)) return true;
+    if (type_mentions_name_in(type->elem, names) || type_mentions_name_in(type->ret_type, names)) return true;
+    for (i32 i = 0; i < type->args.length; i++) {
+        if (type_mentions_name_in((TypeExpr *)type->args.data[i], names)) return true;
+    }
+    return false;
+}
+
+static void semantic_check_param_default(Program *prog, ProcDecl *proc, Param *param, memops_arena *arena) {
+    Expr *d = param->default_value;
+    if (!param_default_is_constant(prog, d, arena)) {
+        semantic_error_name_path("a parameter default must be a constant (a literal, null, a #define name, or "
+                                 "operators over those), because it is evaluated at each call; not so for "
+                                 "the default of",
+                                 param->name, proc->source_path, d ? d->line : param->line, d ? d->col : param->col);
+        return;
+    }
+    if (proc->is_generic && type_mentions_name_in(param->type, &proc->type_params)) {
+        semantic_error_name_path("a parameter whose type uses a type parameter cannot have a default, because "
+                                 "the default's type would differ per instance:",
+                                 param->name, proc->source_path, param->line, param->col);
+    }
+}
+
 static void semantic_check_proc(Program *prog, ProcDecl *proc, Scope *base_scope, Vec_string8 *known_types, memops_arena *arena) {
     semantic_check_proc_returns(proc);
     const char *prev_diag_source_path = g_diag_source_path;
@@ -5806,6 +5954,7 @@ static void semantic_check_proc(Program *prog, ProcDecl *proc, Scope *base_scope
     for (i32 i = 0; i < proc->params.length; i++) {
         Param *param = (Param *)proc->params.data[i];
         semantic_check_type(prog, param->type, known_types, &proc->type_params, proc->source_path);
+        if (param->default_value) semantic_check_param_default(prog, proc, param, arena);
         semantic_check_ident_available(param->name, param->line, param->col);
         if (scope_has(&scope.locals, param->name)) {
             // locate previous parameter declaration
@@ -6179,7 +6328,7 @@ static void type_cycle_check_type(TypeCycleWalk *w, TypeExpr *type, StructDecl *
         case Type_Generic:
             /* The base name only. Walking the type *arguments* would be
                unsound without substituting them into the generic's fields:
-               `P: struct = { items: Vec<P>; }` is legal whenever Vec holds its
+               `P: struct = { items: vec<P>; }` is legal whenever Vec holds its
                elements behind a pointer, and flagging it would be a false
                positive on correct code. Missing the case where a generic does
                hold its argument by value is a false negative, which is where
@@ -6816,6 +6965,10 @@ static bool proc_signatures_identical(ProcDecl *a, ProcDecl *b) {
         Param *pb = (Param *)b->params.data[i];
         if (!pa || !pb) return false;
         if (!type_expr_identical(pa->type, pb->type)) return false;
+        /* Defaults change what a call may leave off, so declarations that
+           disagree on them are not the same declaration. */
+        if (!pa->default_value != !pb->default_value) return false;
+        if (pa->default_value && !string8_equals(&pa->default_text, &pb->default_text)) return false;
     }
     return true;
 }
@@ -7116,9 +7269,9 @@ static TypeSub type_sub_one(memops_arena *arena, string8 param, TypeExpr *arg);
 /* The substitution a generic proc's body is lowered under for one instance.
 
    `bound` is the type the single parameter stands for. For a pattern overload
-   like `json_read<Array<T>>` that is the T inside the pattern, not the whole
-   `Array<i32>` the instance is named after -- binding the latter would lower the
-   parameter `Array<T>` to `Array<Array<i32>>`. Only a proc with several
+   like `json_read<array<T>>` that is the T inside the pattern, not the whole
+   `array<i32>` the instance is named after -- binding the latter would lower the
+   parameter `array<T>` to `array<array<i32>>`. Only a proc with several
    parameters consults the list registry; every other shape keeps the path it
    always had. */
 static TypeSub proc_sub_for_instance(memops_arena *arena, ProcDecl *decl, string8 mangle, TypeExpr *bound) {
@@ -7838,6 +7991,10 @@ static void symbol_json_emit_proc_entry(
         symbol_json_print_string8(param->name);
         printf(",\"type\":");
         symbol_json_print_string8(param_type);
+        if (param->default_value) {
+            printf(",\"default\":");
+            symbol_json_print_string8(param->default_text);
+        }
         printf("}");
     }
     printf("],\"return_type\":");
@@ -7933,6 +8090,10 @@ static string8 symbol_detail_proc(memops_arena *arena, ProcDecl *decl) {
         emit_string8(arena, &out, param->name);
         emit_cstr(arena, &out, ":");
         format_type_i(arena, &out, param->type, (TypeSub){0});
+        if (param->default_value) {
+            emit_cstr(arena, &out, " = ");
+            emit_string8(arena, &out, param->default_text);
+        }
     }
     if (decl->is_variadic) {
         if (decl->params.length > 0) emit_cstr(arena, &out, ", ");
@@ -8098,7 +8259,7 @@ static i32 array_string8_index(Vec_string8 *arr, string8 value) {
 static bool type_is_concrete_under_sub(TypeExpr *type, TypeSub sub);
 
 /* Monomorph instances are tracked by mangled name, but emitting a substituted body
-   needs the type the mangle came from: 'Array<*i32>' must emit 'i32 *' for its
+   needs the type the mangle came from: 'array<*i32>' must emit 'i32 *' for its
    field, not the mangled spelling 'ptr_i32', which is not a C type name. Every
    instance mangle is recorded here as it is produced so emission can recover the
    real type instead of fabricating a Type_Name from the mangle. */
@@ -8233,6 +8394,24 @@ static void collect_type_instances_sub(TypeExpr *type, string8 base, Vec_string8
                 return;
             }
             string8 mangle = type_mangle(arena, arg, sub);
+            if (!array_string8_contains(out, mangle)) {
+                Vec_string8_append(arena, out, mangle);
+            }
+        } else if (type->args.length > 1) {
+            /* Several arguments, as collect_type_instances above does them, but
+               under the instance's substitution: `hashset<K>` holding a
+               `hashmap<K, u8>` is how `hashmap<point, u8>` gets instantiated. */
+            Vec_voidptr resolved = ptr_array_reserve(arena, type->args.length);
+            string8 mangle = string8_reserve(arena, 32);
+            for (i32 i = 0; i < type->args.length; i++) {
+                TypeExpr *arg = (TypeExpr *)type->args.data[i];
+                if (!type_is_concrete_under_sub(arg, sub)) return;
+                ptr_array_append(arena, &resolved, substitute_type_sub(arena, arg, sub));
+                if (i > 0) string8_append_cstr(arena, &mangle, "_");
+                string8 inner = type_mangle(arena, arg, sub);
+                string8_append_bytes(arena, &mangle, inner.data, inner.length);
+            }
+            mangle_register_list(arena, mangle, &resolved);
             if (!array_string8_contains(out, mangle)) {
                 Vec_string8_append(arena, out, mangle);
             }
@@ -9295,6 +9474,20 @@ static TypeExpr *type_scope_apply_sub(TypeScope *scope, memops_arena *arena, Typ
     return substitute_type_sub(arena, type, scope->sub);
 }
 
+/* proc_call_sub, with the call's type arguments seen through the enclosing
+   instance. Inside `hashmap<K, V>slot`, the call `hashmap<K, V>find(m, key)`
+   names K and V; checked as written they matched nothing, so a generic proc
+   with several parameters could not call another one. The single-parameter
+   path already resolves its argument this way in lookup_call_proc_decl. */
+static TypeSub proc_call_sub_in_scope(memops_arena *arena, ProcDecl *decl, Expr *call, TypeExpr *type_arg, TypeScope *scope) {
+    TypeSub sub = proc_call_sub(arena, decl, call, type_arg);
+    if (!sub.has || decl->type_params.length <= 1) return sub;
+    for (i32 i = 0; i < sub.args.length; i++) {
+        sub.args.data[i] = type_scope_apply_sub(scope, arena, (TypeExpr *)sub.args.data[i]);
+    }
+    return sub;
+}
+
 static void type_scope_add(memops_arena *arena, TypeScope *s, string8 name, TypeExpr *type) {
     Vec_string8_append(arena, &s->names, name);
     ptr_array_append(arena, &s->types, type);
@@ -10205,7 +10398,7 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
         ProcDecl *decl = lookup_call_proc_decl(prog, e, scope, arena, &type_arg, null);
         if (decl) {
             if (decl->is_generic) {
-                TypeSub call_sub = proc_call_sub(arena, decl, e, type_arg);
+                TypeSub call_sub = proc_call_sub_in_scope(arena, decl, e, type_arg, scope);
                 if (call_sub.has) return substitute_type_sub(arena, decl->ret_type, call_sub);
             }
             if (decl->is_generic) {
@@ -11392,6 +11585,9 @@ static void type_json_note_proc_expected_params(bool *has_note, ProcDecl *decl, 
             (int)param_type.length,
             param_type.data
         );
+        if (param->default_value) {
+            diag_appendf(note, sizeof(note), &used, " = %.*s", (int)param->default_text.length, param->default_text.data);
+        }
     }
     if (decl->is_variadic) {
         if (decl->params.length > 0) diag_appendf(note, sizeof(note), &used, ", ");
@@ -11521,6 +11717,14 @@ static void type_error_proc_type_arg_count(
     return;
 }
 
+/* Parameters a call must pass: those before the first default. Defaults are
+   trailing, so the rest all have one. */
+static i32 proc_required_params(ProcDecl *decl) {
+    i32 required = 0;
+    while (required < decl->params.length && !((Param *)decl->params.data[required])->default_value) required++;
+    return required;
+}
+
 static void type_error_proc_arg_count(
     ProcDecl *decl,
     i32 got,
@@ -11566,15 +11770,23 @@ static void type_error_proc_arg_count(
             got
         );
     } else {
+        /* "1 to 3" once defaults let a call stop early. */
+        char expects[64];
+        i32 required = proc_required_params(decl);
+        if (required == decl->params.length) {
+            snprintf(expects, sizeof(expects), "%d", (int)decl->params.length);
+        } else {
+            snprintf(expects, sizeof(expects), "%d to %d", (int)required, (int)decl->params.length);
+        }
         if (g_diag_json) {
             char message[1024];
             snprintf(
                 message,
                 sizeof(message),
-                "proc '%.*s' expects %d args, got %d",
+                "proc '%.*s' expects %s args, got %d",
                 (int)decl->name.length,
                 decl->name.data,
-                (int)decl->params.length,
+                expects,
                 got
             );
             bool has_note = false;
@@ -11593,13 +11805,13 @@ static void type_error_proc_arg_count(
             return;
         }
         printf(
-            "%s:%d:%d: type error: proc '%.*s' expects %d args, got %d\n",
+            "%s:%d:%d: type error: proc '%.*s' expects %s args, got %d\n",
             g_diag_source_path ? g_diag_source_path : g_source_path,
             line,
             col,
             (int)decl->name.length,
             decl->name.data,
-            (int)decl->params.length,
+            expects,
             got
         );
     }
@@ -11616,6 +11828,7 @@ static void type_error_proc_arg_count(
             (int)param_type.length,
             param_type.data
         );
+        if (param->default_value) printf(" = %.*s", (int)param->default_text.length, param->default_text.data);
     }
     if (decl->is_variadic) {
         if (decl->params.length > 0) printf(", ");
@@ -13017,6 +13230,36 @@ static bool expr_is_literal_zero(Expr *e) {
     return e && e->kind == Expr_Number && string8_equals_cstr(&e->number, "0");
 }
 
+static string8 type_sub_key(memops_arena *arena, TypeSub sub) {
+    string8 key = string8_reserve(arena, 32);
+    for (i32 i = 0; i < sub.args.length; i++) {
+        if (i > 0) string8_append_cstr(arena, &key, ",");
+        string8 m = type_mangle(arena, (TypeExpr *)sub.args.data[i], (TypeSub){0});
+        string8_append_bytes(arena, &key, m.data, m.length);
+    }
+    return key;
+}
+
+static void range_type_record(Expr *e, TypeSub sub, memops_arena *arena) {
+    if (!e->index_end || !e->range_type || !sub.has) return;
+    string8 key = type_sub_key(arena, sub);
+    i32 found = string8_vec_find(&e->range_keys, key);
+    if (found >= 0) {
+        e->range_types.data[found] = e->range_type;
+        return;
+    }
+    Vec_string8_append(arena, &e->range_keys, key);
+    ptr_array_append(arena, &e->range_types, e->range_type);
+}
+
+static TypeExpr *range_type_for(Expr *e, TypeSub sub, memops_arena *arena) {
+    if (sub.has && e->range_keys.length > 0) {
+        i32 found = string8_vec_find(&e->range_keys, type_sub_key(arena, sub));
+        if (found >= 0) return (TypeExpr *)e->range_types.data[found];
+    }
+    return e->range_type;
+}
+
 static void index_set(Expr *e, IndexBase base, bool checked, string8 count) {
     if (e->index_varies) return;
     if (e->index_base == IndexBase_Unknown) {
@@ -13452,15 +13695,23 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
         if (call->args.length < decl->params.length) {
             type_error_proc_arg_count(decl, call->args.length, call->line, call->col, arena);
         }
-    } else if (call->args.length != decl->params.length) {
+    } else if (call->args.length < proc_required_params(decl) || call->args.length > decl->params.length) {
         type_error_proc_arg_count(decl, call->args.length, call->line, call->col, arena);
+    } else {
+        /* Fill in the defaults the call left off. From here on the call is
+           complete, so the argument checks below and the emitter treat them like
+           any argument written out. A generic body is checked once per instance;
+           the second time round nothing is missing and nothing is added. */
+        for (i32 i = call->args.length; i < decl->params.length; i++) {
+            ptr_array_append(arena, &call->args, ((Param *)decl->params.data[i])->default_value);
+        }
     }
 
     for (i32 i = 0; i < call->args.length && i < decl->params.length; i++) {
         Param *param = (Param *)decl->params.data[i];
         TypeExpr *expected = param->type;
         if (decl->is_generic) {
-            TypeSub call_sub = proc_call_sub(arena, decl, call, type_arg);
+            TypeSub call_sub = proc_call_sub_in_scope(arena, decl, call, type_arg, scope);
             if (call_sub.has) expected = substitute_type_sub(arena, param->type, call_sub);
         }
         Expr *arg = (Expr *)call->args.data[i];
@@ -13576,6 +13827,7 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
             }
         }
         type_check_index_bounds(e, base, prog, arena);
+        range_type_record(e, scope->sub, arena);
         return;
     }
     if (e->kind == Expr_Field) {
@@ -14120,6 +14372,28 @@ static void type_check_program(Program *prog, memops_arena *arena) {
         g_diag_import_chain = prev_diag_import_chain;
     }
 
+    /* Defaults are checked here, once each, against the global scope: they are
+       constants, so a call site adds nothing a second check could learn. */
+    for (i32 i = 0; i < prog->procs.length; i++) {
+        ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+        const char *prev_diag_source_path = g_diag_source_path;
+        const char *prev_diag_import_chain = g_diag_import_chain;
+        if (p->source_path) g_diag_source_path = p->source_path;
+        g_diag_import_chain = p->import_chain;
+        for (i32 j = 0; j < p->params.length; j++) {
+            Param *param = (Param *)p->params.data[j];
+            if (!param->default_value) continue;
+            if (p->is_generic && type_mentions_name_in(param->type, &p->type_params)) continue; // already reported
+            type_check_expr(param->default_value, &globals, prog, arena);
+            type_check_initializer_against(param->default_value, param->type, &globals, prog, arena);
+            TypeExpr *actual = infer_expr_type(param->default_value, &globals, prog, arena);
+            check_assignment_compatible("parameter default", prog, param->type, actual, param->default_value, &globals,
+                                        param->default_value->line, param->default_value->col, arena);
+        }
+        g_diag_source_path = prev_diag_source_path;
+        g_diag_import_chain = prev_diag_import_chain;
+    }
+
     for (i32 i = 0; i < prog->procs.length; i++) {
         ProcDecl *p = (ProcDecl *)prog->procs.data[i];
         if (p->is_generic) continue;
@@ -14201,7 +14475,7 @@ static void printfmt_append_print_cstr(memops_arena *arena, Vec_voidptr *out, St
     ptr_array_append(arena, out, printfmt_expr_stmt(arena, call, source));
 }
 
-/* The printf conversion that matches what std/Print.rin's print<T> would emit for
+/* The printf conversion that matches what std/print.rin's print<T> would emit for
    this type, or null when there is no single spec that does.
 
    `bool` and `b32` return null on purpose: print<bool> writes "true"/"false",
@@ -14837,7 +15111,7 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
    long. The bounds are checked first, against the array's length or the
    slice's; a raw pointer has neither, so its range is taken on trust. */
 static void emit_range(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
-    TypeExpr *type = (e->coerce_to && !e->coerce_varies) ? e->coerce_to : e->range_type;
+    TypeExpr *type = (e->coerce_to && !e->coerce_varies) ? e->coerce_to : range_type_for(e, sub, arena);
     bool slice_base = e->index_base == IndexBase_Slice;
     emit_cstr(arena, out, "((");
     if (type) emit_string8(arena, out, type_mangle(arena, type, sub));
@@ -15444,7 +15718,7 @@ static void emit_struct_monomorph_comment(memops_arena *arena, string8 *out, Str
     emit_cstr(arena, out, "_");
     emit_string8(arena, out, type_mangled);
     emit_cstr(arena, out, "; declared at ");
-    emit_cstr(arena, out, decl->source_path ? decl->source_path : g_source_path);
+    emit_cstr(arena, out, comment_path(decl->source_path ? decl->source_path : g_source_path));
     char loc_buf[64];
     snprintf(loc_buf, sizeof(loc_buf), ":%d:%d", decl->line, decl->col);
     emit_cstr(arena, out, loc_buf);
@@ -15830,6 +16104,7 @@ static i32 emit_count_newlines_since(string8 *out, u64 from) {
 }
 
 static void emit_line_directive_path(memops_arena *arena, string8 *out, const char *path, i32 line) {
+    if (g_single_file) return;
     const char *use_path = path ? path : g_source_path;
     if (!g_emit_all_line_directives &&
         g_line_last_out == out &&
@@ -15880,13 +16155,13 @@ static void emit_proc_monomorph_comment(
     emit_cstr(arena, out, " -> ");
     emit_mono_proc_name(arena, out, decl->name, type_mangled);
     emit_cstr(arena, out, "; declared at ");
-    emit_cstr(arena, out, decl->source_path ? decl->source_path : g_source_path);
+    emit_cstr(arena, out, comment_path(decl->source_path ? decl->source_path : g_source_path));
     char loc_buf[64];
     snprintf(loc_buf, sizeof(loc_buf), ":%d:%d", decl->line, decl->col);
     emit_cstr(arena, out, loc_buf);
     if (site) {
         emit_cstr(arena, out, "; instantiated at ");
-        emit_cstr(arena, out, site->source_path ? site->source_path : g_source_path);
+        emit_cstr(arena, out, comment_path(site->source_path ? site->source_path : g_source_path));
         snprintf(loc_buf, sizeof(loc_buf), ":%d:%d", site->line, site->col);
         emit_cstr(arena, out, loc_buf);
     }
@@ -16294,7 +16569,7 @@ static void emit_native_monomorph_umbrella_includes(memops_arena *arena, Program
 
 static void emit_generated_file_banner(memops_arena *arena, string8 *out, const char *kind) {
     emit_cstr(arena, out, "/* Generated by rin from ");
-    emit_cstr(arena, out, g_source_path ? g_source_path : "<input>");
+    emit_cstr(arena, out, g_source_path ? comment_path(g_source_path) : "<input>");
     emit_cstr(arena, out, " (");
     emit_cstr(arena, out, kind);
     emit_cstr(arena, out, "). Do not edit. */\n");
@@ -16856,7 +17131,7 @@ static void emit_monomorph_source(memops_arena *arena, Program *prog, Vec_string
     (void)modules;
     emit_line_directive_reset();
     emit_generated_file_banner(arena, out, "monomorph source");
-    /* Instantiated bodies call ordinary module procs -- Array<T>reserve reaches
+    /* Instantiated bodies call ordinary module procs -- array<T>reserve reaches
        for memops_arena_push_zero -- so this unit needs every declaration. */
     emit_cstr(arena, out, "#include \"rin_all.h\"\n\n");
 
@@ -17489,9 +17764,10 @@ static void emit_monomorph_arg_forward_decl(memops_arena *arena, Program *prog, 
     emit_cstr(arena, out, ");\n\n");
 }
 
-static bool emit_native_monomorph_headers(memops_arena *arena, Program *prog, const char *output_path) {
-    const char *out_dir = derive_output_dir(arena, output_path);
-
+/* The headers a generic `struct[external]` needs, one per instance plus an
+   umbrella per struct, as file names and contents. Normally they are written
+   next to the output; --single-file inlines them instead. */
+static void collect_native_monomorph_headers(memops_arena *arena, Program *prog, Vec_string8 *names, Vec_string8 *texts) {
     for (i32 i = 0; i < prog->structs.length; i++) {
         StructDecl *decl = (StructDecl *)prog->structs.data[i];
         if (!decl->is_generic || !decl->is_external) continue;
@@ -17526,36 +17802,133 @@ static bool emit_native_monomorph_headers(memops_arena *arena, Program *prog, co
             emit_struct_decl_mono(arena, &header, decl, mangle, arg);
             emit_monomorph_header_protos(arena, prog, decl->name, mangle, arg, &header);
 
-            const char *path = join_output_path(arena, out_dir, file_name);
-            if (!write_string8_to_file(path, header)) {
-                if (g_diag_json) {
-                    char message[1024];
-                    snprintf(message, sizeof(message), "failed to write %s", path);
-                    diag_json_error(path, 0, 0, "io", message);
-                    return false;
-                }
-                printf("rin: error: failed to write %s\n", path);
-                return false;
-            }
+            Vec_string8_append(arena, names, file_name);
+            Vec_string8_append(arena, texts, header);
         }
 
         string8 umbrella_file = string8_reserve(arena, decl->name.length + 3);
         string8_append_bytes(arena, &umbrella_file, decl->name.data, decl->name.length);
         string8_append_cstr(arena, &umbrella_file, ".h");
-        const char *umbrella_path = join_output_path(arena, out_dir, umbrella_file);
-        if (!write_string8_to_file(umbrella_path, umbrella)) {
+        Vec_string8_append(arena, names, umbrella_file);
+        Vec_string8_append(arena, texts, umbrella);
+    }
+}
+
+static bool emit_native_monomorph_headers(memops_arena *arena, Program *prog, const char *output_path) {
+    const char *out_dir = derive_output_dir(arena, output_path);
+    Vec_string8 names = Vec_string8_reserve(arena, 8);
+    Vec_string8 texts = Vec_string8_reserve(arena, 8);
+    collect_native_monomorph_headers(arena, prog, &names, &texts);
+    for (i32 i = 0; i < names.length; i++) {
+        const char *path = join_output_path(arena, out_dir, names.data[i]);
+        if (!write_string8_to_file(path, texts.data[i])) {
             if (g_diag_json) {
                 char message[1024];
-                snprintf(message, sizeof(message), "failed to write %s", umbrella_path);
-                diag_json_error(umbrella_path, 0, 0, "io", message);
+                snprintf(message, sizeof(message), "failed to write %s", path);
+                diag_json_error(path, 0, 0, "io", message);
                 return false;
             }
-            printf("rin: error: failed to write %s\n", umbrella_path);
+            printf("rin: error: failed to write %s\n", path);
             return false;
         }
     }
-
     return true;
+}
+
+static u64 amalgamate_skip_space(string8 line, u64 i) {
+    while (i < line.length && (line.data[i] == ' ' || line.data[i] == '\t')) i++;
+    return i;
+}
+
+/* Where the directive word after `#` starts, or line.length if the line is
+   not a directive. */
+static u64 amalgamate_directive_start(string8 line) {
+    u64 i = amalgamate_skip_space(line, 0);
+    if (i >= line.length || line.data[i] != '#') return line.length;
+    return amalgamate_skip_space(line, i + 1);
+}
+
+/* The name in `#include <x>` or `#include "x"`, or nothing if the line is not
+   an include. */
+static string8 amalgamate_include_name(string8 line) {
+    u64 i = amalgamate_directive_start(line);
+    if (i + 7 > line.length || memcmp(line.data + i, "include", 7) != 0) return (string8){0};
+    i = amalgamate_skip_space(line, i + 7);
+    if (i >= line.length || (line.data[i] != '<' && line.data[i] != '"')) return (string8){0};
+    u8 close = line.data[i] == '<' ? '>' : '"';
+    u64 start = ++i;
+    while (i < line.length && line.data[i] != close) i++;
+    if (i >= line.length || i == start) return (string8){0};
+    return (string8){.data = line.data + start, .length = i - start};
+}
+
+static bool amalgamate_line_is_pragma_once(string8 line) {
+    u64 i = amalgamate_directive_start(line);
+    if (i + 6 > line.length || memcmp(line.data + i, "pragma", 6) != 0) return false;
+    i = amalgamate_skip_space(line, i + 6);
+    if (i + 4 > line.length || memcmp(line.data + i, "once", 4) != 0) return false;
+    return amalgamate_skip_space(line, i + 4) == line.length;
+}
+
+/* Copies `text` into `out` with every include of one of rin's own headers
+   replaced by the header itself, recursively. Rin's headers are the ones
+   beside the compiler (core.h, reflect.h, std/memops_os.h, ...) and the
+   generated monomorph headers; only those places are searched, so an include
+   that names anything else -- <stdint.h>, "stdio.h", <windows.h> -- is a
+   system header and stays as written, inside whatever #if it was in. Each
+   header goes in once, which is all `#pragma once` was asking for, so those
+   lines are dropped. */
+static void amalgamate_c(memops_arena *arena, string8 text, Vec_string8 *gen_names, Vec_string8 *gen_texts,
+                         Vec_string8 *seen, string8 *out, i32 depth) {
+    u64 pos = 0;
+    while (pos < text.length) {
+        u64 end = pos;
+        while (end < text.length && text.data[end] != '\n') end++;
+        string8 line = {.data = text.data + pos, .length = end - pos};
+        if (line.length > 0 && line.data[line.length - 1] == '\r') line.length--;
+        pos = end < text.length ? end + 1 : end;
+
+        if (amalgamate_line_is_pragma_once(line)) continue;
+
+        string8 name = amalgamate_include_name(line);
+        if (name.data && depth < 32) {
+            string8 key = {0};
+            string8 body = {0};
+            for (i32 i = 0; i < gen_names->length && !key.data; i++) {
+                if (string8_equals(&gen_names->data[i], &name)) {
+                    key = gen_names->data[i];
+                    body = gen_texts->data[i];
+                }
+            }
+            if (!key.data && g_exe_import_root) {
+                string8 in_std = string8_from_cstr(arena, "std/");
+                string8_append_bytes(arena, &in_std, name.data, name.length);
+                const char *candidates[2] = {
+                    import_candidate(arena, g_exe_import_root, name),
+                    import_candidate(arena, g_exe_import_root, in_std),
+                };
+                for (i32 i = 0; i < 2 && !key.data; i++) {
+                    if (!file_exists_cstr(candidates[i])) continue;
+                    key = string8_from_cstr(arena, candidates[i]);
+                    body = string8_read_file(arena, candidates[i]);
+                }
+            }
+            if (key.data) {
+                if (array_string8_contains(seen, key)) continue;
+                Vec_string8_append(arena, seen, key);
+                emit_cstr(arena, out, "/* ---- rin: ");
+                emit_string8(arena, out, name);
+                emit_cstr(arena, out, " ---- */\n");
+                amalgamate_c(arena, body, gen_names, gen_texts, seen, out, depth + 1);
+                emit_cstr(arena, out, "/* ---- rin: end ");
+                emit_string8(arena, out, name);
+                emit_cstr(arena, out, " ---- */\n");
+                continue;
+            }
+        }
+        emit_string8(arena, out, line);
+        emit_cstr(arena, out, "\n");
+    }
 }
 
 static void cli_print_usage(void) {
@@ -17564,7 +17937,7 @@ static void cli_print_usage(void) {
         "\n"
         "usage:\n"
         "  rin build   [build.rin]\n"
-        "  rin compile [input.rin] [-o output.c] [--header output.h] [--no-header]\n"
+        "  rin compile [input.rin] [-o output.c] [--header output.h] [--no-header] [--single-file]\n"
         "  rin check   [input.rin] [--diagnostics=json]\n"
         "  rin symbols [input.rin] [--stdin|--stdin-path file]\n"
         "  rin lsp     [input.rin] [--stdin|--stdin-path file]\n"
@@ -17587,6 +17960,7 @@ static void cli_print_usage(void) {
         "  -o, --output <file>       output C file for compile\n"
         "  -H, --header <file>       output header file for compile\n"
         "  --no-header               skip generated header emission\n"
+        "  --single-file             one self-contained .c: rin's headers inlined, no #line\n"
         "  -I, --importdir <dir>     add a rin import search directory\n"
         "  --check                   legacy check mode\n"
         "  --diagnostics=json        emit diagnostics as JSON\n"
@@ -17997,6 +18371,10 @@ i32 main(i32 argc, char *argv[]) {
             emit_header = false;
             continue;
         }
+        if (cstr_equals(arg, "--single-file")) {
+            g_single_file = true;
+            continue;
+        }
         if (cstr_equals(arg, "--modules")) {
             if (i + 1 >= argc) {
                 if (g_diag_json) {
@@ -18305,6 +18683,17 @@ i32 main(i32 argc, char *argv[]) {
     if (!emit_header && header_path) {
         cli_error_json_or_text("--no-header cannot be used with --header or a positional header path");
         return 1;
+    }
+    if (g_single_file) {
+        if (header_path) {
+            cli_error_json_or_text("--single-file writes no header, so it cannot be used with --header or a positional header path");
+            return 1;
+        }
+        if (modules_dir) {
+            cli_error_json_or_text("--single-file cannot be used with --modules, which writes a file per module");
+            return 1;
+        }
+        emit_header = false;
     }
     g_source_path = input_path;
 
@@ -18625,6 +19014,16 @@ i32 main(i32 argc, char *argv[]) {
     string8 output = string8_reserve(&arena, input.length * 2 + 1024);
     emit_program(&arena, &prog, &output);
     profile_mark("emit c", &profile_last, profile_start);
+    if (g_single_file) {
+        Vec_string8 gen_names = Vec_string8_reserve(&arena, 8);
+        Vec_string8 gen_texts = Vec_string8_reserve(&arena, 8);
+        collect_native_monomorph_headers(&arena, &prog, &gen_names, &gen_texts);
+        Vec_string8 seen = Vec_string8_reserve(&arena, 16);
+        string8 single = string8_reserve(&arena, output.length + 64 * 1024);
+        amalgamate_c(&arena, output, &gen_names, &gen_texts, &seen, &single, 0);
+        output = single;
+        profile_mark("single file", &profile_last, profile_start);
+    }
 
     string8 header_output = {0};
     if (emit_header) {
@@ -18662,7 +19061,7 @@ i32 main(i32 argc, char *argv[]) {
         }
         profile_mark("write header", &profile_last, profile_start);
     }
-    if (!emit_native_monomorph_headers(&arena, &prog, output_path)) {
+    if (!g_single_file && !emit_native_monomorph_headers(&arena, &prog, output_path)) {
         return 1;
     }
     profile_mark("native mono headers", &profile_last, profile_start);

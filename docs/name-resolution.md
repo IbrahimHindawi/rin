@@ -86,7 +86,7 @@ declarations in njinn**.
 - `src/std/cstd.rin` -- a new module declaring the C runtime std itself uses
   (`printf`, `fopen_s`, `fclose`, `fseek`, `ftell`, `fread`, `exit`, `memcpy`,
   `memmove`, `memset`, `memcmp`, `strlen`, `strcmp`) and the opaque `FILE`.
-  Imported by `memops.rin`, `Option.rin`, `Print.rin`, `Result.rin`, `Equal.rin` and
+  Imported by `memops.rin`, `option.rin`, `print.rin`, `result.rin`, `equal.rin` and
   `reflect.rin`; transitivity covers the rest of std -- and njinn, whose 95 `printf`
   calls resolved through it without a single edit.
 - `njinn/src/externs.rin` -- 11 declarations, in the sections that already held
