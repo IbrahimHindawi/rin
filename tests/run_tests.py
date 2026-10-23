@@ -4910,6 +4910,70 @@ main:proc()->i32 = {
         return 1
     print("ok switch_exhaustive")
 
+    # `enum[must_use]` marks a status type: a call whose result is one of these
+    # may not be a bare statement. Marked on the type rather than the proc, so a
+    # status enum returned by forty procs is one attribute. `_ = f();` discards on
+    # purpose and lowers to a `(void)` cast.
+    must_use_rin = TEST_DIR / "must_use.rin"
+    must_use_c = TEST_DIR / "must_use.c"
+    must_use_head = (
+        "printf: proc[external](fmt: [*]const char, ...) -> i32 = {}\n"
+        "status: enum[must_use] = { ok, failed, }\n"
+        "plain: enum = { a, b, }\n"
+        "load: proc() -> status = { return status.ok; }\n"
+        "pick: proc() -> plain = { return plain.a; }\n"
+    )
+    for body, label in (
+        ("    s: status = load();\n    return cast(s, i32);\n", "the result stored"),
+        ("    if (load() != status.ok) { return 1; }\n    return 0;\n", "the result compared"),
+        ("    _ = load();\n    return 0;\n", "the result discarded with '_ ='"),
+        ("    pick();\n    printf(\"x\");\n    return 0;\n", "a plain enum and printf ignored"),
+    ):
+        must_use_rin.write_text(must_use_head + "main: proc() -> i32 = {\n" + body + "}\n",
+                                encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(must_use_rin)])
+        if res.returncode != 0:
+            print(f"must_use: {label!r} must stay legal")
+            print(res.stdout)
+            return 1
+
+    must_use_rin.write_text(must_use_head + "main: proc() -> i32 = {\n    load();\n    return 0;\n}\n",
+                            encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(must_use_rin)])
+    if res.returncode == 0 or "result of type 'status' is ignored" not in res.stdout:
+        print("must_use: an ignored must_use result must be reported")
+        print(res.stdout)
+        return 1
+
+    # '_' is not a variable: it cannot be read, compound-assigned, or put on a struct.
+    for body, label, needle in (
+        ("    x: i32 = _;\n    return x;\n", "reading '_'", "_"),
+        ("    _ += 1;\n    return 0;\n", "compound-assigning '_'", "only discards"),
+    ):
+        must_use_rin.write_text(must_use_head + "main: proc() -> i32 = {\n" + body + "}\n",
+                                encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(must_use_rin)])
+        if res.returncode == 0 or needle not in res.stdout:
+            print(f"must_use: {label} must be an error")
+            print(res.stdout)
+            return 1
+    must_use_rin.write_text("s: struct[must_use] = { x: i32; }\nmain: proc() -> i32 = { return 0; }\n",
+                            encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(must_use_rin)])
+    if res.returncode == 0 or "'must_use' marks an enum" not in res.stdout:
+        print("must_use: the attribute on a struct must be an error")
+        print(res.stdout)
+        return 1
+
+    must_use_rin.write_text(must_use_head + "main: proc() -> i32 = {\n    _ = load();\n    return 0;\n}\n",
+                            encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), str(must_use_rin), str(must_use_c)])
+    if res.returncode != 0 or "(void)(load());" not in must_use_c.read_text(encoding="utf-8"):
+        print("must_use: '_ = load();' must lower to '(void)(load());'")
+        print(res.stdout)
+        return 1
+    print("ok must_use")
+
     # `rin build` reads build.rin and drives cmake. The whole point is that a
     # project describes its build once, declaratively, and never hand-writes a
     # CMakeLists -- so this checks the generated one says what build.rin did,
@@ -5396,6 +5460,39 @@ main:proc()->i32 = {
         print(f"status_enum_errors: expected 'bad_magic <unknown>', got {ran.stdout.strip()!r}")
         return 1
     print("ok status_enum_errors")
+
+    # `{}` on an enum prints the member name with no print<E> written, a value
+    # that is not a member prints as `type(value)`, and a hand-written print<E>
+    # still wins. Before this, `{}` on an enum emitted a call to a print_E that
+    # did not exist and clang rejected the generated C.
+    enum_print_i = TEST_DIR / "printfmt_enum.rin"
+    enum_print_c = TEST_DIR / "printfmt_enum.c"
+    enum_print_exe = TEST_DIR / "printfmt_enum.exe"
+    enum_print_i.write_text(
+        "import \"std/print.rin\"\n"
+        "gpu_status: enum = { ok, bad_format, }\n"
+        "anim_kind: enum = { idle, run, }\n"
+        "print: proc<anim_kind>(a: anim_kind) -> void = { print_cstr(\"custom\"); }\n"
+        "main: proc() -> i32 = {\n"
+        "    e: gpu_status = gpu_status.bad_format;\n"
+        "    printfmt(\"{} {} {} {}\", e, cast(7, gpu_status), anim_kind.run, 3);\n"
+        "    return 0;\n}\n",
+        encoding="utf-8", newline="\n")
+    gen = run([str(RIN_EXE), "compile", str(enum_print_i), "-o", str(enum_print_c), "--no-header"])
+    if gen.returncode != 0:
+        print("printfmt_enum: should compile")
+        print(gen.stdout)
+        return 1
+    built = run(["clang.exe", str(enum_print_c), "-I", "src", "-I", "src/std", "-o", str(enum_print_exe)])
+    if built.returncode != 0:
+        print("printfmt_enum: generated C did not build")
+        print(built.stdout)
+        return 1
+    ran = run([str(enum_print_exe)])
+    if ran.stdout.strip() != "bad_format gpu_status(7) custom 3":
+        print(f"printfmt_enum: expected 'bad_format gpu_status(7) custom 3', got {ran.stdout.strip()!r}")
+        return 1
+    print("ok printfmt_enum")
 
     line_map_i = TEST_DIR / "generated_line_map.rin"
     line_map_c = TEST_DIR / "generated_line_map.c"

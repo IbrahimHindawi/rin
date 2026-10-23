@@ -1,5 +1,6 @@
 cinclude "stdio.h"
 import "cstd.rin"
+import "reflect.rin"
 
 print_cstr: proc(text: [*]const char) -> void = {
     if (text == null) {
@@ -71,4 +72,16 @@ print: proc<[*]char>(x: [*]char) -> void = {
 
 print: proc<[*]const char>(x: [*]const char) -> void = {
     print_cstr(x);
+}
+
+// What printfmt prints for an enum with no print<E> of its own: the member's
+// name, or `type(value)` when the value is not a member -- one read from a
+// file or a cast, say -- so a miss still says which enum and what it held.
+print_enum: proc(type: *const reflect, value: i32) -> void = {
+    name: [*]const char = reflect_name_from_value(type, value);
+    if (name != null) {
+        printf("%s", name);
+        return;
+    }
+    printf("%s(%d)", type[0].name, value);
 }

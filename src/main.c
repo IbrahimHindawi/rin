@@ -722,6 +722,7 @@ struct Stmt {
     bool is_external;
     bool is_static;
     bool is_uninitialized; // '= ?': deliberately left with indeterminate contents
+    bool is_discard;       // '_ = expr;': a Stmt_Expr whose value is thrown away on purpose
     Expr *lhs;
     Expr *expr;
     TokenKind assign_op;
@@ -809,6 +810,7 @@ struct EnumDecl {
     const char *source_path;
     const char *import_chain;
     bool is_external;
+    bool must_use;  /* enum[must_use]: ignoring a result of this type is an error */
     Vec_voidptr items; // EnumItem*
     Vec_string8 tail_directives; // '#' lines after the last item
     i32 line;
@@ -2283,6 +2285,7 @@ typedef struct DeclAttributes {
     string8 align;       /* the N in align(N), empty when unset */
     string8 underlying;  /* enum[u32] and friends, empty when unset */
     string8 callconv;
+    bool must_use;       /* enum[must_use]: a result of this type may not be ignored */
 } DeclAttributes;
 static DeclAttributes parse_decl_attributes(Parser *p, bool is_enum);
 
@@ -3931,6 +3934,22 @@ static Stmt *parse_stmt_inner(Parser *p) {
         p->index--;
         Expr *lhs = parse_expr(p);
         TokenKind assign_op = parser_match_assign_op(p);
+        if (assign_op != Token_EOF && lhs && lhs->kind == Expr_Name &&
+            string8_equals_cstr(&lhs->name, "_")) {
+            /* '_ = f();' discards a result on purpose, which is what an
+               enum[must_use] asks for. '_' is not a variable: there is nothing
+               to read back and nothing to compound-assign into. */
+            if (assign_op != Token_Equal) {
+                parser_error_token(p, name_tok, "'_' only discards, as in '_ = f();'");
+            }
+            Stmt *s = stmt_new(p->arena, Stmt_Expr);
+            s->is_discard = true;
+            s->expr = parse_expr(p);
+            s->line = lhs->line;
+            s->col = lhs->col;
+            parser_expect(p, Token_Semicolon, "expected ';' after discard");
+            return s;
+        }
         if (assign_op != Token_EOF) {
             Stmt *s = stmt_new(p->arena, Stmt_Assign);
             s->lhs = lhs;
@@ -4010,10 +4029,20 @@ static DeclAttributes parse_decl_attributes(Parser *p, bool is_enum) {
                implementation. Only meaningful on an enum, so only accepted
                there -- on a struct the same spelling is a mistake. */
             attrs.underlying = token_to_string8(p->arena, tok);
+        } else if (string8slice_equals_cstr(tok->text, "must_use")) {
+            /* Marked on the type, not the proc: a status enum is returned by
+               many procs, and every one of them should be checked. */
+            if (is_enum) {
+                attrs.must_use = true;
+            } else {
+                parser_error_token(p, tok,
+                    "'must_use' marks an enum; put it on the status enum the proc returns, "
+                    "as in 'E: enum[must_use] = { ... }'");
+            }
         } else {
             parser_error_token(p, tok,
                 "unknown attribute; expected one of external, external_emit, "
-                "no_layout_check, packed, align(N), callconv(NAME)");
+                "no_layout_check, packed, align(N), callconv(NAME), must_use");
         }
     } while (parser_match(p, Token_Comma));
     parser_expect(p, Token_RBracket, "expected ']' after attributes");
@@ -4256,6 +4285,7 @@ static EnumDecl *parse_enum_decl(Parser *p, Token *name_tok) {
     DeclAttributes enum_attrs = parse_decl_attributes(p, true);
     if (enum_attrs.is_external) decl->is_external = true;
     decl->underlying = enum_attrs.underlying;
+    decl->must_use = enum_attrs.must_use;
 
     parser_expect(p, Token_Equal, "expected '=' after enum");
     parser_expect(p, Token_LBrace, "expected '{' in enum");
@@ -12051,6 +12081,25 @@ static void type_error_switch_not_exhaustive(
     diag_finish_at(line, col);
 }
 
+/* An expression statement whose value is an enum[must_use] -- a status saying
+   whether the call worked, dropped on the floor. */
+static void type_error_must_use_ignored(string8 enum_name, i32 line, i32 col) {
+    if (g_diag_json) {
+        char message[512];
+        snprintf(message, sizeof(message),
+                 "result of type '%.*s' is ignored; use it, or write '_ = f();' to discard it",
+                 (int)enum_name.length, enum_name.data);
+        diag_json_error(diag_current_path(), line, col, "type", message);
+        diag_record_error();
+        return;
+    }
+    printf("%s:%d:%d: type error: result of type '%.*s' is ignored; "
+           "use it, or write '_ = f();' to discard it\n",
+           g_diag_source_path ? g_diag_source_path : g_source_path,
+           line, col, (int)enum_name.length, enum_name.data);
+    diag_finish_at(line, col);
+}
+
 static void type_error_call_non_proc(
     string8 name,
     TypeExpr *callee,
@@ -14149,6 +14198,13 @@ static void type_check_stmt(
     }
     if (s->kind == Stmt_Expr) {
         type_check_expr(s->expr, scope, prog, arena);
+        if (!s->is_discard && s->expr) {
+            TypeExpr *result = resolve_alias_type(prog, infer_expr_type(s->expr, scope, prog, arena));
+            EnumDecl *enum_decl = (result && result->kind == Type_Name) ? lookup_enum_decl(prog, result->name) : null;
+            if (enum_decl && enum_decl->must_use) {
+                type_error_must_use_ignored(enum_decl->name, s->line, s->col);
+            }
+        }
         g_diag_source_path = prev_diag_source_path;
         g_diag_import_chain = prev_diag_import_chain;
         return;
@@ -14537,6 +14593,35 @@ static void printfmt_append_print_arg(memops_arena *arena, Vec_voidptr *out, Stm
         char message[256];
         snprintf(message, sizeof(message), "cannot infer printfmt arg %d type", (int)arg_index);
         printfmt_error_at(source ? source->source_path : null, arg->line, arg->col, message);
+    }
+    /* An enum with no print<E> of its own prints its member name, through the
+       reflection record every enum already has. A print<E> written by hand
+       still wins, so a project that wants its own spelling keeps it. */
+    TypeExpr *resolved = type ? resolve_alias_type(prog, type) : null;
+    EnumDecl *enum_decl = (resolved && resolved->kind == Type_Name) ? lookup_enum_decl(prog, resolved->name) : null;
+    if (enum_decl) {
+        string8 own_print = mono_proc_name_from_mangle(arena, string8_from_cstr(arena, "print"),
+                                                       type_mangle(arena, resolved, (TypeSub){0}));
+        if (!lookup_proc_decl(prog, own_print)) {
+            Expr *record = expr_new(arena, Expr_Name);
+            record->name = concat_name2(arena, enum_decl->name, "_", string8_from_cstr(arena, "reflect"));
+            record->line = arg->line;
+            record->col = arg->col;
+            Expr *record_addr = expr_new(arena, Expr_Addr);
+            record_addr->inner = record;
+            record_addr->line = arg->line;
+            record_addr->col = arg->col;
+            Expr *value = expr_new(arena, Expr_Cast);
+            value->inner = arg;
+            value->cast_type = type_name_expr(arena, "i32");
+            value->line = arg->line;
+            value->col = arg->col;
+            Expr *call = printfmt_call_expr(arena, "print_enum", arg->line, arg->col);
+            ptr_array_append(arena, &call->args, record_addr);
+            ptr_array_append(arena, &call->args, value);
+            ptr_array_append(arena, out, printfmt_expr_stmt(arena, call, source));
+            return;
+        }
     }
     Expr *call = printfmt_call_expr(arena, "print", arg->line, arg->col);
     ptr_array_append(arena, &call->args, arg);
@@ -15430,8 +15515,9 @@ static void emit_stmt(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, s
         return;
     }
     if (s->kind == Stmt_Expr) {
+        if (s->is_discard) emit_cstr(arena, out, "(void)(");
         emit_expr_value(arena, out, s->expr, sub, generic_name);
-        emit_cstr(arena, out, ";\n");
+        emit_cstr(arena, out, s->is_discard ? ");\n" : ";\n");
         return;
     }
     if (s->kind == Stmt_For) {

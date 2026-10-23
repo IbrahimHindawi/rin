@@ -290,6 +290,25 @@ satisfy this. `inline` and `deprecated` are the first two that would need
 arguing about, and are deliberately out of scope for now -- the rule above is
 what to argue with when they come up.
 
+### `enum[must_use]`
+
+The first attribute that only adds a check. It changes neither the lowering nor
+the meaning, so it passes the rule above trivially.
+
+    load_status: enum[must_use] = { ok, missing, corrupt, }
+
+    load();               // type error: result of type 'load_status' is ignored
+    s: load_status = load();
+    _ = load();           // discarded on purpose; emits (void)(load());
+
+It goes on the type, not the proc, because a status enum is returned by many
+procs and every caller should be checked. That is Rust's `#[must_use]` on
+`Result`, rather than C23's `[[nodiscard]]` on each function. On a struct or a
+proc it is an error.
+
+`_` is not a variable. It cannot be read or compound-assigned; it only appears
+on the left of `_ = expr;`. Covered by `must_use`.
+
 ## What this means for C headers
 
 **Nothing, directly.** The attribute change is a spelling change for a marker

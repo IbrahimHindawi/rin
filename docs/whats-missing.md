@@ -11,7 +11,8 @@ Worth stating first, because it changes what the gaps cost.
 - **318 discriminating checks**, mutation-tested. The suite fails when a
   lowering is deliberately broken, which is the only property that means
   anything.
-- **481 ms to compile njinn** -- 28k lines of rin into 60k lines of C.
+- **481 ms to compile njinn** (measured at 28k lines) -- now 36k lines of rin
+  into 52k lines of C.
 - **Order-independent declarations.** A type or proc may be used before it is
   declared. No forward declarations, no header discipline.
 - **Nominal typing where it counts.** Structs do not interconvert, pointers do
@@ -36,23 +37,25 @@ failure signal goes nowhere. Some of those 145 are deliberate fire-and-forget.
 Some are bugs. Nothing distinguishes them, and nothing will without a **must-use**
 notion: a proc marked such that discarding its value is a diagnostic.
 
-That much is a plain gap, independent of anything below, and it sharpens the
-error model already in use rather than proposing a different one. The marker can
-be an attribute (`proc[must_use]`), which the slot already supports.
+**Done: `enum[must_use]`.** The marker goes on the status type, not the proc, so
+one attribute covers every proc that returns it. A bare call whose result is
+such an enum is a type error, and `_ = f();` discards it on purpose (lowered to
+`(void)(f());`). See [attributes.md](attributes.md). It covers status enums,
+not `b32`: those 145 sites are only checked once they return a status type, which is
+the direction §1 already chose.
 
 ### Error handling: decided
 
 **A status enum per domain, the value through an out-parameter, the message from
 reflection.** `result<T>` is not the direction.
 
-    mesh_status: enum = { success, file_not_found, bad_magic, truncated, }
+    mesh_status: enum[must_use] = { success, file_not_found, bad_magic, truncated, }
 
     mesh_load: proc(mesh: *geo_mesh) -> mesh_status { ... }
 
-    e: mesh_status = mesh_load(mesh.&);
+    e: mesh_status = mesh_load(mesh&);
     if (e != mesh_status.success) {
-        printfmt("load failed: {}\n",
-                 reflect_name_from_value_or(e<>.&, cast(e, i32), "?"));
+        printfmt("load failed: {}\n", e);   // prints the member name
         return -1;
     }
 
@@ -69,12 +72,16 @@ What it gets right:
 - **The out-parameter avoids a copy.** `result<geo_mesh, E>` returns the mesh by
   value, and rin has no moves, so that is a copy of everything in it.
 
-Two pieces of the pattern live in the language rather than in each project.
-`reflect_name_from_value_or` is in `std/reflect.rin` -- the plain version returns
-null when nothing matches, which is right for code that tests the result and
-wrong for the common use, since passing null to a `%s` is undefined. And `<>`
-works on a *value*, not only a type, so the status variable names its own
-record. Covered by `status_enum_errors` and `reflect_of_value`.
+The pattern lives in the language rather than in each project:
+
+- **`{}` on an enum prints its member name.** It goes through the reflection
+  record every enum already has (`print_enum` in `std/print.rin`), and a value
+  that is not a member prints as `mesh_status(7)`. A hand-written `print<E>`
+  still takes priority. Covered by `printfmt_enum`.
+- **For a string rather than output,** `reflect_name_from_value_or(e<>&,
+  cast(e, i32), fallback)` is in `std/reflect.rin`. `<>` works on a value, so
+  the status variable names its own record. Covered by `status_enum_errors` and
+  `reflect_of_value`.
 
 ### Why not `result<T, E>`
 
@@ -107,14 +114,15 @@ what `std/result.rin` is, and why it has three uses.
 
 ### What would strengthen the decided design
 
-**Enum exhaustiveness in `switch`** -- item 1 in the order below, and now with a
-concrete motivation rather than an abstract one. Handle a `mesh_status` with a
+**Enum exhaustiveness in `switch`** -- done (`switch_exhaustive`). Handle a `mesh_status` with a
 `switch`, add `truncated` to the enum, and every handler that does not cover it
 fails to compile. That is the property people actually want from `result` plus
 `match`, on a plain enum, with no generics, no propagation operator and no
 copies.
 
 ## 2. No `defer`
+
+**Delayed** (2026-10-23). Not rejected; parked behind must-use.
 
 Manual memory, 199 abort sites, and no scoped cleanup. Arenas carry most of the
 weight in njinn, which is why this has not bitten harder -- but every early
@@ -138,18 +146,19 @@ grow `P.get: proc(self: *P)` or any other form of a proc bound to a type. This
 is recorded so it is not proposed again.
 
 Which leaves **module namespaces** (§10 of `shape.md`, parked) as the only
-lever on that 91%. Worth saying plainly, because it changes what §10 is: not a
-cosmetic preference between `mem.arena` and `mem_arena`, but the sole remaining
-answer to a tax every declaration in the codebase pays.
+lever on that 91%.
 
-## 4. Missing loop and return forms
+**Delayed** (2026-10-23), along with multi-file C output. A namespace turns
+`mem_arena` into `mem.arena`: a `.` instead of a `_`, which is not worth a
+module system on its own.
 
-- **No `for (v in xs)`.** njinn has **238 index-style loops**. Iteration over an
-  array whose length is in its type is decidable and mechanical.
-- **No multiple return values.** Anything returning both a value and a status
-  uses an out-parameter -- which is the decided error-handling shape (§1), so
-  this is less a gap than it first looks. It still bites for a genuine pair of
-  results that are not value-plus-status.
+## 4. Loop and return forms: decided against
+
+- **No `for (v in xs)`.** It hides the index, and nearly every loop in njinn
+  uses it. The index-style loop stays the only loop.
+- **No multiple return values.** A value plus a status already has its shape
+  (the out-parameter, §1), and a genuine pair is a small named struct. Tuples
+  would also break the `name: kind = value` declaration shape.
 
 ## 5. Cheap correctness checks that do not exist
 
@@ -157,16 +166,14 @@ Each of these is accepted today, and each is a known bug source:
 
 | accepted | note |
 |---|---|
-| `switch` over an enum missing cases | **the valuable one** -- enums are already nominally typed, so the machinery to know the type exists |
+| ~~`switch` over an enum missing cases~~ | done: an error unless there is a `default` |
 | an unused local | clang warns at `-Wall`; rin says nothing |
-| a discarded return value | no must-use of any kind |
+| ~~a discarded return value~~ | done for status types: `enum[must_use]` |
 | assigning to a parameter | shadows the caller's intent silently |
 | unreachable code after `return` | |
 | `sizeof` on an opaque `external` | rin accepts, clang then reports the name as undeclared |
 
-Enum exhaustiveness is the one worth doing first. njinn has 34 enums, the type
-of a switch subject is already known, and a missing case is the classic way a
-new enum member silently does nothing.
+The remaining rows are cheap, and each catches a real class of bug.
 
 ## 6. Diagnostics cascade
 
@@ -176,7 +183,7 @@ consequences of an error already reported is noise.
 
 ## 7. Compiler shape
 
-`src/main.c` is **16,194 lines** in one file. Not a language problem, and not
+`src/main.c` is **19,135 lines** in one file. Not a language problem, and not
 urgent while one person works on it, but it is the reason a change like the
 preprocessor rework touches lexer, parser, semantics and emitter in the same
 file with no boundary between them.
@@ -187,15 +194,13 @@ off that is.
 
 ## Suggested order
 
-1. **Enum exhaustiveness in `switch`** -- small, high value, machinery exists.
-2. **Must-use for return values** -- 145 discarded status returns, and it
-   sharpens the error model already in use.
-3. **`defer`** -- small, and the ergonomic gap most visible in daily use.
-4. **`for (v in xs)`** -- 238 sites say it pays for itself.
-5. **Module namespaces** (§10) -- 91% of procs carry a hand-written prefix, and
-   with methods ruled out this is the only thing that can remove it.
+1. **Done:** enum exhaustiveness in `switch`.
+2. **Done:** must-use, as `enum[must_use]`.
+3. **Next:** the cheap checks in §5, and the diagnostics cascade (§6).
+4. **Delayed:** `defer`, module namespaces, multi-file C output.
 
-**Decided, not deferred:** no methods, in any form.
+**Decided, not deferred:** no methods, in any form; no `for (v in xs)`; no
+multiple return values.
 
 **Decided:** errors are a status enum per domain, the value comes back through
 an out-parameter, and the message comes from reflection. `result<T>` is not the
