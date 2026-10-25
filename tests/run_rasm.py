@@ -10,6 +10,7 @@ skips itself when there is none.
 """
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -48,6 +49,24 @@ def main() -> int:
                 lines = subprocess.run([str(PDBUTIL), "dump", "-l", str(pdb)], capture_output=True, text=True)
                 if src.name not in lines.stdout.replace("\\", "/"):
                     failures.append(f"{src.name}: the PDB's line table does not name the .rasm")
+        # --index, the editor's view: basics.rasm's layout and symbols as the assembler sees them
+        runs += 1
+        index = work / "index.json"
+        src = CASES / "basics.rasm"
+        r = subprocess.run([str(RIN), "asm", str(src), "--index", str(index)], cwd=work, capture_output=True, text=True)
+        try:
+            ix = json.loads(index.read_text(encoding="utf-8"))
+            body = next(s for s in ix["structs"] if s["name"] == "body")
+            mass = next(f for f in body["fields"] if f["name"] == "mass")
+            main_proc = next(p for p in ix["procs"] if p["name"] == "main")
+            ok = (r.returncode == 0 and body["size"] == 32 and mass["offset"] == 16
+                  and any(lb["name"] == "sum" for lb in main_proc["labels"])
+                  and any(m["name"] == "say" and len(m["params"]) == 2 for m in ix["macros"])
+                  and any(d["name"] == "COUNT" and d.get("value") == 4 for d in ix["defines"]))
+        except (OSError, ValueError, StopIteration, KeyError):
+            ok = False
+        if not ok:
+            failures.append(f"--index: basics.rasm's index is missing or wrong\n{r.stdout}{r.stderr}")
         for src in sorted((CASES / "errors").glob("*.rasm")):
             runs += 1
             r = subprocess.run([str(RIN), "asm", str(src), "--no-link"], cwd=work,

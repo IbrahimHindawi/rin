@@ -1,0 +1,4 @@
+main: proc() -> i32 = {
+    cmp ax, '?#'
+    ret
+}

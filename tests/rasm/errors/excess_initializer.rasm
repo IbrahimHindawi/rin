@@ -1,0 +1,8 @@
+; more values than the array holds: C would drop the extra one
+
+three: [3]u32 = { 1, 2, 3, 4 }
+
+main: proc() -> i32 = {
+    xor eax, eax
+    ret
+}
