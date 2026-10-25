@@ -1,0 +1,362 @@
+; 2.1 Hello triangle
+;
+; Getting three points on screen, with every step written out:
+;
+;   1. compile a vertex shader and a pixel shader from HLSL
+;   2. put the vertices in a GPU buffer, and describe one vertex's layout
+;   3. each frame: bind it all, and draw
+;
+; The left shape is three vertices drawn in order. The right is four vertices
+; and six indices: two triangles sharing a diagonal. Tab toggles wireframe.
+;
+; The port of masm64-dx11's src/1.getting_started/2.1.hello_triangle in the
+; proposed rasm. Every instruction below is emitted as written; rasm adds
+; none. State lives in .data, so nothing here has a local, and every address
+; passed to a call is a global's: `x&`.
+import "../includes/d3d11.rin"        ; rinbind output: structs, enums, consts, *Vtbl structs, externals
+import "../includes/calls.rasm"       ; invoke, vcall
+import "../includes/print.rasm"
+import "../includes/learn/filesystem.rasm"
+
+; settings
+;
+; INTERESTING: a #define is the compile-time constant, an immediate wherever
+; it is used, exactly as in C (and rin hands this same line to C). A `const`
+; would have storage, and C does not accept a const variable in a static
+; initialiser like `rect`'s below, so neither does rasm.
+#define SCR_WIDTH 1280
+#define SCR_HEIGHT 720
+#define WINDOW_STYLE (WS_OVERLAPPEDWINDOW & ~(WS_THICKFRAME | WS_MAXIMIZEBOX))
+
+; INTERESTING: windows.h spells this MAKEINTRESOURCE(32512), a call-shaped
+; macro rasm cannot evaluate, so the number is written here. C keeps its own
+; definition: the data file only defines what the header has not.
+#define IDC_ARROW 32512
+
+; Positions straight in clip space: x and y from -1 to 1, the centre is 0.
+; Counter-clockwise, which these lessons treat as the front.
+triangle_vertices: [9]const f32 = {
+    -0.9, -0.5, 0.0,
+    -0.1, -0.5, 0.0,
+    -0.5,  0.5, 0.0,
+}
+rectangle_vertices: [12]const f32 = {
+    0.1, -0.5, 0.0,   ; bottom left
+    0.9, -0.5, 0.0,   ; bottom right
+    0.9,  0.5, 0.0,   ; top right
+    0.1,  0.5, 0.0,   ; top left
+}
+rectangle_indices: [6]const u32 = { 0, 1, 2, 0, 2, 3 }
+
+; One attribute: three floats, read as POSITION by the vertex shader.
+vertex_layout: [1]const D3D11_INPUT_ELEMENT_DESC = {
+    { .SemanticName = "POSITION", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT },
+}
+clear_color: [4]const f32 = { 0.2, 0.3, 0.3, 1.0 }
+
+; win32 state. What is known now is written now; the rest is stored by main.
+wc: WNDCLASSA = {
+    .lpfnWndProc = window_proc&,
+    .lpszClassName = "LearnD3D11",
+}
+rect: RECT = { .right = SCR_WIDTH, .bottom = SCR_HEIGHT }
+window: HWND = {}
+msg: MSG = {}
+running: b32 = 1
+
+; keys pressed since they were last read, for toggles
+keys_pressed: [256]u8 = {}
+
+; d3d11 state
+swap_desc: DXGI_SWAP_CHAIN_DESC = {
+    .BufferDesc = {
+        .Width = SCR_WIDTH,
+        .Height = SCR_HEIGHT,
+        .Format = DXGI_FORMAT.DXGI_FORMAT_R8G8B8A8_UNORM,
+    },
+    .SampleDesc = { .Count = 1 },
+    .BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
+    .BufferCount = 2,
+    .Windowed = 1,
+    .SwapEffect = DXGI_SWAP_EFFECT.DXGI_SWAP_EFFECT_FLIP_DISCARD,
+}
+feature_level: D3D_FEATURE_LEVEL = D3D_FEATURE_LEVEL.D3D_FEATURE_LEVEL_11_0
+swap_chain: *IDXGISwapChain = {}
+device: *ID3D11Device = {}
+context: *ID3D11DeviceContext = {}
+backbuffer: *ID3D11Texture2D = {}
+backbuffer_rtv: *ID3D11RenderTargetView = {}
+
+; GL's conventions rather than D3D's: counter-clockwise triangles face the
+; viewer, and nothing is culled. The wireframe state differs only in the fill,
+; so it is a second initialised struct rather than a copy and a store.
+raster_desc: D3D11_RASTERIZER_DESC = {
+    .FillMode = D3D11_FILL_MODE.D3D11_FILL_SOLID,
+    .CullMode = D3D11_CULL_MODE.D3D11_CULL_NONE,
+    .FrontCounterClockwise = 1,
+    .DepthClipEnable = 1,
+}
+wire_desc: D3D11_RASTERIZER_DESC = {
+    .FillMode = D3D11_FILL_MODE.D3D11_FILL_WIREFRAME,
+    .CullMode = D3D11_CULL_MODE.D3D11_CULL_NONE,
+    .FrontCounterClockwise = 1,
+    .DepthClipEnable = 1,
+}
+raster_state: *ID3D11RasterizerState = {}
+wire_state: *ID3D11RasterizerState = {}
+viewport: D3D11_VIEWPORT = {
+    .Width = cast(SCR_WIDTH, f32),     ; folded here, as C folds it; no conversion runs
+    .Height = cast(SCR_HEIGHT, f32),
+    .MaxDepth = 1.0,
+}
+
+; shaders
+shader_path: *const u8 = {}
+shader_source: *u8 = {}
+shader_size: u64 = 0
+shader_code: *ID3DBlob = {}            ; compile_shader's results
+shader_errors: *ID3DBlob = {}
+vs_code: *ID3DBlob = {}
+ps_code: *ID3DBlob = {}
+vertex_shader: *ID3D11VertexShader = {}
+pixel_shader: *ID3D11PixelShader = {}
+input_layout: *ID3D11InputLayout = {}
+
+; buffers
+buffer_desc: D3D11_BUFFER_DESC = { .Usage = D3D11_USAGE.D3D11_USAGE_IMMUTABLE }    ; create_buffer's
+buffer_init: D3D11_SUBRESOURCE_DATA = {}
+new_buffer: *ID3D11Buffer = {}
+triangle_vb: *ID3D11Buffer = {}
+rectangle_vb: *ID3D11Buffer = {}
+rectangle_ib: *ID3D11Buffer = {}
+stride: u32 = 12
+; INTERESTING: `offset` is a reserved word in MASM (masm64-dx11 had to call
+; this `offset_`) and an operator in clang's Intel syntax too. rasm quotes
+; every symbol it emits, `[rip + "offset"]`, so the name is free.
+offset: u32 = 0
+wireframe: b32 = 0
+
+; win32: every event for the window (keys, mouse, closing) arrives here
+; ---------------------------------------------------------------------
+; The parameters stay in their registers: rcx hwnd, edx umsg, r8 wparam,
+; r9 lparam. Anything not handled goes to DefWindowProcA with all four still
+; in place, so that call is a jump.
+window_proc: proc(hwnd: HWND, umsg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT = {
+    cmp edx, WM_DESTROY
+    jne not_destroy
+        sub rsp, 40                    ; shadow space, and rsp back on 16
+        invoke(PostQuitMessage, 0)
+        add rsp, 40
+        xor eax, eax
+        ret
+    not_destroy:
+    ; Bit 30 of lparam is set when the key was already down: a repeat.
+    cmp edx, WM_KEYDOWN
+    jne pass_on
+    bt r9, 30
+    jc pass_on
+    cmp r8, 256
+    jae pass_on
+        lea rax, keys_pressed
+        mov byte ptr [rax + r8], 1
+        xor eax, eax
+        ret
+    pass_on:
+    jmp DefWindowProcA
+}
+
+; ecx: key -> eax: 1 if it was pressed since the last call
+key_pressed: proc(key: u32) -> b32 = {
+    and ecx, 0xFF
+    lea rdx, keys_pressed
+    movzx eax, byte ptr [rdx + rcx]
+    mov byte ptr [rdx + rcx], 0
+    ret
+}
+
+; process all input: ask Windows whether relevant keys are down this frame and react accordingly
+; ----------------------------------------------------------------------------------------------
+process_input: proc() = {
+    sub rsp, 40
+    invoke(GetAsyncKeyState, VK_ESCAPE)
+    test ax, ax                        ; the top bit is set while the key is held
+    jns done
+        invoke(DestroyWindow, window)
+    done:
+    add rsp, 40
+    ret
+}
+
+; rcx: path, rdx: source, r8: size, r9: entry point, [rsp + 40]: target -> rax: the compiled code
+compile_shader: proc(path: *const u8, source: *u8, size: u64, entry: *const u8, target: *const u8) -> *ID3DBlob = {
+    sub rsp, 88                        ; D3DCompile takes 11: 32 shadow + 7 * 8, and rsp lands on 16
+    mov shader_code, 0
+    mov shader_errors, 0
+    ; D3DCompile wants (source, size, path): rcx is moved to r8 after rdx has
+    ; been moved into rcx, so rcx is kept in r10 first.
+    ; invoke(D3DCompile, rdx, r8, rcx, ...) would pass the source as the path.
+    mov r10, rcx
+    invoke(D3DCompile, rdx, r8, r10, 0, D3D_COMPILE_STANDARD_FILE_INCLUDE, r9, qword ptr [rsp + 128], 0, 0, shader_code&, shader_errors&)
+    test eax, eax
+    jns compiled
+        vcall(shader_errors, ID3D10BlobVtbl.GetBufferPointer)
+        invoke(print, "ERROR::SHADER::COMPILATION_FAILED\n%s\n", rax)
+        invoke(ExitProcess, 1)
+    compiled:
+    mov rax, shader_code
+    add rsp, 88
+    ret
+}
+
+; ecx: bind flags, rdx: data, r8d: size -> rax: the buffer
+;
+; An immutable buffer: filled once at creation, never written by the CPU again.
+create_buffer: proc(bind: u32, data: *const void, size: u32) -> *ID3D11Buffer = {
+    sub rsp, 40
+    mov buffer_desc.ByteWidth, r8d
+    mov buffer_desc.BindFlags, ecx
+    mov buffer_init.pSysMem, rdx
+    vcall(device, ID3D11DeviceVtbl.CreateBuffer, buffer_desc&, buffer_init&, new_buffer&)
+    mov rax, new_buffer
+    add rsp, 40
+    ret
+}
+
+main: proc() -> i32 = {
+    push rbx
+    push rsi
+    sub rsp, 104                       ; 12-argument calls: 32 shadow + 8 * 8, plus 8 to land on 16
+
+    ; win32: register a window class and create the window
+    ; ----------------------------------------------------
+    call SetProcessDPIAware
+    invoke(GetModuleHandleA, 0)
+    mov wc.hInstance, rax
+    invoke(LoadCursorA, 0, IDC_ARROW)
+    mov wc.hCursor, rax
+    invoke(RegisterClassA, wc&)
+    ; A fixed size: the swap chain and every render target keep the size they
+    ; were created with, so nothing needs rebuilding on resize.
+    invoke(AdjustWindowRect, rect&, WINDOW_STYLE, 0)
+    mov ebx, rect.right
+    sub ebx, rect.left
+    mov esi, rect.bottom
+    sub esi, rect.top
+    invoke(CreateWindowExA, 0, "LearnD3D11", "LearnD3D11", WINDOW_STYLE | WS_VISIBLE, CW_USEDEFAULT, CW_USEDEFAULT, rbx, rsi, 0, 0, wc.hInstance, 0)
+    test rax, rax
+    jnz window_created
+        invoke(print, "Failed to create the window\n")
+        invoke(ExitProcess, 1)
+    window_created:
+    mov window, rax
+    mov swap_desc.OutputWindow, rax
+
+    ; d3d11: create the device, its immediate context and a swap chain
+    ; ----------------------------------------------------------------
+    invoke(D3D11CreateDeviceAndSwapChain, 0, D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_HARDWARE, 0, 0, feature_level&, 1, D3D11_SDK_VERSION,
+           swap_desc&, swap_chain&, device&, 0, context&)
+    test eax, eax
+    jns device_created
+        invoke(print, "Failed to create the D3D11 device\n")
+        invoke(ExitProcess, 1)
+    device_created:
+    vcall(swap_chain, IDXGISwapChainVtbl.GetBuffer, 0, IID_ID3D11Texture2D&, backbuffer&)
+    vcall(device, ID3D11DeviceVtbl.CreateRenderTargetView, backbuffer, 0, backbuffer_rtv&)
+
+    ; configure global d3d11 state
+    ; ----------------------------
+    vcall(device, ID3D11DeviceVtbl.CreateRasterizerState, raster_desc&, raster_state&)
+    vcall(device, ID3D11DeviceVtbl.CreateRasterizerState, wire_desc&, wire_state&)
+
+    ; build and compile our shader program
+    ; ------------------------------------
+    invoke(filesystem_path, "hello_triangle.hlsl")
+    mov shader_path, rax
+    invoke(filesystem_read, rax, shader_size&)
+    mov shader_source, rax
+    invoke(compile_shader, shader_path, shader_source, shader_size, "vs_main", "vs_5_0")
+    mov vs_code, rax
+    invoke(compile_shader, shader_path, shader_source, shader_size, "ps_main", "ps_5_0")
+    mov ps_code, rax
+    vcall(vs_code, ID3D10BlobVtbl.GetBufferPointer)
+    mov rbx, rax
+    vcall(vs_code, ID3D10BlobVtbl.GetBufferSize)
+    mov rsi, rax
+    vcall(device, ID3D11DeviceVtbl.CreateVertexShader, rbx, rsi, 0, vertex_shader&)
+    ; The layout is created against the compiled vertex shader, which is the
+    ; one place D3D checks that the two agree.
+    vcall(device, ID3D11DeviceVtbl.CreateInputLayout, vertex_layout&, 1, rbx, rsi, input_layout&)
+    vcall(ps_code, ID3D10BlobVtbl.GetBufferPointer)
+    mov rbx, rax
+    vcall(ps_code, ID3D10BlobVtbl.GetBufferSize)
+    ; rax goes straight in: calls.rasm sends the fifth argument through r11,
+    ; so rax, which holds every return value, is safe to pass anywhere.
+    vcall(device, ID3D11DeviceVtbl.CreatePixelShader, rbx, rax, 0, pixel_shader&)
+
+    ; set up vertex data (and buffer(s))
+    ; ----------------------------------
+    invoke(create_buffer, D3D11_BIND_FLAG.D3D11_BIND_VERTEX_BUFFER, triangle_vertices&, sizeof(triangle_vertices))
+    mov triangle_vb, rax
+    invoke(create_buffer, D3D11_BIND_FLAG.D3D11_BIND_VERTEX_BUFFER, rectangle_vertices&, sizeof(rectangle_vertices))
+    mov rectangle_vb, rax
+    invoke(create_buffer, D3D11_BIND_FLAG.D3D11_BIND_INDEX_BUFFER, rectangle_indices&, sizeof(rectangle_indices))
+    mov rectangle_ib, rax
+
+    ; render loop
+    ; -----------
+    render_loop:
+        pump:
+            invoke(PeekMessageA, msg&, 0, 0, 0, PM_REMOVE)
+            test eax, eax
+            jz pumped
+            cmp msg.message, WM_QUIT
+            jne not_quit
+                mov running, 0
+            not_quit:
+            invoke(TranslateMessage, msg&)
+            invoke(DispatchMessageA, msg&)
+            jmp pump
+        pumped:
+        cmp running, 0
+        je render_loop_done
+
+        ; input
+        ; -----
+        call process_input
+        invoke(key_pressed, VK_TAB)
+        xor wireframe, eax
+
+        ; render
+        ; ------
+        vcall(context, ID3D11DeviceContextVtbl.OMSetRenderTargets, 1, backbuffer_rtv&, 0)
+        vcall(context, ID3D11DeviceContextVtbl.RSSetViewports, 1, viewport&)
+        vcall(context, ID3D11DeviceContextVtbl.ClearRenderTargetView, backbuffer_rtv, clear_color&)
+
+        mov rax, raster_state
+        cmp wireframe, 0
+        je solid
+            mov rax, wire_state
+        solid:
+        vcall(context, ID3D11DeviceContextVtbl.RSSetState, rax)
+        vcall(context, ID3D11DeviceContextVtbl.IASetInputLayout, input_layout)
+        vcall(context, ID3D11DeviceContextVtbl.IASetPrimitiveTopology, D3D11_PRIMITIVE_TOPOLOGY.D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST)
+        vcall(context, ID3D11DeviceContextVtbl.VSSetShader, vertex_shader, 0, 0)
+        vcall(context, ID3D11DeviceContextVtbl.PSSetShader, pixel_shader, 0, 0)
+
+        vcall(context, ID3D11DeviceContextVtbl.IASetVertexBuffers, 0, 1, triangle_vb&, stride&, offset&)
+        vcall(context, ID3D11DeviceContextVtbl.Draw, 3, 0)
+
+        vcall(context, ID3D11DeviceContextVtbl.IASetVertexBuffers, 0, 1, rectangle_vb&, stride&, offset&)
+        vcall(context, ID3D11DeviceContextVtbl.IASetIndexBuffer, rectangle_ib, DXGI_FORMAT.DXGI_FORMAT_R32_UINT, 0)
+        vcall(context, ID3D11DeviceContextVtbl.DrawIndexed, 6, 0, 0)
+
+        ; dxgi: show the image just drawn, waiting for the next vertical blank
+        ; --------------------------------------------------------------------
+        vcall(swap_chain, IDXGISwapChainVtbl.Present, 1, 0)
+        jmp render_loop
+    render_loop_done:
+
+    ; ExitProcess does not return, so there is no epilogue: rbx and rsi are
+    ; never restored, and the 104 bytes are never given back.
+    invoke(ExitProcess, 0)
+}

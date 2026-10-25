@@ -1,0 +1,21 @@
+; bind_test.rasm: the generated binding, through the layout pass and the asserts.
+import "../includes/d3d11.rin"
+
+wc: WNDCLASSA = { .lpszClassName = "rasm" }
+desc: D3D11_BUFFER_DESC = { .Usage = D3D11_USAGE.D3D11_USAGE_IMMUTABLE }
+swap: DXGI_SWAP_CHAIN_DESC = {}
+
+main: proc() -> i32 = {
+    sub rsp, 40
+    mov eax, desc.BindFlags
+    mov rax, wc.hInstance
+    mov eax, swap.BufferDesc.Width
+    mov eax, swap.SampleDesc.Count
+    mov r10, [rcx].ID3D11DeviceVtbl.CreateBuffer
+    mov eax, WS_OVERLAPPEDWINDOW
+    mov eax, CW_USEDEFAULT
+    mov eax, D3D11_SDK_VERSION
+    mov eax, D3D11_PRIMITIVE_TOPOLOGY.D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
+    xor ecx, ecx
+    call ExitProcess
+}

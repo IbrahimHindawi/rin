@@ -1,0 +1,16 @@
+settings set plugin.symbol-file.pdb.reader native
+b proto.rasm:6
+run
+target variable desc
+next
+next
+next
+target variable desc
+next
+next
+next
+target variable desc.gravity
+register read xmm0
+bt
+source list -f proto.rasm -l 4 -c 11
+kill

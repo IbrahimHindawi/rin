@@ -1,0 +1,27 @@
+; proto.rasm: the smallest rasm program. One struct, one global, one proc.
+; `rin asm proto.rasm` builds it; set a breakpoint in this file and step.
+
+vec3: struct = {
+    x: f32
+    y: f32
+    z: f32
+}
+
+particle_desc: struct = {
+    count: u32
+    gravity: vec3
+}
+
+desc: particle_desc = { .count = 1000, .gravity = { 0.0, -9.8, 0.0 } }
+
+main: proc() -> i32 = {
+    sub rsp, 40
+    mov eax, desc.count
+    add eax, 1
+    mov desc.count, eax
+    movss xmm0, desc.gravity.y
+    addss xmm0, xmm0
+    movss desc.gravity.y, xmm0
+    xor ecx, ecx
+    call ExitProcess
+}

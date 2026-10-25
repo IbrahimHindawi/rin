@@ -1,0 +1,325 @@
+; math: vectors and 4x4 matrices, what glm is to LearnOpenGL
+;
+; The part of masm64-dx11's includes/math.asm that 5.1 uses, ported to see
+; whether SSE code stays pleasant with no locals, no frames and a macro
+; system that cannot loop.
+;
+; Conventions, unchanged from math.asm:
+;
+;   * right-handed world, column vectors: a point is transformed as `M * p`
+;   * a mat4 is stored row by row, m[row * 4 + col], and every shader says
+;     `#pragma pack_matrix(row_major)`, so mul(M, v) in HLSL is M * v here
+;   * Win64, floats included: a float argument goes in the xmm register of its
+;     position, so m4_rotate's angle, the second argument, is in xmm1
+;   * vectors and matrices are passed by address; results go through `out`,
+;     which may be the same as an input
+;   * only xmm0-xmm5 are touched: xmm6-xmm15 belong to the caller
+;
+; INTERESTING: the struct declarations below are the only types here. The
+; procs say `[rcx].mat4.m[5]` where math.asm said `real4 ptr [rcx + 20]` and
+; put `r.m[5]` in a comment: the comment became the operand.
+
+vec3: struct = {
+    x: f32
+    y: f32
+    z: f32
+}
+
+mat4: struct = {
+    m: [16]f32
+}
+
+; INTERESTING: `const` data goes to .rdata, and `align(16)` is not optional
+; here: andps and xorps with a memory operand fault on an address that is not
+; 16-aligned. MASM needed `align 16` and a `label xmmword` to get both the
+; alignment and the 16-byte operand size; here the type is 16 bytes, so the
+; size follows, and the attribute is the alignment.
+math_sign_mask: [4]const u32[align(16)] = { 0x80000000, 0x80000000, 0x80000000, 0x80000000 }    ; xor: flips every lane's sign
+math_abs_mask: [4]const u32[align(16)] = { 0x7FFFFFFF, 0x7FFFFFFF, 0x7FFFFFFF, 0x7FFFFFFF }     ; and: clears it
+
+; xmm = vec3 at [base], in lanes x, y, z (w is 0)
+;
+; INTERESTING: math.asm's version took any memory operand and wrote
+; `mem[8]` for the third float. A textual macro cannot add 8 to `[rdx]`, so
+; this one takes the base register. Every caller in math passes a register,
+; so nothing is lost; a global would need `lea` first.
+v3load: macro(reg, base) = {
+    movsd reg, qword ptr [base]
+    insertps reg, dword ptr [base + 8], 0x20
+}
+
+; vec3 at [base] = lanes x, y, z of xmm
+v3store: macro(base, reg) = {
+    movsd qword ptr [base], reg
+    extractps dword ptr [base + 8], reg, 2
+}
+
+; xmm = the same float in every lane
+splat: macro(reg) = {
+    shufps reg, reg, 0
+}
+
+; scalars ----------------------------------------------------------------------
+
+; xmm0: angle in radians -> xmm0
+;
+; The x87 unit still has sine and cosine instructions, which saves writing
+; polynomials. It only loads from memory, so the float goes through a slot.
+;
+; INTERESTING: math.asm used `local t:real4`, which made MASM build a frame
+; (push rbp, mov rbp, rsp, sub rsp, ..., leave) around five instructions. The
+; slot here is free: on entry, the 32 bytes above the return address are the
+; shadow space the caller reserved for this call, and a callee may use them
+; for anything. [rsp + 8] is rcx's home, unused, because the argument came in
+; xmm0. No frame, no global, reentrant.
+;
+; INTERESTING: sinf and cosf touch xmm0 and nothing else. m4_rotate relies on
+; that and keeps three values in xmm3-xmm5 across these calls, which Win64
+; would not allow for a function it did not know. That is a private
+; convention, and it is stated here because nothing checks it.
+sinf: proc(x: f32) -> f32 = {
+    movss dword ptr [rsp + 8], xmm0
+    fld dword ptr [rsp + 8]
+    fsin
+    fstp dword ptr [rsp + 8]
+    movss xmm0, dword ptr [rsp + 8]
+    ret
+}
+
+cosf: proc(x: f32) -> f32 = {
+    movss dword ptr [rsp + 8], xmm0
+    fld dword ptr [rsp + 8]
+    fcos
+    fstp dword ptr [rsp + 8]
+    movss xmm0, dword ptr [rsp + 8]
+    ret
+}
+
+; vec3 -------------------------------------------------------------------------
+
+; rcx: out, rdx: a. A zero vector stays zero.
+v3_normalize: proc(out: *vec3, a: *const vec3) = {
+    v3load(xmm0, rdx)
+    movaps xmm1, xmm0
+    dpps xmm1, xmm1, 0x7F              ; |a|^2 in every lane
+    xorps xmm2, xmm2
+    comiss xmm1, xmm2
+    je done
+    sqrtps xmm1, xmm1
+    divps xmm0, xmm1
+    done:
+    v3store(rcx, xmm0)
+    ret
+}
+
+; mat4 -------------------------------------------------------------------------
+
+; rcx: out
+;
+; Touches xmm0 and eax only (m4_rotate relies on it, see sinf).
+m4_identity: proc(out: *mat4) = {
+    xorps xmm0, xmm0
+    movups xmmword ptr [rcx], xmm0
+    movups xmmword ptr [rcx + 16], xmm0
+    movups xmmword ptr [rcx + 32], xmm0
+    movups xmmword ptr [rcx + 48], xmm0
+    ; INTERESTING: 1.0 as an integer immediate is its bits, written as bits.
+    ; `mov eax, 1.0` would also assemble, but a float literal is a pooled
+    ; constant, a memory operand: it would be a load from .rdata, not an
+    ; immediate. Both are one instruction; the source says which one.
+    mov eax, 0x3F800000                ; 1.0
+    ; INTERESTING: an f32 field takes eax without complaint. rasm checks that
+    ; the sizes agree, not what the bits mean: data is data.
+    mov [rcx].mat4.m[0], eax
+    mov [rcx].mat4.m[5], eax
+    mov [rcx].mat4.m[10], eax
+    mov [rcx].mat4.m[15], eax
+    ret
+}
+
+; One row of out = a * b: a[row][0] * b.row0 + ... + a[row][3] * b.row3, with
+; b's rows already in xmm2-xmm5.
+;
+; INTERESTING: math.asm wrote this with MASM's `for row, <0, 16, 32, 48>`.
+; rasm's macros cannot loop, so the body is a macro and m4_mul invokes it four
+; times. It costs four lines and makes the unroll visible where it happens.
+; `row * 4 + 1` is a constant expression: the macro substitutes `row`, and the
+; index folds to a number.
+m4_mul_row: macro(row) = {
+    movss xmm0, [rdx].mat4.m[row * 4]
+    splat(xmm0)
+    mulps xmm0, xmm2
+    movss xmm1, [rdx].mat4.m[row * 4 + 1]
+    splat(xmm1)
+    mulps xmm1, xmm3
+    addps xmm0, xmm1
+    movss xmm1, [rdx].mat4.m[row * 4 + 2]
+    splat(xmm1)
+    mulps xmm1, xmm4
+    addps xmm0, xmm1
+    movss xmm1, [rdx].mat4.m[row * 4 + 3]
+    splat(xmm1)
+    mulps xmm1, xmm5
+    addps xmm0, xmm1
+    ; INTERESTING: the field is an f32, the store is sixteen bytes. The type
+    ; would size this operand as a dword and reject it, so the explicit size
+    ; says four floats on purpose. Explicit always wins.
+    movups xmmword ptr [rcx + row * 16], xmm0
+}
+
+; rcx: out, rdx: a, r8: b -> out = a * b
+;
+; b is read into registers first and each row of a is read before its row of
+; out is written, so out may be a or b.
+m4_mul: proc(out: *mat4, a: *const mat4, b: *const mat4) = {
+    movups xmm2, xmmword ptr [r8]
+    movups xmm3, xmmword ptr [r8 + 16]
+    movups xmm4, xmmword ptr [r8 + 32]
+    movups xmm5, xmmword ptr [r8 + 48]
+    m4_mul_row(0)
+    m4_mul_row(1)
+    m4_mul_row(2)
+    m4_mul_row(3)
+    ret
+}
+
+; rcx: out, rdx: t (vec3) -> a translation by t
+;
+; INTERESTING: `call m4_identity` with rsp 8 off alignment and no shadow
+; space. Legal, because the callee is a leaf of this file that touches neither
+; the stack nor any aligned memory: the alignment and shadow rules protect a
+; callee that might, and this one is known not to. The SDK's invoke could
+; never have emitted this call.
+m4_translate: proc(out: *mat4, t: *const vec3) = {
+    mov r8, rdx
+    call m4_identity
+    mov eax, [r8].vec3.x
+    mov [rcx].mat4.m[3], eax
+    mov eax, [r8].vec3.y
+    mov [rcx].mat4.m[7], eax
+    mov eax, [r8].vec3.z
+    mov [rcx].mat4.m[11], eax
+    ret
+}
+
+; rcx: out, rdx: s (vec3) -> a scale by s
+m4_scale: proc(out: *mat4, s: *const vec3) = {
+    mov r8, rdx
+    call m4_identity
+    mov eax, [r8].vec3.x
+    mov [rcx].mat4.m[0], eax
+    mov eax, [r8].vec3.y
+    mov [rcx].mat4.m[5], eax
+    mov eax, [r8].vec3.z
+    mov [rcx].mat4.m[10], eax
+    ret
+}
+
+rotate_axis: vec3 = {}                ; m4_rotate's normalised axis
+
+; rcx: out, xmm1: angle in radians, r8: axis (vec3)
+;
+; A rotation of `angle` about `axis`, counter-clockwise when looking down the
+; axis towards the origin.
+;
+; INTERESTING: this is the proc that had `local a:vec3, c:real4, s:real4,
+; t:real4` and a generated frame in math.asm. Here:
+;
+;   - out and angle are kept in this call's own shadow space, [rsp + 48] and
+;     [rsp + 56] once the 40 bytes are subtracted: rcx's home and the second
+;     argument's home. The angle goes in the second slot because it is the
+;     second argument, even though it arrived in xmm1 rather than rdx.
+;   - the normalised axis is a global, so its fields are named operands:
+;     `rotate_axis.x`. The price is that m4_rotate is not reentrant.
+;   - c, s and t stay in xmm4, xmm3 and xmm5 across sinf, cosf and
+;     m4_identity, which touch only xmm0 (and eax).
+;
+; Open question M would name the two slots, `angle: f32 at rsp + 56;`, and
+; the reads below would say `movss xmm0, angle`. It emits nothing; it is the
+; first place the lack of it hurts.
+m4_rotate: proc(out: *mat4, angle: f32, axis: *const vec3) = {
+    sub rsp, 40                        ; 32 shadow for our calls, and rsp back on 16
+    mov [rsp + 48], rcx                ; out
+    movss dword ptr [rsp + 56], xmm1   ; angle
+    lea rcx, rotate_axis
+    mov rdx, r8
+    call v3_normalize
+    movss xmm0, dword ptr [rsp + 56]
+    call cosf
+    movaps xmm4, xmm0                  ; c
+    movss xmm5, 1.0                    ; a pooled constant: math.asm's math_one
+    subss xmm5, xmm0                   ; t = 1 - c
+    movss xmm0, dword ptr [rsp + 56]
+    call sinf
+    movaps xmm3, xmm0                  ; s
+    mov rcx, [rsp + 48]
+    call m4_identity
+    ; r.m[0] = c + a.x * a.x * t
+    movss xmm0, rotate_axis.x
+    mulss xmm0, rotate_axis.x
+    mulss xmm0, xmm5
+    addss xmm0, xmm4
+    movss [rcx].mat4.m[0], xmm0
+    ; r.m[1] = a.x * a.y * t - a.z * s
+    movss xmm0, rotate_axis.x
+    mulss xmm0, rotate_axis.y
+    mulss xmm0, xmm5
+    movss xmm1, rotate_axis.z
+    mulss xmm1, xmm3
+    subss xmm0, xmm1
+    movss [rcx].mat4.m[1], xmm0
+    ; r.m[2] = a.x * a.z * t + a.y * s
+    movss xmm0, rotate_axis.x
+    mulss xmm0, rotate_axis.z
+    mulss xmm0, xmm5
+    movss xmm1, rotate_axis.y
+    mulss xmm1, xmm3
+    addss xmm0, xmm1
+    movss [rcx].mat4.m[2], xmm0
+    ; r.m[4] = a.y * a.x * t + a.z * s
+    movss xmm0, rotate_axis.y
+    mulss xmm0, rotate_axis.x
+    mulss xmm0, xmm5
+    movss xmm1, rotate_axis.z
+    mulss xmm1, xmm3
+    addss xmm0, xmm1
+    movss [rcx].mat4.m[4], xmm0
+    ; r.m[5] = c + a.y * a.y * t
+    movss xmm0, rotate_axis.y
+    mulss xmm0, rotate_axis.y
+    mulss xmm0, xmm5
+    addss xmm0, xmm4
+    movss [rcx].mat4.m[5], xmm0
+    ; r.m[6] = a.y * a.z * t - a.x * s
+    movss xmm0, rotate_axis.y
+    mulss xmm0, rotate_axis.z
+    mulss xmm0, xmm5
+    movss xmm1, rotate_axis.x
+    mulss xmm1, xmm3
+    subss xmm0, xmm1
+    movss [rcx].mat4.m[6], xmm0
+    ; r.m[8] = a.z * a.x * t - a.y * s
+    movss xmm0, rotate_axis.z
+    mulss xmm0, rotate_axis.x
+    mulss xmm0, xmm5
+    movss xmm1, rotate_axis.y
+    mulss xmm1, xmm3
+    subss xmm0, xmm1
+    movss [rcx].mat4.m[8], xmm0
+    ; r.m[9] = a.z * a.y * t + a.x * s
+    movss xmm0, rotate_axis.z
+    mulss xmm0, rotate_axis.y
+    mulss xmm0, xmm5
+    movss xmm1, rotate_axis.x
+    mulss xmm1, xmm3
+    addss xmm0, xmm1
+    movss [rcx].mat4.m[9], xmm0
+    ; r.m[10] = c + a.z * a.z * t
+    movss xmm0, rotate_axis.z
+    mulss xmm0, rotate_axis.z
+    mulss xmm0, xmm5
+    addss xmm0, xmm4
+    movss [rcx].mat4.m[10], xmm0
+    add rsp, 40
+    ret
+}

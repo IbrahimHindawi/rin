@@ -1,0 +1,112 @@
+; filesystem: files next to a lesson, wherever the executable was run from
+;
+; LearnOpenGL's FileSystem::getPath, simplified: a path is looked for in the
+; executable's directory, then each directory above it, and the first that
+; exists wins. A lesson's exe is in <lesson>/build/, so "hello_triangle.hlsl"
+; finds <lesson>/hello_triangle.hlsl.
+;
+;     invoke(filesystem_path, "hello_triangle.hlsl")      ; rax = the full path
+;     invoke(filesystem_read, rax, shader_size&)          ; rax = the bytes, size stored
+
+import "../calls.rasm"
+import "../print.rasm"
+
+filesystem_dir: [260]u8 = {}               ; the exe's directory, cut shorter while walking up
+filesystem_paths: [16][260]u8 = {}         ; the last 16 results, so a caller may keep one
+filesystem_next: u64 = 0
+filesystem_size: i64 = 0                   ; GetFileSizeEx's LARGE_INTEGER
+filesystem_read_count: u32 = 0
+
+; rcx: a path relative to the lesson -> rax: the full path of a file that exists
+filesystem_path: proc(relative: *const c8) -> *c8 = {
+    push rbx
+    push rsi
+    push rdi
+    sub rsp, 32                            ; entry 8 + three pushes 24 + 32 lands on 16
+    mov rsi, rcx                           ; the relative path, kept across the calls
+
+    ; this call's result slot: filesystem_paths[filesystem_next % 16]
+    mov rax, filesystem_next
+    inc filesystem_next
+    and eax, 15
+    imul rax, rax, 260
+    lea rdi, filesystem_paths
+    add rdi, rax
+
+    invoke(GetModuleFileNameA, 0, filesystem_dir&, 260)
+    mov ebx, 8                             ; directories to try
+  up:
+    ; cut filesystem_dir at its last slash
+    lea rcx, filesystem_dir
+    xor edx, edx
+    mov r8, -1
+  scan:
+    mov al, [rcx + rdx]
+    test al, al
+    jz scanned
+    cmp al, '\\'
+    je slash
+    cmp al, '/'
+    jne next_char
+  slash:
+    mov r8, rdx
+  next_char:
+    inc rdx
+    jmp scan
+  scanned:
+    cmp r8, -1
+    je missing
+    mov byte ptr [rcx + r8], 0
+
+    ; directory + "\" + relative, and does it exist?
+    invoke(lstrcpyA, rdi, filesystem_dir&)
+    invoke(lstrcatA, rdi, "\\")
+    invoke(lstrcatA, rdi, rsi)
+    invoke(GetFileAttributesA, rdi)
+    cmp eax, -1                            ; INVALID_FILE_ATTRIBUTES
+    jne found
+    dec ebx
+    jnz up
+  missing:
+    invoke(print, "filesystem: %s is not next to the executable or above it\n", rsi)
+    invoke(ExitProcess, 1)
+  found:
+    mov rax, rdi
+    add rsp, 32
+    pop rdi
+    pop rsi
+    pop rbx
+    ret
+}
+
+; rcx: path, rdx: where to store the size -> rax: the file's bytes, with a zero after them
+filesystem_read: proc(path: *const c8, size_out: *u64) -> *u8 = {
+    push rbx
+    push rsi
+    push rdi
+    sub rsp, 64                            ; CreateFileA takes 7: 32 + 3 * 8, and rsp lands on 16
+    mov rsi, rcx
+    mov rdi, rdx
+    invoke(CreateFileA, rsi, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0)
+    cmp rax, INVALID_HANDLE_VALUE
+    jne opened
+        invoke(print, "filesystem: cannot open %s\n", rsi)
+        invoke(ExitProcess, 1)
+  opened:
+    mov rbx, rax                           ; the handle
+    invoke(GetFileSizeEx, rbx, filesystem_size&)
+    mov rax, filesystem_size
+    mov [rdi], rax
+    ; one byte more, which VirtualAlloc zeroes, ends the text
+    inc rax
+    invoke(VirtualAlloc, 0, rax, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE)
+    mov rsi, rax                           ; the buffer
+    invoke(ReadFile, rbx, rsi, filesystem_size, filesystem_read_count&, 0)
+    invoke(CloseHandle, rbx)
+    mov rax, rsi
+    add rsp, 64
+    pop rdi
+    pop rsi
+    pop rbx
+    ret
+}

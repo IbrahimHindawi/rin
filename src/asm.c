@@ -1,7 +1,7 @@
 /* asm.c: `rin asm`, the rasm assembler.
 
    rasm is rin's declaration syntax with x64 instructions for bodies. The design
-   is in C:\devel\rasm\docs; the short version, for reading this file:
+   is in rasm/docs; the short version, for reading this file:
 
      - The assembler generates nothing the source does not say. Frames, shadow
        space, saved registers and argument moves are the programmer's.

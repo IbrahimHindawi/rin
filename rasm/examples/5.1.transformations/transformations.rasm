@@ -1,0 +1,184 @@
+; 5.1 Transformations
+;
+; Moving vertices with a matrix instead of editing them. The vertex shader
+; multiplies every position by `transform`, which the CPU builds each frame
+; with includes/math.rasm (what glm is to LearnOpenGL):
+;
+;   bottom right:  translate * rotate   spins in place, then moves
+;   top left:      translate * scale    pulses in place, then moves
+;
+; Read right to left: the matrix nearest the vertex applies first. Swap the
+; order in the first one and it orbits the centre instead of spinning.
+;
+; The port of masm64-dx11's src/1.getting_started/5.1.transformations. The
+; window, shader and buffer helpers are the learn/ includes (window_create,
+; shader_create, create_buffer, ...), assumed ported like 2.1's code was. The
+; float work worth looking at is in includes/math.rasm; this file is where it
+; is called from.
+import "../includes/d3d11.rin"
+import "../includes/calls.rasm"
+import "../includes/math.rasm"
+import "../includes/learn/window.rasm"   ; window, context, backbuffer_rtv, viewport, scr_width, ...
+import "../includes/learn/shader.rasm"
+import "../includes/learn/gpu.rasm"
+
+; x, y, z, then u, v. D3D's texture coordinate (0, 0) is the image's top-left,
+; where GL's is its bottom-left, so nothing is flipped on load.
+rectangle_vertices: [20]const f32 = {
+    -0.5, -0.5, 0.0,   0.0, 1.0,
+     0.5, -0.5, 0.0,   1.0, 1.0,
+     0.5,  0.5, 0.0,   1.0, 0.0,
+    -0.5,  0.5, 0.0,   0.0, 0.0,
+}
+rectangle_indices: [6]const u32 = { 0, 1, 2, 0, 2, 3 }
+
+vertex_layout: [2]const D3D11_INPUT_ELEMENT_DESC = {
+    { .SemanticName = "POSITION", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32B32_FLOAT },
+    { .SemanticName = "TEXCOORD", .Format = DXGI_FORMAT.DXGI_FORMAT_R32G32_FLOAT, .AlignedByteOffset = 12 },
+}
+clear_color: [4]const f32[align(16)] = { 0.2, 0.3, 0.3, 1.0 }
+
+object_constants: struct = {
+    transform: mat4
+}
+
+z_axis: const vec3 = { 0.0, 0.0, 1.0 }
+bottom_right: const vec3 = { 0.5, -0.5, 0.0 }
+top_left: const vec3 = { -0.5, 0.5, 0.0 }
+
+c: object_constants[align(16)] = {}
+aspect: mat4 = {}                      ; squeezes x so a square stays square in a wide window
+translation: mat4 = {}
+rotation: mat4 = {}
+; INTERESTING: math.asm's lesson called this `scale_`, because SCALE is a
+; MASM reserved word. Here the name is free: the code quotes every symbol
+; and the data is C. Struct field names never reach the assembler at all,
+; since the code uses numbers.
+scale: mat4 = {}
+pulse: vec3 = {}
+; INTERESTING: math.asm's version computed this vec3 at run time with two
+; storef calls (load the bits of 1.0 from .const into eax, store eax). Only x
+; depends on the window, so y and z are data, and the code stores one float.
+aspect_scale: vec3 = { .y = 1.0, .z = 1.0 }
+s: shader = {}
+vb: *ID3D11Buffer = {}
+ib: *ID3D11Buffer = {}
+sampler: *ID3D11SamplerState = {}
+constants: *ID3D11Buffer = {}
+textures: [2]*ID3D11ShaderResourceView = {}
+stride: u32 = 20
+offset: u32 = 0
+current_frame: f32 = 0.0
+
+main: proc() -> i32 = {
+    sub rsp, 56                        ; 6-argument calls: 32 shadow + 2 * 8, plus 8 to land on 16
+
+    invoke(window_create, "LearnD3D11")
+
+    invoke(create_sampler, D3D11_FILTER.D3D11_FILTER_ANISOTROPIC, D3D11_TEXTURE_ADDRESS_MODE.D3D11_TEXTURE_ADDRESS_WRAP)
+    mov sampler, rax
+    vcall(context, ID3D11DeviceContextVtbl.PSSetSamplers, 0, 1, sampler&)
+
+    ; build and compile our shader program
+    ; ------------------------------------
+    invoke(shader_create, s&, "src/1.getting_started/5.1.transformations/transformations.hlsl", vertex_layout&, 2)
+
+    ; set up vertex data and textures
+    ; -------------------------------
+    invoke(create_buffer, D3D11_BIND_FLAG.D3D11_BIND_VERTEX_BUFFER, rectangle_vertices&, sizeof(rectangle_vertices))
+    mov vb, rax
+    invoke(create_buffer, D3D11_BIND_FLAG.D3D11_BIND_INDEX_BUFFER, rectangle_indices&, sizeof(rectangle_indices))
+    mov ib, rax
+    invoke(filesystem_path, "resources/textures/container.jpg")
+    invoke(load_texture, rax, 0)
+    ; INTERESTING: MASM wrote `textures[0]` and `textures[8]`: the index was
+    ; bytes. Here it is elements, as in rin: textures[1] is the second pointer,
+    ; emitted as `textures + 8`.
+    mov textures[0], rax
+    invoke(filesystem_path, "resources/textures/awesomeface.png")
+    invoke(load_texture, rax, 0)
+    mov textures[1], rax
+    invoke(create_constant_buffer, sizeof(object_constants))
+    mov constants, rax
+
+    ; aspect = scale(height / width, 1, 1)
+    ;
+    ; INTERESTING: scr_width and scr_height are `const u32` in window.rasm,
+    ; with storage, so cvtsi2ss reads them straight from .const, as MASM did
+    ; with its dwords. A #define would be an immediate, which cvtsi2ss does
+    ; not take: it would go through eax. The whole division could instead be
+    ; folded into aspect_scale's initialiser, `cast(SCR_HEIGHT, f32) /
+    ; cast(SCR_WIDTH, f32)`, since C folds that too (open-questions R); it is
+    ; written out here because this lesson is about the instructions.
+    cvtsi2ss xmm1, scr_height
+    cvtsi2ss xmm0, scr_width
+    divss xmm1, xmm0
+    movss aspect_scale.x, xmm1
+    invoke(m4_scale, aspect&, aspect_scale&)
+
+    ; render loop
+    ; -----------
+    render_loop:
+        call window_poll
+        test eax, eax
+        jz render_loop_done
+
+        ; per-frame time logic
+        ; --------------------
+        call get_time
+        movss current_frame, xmm0
+
+        ; render
+        ; ------
+        vcall(context, ID3D11DeviceContextVtbl.OMSetRenderTargets, 1, backbuffer_rtv&, 0)
+        vcall(context, ID3D11DeviceContextVtbl.RSSetViewports, 1, viewport&)
+        vcall(context, ID3D11DeviceContextVtbl.ClearRenderTargetView, backbuffer_rtv, clear_color&)
+
+        vcall(context, ID3D11DeviceContextVtbl.PSSetShaderResources, 0, 2, textures&)
+        invoke(shader_use, s&)
+        invoke(bind_constants, 0, constants)
+        vcall(context, ID3D11DeviceContextVtbl.IASetPrimitiveTopology, D3D11_PRIMITIVE_TOPOLOGY.D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST)
+        vcall(context, ID3D11DeviceContextVtbl.IASetVertexBuffers, 0, 1, vb&, stride&, offset&)
+        vcall(context, ID3D11DeviceContextVtbl.IASetIndexBuffer, ib, DXGI_FORMAT.DXGI_FORMAT_R32_UINT, 0)
+
+        ; transform = aspect * translate(0.5, -0.5, 0) * rotate(time, z)
+        invoke(m4_translate, translation&, bottom_right&)
+        ; INTERESTING: m4_rotate's angle is its second argument, so Win64 puts
+        ; it in xmm1, the register of its position, and rdx goes unused.
+        ; invoke only knows integer registers, so this call is written out.
+        ; (`invoke(m4_rotate, rotation&, 0, z_axis&)` after the movss would
+        ; also work, at the cost of a pointless `mov rdx, 0`.)
+        lea rcx, rotation
+        movss xmm1, current_frame
+        lea r8, z_axis
+        call m4_rotate
+        ; c.transform& is the address of a field of a global: c + 0, still a
+        ; link-time constant.
+        invoke(m4_mul, c.transform&, translation&, rotation&)
+        invoke(m4_mul, c.transform&, aspect&, c.transform&)
+        invoke(update_buffer, constants, c&, sizeof(object_constants))
+        vcall(context, ID3D11DeviceContextVtbl.DrawIndexed, 6, 0, 0)
+
+        ; transform = aspect * translate(-0.5, 0.5, 0) * scale(|sin(time)|)
+        movss xmm0, current_frame
+        call sinf
+        ; INTERESTING: |x| is clearing the sign bit. The mask is a typed
+        ; 16-byte const, so this is `andps xmm0, xmmword ptr [rip + math_abs_mask]`
+        ; without the reader seeing `xmmword` anywhere.
+        andps xmm0, math_abs_mask
+        movss pulse.x, xmm0
+        movss pulse.y, xmm0
+        movss pulse.z, xmm0
+        invoke(m4_translate, translation&, top_left&)
+        invoke(m4_scale, scale&, pulse&)
+        invoke(m4_mul, c.transform&, translation&, scale&)
+        invoke(m4_mul, c.transform&, aspect&, c.transform&)
+        invoke(update_buffer, constants, c&, sizeof(object_constants))
+        vcall(context, ID3D11DeviceContextVtbl.DrawIndexed, 6, 0, 0)
+
+        call window_present
+        jmp render_loop
+    render_loop_done:
+
+    invoke(ExitProcess, 0)
+}

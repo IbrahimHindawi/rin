@@ -1,0 +1,73 @@
+; calls_test.rasm: macros, import, pooled constants and address constants.
+; Prints three lines to the console through wsprintfA and WriteFile.
+
+import "../includes/calls.rasm"
+
+#define STD_OUTPUT_HANDLE -11
+#define COUNT 4
+
+Mode: enum = { Quiet, Loud = 7 }
+
+values: [COUNT]f32 = { 1.5, 2.5, 3.0, 4.0 }
+total: f32 = 0.0
+total_int: i32 = 0
+mode: Mode = Mode.Loud
+buffer: [128]u8 = {}
+written: u32 = 0
+console: *void = {}
+greeting: *const c8 = "hello from rasm"
+
+; stop in the debugger when eax is zero
+assert_nonzero: macro() = {
+    test eax, eax
+    jnz ok
+    int 3
+  ok:
+}
+
+; rcx: a zero-terminated string -> writes it to the console
+print_cstr: proc(text: *const c8) = {
+    push rbx
+    sub rsp, 48                            ; 32 shadow + 1 stack argument, rsp back on 16
+    mov rbx, rcx
+    invoke(lstrlenA, rbx)
+    invoke(WriteFile, console, rbx, rax, written&, 0)
+    assert_nonzero()
+    add rsp, 48
+    pop rbx
+    ret
+}
+
+main: proc() -> i32 = {
+    sub rsp, 56                            ; 32 shadow + 2 stack arguments + 8 to land on 16
+    invoke(GetStdHandle, STD_OUTPUT_HANDLE)
+    mov console, rax
+
+    ; sum the four floats with one SSE add tree
+    movups xmm0, xmmword ptr values
+    movaps xmm1, xmm0
+    shufps xmm1, xmm1, 0x4E                ; swap the halves
+    addps xmm0, xmm1
+    movaps xmm1, xmm0
+    shufps xmm1, xmm1, 0xB1                ; swap the pairs
+    addss xmm0, xmm1
+    addss xmm0, 1.0                        ; a pooled constant
+    movss total, xmm0
+    cvttss2si eax, xmm0
+    mov total_int, eax
+
+    mov rcx, greeting
+    call print_cstr
+
+    ; invoke moves 64 bits, and these are 32-bit globals: load them first,
+    ; straight into the registers they are passed in. (Not r11: the fifth
+    ; argument travels through it.)
+    mov r8d, total_int
+    mov r9d, mode
+    cvttss2si eax, values[2]
+    invoke(wsprintfA, buffer&, "\nsum + 1 = %d, mode = %d, values[2] as int = %d\n", r8, r9, rax)
+    mov rcx, buffer&
+    call print_cstr
+
+    invoke(ExitProcess, 0)
+}

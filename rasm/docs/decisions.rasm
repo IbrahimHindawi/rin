@@ -1,0 +1,357 @@
+; decisions.rasm: five questions, decided, with the other options parked
+;
+; DECIDED 2026-10-24 by the author's rule, now spec principle 7: "keep
+; whatever keeps the assembly writing simple without overanalyzing the code
+; or overcomplicating the assembler". The author liked the other options
+; ("they're really cool") and asked for them to be saved: they are kept here,
+; written out, for when the simple choice starts to hurt. Nothing here
+; assembles: the options contradict each other on purpose.
+;
+;   1. stack slots:      raw offsets (1A). 1C, the frame struct, is the first
+;                        to bring back; it needs no new syntax.
+;   2. checks:           none in the first version. 2A, 2B, 2C parked.
+;   3. header constants: a generated file of plain #defines (3A), guarded
+;                        with #ifndef in the C data file. The _Static_assert
+;                        on each value is parked.
+;   4. float folding:    whatever C allows (4A): rasm passes it to C.
+;   5. generics:         type-erased procs, access macros, rin's generic
+;                        structs (5A-5C); proc<T> bodies parked (5D).
+;
+; It is also the first file in the new line syntax: `;` starts a comment, a
+; newline ends a statement, and a newline inside ( ), [ ] or an initialiser's
+; { } continues the line.
+;
+; Settled by default unless you object (open-questions C, G, I):
+;   - labels are plain `again:` lines
+;   - a typed operand takes its size from its type: `mov desc.Usage, 1` is a dword
+;   - one pointer type, `*T`; [*]T and []T only arrive in imported .rin files
+
+
+; =============================================================================
+; 1. Naming a stack slot without generating code          (open-questions M)
+; =============================================================================
+;
+; The test case is 5.1's m4_rotate: it keeps `out` and `angle` in its own
+; shadow slots across three calls. After `sub rsp, 40`:
+;
+;     rsp + 0    32 bytes of shadow space for the procs it calls
+;     rsp + 32   8 bytes of padding, so rsp is on 16
+;     rsp + 40   its return address
+;     rsp + 48   rcx's home: `out`
+;     rsp + 56   rdx's home, used for `angle` (it arrived in xmm1)
+
+; --- 1A. Raw offsets (what the spec has today) --------------------------------
+;
+; Nothing new. The meaning lives in comments, and the reader keeps the
+; offsets in their head. Fine for one or two slots, tiring for six.
+
+m4_rotate: proc(out: *mat4, angle: f32, axis: *const vec3) = {
+    sub rsp, 40
+    mov [rsp + 48], rcx                    ; out
+    movss dword ptr [rsp + 56], xmm1       ; angle
+    ; ... calls ...
+    movss xmm0, dword ptr [rsp + 56]       ; angle again: which slot was it?
+    mov rcx, [rsp + 48]                    ; out
+    ; ...
+    add rsp, 40
+    ret
+}
+
+; --- 1B. `at` slots -------------------------------------------------------------
+;
+; A name, a type and an address, declared at the top of the proc. Emits
+; nothing: `angle` is rewritten to `dword ptr [rsp + 56]`. It is MASM's
+;     angle textequ <real4 ptr [rsp + 56]>
+; with a real type (a vec3 slot gets `pos.y`, `mov angle, rax` is a size
+; error, `sizeof(angle)` works) and proc scope (every proc can have its own
+; `angle`; textequ is file-wide and silently redefinable).
+; If `rsp` moves (a push, another sub), the names go stale. That is yours.
+; Could also feed VS's Locals window later (one S_REGREL32 record per slot).
+
+m4_rotate: proc(out: *mat4, angle: f32, axis: *const vec3) = {
+    out_slot: *mat4 at rsp + 48
+    angle_slot: f32 at rsp + 56
+    sub rsp, 40
+    mov out_slot, rcx
+    movss angle_slot, xmm1
+    ; ... calls ...
+    movss xmm0, angle_slot
+    mov rcx, out_slot
+    ; ...
+    add rsp, 40
+    ret
+}
+
+; --- 1C. A struct laid over the frame (liked, deferred) -------------------------
+;
+; Already legal: it is only the `[reg].T.f` operand. The frame's layout is
+; written down once as data, including the parts you never name (padding,
+; the return address), and `sub rsp` can be computed from it. Longer to
+; type than 1B. Shown so 1B can be judged against it: if 1C is where things
+; end up, 1B is a second way to say the same thing.
+
+m4_rotate_frame: struct = {
+    shadow: [4]u64                         ; rsp + 0
+    pad: u64                               ; rsp + 32
+    ret: u64                               ; rsp + 40
+    out: *mat4                             ; rsp + 48
+    angle: f32                             ; rsp + 56
+}
+
+m4_rotate: proc(out: *mat4, angle: f32, axis: *const vec3) = {
+    sub rsp, offsetof(m4_rotate_frame.ret)            ; 40, from the layout
+    mov [rsp].m4_rotate_frame.out, rcx
+    movss [rsp].m4_rotate_frame.angle, xmm1
+    ; ... calls ...
+    movss xmm0, [rsp].m4_rotate_frame.angle
+    mov rcx, [rsp].m4_rotate_frame.out
+    ; ...
+    add rsp, offsetof(m4_rotate_frame.ret)
+    ret
+}
+
+; DECIDED: 1A. No new syntax. 1C is legal anyway and comes back first when
+; raw offsets start to hurt; 1B would then be a second spelling of it.
+
+
+; =============================================================================
+; 2. Checks that emit nothing                             (open-questions N)
+; =============================================================================
+;
+; None of these changes the output. Each turns a silent run-time bug into a
+; build error. Pick any, all or none.
+
+; --- 2A. Argument-order clobber inside one invoke/vcall --------------------------
+;
+; The macro moves arguments in order. If an argument names a register the
+; same expansion already overwrote, the callee gets the wrong value.
+; No annotation needed; it can never fire on correct code.
+
+compile_shader: proc(path: *const u8, source: *u8, size: u64, entry: *const u8, target: *const u8) -> *ID3DBlob = {
+    sub rsp, 88
+    invoke(D3DCompile, rdx, r8, rcx, 0, 1, r9, qword ptr [rsp + 128], 0, 0, shader_code&, shader_errors&)
+    ; error: argument 3 reads rcx, but this invoke already wrote rcx
+    ;        (argument 1: mov rcx, rdx). Move rcx somewhere else first.
+    ; ...
+}
+
+; --- 2B. Register audit, opt-in per proc ------------------------------------------
+;
+; A proc lists the non-volatile registers it saves and restores itself.
+; Writing any other non-volatile register (rbx, rbp, rsi, rdi, r12-r15,
+; xmm6-xmm15) is an error. It does not check that the saves are really
+; there, only that nothing unlisted is touched. Catches vulkasm's bug 3b
+; (saha.asm clobbering rsi and rdi), and matters most for a proc that rin
+; calls, which must follow Win64 to the letter.
+; It is an attribute, because a `;` annotation would now be a comment.
+
+particles_update: proc[saves(rbx, rsi)](p: *particles, dt: f32) = {
+    push rbx
+    push rsi
+    ; ...
+    mov rdi, rcx       ; error: rdi is non-volatile and not in saves(...)
+    ; ...
+    pop rsi
+    pop rbx
+    ret
+}
+
+; --- 2C. Stack alignment at a call (heuristic) ----------------------------------
+;
+; Track `sub rsp`, `add rsp`, `push`, `pop` from the proc's entry and warn
+; when a `call` happens with rsp not on 16. Catches the most common crash in
+; hand-written Win64 code (movaps faulting inside the callee). Heuristic: it
+; follows the code top to bottom and cannot follow jumps, so code that
+; adjusts rsp on one branch only gets a false warning or none.
+
+window_proc: proc(hwnd: HWND, umsg: UINT, wparam: WPARAM, lparam: LPARAM) -> LRESULT = {
+    sub rsp, 32                    ; entry rsp is 8 off; 8 + 32 = 40, not a multiple of 16
+    invoke(PostQuitMessage, 0)
+    ; warning: rsp is 8 off 16 at this call (entry -8, sub 32)
+    add rsp, 32
+    ret
+}
+
+; DECIDED: none in the first version; the assembler does not analyse code.
+; Parked in order of value: 2A (free, never wrong), 2B (once a SIMD kernel
+; is called from rin), 2C (heuristic, probably never).
+
+
+; =============================================================================
+; 3. Where header constants come from                     (open-questions O)
+; =============================================================================
+;
+; WS_VISIBLE, CW_USEDEFAULT, IDC_ARROW, PM_REMOVE... are C macros in
+; windows.h. rin never needs their values (C fills them in), so rin-dx11's
+; binding just says `WS_VISIBLE: const DWORD;`. rasm's code needs the number.
+; The awkward ones are cast macros:
+;     #define IDC_ARROW MAKEINTRESOURCEA(32512)     ; really ((LPSTR)((ULONG_PTR)((WORD)(32512))))
+
+; --- 3A. A generated, rasm-only constants file ----------------------------------
+;
+; A small libclang script (like masm64-dx11's tools/gen_d3d11.py, or a rinbind
+; flag) evaluates every macro and writes plain numbers:
+
+; win32_consts.rasm (generated)
+#define WS_VISIBLE 0x10000000
+#define CW_USEDEFAULT 0x80000000
+#define IDC_ARROW 32512
+#define PM_REMOVE 1
+
+; In the C data file, where windows.h already defines them, rasm writes each
+; one it used as a guard plus a check, so the header stays the authority
+; and a wrong number fails the build:
+;     #ifndef WS_VISIBLE
+;     #define WS_VISIBLE 0x10000000
+;     #endif
+;     _Static_assert(WS_VISIBLE == 0x10000000, "rasm constant: WS_VISIBLE");
+; No rin change. Cast macros become their number.
+
+; --- 3B. Copy the header's text verbatim into the shared .rin binding ------------
+;
+;     #define WS_VISIBLE 0x10000000L      ; C accepts an identical redefinition
+;
+; One file for rin and rasm. Breaks on IDC_ARROW: its text is a cast macro
+; rasm cannot evaluate, so those need a separate fallback anyway.
+
+; --- 3C. rasm evaluates windows.h itself through libclang -------------------------
+;
+; `invoke(LoadCursorA, 0, IDC_ARROW)` just works with no binding entry.
+; Most automatic. rasm (inside the rin compiler) would then link libclang,
+; which today only rinbind does.
+
+; DECIDED: 3A, with the #ifndef guard only. It is what masm64-dx11 already
+; does (d3d11.inc is generated the same way) and needs no change to rin.
+; The _Static_assert per value is parked.
+
+
+; =============================================================================
+; 4. Float arithmetic in data initialisers                (open-questions R)
+; =============================================================================
+;
+; The data is compiled as C, so the question is only how much of C's
+; constant folding rasm's syntax lets through. Code is never affected:
+; inside a proc, float maths is always instructions.
+
+#define SCR_WIDTH 1280
+#define SCR_HEIGHT 720
+
+; --- 4A. Everything C allows in a static initialiser ----------------------------
+
+aspect_scale: vec3 = {
+    .x = cast(SCR_HEIGHT, f32) / cast(SCR_WIDTH, f32),   ; 0.5625, folded by C
+    .y = 1.0,
+    .z = 1.0,
+}
+
+; --- 4B. Casts only --------------------------------------------------------------
+;
+; `cast(SCR_WIDTH, f32)` is allowed (one number, converted); arithmetic on
+; floats is not, so the division is instructions at start-up:
+
+aspect_scale: vec3 = { .y = 1.0, .z = 1.0 }
+
+setup: proc() = {
+    cvtsi2ss xmm1, scr_height          ; scr_height: const u32, has storage
+    cvtsi2ss xmm0, scr_width
+    divss xmm1, xmm0
+    movss aspect_scale.x, xmm1
+    ret
+}
+
+; DECIDED: 4A. rasm does nothing: the initialiser goes to the C file and C
+; folds it. A lesson that wants the instructions writes 4B by choice (5.1
+; does).
+
+
+; =============================================================================
+; 5. Generic data structures                                       (2026-10-24)
+; =============================================================================
+;
+; In assembly "generic" is one question: when is the element size known?
+
+; --- 5A. At run time: type-erased (works today) ---------------------------------
+;
+; Written once, element size passed in, as kayan's columns and C's qsort do.
+; The header does not depend on T. For ECS kernels this is all you need: a
+; hot loop takes a column's pointer and count and runs SIMD over it; the one
+; imul per element is paid on push, not in the loop.
+
+array: struct = {
+    data: *u8
+    length: u64
+    capacity: u64
+    elem_size: u64
+}
+
+array_push: proc(a: *array, arena: *arena) -> *void = {      ; rax: the new element
+    mov rax, [rcx].array.length
+    imul rax, [rcx].array.elem_size
+    add rax, [rcx].array.data
+    inc qword ptr [rcx].array.length
+    ; ... grow when length == capacity ...
+    ret
+}
+
+; --- 5B. Typed access macros (works today) ---------------------------------------
+
+array_at: macro(out, a, idx, T) = {
+    imul out, idx, sizeof(T)               ; a constant per use: imul rax, rcx, 16
+    add out, [a].array.data
+}
+
+; --- 5C. rin's generics, from rasm (works today) -----------------------------------
+;
+; `vec: struct<T>` in a .rin file: `positions: vec<vec4>` in rasm gets its
+; layout, C type and debugger field names from rin's monomorphiser, free,
+; because the data goes through rin's C backend. Generic procs written in
+; rin are called from rasm by their instance name.
+
+; --- 5D. `proc<T>` with an instruction body (PARKED) -------------------------------
+;
+; rin's syntax, unchanged. rasm would copy the body per instance it sees
+; named (`vec<vec4>push`), substitute T, fold sizeof(T) and the offsets.
+; Instances are always explicit, so no inference: a few hundred lines, the
+; biggest new piece after macros. Notes for whoever builds it:
+;   - errors are per instance, like C++ templates: `[rdx + rax*sizeof(T)]`
+;     assembles for f32 (scale 4) and fails for vec4 (16 is not a scale)
+;   - each instance is its own proc in the call stack; its lines map to the
+;     one generic source
+;   - rasm's instance symbols must not collide with rin's monomorphs
+;   - macro arguments split on commas outside <> too: map<u64, vec4>get
+
+vec: struct<T> = {
+    data: *T
+    length: u64
+    capacity: u64
+}
+
+vec<T>push: proc<T>(v: *vec<T>, arena: *arena) -> *T = {
+    mov rax, [rcx].vec<T>.length
+    cmp rax, [rcx].vec<T>.capacity
+    je grow
+    imul rax, rax, sizeof(T)
+    add rax, [rcx].vec<T>.data
+    inc qword ptr [rcx].vec<T>.length
+    ret
+  grow:
+    ; ... arena_push a bigger block, copy, retry ...
+}
+
+positions: vec<vec4> = {}
+
+use_it: proc() = {
+    lea rcx, positions
+    lea rdx, frame_arena
+    call vec<vec4>push                     ; the vec<vec4> instance, emitted once
+    movups xmmword ptr [rax], xmm0
+    ret
+}
+
+; --- 5E. Macros that paste names and declare procs (REJECTED) ----------------------
+;
+; MASM's `&` concatenation plus declarations inside macro bodies would give
+; `array_push_vec4` from a macro. 5D does the same job with types and scope,
+; so if per-type code is ever wanted, it is 5D, not this.
+
+; DECIDED: 5A, 5B and 5C, which need nothing new. 5D parked until 5A hurts.

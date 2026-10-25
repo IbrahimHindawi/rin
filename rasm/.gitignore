@@ -1,0 +1,13 @@
+# build outputs (docs/debug-proto/build.ps1 recreates them)
+*.obj
+*.exe
+*.pdb
+*.ilk
+# rin asm writes each program's generated .s, data .c and objects here
+build/
+# gen_bindings.py scratch
+examples/includes/gen/_part.rin
+# Visual Studio state
+.vs/
+# Python
+__pycache__/

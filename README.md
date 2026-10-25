@@ -55,6 +55,15 @@ Rin is C-shaped code with a smaller syntax surface and compile-time metaprogramm
 - `python nvim/install.py` installs filetype detection, syntax highlighting, and
   LSP attachment into your Neovim config. See `nvim/README.md` for options.
 
+### rasm
+`rin asm` is rasm, an x64 assembler with rin's declarations: structs, enums,
+globals and `import` around Intel-syntax instructions, debuggable at `.rasm`
+lines in Visual Studio. It lives in [`rasm/`](rasm/README.md): the spec and
+design, small examples, a language server, and Neovim and Visual Studio
+syntax files. The assembler itself is `src/asm.c`, tested by
+`tests/run_rasm.py`. LearnOpenGL's lessons in rasm are
+[rasm-dx11](https://github.com/IbrahimHindawi/rasm-dx11).
+
 ## Uniform Declaration And Block Rules
 
 Every declaration is `name : kind = value`, and every body is a block:

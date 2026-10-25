@@ -1,0 +1,14 @@
+; proto.rasm: what the debugger should show (code.s is what rasm would emit for it)
+desc: particle_desc = { .count = 1000, .gravity = { 0.0, -9.8, 0.0 } }
+
+main: proc() = {
+    sub rsp, 40
+    mov eax, desc.count
+    add eax, 1
+    mov desc.count, eax
+    movss xmm0, desc.gravity.y
+    addss xmm0, xmm0
+    movss desc.gravity.y, xmm0
+    xor ecx, ecx
+    call ExitProcess
+}
