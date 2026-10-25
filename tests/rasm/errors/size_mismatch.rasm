@@ -1,0 +1,6 @@
+x: u32 = 0
+
+main: proc() -> i32 = {
+    mov rax, x
+    ret
+}

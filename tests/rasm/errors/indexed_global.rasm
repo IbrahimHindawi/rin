@@ -1,0 +1,6 @@
+table: [4]u32 = {}
+
+main: proc() -> i32 = {
+    mov eax, [table + rcx*4]
+    ret
+}

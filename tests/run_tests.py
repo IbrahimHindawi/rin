@@ -11363,6 +11363,14 @@ main:proc()->i32 = {
         return torture.returncode
     print(torture.stdout.rstrip())
 
+    # `rin asm`, the rasm assembler: assembled, run, and checked to debug at
+    # .rasm lines. Skips itself without clang.
+    rasm = run([sys.executable, "tests/run_rasm.py"])
+    if rasm.returncode != 0:
+        print(rasm.stdout)
+        return rasm.returncode
+    print(rasm.stdout.rstrip())
+
     return 0
 
 

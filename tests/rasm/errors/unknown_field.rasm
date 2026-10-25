@@ -1,0 +1,10 @@
+v: struct = {
+    a: u32
+}
+
+thing: v = {}
+
+main: proc() -> i32 = {
+    mov eax, thing.b
+    ret
+}

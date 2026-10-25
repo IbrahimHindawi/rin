@@ -18027,6 +18027,7 @@ static void cli_print_usage(void) {
         "  rin check   [input.rin] [--diagnostics=json]\n"
         "  rin symbols [input.rin] [--stdin|--stdin-path file]\n"
         "  rin lsp     [input.rin] [--stdin|--stdin-path file]\n"
+        "  rin asm     input.rasm [-o out.exe] [-l library]... [--windows] [--no-link]\n"
         "\n"
         "legacy usage:\n"
         "  rin [input.rin] [output.c] [output.h]\n"
@@ -18375,6 +18376,9 @@ static bool cli_expect_value(i32 argc, char *argv[], i32 *index, const char *opt
     return true;
 }
 
+/* `rin asm`: the rasm assembler. Its own file, reached only from here. */
+#include "asm.c"
+
 i32 main(i32 argc, char *argv[]) {
     /* Guarantees the JSON diagnostic array is closed on every exit path, including
        the I/O failures that return straight out of main. */
@@ -18393,6 +18397,15 @@ i32 main(i32 argc, char *argv[]) {
     const char *header_path = null;
     i32 positional = 0;
     const char *command = null;
+
+    if (argc > 1 && cstr_equals(argv[1], "asm")) {
+        memops_arena asm_arena_storage = {0};
+        memops_arena_initialize(&asm_arena_storage);
+        g_index_arena = &asm_arena_storage;
+        g_exe_import_root = exe_import_root(&asm_arena_storage, argv[0]);
+        add_import_dir(g_exe_import_root);
+        return asm_main(argc, argv, &asm_arena_storage);
+    }
 
     if (argc > 1) {
         const char *first = argv[1];

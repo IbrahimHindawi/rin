@@ -1,0 +1,8 @@
+twice: macro(a) = {
+    add a, a
+}
+
+main: proc() -> i32 = {
+    twice(eax, ebx)
+    ret
+}

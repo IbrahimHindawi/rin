@@ -60,3 +60,4 @@ vimsess
 scripts/psClang
 
 s.nv
+__pycache__/

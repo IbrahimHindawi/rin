@@ -1,0 +1,10 @@
+start
+offsetof(body.mass) = 16
+sizeof(body) = 32
+bodies[1].id = 9
+bodies[0].pos.z + 0.5 = 3
+color = 6
+Color.Green = 5
+sum(values) = 11
+[rbx].body.id = 7
+done

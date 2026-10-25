@@ -1,0 +1,5 @@
+#define TWICE(x) x
+
+main: proc() -> i32 = {
+    ret
+}

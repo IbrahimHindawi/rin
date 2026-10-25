@@ -1,0 +1,118 @@
+; basics.rasm: the assembler end to end, printing what it computed.
+;
+; Structs and their offsets, a nested field, an array element, an enum, a
+; #define, a float literal from the pool, a string, an address constant, an
+; overloaded macro with a label of its own, a proc called by name.
+
+#define STD_OUTPUT_HANDLE -11
+#define COUNT 4
+
+vec3: struct = {
+    x: f32
+    y: f32
+    z: f32
+}
+
+body: struct = {
+    id: u32
+    pos: vec3                      ; at 4
+    mass: f64                      ; at 16, after padding
+    tags: [3]u16                   ; at 24
+}
+
+Color: enum = { Red, Green = 5, Blue }
+
+bodies: [2]body = { { .id = 7, .pos = { 1.0, 2.0, 3.0 }, .mass = 2.5 }, { .id = 9 } }
+values: [COUNT]f32 = { 1.5, 2.5, 3.0, 4.0 }
+color: Color = Color.Blue
+out_handle: *void = {}
+written: u32 = 0
+line: [256]u8 = {}
+
+say: macro(text) = {
+    mov rcx, text
+    call say_cstr
+}
+
+say: macro(fmt, value) = {
+    mov rcx, line&
+    mov rdx, fmt
+    mov r8, value
+    call wsprintfA
+    mov rcx, line&
+    call say_cstr
+}
+
+; jumps over its own label; two uses must not collide
+skip_if_zero: macro(reg) = {
+    test reg, reg
+    jz done
+    nop
+  done:
+}
+
+; rcx: zero-terminated text -> stdout
+say_cstr: proc(text: *const c8) = {
+    push rbx
+    sub rsp, 48
+    mov rbx, rcx
+    mov rcx, rbx
+    call lstrlenA
+    mov rcx, out_handle
+    mov rdx, rbx
+    mov r8, rax
+    mov r9, written&
+    mov qword ptr [rsp + 32], 0
+    call WriteFile
+    add rsp, 48
+    pop rbx
+    ret
+}
+
+main: proc() -> i32 = {
+    sub rsp, 40
+    mov rcx, STD_OUTPUT_HANDLE
+    call GetStdHandle
+    mov out_handle, rax
+
+    say("start\n")
+    mov eax, offsetof(body.mass)
+    say("offsetof(body.mass) = %d\n", rax)
+    mov eax, sizeof(body)
+    say("sizeof(body) = %d\n", rax)
+    mov eax, bodies[1].id
+    say("bodies[1].id = %d\n", rax)
+    movss xmm0, bodies[0].pos.z
+    addss xmm0, 0.5
+    cvttss2si eax, xmm0
+    say("bodies[0].pos.z + 0.5 = %d\n", rax)
+    mov eax, color
+    say("color = %d\n", rax)
+    mov eax, Color.Green
+    say("Color.Green = %d\n", rax)
+
+    ; sum values[] through a register base: lea, then index
+    lea rdx, values
+    xorps xmm0, xmm0
+    xor ecx, ecx
+  sum:
+    addss xmm0, dword ptr [rdx + rcx*4]
+    inc ecx
+    cmp ecx, COUNT
+    jl sum
+    cvttss2si eax, xmm0
+    say("sum(values) = %d\n", rax)
+
+    mov eax, 1
+    skip_if_zero(eax)
+    skip_if_zero(eax)
+
+    ; through a pointer in a register, with a typed field path
+    lea rbx, bodies
+    mov eax, [rbx].body.id
+    say("[rbx].body.id = %d\n", rax)
+    say("done\n")
+    xor eax, eax
+    add rsp, 40
+    ret
+}

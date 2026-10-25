@@ -1,0 +1,6 @@
+x: u64 = 0
+
+main: proc() -> i32 = {
+    cmp rax, x&
+    ret
+}
