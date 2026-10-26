@@ -54,6 +54,13 @@ Rin is C-shaped code with a smaller syntax surface and compile-time metaprogramm
 ### Editor Support
 - `python nvim/install.py` installs filetype detection, syntax highlighting, and
   LSP attachment into your Neovim config. See `nvim/README.md` for options.
+- `powershell -ExecutionPolicy Bypass -File editors\visualstudio\install.ps1`
+  installs syntax highlighting into Visual Studio 2022 and later, from the
+  TextMate grammar in `editors/textmate`, which VS Code can use too. See
+  `editors/visualstudio/README.md`.
+- `rin build` links debugger visualizers into every PDB, so Visual Studio,
+  VS Code's `cppvsdbg` and WinDbg show slices, `vec`, `map`, `option` and the
+  other std containers by their contents. See `docs/debugger-integration.md`.
 
 ### rasm
 `rin asm` is rasm, an x64 assembler with rin's declarations: structs, enums,

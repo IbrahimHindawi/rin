@@ -4974,6 +4974,94 @@ main:proc()->i32 = {
         return 1
     print("ok must_use")
 
+    # `--natvis` writes debugger visualizers for the std containers a program
+    # uses: one <Type> per instance, named by its C name, summarised by its rin
+    # name. A user struct that only shares a std name is left alone.
+    natvis_rin = TEST_DIR / "natvis.rin"
+    natvis_c = TEST_DIR / "natvis.c"
+    natvis_out = TEST_DIR / "natvis.natvis"
+    natvis_rin.write_text(
+        'import "std/vec.rin"\n'
+        'import "std/option.rin"\n'
+        'import "std/string8.rin"\n'
+        "point: struct = { x: f32; y: f32; }\n"
+        "array: struct = { items: i32; }\n"
+        "main: proc() -> i32 = {\n"
+        "    v: vec<point> = {};\n"
+        "    o: option<i32> = {};\n"
+        "    s: []const char = {};\n"
+        "    t: string8 = {};\n"
+        "    mine: array = {};\n"
+        "    return cast(v.length + s.length + t.length, i32) + o.value + mine.items;\n"
+        "}\n",
+        encoding="utf-8", newline="\n")
+    natvis_out.unlink(missing_ok=True)
+    res = run([str(RIN_EXE), "compile", str(natvis_rin), "-o", str(natvis_c), "--no-header", "--natvis", str(natvis_out)])
+    if res.returncode != 0 or not natvis_out.exists():
+        print("natvis: --natvis must write the file")
+        print(res.stdout)
+        return 1
+    import xml.etree.ElementTree as ET
+    ns = {"n": "http://schemas.microsoft.com/vstudio/debugger/natvis/2010"}
+    try:
+        types = {t.get("Name"): t for t in ET.parse(natvis_out).getroot().findall("n:Type", ns)}
+    except ET.ParseError as e:
+        print(f"natvis: output must be well-formed XML: {e}")
+        return 1
+    for name, summary in (("vec_point", "vec<point>"), ("option_i32", "option<i32>"),
+                          ("slice_const_c8", "slice<const char>"), ("string8", "{data,[length]s8}")):
+        if name not in types:
+            print(f"natvis: expected a visualizer for {name}; got {sorted(types)}")
+            return 1
+        shown = " ".join(d.text or "" for d in types[name].findall("n:DisplayString", ns))
+        if summary not in shown:
+            print(f"natvis: {name} should be summarised as {summary!r}, got {shown!r}")
+            return 1
+    if types["vec_point"].find("n:Expand/n:ArrayItems/n:ValuePointer", ns) is None:
+        print("natvis: a vec must expand to its elements")
+        return 1
+    if "array" in types or "point" in types:
+        print("natvis: structs that are not std containers must not get visualizers")
+        return 1
+    print("ok natvis")
+
+    # `[_]T` counts its initializer, as `T x[] = {...}` does in C: one past the
+    # highest index written, `[i] =` designators included. Only a declaration's
+    # own outermost dimension can be counted.
+    infer_rin = TEST_DIR / "infer_count.rin"
+    infer_c = TEST_DIR / "infer_count.c"
+    infer_rin.write_text(
+        'names: [_][*]const char = { "a", "b", "c" };\n'
+        "grid: [_][2]i32 = { { 1, 2 }, { 3, 4 } };\n"
+        "main: proc() -> i32 = {\n"
+        "    primes: [_]i32 = { 2, 3, 5, 7, 11 };\n"
+        "    sparse: [_]f32 = { [4] = 1.0, 2.0 };\n"
+        "    all: []i32 = primes;\n"
+        "    return cast(all.length, i32) + grid[1][1];\n"
+        "}\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "compile", str(infer_rin), "-o", str(infer_c), "--no-header"])
+    infer_text = infer_c.read_text(encoding="utf-8") if res.returncode == 0 else ""
+    for needed in ("names[3]", "grid[2][2]", "primes[5]", "sparse[6]"):
+        if needed not in infer_text:
+            print(f"infer_count: expected {needed!r} in the emitted C")
+            print(res.stdout)
+            return 1
+    for source, needle in (
+        ("x: [_]i32 = {};\n", "needs at least one element"),
+        ("x: [_]i32;\n", "takes its count from a '{ ... }' initializer"),
+        ("p: struct = { v: [_]i32; }\n", "only for a declaration's own type"),
+        ("x: [3][_]i32 = { { 1 } };\n", "only for a declaration's own type"),
+        ("f: proc(a: [_]i32) -> void = {}\n", "only for a declaration's own type"),
+    ):
+        infer_rin.write_text(source + "main: proc() -> i32 = { return 0; }\n", encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(infer_rin)])
+        if res.returncode == 0 or needle not in res.stdout:
+            print(f"infer_count: {source.strip()!r} must be refused with {needle!r}")
+            print(res.stdout)
+            return 1
+    print("ok infer_count")
+
     # `rin build` reads build.rin and drives cmake. The whole point is that a
     # project describes its build once, declaratively, and never hand-writes a
     # CMakeLists -- so this checks the generated one says what build.rin did,
@@ -5011,11 +5099,16 @@ main:proc()->i32 = {
         print(res.stdout)
         return 1
     cmake_text = cmake_file.read_text(encoding="utf-8")
-    for needed in ("project(buildcmd_probe", "PROBE_DEFINE", "user32", "app.c"):
+    for needed in ("project(buildcmd_probe", "PROBE_DEFINE", "user32", "app.c", "/NATVIS:", "app.natvis"):
         if needed not in cmake_text:
             print(f"build_command: generated CMakeLists is missing {needed!r}")
             print(cmake_text)
             return 1
+    # The visualizers the link option points at must have been written.
+    if not (build_root / "out" / "rin_gen" / "app.natvis").exists():
+        print("build_command: expected app.natvis beside app.c")
+        print(res.stdout)
+        return 1
 
     # A required field left out is an error, not a default.
     (build_root / "build.rin").write_text(

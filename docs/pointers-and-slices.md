@@ -28,6 +28,19 @@ wanted from "every pointer a slice" -- a reference that cannot be indexed past
 what it points at -- without the cost that section rejected it for: `next: *Node`
 stays eight bytes.
 
+### `[_]T`: an array counted from its initializer
+
+    names: [_][*]const char = { "imp", "ogre", "wyrm" };   // [3]
+    sparse: [_]f32 = { [4] = 1.0, 2.0 };                    // [6]
+
+`_` is C's `T x[] = {...}`: the count is one past the highest index the
+initializer writes, so `[i] =` designators count too. The result is an ordinary
+`[N]T` -- `sizeof`, bounds checks and conversion to `[]T` all see the number
+-- and the emitted C spells it out. Only a declaration's own outermost
+dimension can be counted: `[_]` in a field, a parameter, a return type, an
+inner dimension, after `= {}` or with no initializer is an error, since there
+is nothing to count.
+
 ## 2. `*T` points at one element
 
     p: *T = thing&;

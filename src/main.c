@@ -587,6 +587,9 @@ struct TypeExpr {
        the same C pointer, so they are equal as types and only the operations
        allowed on them differ. */
     bool is_raw;
+    /* `[_]T`: the count is taken from the initializer, as `T x[] = {...}` does
+       in C. Set while parsing, cleared once the count is filled in. */
+    Token *infer_count;
     i32 line;
     i32 col;
     const char *decl_path; // where a `*` was written, so a diagnostic can point at it
@@ -910,6 +913,7 @@ typedef struct Parser {
     i32 stmt_depth;    // so do if/while/for bodies
     bool reported_depth;
     Vec_voidptr *pending_array_counts; // borrowed from the Program being parsed
+    Vec_voidptr inferred_counts; // every `[_]` seen; any still uncounted at the end is an error
     i32 last_error_token; // token index of the most recent parse error
     bool uses_slice_type; // `[]T` was written, so the slice struct is imported
 } Parser;
@@ -2460,7 +2464,16 @@ static TypeExpr *parse_type_inner(Parser *p) {
     if (parser_match(p, Token_LBracket)) {
         TypeExpr *array = type_new(p->arena, Type_Array);
         bool symbolic = false;
-        if (parser_peek(p)->kind == Token_Identifier) {
+        if (parser_peek(p)->kind == Token_Identifier && string8slice_equals_cstr(parser_peek(p)->text, "_") &&
+            parser_peek_n(p, 1)->kind == Token_RBracket) {
+            /* `[_]T`: counted from the initializer by infer_array_count. */
+            Token *under = parser_next(p);
+            array->line = under->line;
+            array->col = under->col;
+            array->array_count = string8_from_cstr(p->arena, "_");
+            array->infer_count = under;
+            ptr_array_append(p->arena, &p->inferred_counts, array);
+        } else if (parser_peek(p)->kind == Token_Identifier) {
             /* A symbolic count: an enum member (`Enum.Member`) or a bare C
                constant. Kept as written and resolved once all enums are known. */
             Token *first = parser_next(p);
@@ -3623,6 +3636,55 @@ static void parse_var_initializer(Parser *p, Stmt *s, Token *name_tok) {
     s->expr = parse_expr(p);
 }
 
+/* `names: [_]T = { a, b, c };` takes its count from the initializer, by C's
+   rule: each element goes one past the previous, and `[i] =` moves to i, so the
+   count is one past the highest index written. Only the outermost `[_]` of a
+   declaration with a `{ ... }` initializer can be counted; any other is
+   reported when parsing ends. */
+static void infer_array_count(Parser *p, Stmt *s) {
+    TypeExpr *t = s->type;
+    if (!t || t->kind != Type_Array || !t->infer_count) return;
+    Token *at = t->infer_count;
+    if (s->expr && s->expr->kind == Expr_ZeroInit) {
+        parser_error_token(p, at, "'[_]' needs at least one element to count");
+        t->infer_count = null;
+        return;
+    }
+    if (!s->expr || s->expr->kind != Expr_InitList) {
+        parser_error_token(p, at, "'[_]' takes its count from a '{ ... }' initializer");
+        t->infer_count = null;
+        return;
+    }
+    Expr *list = s->expr;
+    u64 next = 0;
+    u64 count = 0;
+    for (i32 i = 0; i < list->args.length; i++) {
+        if (i < list->designator_kinds.length && list->designator_kinds.data[i] == InitDesignator_Index) {
+            Expr *d = (Expr *)list->designators.data[i];
+            char digits[32] = {0};
+            char *end = null;
+            if (!d || d->kind != Expr_Number || d->number.length >= sizeof(digits)) {
+                parser_error_token(p, at, "'[_]' can only count past a literal '[N] =' index");
+                t->infer_count = null;
+                return;
+            }
+            memcpy(digits, d->number.data, d->number.length);
+            next = strtoull(digits, &end, 0);
+        }
+        next += 1;
+        if (next > count) count = next;
+    }
+    if (count == 0) {
+        parser_error_token(p, at, "'[_]' needs at least one element to count");
+        t->infer_count = null;
+        return;
+    }
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%llu", (unsigned long long)count);
+    t->array_count = string8_from_cstr(p->arena, buf);
+    t->infer_count = null;
+}
+
 static Stmt *parse_for_clause_stmt(Parser *p, bool allow_var_decl) {
     if (parser_peek(p)->kind == Token_Identifier &&
         allow_var_decl &&
@@ -3636,6 +3698,7 @@ static Stmt *parse_for_clause_stmt(Parser *p, bool allow_var_decl) {
         s->line = name_tok->line;
         s->col = name_tok->col;
         parse_var_initializer(p, s, name_tok);
+        infer_array_count(p, s);
         return s;
     }
 
@@ -3927,6 +3990,7 @@ static Stmt *parse_stmt_inner(Parser *p) {
             s->line = name_tok->line;
             s->col = name_tok->col;
             parse_var_initializer(p, s, name_tok);
+            infer_array_count(p, s);
             parser_expect(p, Token_Semicolon, "expected ';' after var decl");
             return s;
         }
@@ -4632,6 +4696,7 @@ static Program parse_program(Parser *p) {
                its header declares it, and nothing is emitted here. */
             s->is_external = true;
         }
+        infer_array_count(p, s);
         parser_expect(p, Token_Semicolon, "expected ';' after global var");
         ptr_array_append(p->arena, &prog.globals, s);
     }
@@ -4645,6 +4710,18 @@ static Program parse_program(Parser *p) {
         Vec_i32_append(p->arena, &prog.i_import_cols, 0);
         Vec_string8_append(p->arena, &prog.imports, path);
     }
+
+    /* A `[_]` that no declaration counted: a field, a parameter, a return type,
+       an inner dimension, a generic argument. C has no answer for those either. */
+    for (i32 i = 0; i < p->inferred_counts.length; i++) {
+        TypeExpr *t = (TypeExpr *)p->inferred_counts.data[i];
+        if (t->infer_count) {
+            parser_error_token(p, t->infer_count,
+                               "'[_]' is only for a declaration's own type, counted from its '{ ... }' initializer");
+            t->infer_count = null;
+        }
+    }
+    p->inferred_counts.length = 0;
 
     return prog;
 }
@@ -15953,6 +16030,200 @@ static void emit_concrete_struct_defs_sorted(memops_arena *arena, string8 *out, 
     }
 }
 
+/* Natvis: how Visual Studio's debugger (and VS Code's cppvsdbg, and WinDbg)
+   should show std's containers. The debugger only ever sees the emitted C, so
+   `wave: vec<Enemy>` is a struct vec_Enemy { data, length, border } to it, and a
+   slice is a pointer and a count. One <Type> per instance the program uses,
+   named by its C name, says what the fields mean: the elements, the value an
+   option holds, the text of a string8. `rin build` links the file into the PDB
+   with /NATVIS, so stepping through .rin source shows them with no setup.
+   See docs/debugger-integration.md. */
+
+static bool natvis_has_fields(StructDecl *decl, const char *const *names) {
+    for (const char *const *n = names; *n; n++) {
+        bool found = false;
+        for (i32 i = 0; i < decl->fields.length && !found; i++) {
+            Field *f = (Field *)decl->fields.data[i];
+            found = string8_equals_cstr(&f->name, *n);
+        }
+        if (!found) return false;
+    }
+    return true;
+}
+
+static void natvis_escaped(memops_arena *arena, string8 *out, string8 text) {
+    for (u64 i = 0; i < text.length; i++) {
+        u8 c = text.data[i];
+        if (c == '<') emit_cstr(arena, out, "&lt;");
+        else if (c == '>') emit_cstr(arena, out, "&gt;");
+        else if (c == '&') emit_cstr(arena, out, "&amp;");
+        else if (c == '{') emit_cstr(arena, out, "{{");
+        else if (c == '}') emit_cstr(arena, out, "}}");
+        else string8_append_byte(arena, out, c);
+    }
+}
+
+/* `vec<Enemy>` as the source spells it, for the summary line: the type column
+   can only ever show the C name. */
+static string8 natvis_rin_name(memops_arena *arena, ConcreteStructDef *def) {
+    string8 spelled = string8_reserve(arena, 64);
+    emit_string8(arena, &spelled, def->decl->name);
+    if (def->is_mono) {
+        emit_cstr(arena, &spelled, "<");
+        for (i32 i = 0; i < def->sub.args.length; i++) {
+            if (i > 0) emit_cstr(arena, &spelled, ", ");
+            format_type_i(arena, &spelled, (TypeExpr *)def->sub.args.data[i], (TypeSub){0});
+        }
+        emit_cstr(arena, &spelled, ">");
+    }
+    /* The front end stores `char` as `c8`; show it as written. */
+    string8 name = string8_reserve(arena, spelled.length + 8);
+    for (u64 i = 0; i < spelled.length; i++) {
+        bool word_start = i == 0 || !(isalnum(spelled.data[i - 1]) || spelled.data[i - 1] == '_');
+        bool word_end = i + 2 >= spelled.length || !(isalnum(spelled.data[i + 2]) || spelled.data[i + 2] == '_');
+        if (word_start && word_end && i + 1 < spelled.length && spelled.data[i] == 'c' && spelled.data[i + 1] == '8') {
+            emit_cstr(arena, &name, "char");
+            i += 1;
+        } else {
+            string8_append_byte(arena, &name, spelled.data[i]);
+        }
+    }
+    return name;
+}
+
+static void natvis_open(memops_arena *arena, string8 *out, ConcreteStructDef *def) {
+    emit_cstr(arena, out, "  <Type Name=\"");
+    emit_string8(arena, out, def->name);
+    emit_cstr(arena, out, "\">\n");
+}
+
+static void natvis_summary(memops_arena *arena, string8 *out, ConcreteStructDef *def,
+                           const char *condition, const char *text) {
+    emit_cstr(arena, out, "    <DisplayString");
+    if (condition) {
+        emit_cstr(arena, out, " Condition=\"");
+        emit_cstr(arena, out, condition);
+        emit_cstr(arena, out, "\"");
+    }
+    emit_cstr(arena, out, ">");
+    natvis_escaped(arena, out, natvis_rin_name(arena, def));
+    emit_cstr(arena, out, " ");
+    emit_cstr(arena, out, text);
+    emit_cstr(arena, out, "</DisplayString>\n");
+}
+
+/* One visualizer, or nothing for a struct that is not a std container. A
+   container is recognised by its std name *and* its fields, so a user struct
+   that happens to be called `vec` is left alone. */
+static void emit_natvis_type(memops_arena *arena, string8 *out, ConcreteStructDef *def) {
+    StructDecl *d = def->decl;
+    const char *name = null;
+    char name_buf[64];
+    if (d->name.length >= sizeof(name_buf)) return;
+    memcpy(name_buf, d->name.data, d->name.length);
+    name_buf[d->name.length] = 0;
+    name = name_buf;
+
+    static const char *const contiguous[] = {"data", "length", null};
+    static const char *const ring[] = {"data", "head", "length", "border", null};
+    static const char *const linked[] = {"head", "length", null};
+    static const char *const keyed[] = {"entries", "length", "border", null};
+    static const char *const hashed[] = {"keys", "values", "states", "length", "capacity", null};
+    static const char *const optional[] = {"has_value", "value", null};
+    static const char *const fallible[] = {"ok", "value", "error", null};
+
+    if (def->is_mono && (cstr_equals(name, "slice") || cstr_equals(name, "array") ||
+                         cstr_equals(name, "vec") || cstr_equals(name, "heap")) &&
+        natvis_has_fields(d, contiguous)) {
+        bool capacity = cstr_equals(name, "vec") || cstr_equals(name, "heap");
+        natvis_open(arena, out, def);
+        natvis_summary(arena, out, def, null, "{{ length={length} }}");
+        emit_cstr(arena, out, "    <Expand>\n      <Item Name=\"[length]\">length</Item>\n");
+        if (capacity) emit_cstr(arena, out, "      <Item Name=\"[capacity]\">border</Item>\n");
+        emit_cstr(arena, out,
+            "      <ArrayItems>\n        <Size>length</Size>\n        <ValuePointer>data</ValuePointer>\n"
+            "      </ArrayItems>\n    </Expand>\n  </Type>\n");
+    } else if (def->is_mono && cstr_equals(name, "deque") && natvis_has_fields(d, ring)) {
+        natvis_open(arena, out, def);
+        natvis_summary(arena, out, def, null, "{{ length={length} }}");
+        emit_cstr(arena, out,
+            "    <Expand>\n      <Item Name=\"[length]\">length</Item>\n"
+            "      <IndexListItems>\n        <Size>length</Size>\n"
+            "        <ValueNode>data[(head + $i) % border]</ValueNode>\n"
+            "      </IndexListItems>\n    </Expand>\n  </Type>\n");
+    } else if (def->is_mono && (cstr_equals(name, "list") || cstr_equals(name, "stack") ||
+                                cstr_equals(name, "queue") || cstr_equals(name, "dlist")) &&
+               natvis_has_fields(d, linked)) {
+        natvis_open(arena, out, def);
+        natvis_summary(arena, out, def, null, "{{ length={length} }}");
+        emit_cstr(arena, out,
+            "    <Expand>\n      <Item Name=\"[length]\">length</Item>\n"
+            "      <LinkedListItems>\n        <Size>length</Size>\n        <HeadPointer>head</HeadPointer>\n"
+            "        <NextPointer>next</NextPointer>\n        <ValueNode>data</ValueNode>\n"
+            "      </LinkedListItems>\n    </Expand>\n  </Type>\n");
+    } else if (def->is_mono && cstr_equals(name, "map") && natvis_has_fields(d, keyed)) {
+        /* Open addressing: a slot is in use when its key is not null. */
+        natvis_open(arena, out, def);
+        natvis_summary(arena, out, def, null, "{{ length={length} }}");
+        emit_cstr(arena, out,
+            "    <Expand>\n      <Item Name=\"[length]\">length</Item>\n"
+            "      <CustomListItems>\n        <Variable Name=\"i\" InitialValue=\"0\" />\n"
+            "        <Loop Condition=\"i &lt; border\">\n"
+            "          <If Condition=\"entries[i].key != 0\">\n"
+            "            <Item Name=\"{entries[i].key,sb}\">entries[i].val</Item>\n"
+            "          </If>\n          <Exec>i++</Exec>\n        </Loop>\n"
+            "      </CustomListItems>\n    </Expand>\n  </Type>\n");
+    } else if (def->is_mono && cstr_equals(name, "hashmap") && natvis_has_fields(d, hashed)) {
+        /* A slot is in use when its state is 1; 0 is empty and 2 removed. */
+        natvis_open(arena, out, def);
+        natvis_summary(arena, out, def, null, "{{ length={length} }}");
+        emit_cstr(arena, out,
+            "    <Expand>\n      <Item Name=\"[length]\">length</Item>\n"
+            "      <CustomListItems>\n        <Variable Name=\"i\" InitialValue=\"0\" />\n"
+            "        <Loop Condition=\"i &lt; capacity\">\n"
+            "          <If Condition=\"states[i] == 1\">\n"
+            "            <Item Name=\"{keys[i]}\">values[i]</Item>\n"
+            "          </If>\n          <Exec>i++</Exec>\n        </Loop>\n"
+            "      </CustomListItems>\n    </Expand>\n  </Type>\n");
+    } else if (def->is_mono && cstr_equals(name, "option") && natvis_has_fields(d, optional)) {
+        natvis_open(arena, out, def);
+        natvis_summary(arena, out, def, "has_value", "some({value})");
+        natvis_summary(arena, out, def, "!has_value", "none");
+        emit_cstr(arena, out,
+            "    <Expand>\n      <Item Name=\"value\" Condition=\"has_value\">value</Item>\n"
+            "    </Expand>\n  </Type>\n");
+    } else if (def->is_mono && cstr_equals(name, "result") && natvis_has_fields(d, fallible)) {
+        natvis_open(arena, out, def);
+        natvis_summary(arena, out, def, "ok", "ok({value})");
+        natvis_summary(arena, out, def, "!ok", "err({error})");
+        emit_cstr(arena, out,
+            "    <Expand>\n      <Item Name=\"value\" Condition=\"ok\">value</Item>\n"
+            "      <Item Name=\"error\" Condition=\"!ok\">error</Item>\n    </Expand>\n  </Type>\n");
+    } else if (!def->is_mono && (cstr_equals(name, "string8") || cstr_equals(name, "string8slice")) &&
+               natvis_has_fields(d, contiguous)) {
+        bool capacity = cstr_equals(name, "string8");
+        natvis_open(arena, out, def);
+        emit_cstr(arena, out, "    <DisplayString>{data,[length]s8}</DisplayString>\n");
+        emit_cstr(arena, out, "    <StringView>data,[length]s8</StringView>\n");
+        emit_cstr(arena, out, "    <Expand>\n      <Item Name=\"[length]\">length</Item>\n");
+        if (capacity) emit_cstr(arena, out, "      <Item Name=\"[capacity]\">capacity</Item>\n");
+        emit_cstr(arena, out, "    </Expand>\n  </Type>\n");
+    }
+}
+
+static void emit_natvis(memops_arena *arena, Program *prog, string8 *out, const char *source) {
+    emit_cstr(arena, out, "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
+    emit_cstr(arena, out, "<!-- Generated by rin from ");
+    emit_cstr(arena, out, comment_path(source));
+    emit_cstr(arena, out, ". Do not edit: rin build links it into the PDB. -->\n");
+    emit_cstr(arena, out, "<AutoVisualizer xmlns=\"http://schemas.microsoft.com/vstudio/debugger/natvis/2010\">\n");
+    Vec_voidptr defs = collect_concrete_struct_defs(arena, prog);
+    for (i32 i = 0; i < defs.length; i++) {
+        emit_natvis_type(arena, out, (ConcreteStructDef *)defs.data[i]);
+    }
+    emit_cstr(arena, out, "</AutoVisualizer>\n");
+}
+
 static void emit_proc_params(memops_arena *arena, string8 *out, ProcDecl *decl, TypeSub sub) {
     if (decl->params.length == 0 && !decl->is_variadic) {
         emit_cstr(arena, out, "void");
@@ -18048,6 +18319,7 @@ static void cli_print_usage(void) {
         "  -H, --header <file>       output header file for compile\n"
         "  --no-header               skip generated header emission\n"
         "  --single-file             one self-contained .c: rin's headers inlined, no #line\n"
+        "  --natvis <file>           also write debugger visualizers for std's containers\n"
         "  -I, --importdir <dir>     add a rin import search directory\n"
         "  --check                   legacy check mode\n"
         "  --diagnostics=json        emit diagnostics as JSON\n"
@@ -18303,6 +18575,14 @@ static void build_write_target(FILE *f, BuildConfig *cfg, const char *target,
         build_write_list(f, "    ", &cfg->libraries);
         fprintf(f, ")\n\n");
     }
+    /* The debugger visualizers `compile --natvis` wrote beside the C, embedded
+       in the PDB so the debugger needs no setup. MSVC is set for clang-cl too,
+       and link.exe and lld-link both take /NATVIS. */
+    u64 n = (u64)strlen(generated_c);
+    if (n > 2 && strcmp(generated_c + n - 2, ".c") == 0) {
+        fprintf(f, "if(MSVC)\n    target_link_options(%s PRIVATE \"/NATVIS:%s/%.*s.natvis\")\nendif()\n\n",
+                target, project_root, (int)(n - 2), generated_c);
+    }
 }
 
 /* The whole file: a project block, then one target per entry. */
@@ -18390,6 +18670,7 @@ i32 main(i32 argc, char *argv[]) {
     bool lsp_json = false;
     bool emit_header = true;
     const char *modules_dir = null;
+    const char *natvis_path = null;
     bool read_source_from_stdin = false;
     const char *input_path = null;
     const char *stdin_override_path_arg = null;
@@ -18485,6 +18766,14 @@ i32 main(i32 argc, char *argv[]) {
                 return 1;
             }
             modules_dir = argv[++i];
+            continue;
+        }
+        if (cstr_equals(arg, "--natvis")) {
+            if (i + 1 >= argc) {
+                printf("rin: error: --natvis expects a file\n");
+                return 1;
+            }
+            natvis_path = argv[++i];
             continue;
         }
         if (cstr_equals(arg, "--emit-all-line-directives")) {
@@ -18881,8 +19170,9 @@ i32 main(i32 argc, char *argv[]) {
             const char *gen_c = join_path3(&arena, gen_dir, stem, ".c");
             const char *target = (cfg.entries.length > 0) ? stem : cfg.name;
 
-            snprintf(cmd, sizeof(cmd), "\"%s\" compile \"%s\" -o \"%s\" --no-header",
-                     argv[0], entry, gen_c);
+            const char *gen_natvis = join_path3(&arena, gen_dir, stem, ".natvis");
+            snprintf(cmd, sizeof(cmd), "\"%s\" compile \"%s\" -o \"%s\" --no-header --natvis \"%s\"",
+                     argv[0], entry, gen_c, gen_natvis);
             if (build_run("transpile", cmd, true) != 0) return 1;
 
             Vec_string8_append(&arena, &targets, string8_from_cstr(&arena, target));
@@ -19164,6 +19454,15 @@ i32 main(i32 argc, char *argv[]) {
         return 1;
     }
     profile_mark("native mono headers", &profile_last, profile_start);
+    if (natvis_path) {
+        string8 natvis = string8_reserve(&arena, 16 * 1024);
+        emit_natvis(&arena, &prog, &natvis, input_path);
+        if (!write_string8_to_file(natvis_path, natvis)) {
+            printf("rin: error: failed to write %s\n", natvis_path);
+            return 1;
+        }
+        profile_mark("natvis", &profile_last, profile_start);
+    }
 
     if (emit_header) {
         printf("rin: generated %s and %s\n", output_path, header_path);
