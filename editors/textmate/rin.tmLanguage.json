@@ -1,0 +1,420 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "rin",
+  "scopeName": "source.rin",
+  "fileTypes": [
+    "rin"
+  ],
+  "comment": "rin: see docs/ and nvim/syntax/rin.vim, which this follows.",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#preprocessor"
+    },
+    {
+      "include": "#string"
+    },
+    {
+      "include": "#char"
+    },
+    {
+      "include": "#attribute"
+    },
+    {
+      "include": "#declaration"
+    },
+    {
+      "include": "#generic"
+    },
+    {
+      "include": "#reflection"
+    },
+    {
+      "include": "#keyword"
+    },
+    {
+      "include": "#builtin"
+    },
+    {
+      "include": "#primitive-type"
+    },
+    {
+      "include": "#type-position"
+    },
+    {
+      "include": "#discard"
+    },
+    {
+      "include": "#uninitialized"
+    },
+    {
+      "include": "#member"
+    },
+    {
+      "include": "#call"
+    },
+    {
+      "include": "#address"
+    },
+    {
+      "include": "#operator"
+    },
+    {
+      "include": "#number"
+    },
+    {
+      "include": "#constant"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "begin": "//",
+          "end": "$",
+          "name": "comment.line.double-slash.rin",
+          "patterns": [
+            {
+              "include": "#todo"
+            }
+          ]
+        },
+        {
+          "begin": "/\\*",
+          "end": "\\*/",
+          "name": "comment.block.rin",
+          "patterns": [
+            {
+              "include": "#todo"
+            }
+          ]
+        }
+      ]
+    },
+    "todo": {
+      "match": "\\b(?:TODO|FIXME|NOTE|XXX|HACK)\\b",
+      "name": "keyword.other.todo.rin"
+    },
+    "preprocessor": {
+      "patterns": [
+        {
+          "match": "^\\s*#\\s*(?:define|include|ifdef|ifndef|if|elif|else|endif|undef|pragma|error|warning|line)\\b.*$",
+          "name": "meta.preprocessor.rin"
+        },
+        {
+          "match": "^\\s*#.*$",
+          "name": "invalid.illegal.preprocessor.rin"
+        }
+      ]
+    },
+    "escape": {
+      "match": "\\\\(?:x[0-9A-Fa-f]{2}|.)",
+      "name": "constant.character.escape.rin"
+    },
+    "string": {
+      "begin": "\"",
+      "end": "\"",
+      "name": "string.quoted.double.rin",
+      "patterns": [
+        {
+          "include": "#escape"
+        }
+      ]
+    },
+    "char": {
+      "match": "'(?:\\\\(?:x[0-9A-Fa-f]{2}|.)|[^'\\\\])'",
+      "name": "string.quoted.single.rin"
+    },
+    "attribute": {
+      "begin": "\\b(proc|struct|enum|union|alias|label)\\s*(\\[)",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.type.rin"
+        },
+        "2": {
+          "name": "punctuation.section.attribute.begin.rin"
+        }
+      },
+      "end": "\\]",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.section.attribute.end.rin"
+        }
+      },
+      "patterns": [
+        {
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+          "name": "entity.other.attribute-name.rin"
+        },
+        {
+          "include": "#number"
+        }
+      ]
+    },
+    "declaration": {
+      "patterns": [
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(<)([^<>()]*)(>)\\s*([A-Za-z_][A-Za-z0-9_]*)(?=\\s*:\\s*proc\\b)",
+          "captures": {
+            "1": {
+              "name": "entity.name.type.rin"
+            },
+            "2": {
+              "name": "punctuation.definition.generic.rin"
+            },
+            "3": {
+              "name": "entity.name.type.rin"
+            },
+            "4": {
+              "name": "punctuation.definition.generic.rin"
+            },
+            "5": {
+              "name": "entity.name.function.rin"
+            }
+          }
+        },
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(?=\\s*:\\s*proc\\b)",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.rin"
+            }
+          }
+        },
+        {
+          "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(?=\\s*:\\s*(?:struct|enum|union|alias)\\b)",
+          "captures": {
+            "1": {
+              "name": "entity.name.type.rin"
+            }
+          }
+        },
+        {
+          "match": "^\\s*([A-Za-z_][A-Za-z0-9_]*)(?=\\s*:\\s*$)",
+          "captures": {
+            "1": {
+              "name": "entity.name.label.rin"
+            }
+          }
+        }
+      ]
+    },
+    "generic": {
+      "patterns": [
+        {
+          "match": "\\b(proc|struct|enum|union|alias|label)\\s*(<)([^<>()]*)(>)",
+          "captures": {
+            "1": {
+              "name": "storage.type.rin"
+            },
+            "2": {
+              "name": "punctuation.definition.generic.rin"
+            },
+            "3": {
+              "patterns": [
+                {
+                  "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+                  "name": "entity.name.type.rin"
+                }
+              ]
+            },
+            "4": {
+              "name": "punctuation.definition.generic.rin"
+            }
+          }
+        },
+        {
+          "match": "\\b(?!(?:proc|struct|enum|union|alias|label)\\b)([A-Za-z_][A-Za-z0-9_]*)\\s*(<)\\s*((?:[A-Za-z_][A-Za-z0-9_]*|\\*|\\[\\s*\\*?\\s*[0-9]*\\s*\\]|\\s|,)+?)\\s*(>)(?=\\s*\\()",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.rin"
+            },
+            "2": {
+              "name": "punctuation.definition.generic.rin"
+            },
+            "3": {
+              "patterns": [
+                {
+                  "include": "#primitive-type"
+                },
+                {
+                  "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+                  "name": "entity.name.type.rin"
+                }
+              ]
+            },
+            "4": {
+              "name": "punctuation.definition.generic.rin"
+            }
+          }
+        },
+        {
+          "match": "\\b(?!(?:proc|struct|enum|union|alias|label)\\b)([A-Za-z_][A-Za-z0-9_]*)\\s*(<)\\s*((?:[A-Za-z_][A-Za-z0-9_]*|\\*|\\[\\s*\\*?\\s*[0-9]*\\s*\\]|\\s|,)+?)\\s*(>)([A-Za-z_][A-Za-z0-9_]*)?",
+          "captures": {
+            "1": {
+              "name": "entity.name.type.rin"
+            },
+            "2": {
+              "name": "punctuation.definition.generic.rin"
+            },
+            "3": {
+              "patterns": [
+                {
+                  "include": "#primitive-type"
+                },
+                {
+                  "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b",
+                  "name": "entity.name.type.rin"
+                }
+              ]
+            },
+            "4": {
+              "name": "punctuation.definition.generic.rin"
+            },
+            "5": {
+              "name": "entity.name.function.rin"
+            }
+          }
+        }
+      ]
+    },
+    "reflection": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(<>)",
+      "captures": {
+        "1": {
+          "name": "entity.name.type.rin"
+        },
+        "2": {
+          "name": "punctuation.definition.generic.rin"
+        }
+      }
+    },
+    "keyword": {
+      "patterns": [
+        {
+          "match": "\\b(?:import|cinclude|define)\\b",
+          "name": "keyword.control.import.rin"
+        },
+        {
+          "match": "\\b(?:if|else|switch|case|default|for|while|do|break|continue|return|goto)\\b",
+          "name": "keyword.control.rin"
+        },
+        {
+          "match": "\\b(?:proc|struct|enum|union|alias|label)\\b",
+          "name": "storage.type.rin"
+        },
+        {
+          "match": "\\b(?:const|volatile|static|external|external_emit)\\b",
+          "name": "storage.modifier.rin"
+        },
+        {
+          "match": "\\b(?:shl|shr)\\b",
+          "name": "keyword.operator.word.rin"
+        },
+        {
+          "match": "\\b(?:true|false|null)\\b",
+          "name": "constant.language.rin"
+        }
+      ]
+    },
+    "builtin": {
+      "match": "\\b(?:cast|sizeof|alignof|offsetof|va_arg|va_start|va_end)\\b",
+      "name": "support.function.builtin.rin"
+    },
+    "primitive-type": {
+      "match": "\\b(?:i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|usize|b32|void|char|va_list|FILE)\\b",
+      "name": "storage.type.primitive.rin"
+    },
+    "type-position": {
+      "match": "(?<=:|->)((?:\\*|\\[\\s*\\*?\\s*[0-9]*\\s*\\]|const\\b|volatile\\b|static\\b|\\s)*)(?!(?:proc|struct|enum|union|alias|label|const|volatile|static|i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|usize|b32|void|char|va_list|FILE)\\b)([A-Za-z_][A-Za-z0-9_]*)\\b(?!\\s*[<(])",
+      "captures": {
+        "1": {
+          "patterns": [
+            {
+              "include": "#keyword"
+            },
+            {
+              "include": "#number"
+            }
+          ]
+        },
+        "2": {
+          "name": "entity.name.type.rin"
+        }
+      }
+    },
+    "discard": {
+      "match": "(?<![\\w.])_(?=\\s*=[^=])",
+      "name": "variable.language.discard.rin"
+    },
+    "uninitialized": {
+      "match": "(?<==)\\s*\\?(?=\\s*;)",
+      "name": "keyword.operator.uninitialized.rin"
+    },
+    "member": {
+      "match": "(?<![\\w)\\]])(\\.)([A-Za-z_][A-Za-z0-9_]*)(?=\\s*=[^=])",
+      "captures": {
+        "1": {
+          "name": "punctuation.accessor.rin"
+        },
+        "2": {
+          "name": "variable.other.member.rin"
+        }
+      }
+    },
+    "call": {
+      "match": "\\b([A-Za-z_][A-Za-z0-9_]*)(?=\\s*\\()",
+      "captures": {
+        "1": {
+          "name": "entity.name.function.rin"
+        }
+      }
+    },
+    "address": {
+      "match": "(?<=[\\w\\])])&(?![&=])",
+      "name": "keyword.operator.address.rin"
+    },
+    "operator": {
+      "patterns": [
+        {
+          "match": "->",
+          "name": "keyword.operator.arrow.rin"
+        },
+        {
+          "match": "\\.\\.\\.?",
+          "name": "keyword.operator.range.rin"
+        },
+        {
+          "match": "==|!=|<=|>=|&&|\\|\\||[+\\-*/%&|^]=|[<>!~?+\\-*/%&|^]|=",
+          "name": "keyword.operator.rin"
+        }
+      ]
+    },
+    "number": {
+      "patterns": [
+        {
+          "match": "\\b0x[0-9A-Fa-f]+(?:'[A-Za-z_]\\w*)?",
+          "name": "constant.numeric.hex.rin"
+        },
+        {
+          "match": "\\b0b[01]+(?:'[A-Za-z_]\\w*)?",
+          "name": "constant.numeric.binary.rin"
+        },
+        {
+          "match": "\\b[0-9]+\\.(?!\\.)[0-9]*(?:[eE][+-]?[0-9]+)?(?:'[A-Za-z_]\\w*)?|\\b[0-9]+[eE][+-]?[0-9]+(?:'[A-Za-z_]\\w*)?",
+          "name": "constant.numeric.float.rin"
+        },
+        {
+          "match": "\\b[0-9]+(?:'[A-Za-z_]\\w*)?",
+          "name": "constant.numeric.integer.rin"
+        }
+      ]
+    },
+    "constant": {
+      "match": "\\b[A-Z][A-Z0-9_]*_[A-Z0-9_]+\\b|\\b[A-Z][A-Z0-9]{2,}\\b",
+      "name": "variable.other.constant.rin"
+    }
+  }
+}
