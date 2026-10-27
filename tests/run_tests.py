@@ -5197,6 +5197,7 @@ main:proc()->i32 = {
     formats_exe = TEST_DIR / "print_formats.exe"
     formats_rin.write_text(
         'import "std/print.rin"\n'
+        "vec3: struct = { x: f32; y: f32; z: f32; }\n"
         "main: proc() -> i32 = {\n"
         "    a: u64 = 0xFFFFFFFFFFFFFFFF;\n"
         "    b: i64 = -9000000000;\n"
@@ -5207,6 +5208,7 @@ main:proc()->i32 = {
         "    g: intmax = -6;\n"
         "    h: uintmax = 9000000000;\n"
         '    printfmt("{} {} {} {} {} {} {} {}%\\n", a, b, c, d, e, f, g, h);\n'
+        "    printfmt(\"{} {} {} {}\\n\", sizeof(vec3) * 2, 2 * sizeof(vec3), sizeof(vec3) / 4, 'a' + 1);\n"
         "    print<u64>(a); print_cstr(\" \"); print<i64>(b); print_cstr(\"\\n\");\n"
         "    return 0;\n"
         "}\n", encoding="utf-8", newline="\n")
@@ -5214,15 +5216,19 @@ main:proc()->i32 = {
     built = run(["clang.exe", "-std=c11", "-Wall", "-Wextra", "-Wformat=2", "-Werror", str(formats_c),
                  "-o", str(formats_exe)])
     ran = run([str(formats_exe)]) if built.returncode == 0 else None
-    want = "18446744073709551615 -9000000000 7 -3 4 -5 -6 9000000000%\n18446744073709551615 -9000000000\n"
+    want = ("18446744073709551615 -9000000000 7 -3 4 -5 -6 9000000000%\n24 24 3 98\n"
+            "18446744073709551615 -9000000000\n")
     if res.returncode != 0 or built.returncode != 0 or ran is None or ran.stdout.replace("\r\n", "\n") != want:
         print("print_formats: every 64-bit and pointer-sized type must print exactly, with no -Wformat warning")
         print(res.stdout, built.stdout, ran.stdout if ran else "")
         return 1
     spliced = '"%" PRIu64 " %" PRId64 " %" PRId64 " %" PRIdPTR " %" PRIuPTR " %td %" PRIdMAX " %" PRIuMAX "%%\\n"'
-    if spliced not in formats_c.read_text(encoding="utf-8"):
-        print(f"print_formats: expected the format {spliced} in the generated C")
-        return 1
+    # sizeof and alignof take part in arithmetic as literals do, but they are
+    # usize to C, so a product of one is %zu; `'a' + 1` is still an int.
+    for needed in (spliced, '"%zu %zu %zu %d\\n"'):
+        if needed not in formats_c.read_text(encoding="utf-8"):
+            print(f"print_formats: expected the format {needed} in the generated C")
+            return 1
     print("ok print_formats")
 
     # `rin build` reads build.rin and drives cmake. The whole point is that a

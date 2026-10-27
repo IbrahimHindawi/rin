@@ -10766,6 +10766,13 @@ static TypeExpr *binary_numeric_result(Program *prog, memops_arena *arena, TypeE
                                        TypeExpr *right, LitKind rk, LitKind *kind) {
     if (lk && rk) {
         *kind = lk > rk ? lk : rk;
+        /* sizeof and alignof adapt like a literal but are usize to C, so
+           `sizeof(T) * 2` is a size_t there and printfmt has to say %zu. A char
+           literal stays out of it: `'a' + 1` is an int in C. */
+        if (*kind == Lit_Int) {
+            if (left && left->kind == Type_Name && string8_equals_cstr(&left->name, "usize")) return left;
+            if (right && right->kind == Type_Name && string8_equals_cstr(&right->name, "usize")) return right;
+        }
         return type_name_expr(arena, *kind == Lit_Float ? "f64" : "i32");
     }
     if (lk || rk) {
