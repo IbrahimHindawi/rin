@@ -75,6 +75,18 @@ plain version vectorizes as well and both run at 0.15, so the promise pays
 where the compiler cannot see the arguments: a kernel in its own function,
 which is how systems are written.
 
+**On Windows a single slice needs it too.** Windows x64 passes a 16-byte
+slice by reference, as a pointer to a copy, and clang-cl compiles with
+`-relaxed-aliasing` by default to match MSVC. So without the promise, a float
+written through the slice might be the slice's own `data` or `length`, and
+the loop reads both again after every element. rin-dod lesson 2's
+`age_system(lives: []f32)` on clang-cl `/O2` did one float per pass,
+reloading `lives.data` and `lives.length` each time; with
+`lives: noalias []f32` it does eight floats per pass. `/clang:-fstrict-aliasing`
+does the same for the whole build, but makes type punning anywhere undefined
+behaviour. The rule: `noalias` on every slice a loop writes, even when it is
+the only one.
+
 **Hot code keeps its slices.** [pointers-and-slices.md](pointers-and-slices.md)
 moved rin's pointer-plus-length APIs to slices because "each one replaces a
 pointer that trusted its caller with a slice that knows its length". A

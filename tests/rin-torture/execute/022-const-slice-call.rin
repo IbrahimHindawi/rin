@@ -1,0 +1,44 @@
+import "std/print.rin"
+
+// A call whose result is `[]T` goes straight into a `[]const T` parameter. The
+// two are different C structs; the conversion goes through a converter, so
+// the call runs once. It used to be written `{ (e).data, (e).length }`, which
+// would run it twice, so rin refused it and asked for a local.
+
+position: struct = { x: f32; }
+velocity: struct = { x: f32; }
+
+calls: static i32 = 0;
+ps: static [4]position = {};
+vs: static [4]velocity = {};
+
+column_ps: proc() -> []position = { calls += 1; return ps; }
+column_vs: proc() -> []velocity = { calls += 1; return vs; }
+
+integrate: proc(out: noalias []position, v: []const velocity, dt: f32) -> void = {
+    for (i: u64 = 0; i < out.length; i += 1) { out[i].x += v[i].x * dt; }
+}
+
+sum: proc(v: []const velocity) -> f32 = {
+    total: f32 = 0;
+    for (i: u64 = 0; i < v.length; i += 1) { total += v[i].x; }
+    return total;
+}
+
+main: proc() -> i32 = {
+    for (i: u64 = 0; i < 4; i += 1) { vs[i].x = cast(i + 1, f32); }
+
+    integrate(column_ps(), column_vs(), 2.0);
+    printfmt("calls {}\n", calls);
+    printfmt("{} {}\n", ps[0].x, ps[3].x);
+
+    // A return statement and a local's initializer convert the same way.
+    total: f32 = sum(column_vs());
+    printfmt("calls {} sum {}\n", calls, total);
+    view: []const velocity = column_vs();
+    printfmt("calls {} length {}\n", calls, view.length);
+
+    // A slice that is not a call still converts.
+    printfmt("{}\n", sum(vs[1..3]));
+    return 0;
+}

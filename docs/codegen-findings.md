@@ -1,6 +1,6 @@
 # C codegen: linkage, floats, SIMD, toolchain
 
-> **Proposed** (2026-10-26). Nothing here is implemented. What porting the
+> **Proposed** (2026-10-26). Only Part 6 is implemented (2026-10-27). What porting the
 > rin-dod lessons to plain C (c-dod) showed about the C that rin emits.
 > Measured on a Linux build of rin with gcc 13.3 and clang 18.1 on a 2.8 GHz
 > Xeon unless a section says otherwise. Timings on that shared machine vary by
@@ -13,7 +13,7 @@
 | 3 | SIMD vector types | not decided; the constraints if they are added | open |
 | 4 | toolchain | clang and clang-cl are the reference; no LLVM backend for now | proposed |
 | 5 | `must_use` | no change: rin checks it, C never sees it | already right |
-| 6 | printing `u64` on Linux | use `PRIu64`-style formats | bug, proposed fix |
+| 6 | printing `u64` on Linux | use `PRIu64`-style formats | implemented |
 
 `noalias` and variadic procs are in [noalias-variadic.md](noalias-variadic.md).
 
@@ -62,8 +62,7 @@ gcc is 30 percent faster in cache. clang is unchanged: over four runs each,
 external ranged 1.10 to 1.41 and `static` 1.14 to 1.33.
 rin-dod lesson 1 was built through rin with `gravity` and `dt` made
 `static`. Both compilers folded `gravity` into a constant, with no load of it
-left in `move_soa`, and it made no measurable difference, because that loop
-streams 6 MB from RAM.
+left in `move_soa`, and it made no measurable difference to that loop.
 
 ## 1.3 Proposal
 
@@ -277,6 +276,12 @@ change the typedefs instead: a `*u64` has to stay compatible with C's
 `uint64_t *`.
 
 **Test:** rin-dod builds on Linux without `-Wno-format`.
+
+**Implemented** (2026-10-27): `printfmt` emits the `<inttypes.h>` formats for
+`i64`, `u64`, `b64`, `intptr`, `uintptr`, `intmax` and `uintmax`, and `%td`
+for `ptrdiff`. `print<u64>` and `print<i64>` call `rin_print_u64` and
+`rin_print_i64` in `core.h`, since rin source cannot name a format macro.
+Checked on Windows only so far.
 
 ---
 

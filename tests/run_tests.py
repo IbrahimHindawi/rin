@@ -208,7 +208,7 @@ main: proc()->i32 = {
         # call: nine calls became one, and the null guard keeps print_cstr's
         # "(null)" behaviour that a bare %s would have made undefined.
         generated_contains=(
-            "printf(\"a %d %llu %f %s\\n\", 3, count, 1.5, ((label != 0) ? label : \"(null)\"));",
+            "printf(\"a %d %\" PRIu64 \" %f %s\\n\", 3, count, 1.5, ((label != 0) ? label : \"(null)\"));",
             "printf(\"field[%d] = %s\\n\", i, ((Payload_reflect.variant.fields[i].name != 0) ? Payload_reflect.variant.fields[i].name : \"(null)\"));",
             # print<Payload> has no conversion, so that line keeps the per-piece
             # expansion -- a user's own printer must still be reachable.
@@ -1264,7 +1264,7 @@ main: proc() -> i32 = {
         expected_stdout="15 15 9 3 3\n4660 255\n9 5 5\n10\n",
         generated_contains=(
             "((slice_i32){ arr, 5 })",
-            "((slice_const_i32){ (all).data, (all).length })",
+            "rin_to_slice_const_i32(all)",
             "((slice_i32){ arr + (1), (4) - (1) })",
             "all.data[RIN_INDEX(k, all.length)]",
             "RIN_RANGE(3, all.length, all.length)",
@@ -5168,6 +5168,63 @@ main:proc()->i32 = {
             return 1
     print("ok noalias")
 
+    # --single-file puts core.h in the main file, where clang warns about every
+    # unused static inline function. A Debug build of a program with no slices
+    # left rin_index_check, rin_range_check and rin_noalias_check uncalled, so
+    # -Werror refused it.
+    werror_rin = TEST_DIR / "single_werror.rin"
+    werror_c = TEST_DIR / "single_werror.c"
+    for label, source in (
+        ("no slices", 'import "std/print.rin"\n'
+                      "main: proc() -> i32 = { x: i32 = 41; printfmt(\"{}\\n\", x + 1); return 0; }\n"),
+        ("an index, no subrange", "main: proc() -> i32 = { xs: [4]i32 = {}; i: u64 = 2; return xs[i]; }\n"),
+    ):
+        werror_rin.write_text(source, encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "compile", str(werror_rin), "-o", str(werror_c), "--single-file"])
+        built = run(["clang.exe", "-std=c11", "-Wall", "-Wextra", "-Werror", "-c", str(werror_c),
+                     "-o", str(TEST_DIR / "single_werror.o")])
+        if res.returncode != 0 or built.returncode != 0:
+            print(f"single_file_werror: a program with {label} must build under -Wall -Wextra -Werror")
+            print(res.stdout, built.stdout)
+            return 1
+    print("ok single_file_werror")
+
+    # u64 is unsigned long on Linux and unsigned long long on Windows, so a
+    # fixed %llu is a -Wformat warning on one of them. printfmt uses
+    # <inttypes.h>'s formats, and print<u64> and print<i64> core.h's helpers.
+    formats_rin = TEST_DIR / "print_formats.rin"
+    formats_c = TEST_DIR / "print_formats.c"
+    formats_exe = TEST_DIR / "print_formats.exe"
+    formats_rin.write_text(
+        'import "std/print.rin"\n'
+        "main: proc() -> i32 = {\n"
+        "    a: u64 = 0xFFFFFFFFFFFFFFFF;\n"
+        "    b: i64 = -9000000000;\n"
+        "    c: b64 = 7;\n"
+        "    d: intptr = -3;\n"
+        "    e: uintptr = 4;\n"
+        "    f: ptrdiff = -5;\n"
+        "    g: intmax = -6;\n"
+        "    h: uintmax = 9000000000;\n"
+        '    printfmt("{} {} {} {} {} {} {} {}%\\n", a, b, c, d, e, f, g, h);\n'
+        "    print<u64>(a); print_cstr(\" \"); print<i64>(b); print_cstr(\"\\n\");\n"
+        "    return 0;\n"
+        "}\n", encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "compile", str(formats_rin), "-o", str(formats_c), "--single-file"])
+    built = run(["clang.exe", "-std=c11", "-Wall", "-Wextra", "-Wformat=2", "-Werror", str(formats_c),
+                 "-o", str(formats_exe)])
+    ran = run([str(formats_exe)]) if built.returncode == 0 else None
+    want = "18446744073709551615 -9000000000 7 -3 4 -5 -6 9000000000%\n18446744073709551615 -9000000000\n"
+    if res.returncode != 0 or built.returncode != 0 or ran is None or ran.stdout.replace("\r\n", "\n") != want:
+        print("print_formats: every 64-bit and pointer-sized type must print exactly, with no -Wformat warning")
+        print(res.stdout, built.stdout, ran.stdout if ran else "")
+        return 1
+    spliced = '"%" PRIu64 " %" PRId64 " %" PRId64 " %" PRIdPTR " %" PRIuPTR " %td %" PRIdMAX " %" PRIuMAX "%%\\n"'
+    if spliced not in formats_c.read_text(encoding="utf-8"):
+        print(f"print_formats: expected the format {spliced} in the generated C")
+        return 1
+    print("ok print_formats")
+
     # `rin build` reads build.rin and drives cmake. The whole point is that a
     # project describes its build once, declaratively, and never hand-writes a
     # CMakeLists -- so this checks the generated one says what build.rin did,
@@ -5231,6 +5288,30 @@ main:proc()->i32 = {
     if res.returncode == 0 or "must set build_name" not in res.stdout:
         print("build_command: a build.rin without build_name must be refused")
         print(res.stdout)
+        return 1
+
+    # cmake gives a build type it does not know no flags at all, so a misspelt
+    # one has to stop here. RelWithDebInfo is Release plus a PDB: cmake's /Ob1
+    # for it would leave clang-cl inlining almost nothing.
+    def build_type_probe(build_type: str) -> subprocess.CompletedProcess:
+        (build_root / "build.rin").write_text(
+            'build_name:  [*]const char = "buildcmd_probe";\n'
+            'build_entry: [*]const char = "src/app.rin";\n'
+            'build_dir:   [*]const char = "out_type";\n'
+            f'build_type:  [*]const char = "{build_type}";\n', encoding="utf-8", newline="\n")
+        return run([str(RIN_EXE), "build"], cwd=str(build_root))
+    res = build_type_probe("Relase")
+    if res.returncode == 0 or "Debug, Release, RelWithDebInfo, MinSizeRel" not in res.stdout:
+        print("build_command: build_type \"Relase\" must be refused with the list of build types")
+        print(res.stdout)
+        return 1
+    res = build_type_probe("relwithdebinfo")
+    commands_file = build_root / "out_type" / "cmake" / "compile_commands.json"
+    commands = json.loads(commands_file.read_text(encoding="utf-8")) if commands_file.exists() else []
+    app_command = next((c["command"] for c in commands if c["file"].endswith("app.c")), "")
+    if res.returncode != 0 or "/Ob2" not in app_command or "/Ob1" in app_command or "/Zi" not in app_command:
+        print("build_command: RelWithDebInfo must build with /Ob2 and /Zi")
+        print(res.stdout, app_command)
         return 1
     print("ok build_command")
 

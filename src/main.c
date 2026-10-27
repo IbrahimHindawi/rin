@@ -689,8 +689,10 @@ struct Expr {
     Vec_string8 range_keys;
     Vec_voidptr range_types;
     /* A conversion the emitter writes out: an array or a slice becoming another
-       slice type. `coerce_count` is the array's length when the source is one. */
+       slice type. `coerce_count` is the array's length when the source is one;
+       `coerce_from` is the source's type. */
     TypeExpr *coerce_to;
+    TypeExpr *coerce_from;
     bool coerce_varies;
     string8 coerce_count;
     i32 line;
@@ -13346,36 +13348,52 @@ static bool expr_is_pure(Expr *e) {
     }
 }
 
-static void coerce_set(Program *prog, Expr *e, TypeExpr *type, string8 count) {
+static void coerce_set(Program *prog, Expr *e, TypeExpr *type, TypeExpr *from, string8 count) {
     if (e->coerce_varies) return;
     if (!e->coerce_to) {
         e->coerce_to = type;
+        e->coerce_from = from;
         e->coerce_count = count;
         return;
     }
-    if (!type_expr_equal_resolved(prog, e->coerce_to, type)) e->coerce_varies = true;
+    if (!type_expr_equal_resolved(prog, e->coerce_to, type) ||
+        !type_expr_equal_resolved(prog, e->coerce_from, from)) {
+        e->coerce_varies = true;
+    }
+}
+
+/* `[]T` to `[]const T`: the element is the same apart from the const. */
+static bool slice_widens_to_const(Program *prog, TypeExpr *dst, TypeExpr *src) {
+    TypeExpr *d = type_slice_elem(dst);
+    TypeExpr *s = type_slice_elem(src);
+    if (!d || !s || !d->is_const || s->is_const) return false;
+    TypeExpr bare = *d;
+    bare.is_const = false;
+    return type_expr_equal_resolved(prog, &bare, s);
 }
 
 /* An array or a slice going where a different slice type is expected: `[N]T`
    into `[]T` gets its length from the type, and `[]T` widens to `[]const T`.
    The two slice types are different C structs, so the emitter writes the
-   conversion. */
+   conversion. The widening goes through a converter, which evaluates the
+   source once (emit_slice_const_converters); any other slice conversion reads
+   it twice, so its source must be pure. */
 static void slice_coerce(Program *prog, TypeExpr *dst, TypeExpr *src, Expr *src_expr) {
     if (!src_expr) return;
     TypeExpr *d = resolve_alias_type(prog, dst);
     TypeExpr *s = resolve_alias_type(prog, src);
     if (!d || !s || !type_slice_elem(d)) return;
     if (s->kind == Type_Array) {
-        coerce_set(prog, src_expr, d, s->array_count);
+        coerce_set(prog, src_expr, d, s, s->array_count);
         return;
     }
     if (type_slice_elem(s) && !type_expr_equal_resolved(prog, d, s)) {
-        if (!src_expr->index_end && !expr_is_pure(src_expr)) {
+        if (!src_expr->index_end && !expr_is_pure(src_expr) && !slice_widens_to_const(prog, d, s)) {
             type_error_message("this slice is read twice to convert it; store it in a local first",
                                src_expr->line, src_expr->col);
             return;
         }
-        coerce_set(prog, src_expr, d, (string8){0});
+        coerce_set(prog, src_expr, d, s, (string8){0});
     }
 }
 
@@ -14675,7 +14693,11 @@ static void printfmt_append_print_cstr(memops_arena *arena, Vec_voidptr *out, St
    `bool` and `b32` return null on purpose: print<bool> writes "true"/"false",
    which no conversion produces, so folding them would change what the program
    prints. Anything else without an entry -- a user's own print<Payload> -- lands
-   here too and keeps the per-argument call. */
+   here too and keeps the per-argument call.
+
+   The 64-bit and pointer-sized types use <inttypes.h>'s formats, since u64 is
+   unsigned long on Linux and unsigned long long on Windows. Those specs close
+   the format's string literal around the macro, `"x=%" PRIu64 "\n"`. */
 static const char *printfmt_spec_for_type(Program *prog, TypeExpr *type) {
     if (!type) return null;
     type = resolve_alias_type(prog, type);
@@ -14691,11 +14713,11 @@ static const char *printfmt_spec_for_type(Program *prog, TypeExpr *type) {
     if (string8_equals_cstr(&n, "i8")) return "%d";
     if (string8_equals_cstr(&n, "i16")) return "%d";
     if (string8_equals_cstr(&n, "i32")) return "%d";
-    if (string8_equals_cstr(&n, "i64")) return "%lld";
+    if (string8_equals_cstr(&n, "i64")) return "%\" PRId64 \"";
     if (string8_equals_cstr(&n, "u8")) return "%u";
     if (string8_equals_cstr(&n, "u16")) return "%u";
     if (string8_equals_cstr(&n, "u32")) return "%u";
-    if (string8_equals_cstr(&n, "u64")) return "%llu";
+    if (string8_equals_cstr(&n, "u64")) return "%\" PRIu64 \"";
     if (string8_equals_cstr(&n, "usize")) return "%zu";
     if (string8_equals_cstr(&n, "f32")) return "%f";
     if (string8_equals_cstr(&n, "f64")) return "%f";
@@ -14703,12 +14725,12 @@ static const char *printfmt_spec_for_type(Program *prog, TypeExpr *type) {
     if (string8_equals_cstr(&n, "b8")) return "%d";
     if (string8_equals_cstr(&n, "b16")) return "%d";
     if (string8_equals_cstr(&n, "b32")) return "%d";
-    if (string8_equals_cstr(&n, "b64")) return "%lld";
-    if (string8_equals_cstr(&n, "intptr")) return "%lld";
-    if (string8_equals_cstr(&n, "uintptr")) return "%llu";
-    if (string8_equals_cstr(&n, "ptrdiff")) return "%lld";
-    if (string8_equals_cstr(&n, "intmax")) return "%lld";
-    if (string8_equals_cstr(&n, "uintmax")) return "%llu";
+    if (string8_equals_cstr(&n, "b64")) return "%\" PRId64 \"";
+    if (string8_equals_cstr(&n, "intptr")) return "%\" PRIdPTR \"";
+    if (string8_equals_cstr(&n, "uintptr")) return "%\" PRIuPTR \"";
+    if (string8_equals_cstr(&n, "ptrdiff")) return "%td";
+    if (string8_equals_cstr(&n, "intmax")) return "%\" PRIdMAX \"";
+    if (string8_equals_cstr(&n, "uintmax")) return "%\" PRIuMAX \"";
     return null;
 }
 
@@ -15367,11 +15389,37 @@ static void emit_range(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, 
     emit_cstr(arena, out, ") })");
 }
 
+/* The C name of `[]T` when `slice`, once substituted, is `[]const T`; empty
+   otherwise. */
+static string8 slice_const_source_name(memops_arena *arena, TypeExpr *slice, TypeSub sub) {
+    TypeExpr *elem = type_slice_elem(slice);
+    if (!elem) return (string8){0};
+    TypeExpr *concrete = substitute_type_sub(arena, elem, sub);
+    if (!concrete || !concrete->is_const) return (string8){0};
+    TypeExpr *bare = type_new(arena, concrete->kind);
+    *bare = *concrete;
+    bare->is_const = false;
+    return type_mangle(arena, type_slice_of(arena, bare), (TypeSub){0});
+}
+
 /* Writes a conversion the checker asked for around the expression: an array
-   becomes a slice with its length from its type, and a slice becomes another
-   slice type -- `[]T` to `[]const T` -- field by field. */
+   becomes a slice with its length from its type, and `[]T` becomes
+   `[]const T` through its converter, so the slice is evaluated once. Any other
+   slice conversion is written field by field. */
 static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
     if (!e) return;
+    if (e->coerce_to && !e->coerce_varies && !e->index_end && e->coerce_count.length == 0 && e->coerce_from) {
+        string8 from = type_mangle(arena, e->coerce_from, sub);
+        string8 widened = slice_const_source_name(arena, e->coerce_to, sub);
+        if (widened.length > 0 && string8_equals(&from, &widened)) {
+            emit_cstr(arena, out, "rin_to_");
+            emit_string8(arena, out, type_mangle(arena, e->coerce_to, sub));
+            emit_cstr(arena, out, "(");
+            emit_expr_plain(arena, out, e, sub, generic_name);
+            emit_cstr(arena, out, ")");
+            return;
+        }
+    }
     if (e->coerce_to && !e->coerce_varies && !e->index_end) {
         emit_cstr(arena, out, "((");
         emit_string8(arena, out, type_mangle(arena, e->coerce_to, sub));
@@ -16088,11 +16136,33 @@ static void emit_concrete_struct_def_sorted(memops_arena *arena, string8 *out, P
     }
 }
 
+/* `[]T` to `[]const T`, for each pair of slice types the program has: a
+   function rather than a compound literal built from `e.data` and `e.length`,
+   so a call passed straight to a `[]const T` parameter runs once. */
+static void emit_slice_const_converters(memops_arena *arena, string8 *out, Vec_voidptr *defs) {
+    for (i32 i = 0; i < defs->length; i++) {
+        ConcreteStructDef *def = (ConcreteStructDef *)defs->data[i];
+        if (!def->is_mono || !string8_equals_cstr(&def->decl->name, "slice")) continue;
+        string8 from = slice_const_source_name(arena, type_slice_of(arena, def->arg), (TypeSub){0});
+        if (from.length == 0 || !concrete_struct_def_find(defs, from)) continue;
+        emit_cstr(arena, out, "RIN_MAYBE_UNUSED static inline ");
+        emit_string8(arena, out, def->name);
+        emit_cstr(arena, out, " rin_to_");
+        emit_string8(arena, out, def->name);
+        emit_cstr(arena, out, "(");
+        emit_string8(arena, out, from);
+        emit_cstr(arena, out, " s) { return (");
+        emit_string8(arena, out, def->name);
+        emit_cstr(arena, out, "){ s.data, s.length }; }\n");
+    }
+}
+
 static void emit_concrete_struct_defs_sorted(memops_arena *arena, string8 *out, Program *prog) {
     Vec_voidptr defs = collect_concrete_struct_defs(arena, prog);
     for (i32 i = 0; i < defs.length; i++) {
         emit_concrete_struct_def_sorted(arena, out, prog, &defs, (ConcreteStructDef *)defs.data[i]);
     }
+    emit_slice_const_converters(arena, out, &defs);
 }
 
 /* Natvis: how Visual Studio's debugger (and VS Code's cppvsdbg, and WinDbg)
@@ -18756,6 +18826,22 @@ static bool build_read_config(memops_arena *arena, Program *prog, BuildConfig *c
         printf("rin: error: build.rin must set build_entry or build_entries\n");
         return false;
     }
+    /* cmake takes any build type and gives one it does not know no flags at
+       all: a misspelt "Relase" built unoptimised, without NDEBUG or symbols,
+       and said nothing. Case is ignored; cmake gets its own spelling. */
+    static const char *const build_types[] = { "Debug", "Release", "RelWithDebInfo", "MinSizeRel" };
+    static const char *const build_types_lower[] = { "debug", "release", "relwithdebinfo", "minsizerel" };
+    string8 asked = string8_from_cstr(arena, cfg->build_type);
+    const char *known = null;
+    for (i32 i = 0; i < (i32)sizeofarray(build_types); i++) {
+        if (string8_equals_ci(asked, build_types_lower[i])) known = build_types[i];
+    }
+    if (!known) {
+        printf("rin: error: build_type \"%s\" is not one of Debug, Release, RelWithDebInfo, MinSizeRel\n",
+               cfg->build_type);
+        return false;
+    }
+    cfg->build_type = known;
     return true;
 }
 
@@ -18848,6 +18934,12 @@ static bool build_write_cmake(const char *path, BuildConfig *cfg,
     fprintf(f, "# Generated by `rin build` from build.rin. Do not edit.\n");
     fprintf(f, "cmake_minimum_required(VERSION 3.16)\n");
     fprintf(f, "project(%s C)\n\n", cfg->name);
+    /* RelWithDebInfo is Release plus a PDB. cmake's default for MSVC, and so
+       for clang-cl, has /Ob1 where Release has /Ob2, and clang-cl reads /Ob1 as
+       inlining only functions marked inline, which rin marks none of. */
+    fprintf(f, "if(MSVC)\n"
+               "    string(REPLACE \"/Ob1\" \"/Ob2\" CMAKE_C_FLAGS_RELWITHDEBINFO \"${CMAKE_C_FLAGS_RELWITHDEBINFO}\")\n"
+               "endif()\n\n");
     fprintf(f, "set(CMAKE_EXPORT_COMPILE_COMMANDS ON)\n\n");
     for (i32 i = 0; i < targets->length; i++) {
         string8 t = targets->data[i];

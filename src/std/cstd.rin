@@ -17,6 +17,9 @@ cinclude "string.h"
 FILE: struct[external] = {}
 
 printf: proc[external](fmt: [*]const char, ...) -> i32 = {}
+// Not C's but core.h's: printf with <inttypes.h>'s format for the type.
+rin_print_u64: proc[external](x: u64) -> void = {}
+rin_print_i64: proc[external](x: i64) -> void = {}
 // fopen rather than fopen_s, which glibc and macOS do not have.
 fopen: proc[external](filename: [*]const char, mode: [*]const char) -> *FILE = {}
 fclose: proc[external](stream: *FILE) -> i32 = {}

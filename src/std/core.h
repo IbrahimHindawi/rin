@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stddef.h>  // ptrdiff_t, for the `ptrdiff` alias below
 #include <stdint.h>
+#include <inttypes.h>  // PRIu64 and friends: u64 is unsigned long on Linux, unsigned long long on Windows
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -79,6 +80,20 @@ typedef str *strptr;
 
 #define template(...)
 
+/* For static inline helpers a file may never call. clang warns about an unused
+   static inline function in the main file, and --single-file puts core.h
+   there, so a -Werror build of a program with no slices would fail. */
+#if defined(__GNUC__) || defined(__clang__)
+#define RIN_MAYBE_UNUSED __attribute__((unused))
+#else
+#define RIN_MAYBE_UNUSED
+#endif
+
+/* print<u64> and print<i64> in std/print.rin, which cannot name a format
+   macro from rin. */
+RIN_MAYBE_UNUSED static inline void rin_print_u64(u64 x) { printf("%" PRIu64, x); }
+RIN_MAYBE_UNUSED static inline void rin_print_i64(i64 x) { printf("%" PRId64, x); }
+
 /* rin's bounds checks. Indexing an array with a value only known at run time,
    or indexing a slice, goes through RIN_INDEX; a subrange `x[a..b]` goes
    through RIN_RANGE. Both are checked unless NDEBUG is defined -- C's own
@@ -90,7 +105,7 @@ typedef str *strptr;
 #define RIN_INDEX(i, n) (i)
 #define RIN_RANGE(a, b, n) (a)
 #else
-static inline u64 rin_index_check(u64 i, u64 n, const char *file, int line) {
+RIN_MAYBE_UNUSED static inline u64 rin_index_check(u64 i, u64 n, const char *file, int line) {
     if (i >= n) {
         if ((i64)i < 0) {
             fprintf(stderr, "%s:%d: index %lld out of bounds (length %llu)\n", file, line,
@@ -103,7 +118,7 @@ static inline u64 rin_index_check(u64 i, u64 n, const char *file, int line) {
     }
     return i;
 }
-static inline u64 rin_range_check(u64 a, u64 b, u64 n, const char *file, int line) {
+RIN_MAYBE_UNUSED static inline u64 rin_range_check(u64 a, u64 b, u64 n, const char *file, int line) {
     if (a > b || b > n) {
         fprintf(stderr, "%s:%d: range %llu..%llu out of bounds (length %llu)\n", file, line,
                 (unsigned long long)a, (unsigned long long)b, (unsigned long long)n);
@@ -141,7 +156,7 @@ static inline u64 rin_range_check(u64 a, u64 b, u64 n, const char *file, int lin
 #define RIN_NOALIAS(...) ((void)0)
 #else
 #include <stdarg.h>
-static inline void rin_noalias_check(const char *file, int line, int n, ...) {
+RIN_MAYBE_UNUSED static inline void rin_noalias_check(const char *file, int line, int n, ...) {
     const u8 *ptr[16];
     u64 bytes[16];
     const char *name[16];

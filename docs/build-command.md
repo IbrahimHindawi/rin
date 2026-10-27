@@ -34,7 +34,7 @@ an output.
 | `build_dir` | `[*]const char` | output root, default `build` |
 | `build_generator` | `[*]const char` | cmake generator, default `Ninja` |
 | `build_compiler` | `[*]const char` | C compiler, default `clang-cl` |
-| `build_type` | `[*]const char` | cmake build type, default `Debug` |
+| `build_type` | `[*]const char` | `Debug`, `Release`, `RelWithDebInfo` or `MinSizeRel`, any case; default `Debug` |
 | `build_pch` | `[*]const char` | one precompiled header |
 | `build_c_sources` | `[N][*]const char` | C files compiled alongside the generated one |
 | `build_include_dirs` | `[N][*]const char` | extra include roots |
@@ -45,6 +45,14 @@ an output.
 Paths are relative to the directory holding `build.rin`. The compiler's own
 directory and its `std` are added to the include path automatically, so a
 project never spells out where `core.h` and `reflect.h` live.
+
+Any other `build_type` is an error, since cmake would give a type it does not
+know no flags at all: no optimisation, no `NDEBUG`, no symbols. `Debug` keeps
+rin's bounds and `noalias` checks; the other three define `NDEBUG`, which turns
+them off. `RelWithDebInfo` is `Release` plus a PDB: cmake's own flags for it
+under MSVC and clang-cl have `/Ob1`, which clang-cl reads as inlining only
+functions marked `inline` (rin marks none), so the generated CMakeLists
+replaces it with Release's `/Ob2`.
 
 ## A whole engine
 

@@ -23,7 +23,7 @@ print: proc<i32>(x: i32) -> void = {
 }
 
 print: proc<i64>(x: i64) -> void = {
-    printf("%lld", x);
+    rin_print_i64(x);
 }
 
 print: proc<u8>(x: u8) -> void = {
@@ -39,7 +39,7 @@ print: proc<u32>(x: u32) -> void = {
 }
 
 print: proc<u64>(x: u64) -> void = {
-    printf("%llu", x);
+    rin_print_u64(x);
 }
 
 print: proc<usize>(x: usize) -> void = {

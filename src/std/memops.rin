@@ -53,7 +53,9 @@ memops_arena_initialize: proc(arena: *memops_arena, reserve: u64 = max_alloc_siz
         arena[0].base = memops_os_reserve(size);
     }
     if (arena[0].base == null) {
-        printf("memops_arena could not reserve %llu bytes!\n", reserve);
+        printf("memops_arena could not reserve ");
+        rin_print_u64(reserve);
+        printf(" bytes!\n");
         exit(1);
     }
     arena[0].reserved = size;
