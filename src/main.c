@@ -5614,6 +5614,9 @@ static void semantic_check_expr(Expr *e, Scope *scope, Vec_string8 *known_types,
              scope_has(&scope->globals, e->reflect_base))) {
             return; /* `value<>`; resolved against the value's type below */
         }
+        if (e->reflect_base.data && generic_params && scope_has(generic_params, e->reflect_base)) {
+            return; /* `T<>` in a generic body; each instance names its own record */
+        }
         semantic_error_name("use of undeclared identifier", e->name, e->line, e->col);
     }
     if (e->kind == Expr_Addr) {
@@ -10412,6 +10415,30 @@ static TypeExpr *type_slice_of(memops_arena *arena, TypeExpr *elem) {
     return t;
 }
 
+/* The reflection record a type has: `point_reflect`, or `vec_i32_reflect` for
+   a generic instance, under its mangled name. Empty for a type with none to
+   name (a pointer, an array, a proc). */
+static string8 reflect_record_name(memops_arena *arena, TypeExpr *type) {
+    if (!type) return (string8){0};
+    if (type->kind == Type_Name) {
+        return concat_name2(arena, type->name, "_", string8_from_cstr(arena, "reflect"));
+    }
+    if (type->kind == Type_Generic) {
+        return concat_name2(arena, type_mangle(arena, type, (TypeSub){0}), "_", string8_from_cstr(arena, "reflect"));
+    }
+    return (string8){0};
+}
+
+static void type_error_message(const char *message, i32 line, i32 col);
+
+/* `T<>` where T is a type parameter: the record of what T is in this instance,
+   or null outside a generic body. The shared body is never rewritten, since
+   every instance needs a different name. */
+static TypeExpr *reflect_type_param_arg(Expr *e, TypeSub sub) {
+    if (!e || e->kind != Expr_Name || !e->reflect_base.data || !sub.has) return null;
+    return type_sub_lookup(sub, e->reflect_base);
+}
+
 /* `Enum<>.count`: how many members an enum has, known when it is compiled. */
 static bool expr_is_reflect_count(Expr *e) {
     if (!e || e->kind != Expr_Field || !string8_equals_cstr(&e->name, "count")) return false;
@@ -10442,6 +10469,24 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
            is known, so a value's `<>` becomes its type's record. Guarded on the
            written name being absent, which leaves `Type<>` alone -- that name
            already resolves. Cleared afterwards so the rewrite happens once. */
+        TypeExpr *param_arg = reflect_type_param_arg(e, scope->sub);
+        if (param_arg) {
+            string8 record = reflect_record_name(arena, param_arg);
+            TypeExpr *record_type = record.data ? type_scope_lookup(scope, record) : null;
+            if (!record_type) {
+                char message[512];
+                string8 shown = string8_reserve(arena, 32);
+                format_type_i(arena, &shown, param_arg, (TypeSub){0});
+                snprintf(message, sizeof(message),
+                         "'%.*s<>' needs a struct or enum, which have reflection records; here %.*s is '%.*s'",
+                         (int)e->reflect_base.length, e->reflect_base.data,
+                         (int)e->reflect_base.length, e->reflect_base.data,
+                         (int)shown.length, shown.data);
+                type_error_message(message, e->line, e->col);
+                return reflect_global_type(arena, "reflect");
+            }
+            return record_type;
+        }
         if (e->reflect_base.data && !type_scope_lookup(scope, e->name)) {
             TypeExpr *base = type_scope_lookup(scope, e->reflect_base);
             if (base) {
@@ -15069,6 +15114,14 @@ static void rewrite_printfmt_formats(Program *prog, memops_arena *arena) {
             Param *param = (Param *)p->params.data[j];
             type_scope_add(arena, &scope, param->name, param->type);
         }
+        /* Formats are chosen once for a generic body, not per instance. A
+           record is the same type whatever T is, so `T<>.name` can be. */
+        if (p->is_generic) {
+            for (i32 j = 0; j < p->type_params.length; j++) {
+                string8 record = concat_name2(arena, p->type_params.data[j], "_", string8_from_cstr(arena, "reflect"));
+                type_scope_add(arena, &scope, record, reflect_global_type(arena, "reflect"));
+            }
+        }
         rewrite_printfmt_body(&p->body, &scope, prog, arena);
     }
 }
@@ -15521,6 +15574,11 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
     if (e->kind == Expr_Name) {
         if (string8_equals_cstr(&e->name, "null")) {
             emit_cstr(arena, out, "0");
+            return;
+        }
+        TypeExpr *param_arg = reflect_type_param_arg(e, sub);
+        if (param_arg) {
+            emit_string8(arena, out, reflect_record_name(arena, param_arg));
             return;
         }
         emit_string8(arena, out, c_ident(arena, reflect_runtime_c_name(arena, e->name)));

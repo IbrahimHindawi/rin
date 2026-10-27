@@ -5722,6 +5722,47 @@ main:proc()->i32 = {
         return 1
     print("ok reflect_of_value")
 
+    # `T<>` in a generic body is the record of what T is in each instance, so a
+    # generic register<T> can read its type's name, size and fields. rin-dod
+    # registered each component by name because this was undeclared.
+    refparam_i = TEST_DIR / "reflect_of_type_param.rin"
+    refparam_c = TEST_DIR / "reflect_of_type_param.c"
+    refparam_exe = TEST_DIR / "reflect_of_type_param.exe"
+    refparam_head = (
+        'import "std/print.rin"\n'
+        'import "std/vec.rin"\n'
+        "point: struct = { x: f32; y: f32; z: f32; }\n"
+        "color: enum = { red, green, blue, }\n"
+        "describe: proc<T>() -> u64 = {\n"
+        '    printfmt("{} {} {}\\n", T<>.name, T<>.size, T<>.count);\n'
+        "    return T<>.size;\n"
+        "}\n"
+    )
+    refparam_i.write_text(
+        refparam_head +
+        "main: proc() -> i32 = {\n"
+        "    a: u64 = describe<point>();\n"
+        "    b: u64 = describe<vec<i32>>();\n"
+        "    c: u64 = describe<color>();\n"
+        "    return cast(a + b + c, i32);\n"
+        "}\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), str(refparam_i), str(refparam_c)])
+    build = run(["clang.exe", str(refparam_c), "-I", "src", "-I", "src/std", "-o", str(refparam_exe)]) if res.returncode == 0 else res
+    ran = run([str(refparam_exe)]) if build.returncode == 0 else build
+    if ran.stdout.split("\n")[:3] != ["point 12 3", "vec_i32 24 3", "color 4 3"]:
+        print("reflect_of_type_param: each instance must read its own record")
+        print(res.stdout, build.stdout, ran.stdout)
+        return 1
+    refparam_i.write_text(refparam_head + "main: proc() -> i32 = { return cast(describe<i32>(), i32); }\n",
+                          encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "check", str(refparam_i)])
+    if res.returncode == 0 or "'T<>' needs a struct or enum" not in res.stdout:
+        print("reflect_of_type_param: T<> with a T that has no record must be an error")
+        print(res.stdout)
+        return 1
+    print("ok reflect_of_type_param")
+
     # The decided error-handling shape, end to end: a status enum, a value
     # through an out-parameter, and the message derived from reflection rather
     # than a hand-written table that goes stale. See whats-missing.md section 1.
