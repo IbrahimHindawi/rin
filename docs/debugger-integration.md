@@ -7,8 +7,12 @@ would cost.
 
 rin compiles to C, and the C compiler writes the debug information. `#line`
 directives make every machine instruction map back to a `.rin` file and line,
-so Visual Studio, VS Code and WinDbg step through rin source. That is the only
-part of the PDB rin influences. Everything else in it comes from the C
+so Visual Studio, VS Code and WinDbg step through rin source. The paths in
+those directives are absolute: the C compiler runs from the CMake build
+directory, and a relative `src/main.rin` would be recorded there, so the
+debugger would ask where the file is. With absolute paths,
+`devenv /debugexe build\cmake\main.exe` opens the `.rin` files directly, no
+solution needed. That is the only part of the PDB rin influences. Everything else in it comes from the C
 compiler:
 
 - **types** are the emitted C structs: `wave: vec<Enemy>` is a `vec_Enemy`

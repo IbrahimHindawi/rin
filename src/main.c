@@ -445,6 +445,7 @@ typedef enum TokenKind {
     Token_Keyword_Alias,
     Token_Keyword_Const,
     Token_Keyword_Volatile,
+    Token_Keyword_Noalias,
     Token_Keyword_While,
     Token_Keyword_Do,
     Token_Keyword_Break,
@@ -536,6 +537,7 @@ static const char *token_kind_name(TokenKind kind) {
         case Token_Keyword_Alias: return "'alias'";
         case Token_Keyword_Const: return "'const'";
         case Token_Keyword_Volatile: return "'volatile'";
+        case Token_Keyword_Noalias: return "'noalias'";
         case Token_Keyword_While: return "'while'";
         case Token_Keyword_Do: return "'do'";
         case Token_Keyword_Break: return "'break'";
@@ -582,6 +584,10 @@ struct TypeExpr {
     string8 array_count;
     bool is_const;
     bool is_volatile;
+    /* `noalias` on a parameter's own pointer or slice: C's `restrict`, scoped to
+       one call. Not part of the type's identity, its mangle, or any comparison;
+       see docs/noalias-variadic.md. */
+    bool is_noalias;
     /* `[*]T`, a raw pointer: a Type_Ptr that may be indexed anywhere and moved
        with arithmetic, unchecked. A plain `*T` points at one element. Both are
        the same C pointer, so they are equal as types and only the operations
@@ -914,6 +920,8 @@ typedef struct Parser {
     bool reported_depth;
     Vec_voidptr *pending_array_counts; // borrowed from the Program being parsed
     Vec_voidptr inferred_counts; // every `[_]` seen; any still uncounted at the end is an error
+    bool noalias_ok;    // the next type parsed is a parameter's own type, where `noalias` may go
+    bool in_param_type; // inside a parameter's type, for a better 'noalias' error
     i32 last_error_token; // token index of the most recent parse error
     bool uses_slice_type; // `[]T` was written, so the slice struct is imported
 } Parser;
@@ -1485,6 +1493,7 @@ static void lex_tokens(memops_arena *arena, string8 src, Vec_Token *out_tokens,
             else if (string8slice_equals_cstr(text, "alias")) kind = Token_Keyword_Alias;
             else if (string8slice_equals_cstr(text, "const")) kind = Token_Keyword_Const;
             else if (string8slice_equals_cstr(text, "volatile")) kind = Token_Keyword_Volatile;
+            else if (string8slice_equals_cstr(text, "noalias")) kind = Token_Keyword_Noalias;
             else if (string8slice_equals_cstr(text, "while")) kind = Token_Keyword_While;
             else if (string8slice_equals_cstr(text, "do")) kind = Token_Keyword_Do;
             else if (string8slice_equals_cstr(text, "break")) kind = Token_Keyword_Break;
@@ -2358,8 +2367,37 @@ static TypeExpr *parse_type(Parser *p) {
 }
 
 static TypeExpr *parse_type_inner(Parser *p) {
+    /* Only the type a parameter's own `:` introduces may be `noalias`; anything
+       nested in it, or parsed anywhere else, may not. const and volatile pass
+       the permission on to the type they qualify. */
+    bool noalias_ok = p->noalias_ok;
+    p->noalias_ok = false;
+
+    if (parser_match(p, Token_Keyword_Noalias)) {
+        Token *qualifier = parser_prev(p);
+        if (!noalias_ok) {
+            parser_error_token(p, qualifier, p->in_param_type
+                ? "'noalias' qualifies a parameter's own pointer, not one it points to"
+                : "'noalias' applies to proc parameters only");
+        }
+        if (parser_peek(p)->kind == Token_Keyword_Noalias) {
+            parser_error_token(p, parser_peek(p), "'noalias' is already given");
+            parser_next(p);
+        }
+        TypeExpr *inner = parse_type(p);
+        if (inner && inner->kind == Type_Array) {
+            parser_error_token(p, qualifier, "'noalias' cannot qualify an array; pass a slice, '[]T'");
+        } else if (inner && inner->kind != Type_Ptr &&
+                   !(inner->kind == Type_Generic && string8_equals_cstr(&inner->name, "slice"))) {
+            parser_error_token(p, qualifier, "'noalias' qualifies a pointer or slice; this type is neither");
+        }
+        if (inner) inner->is_noalias = true;
+        return inner;
+    }
+
     if (parser_match(p, Token_Keyword_Const)) {
         Token *qualifier = parser_prev(p);
+        p->noalias_ok = noalias_ok;
         TypeExpr *inner = parse_type(p);
         if (inner && inner->kind == Type_Array) {
             parser_error_token(p, qualifier,
@@ -2372,6 +2410,7 @@ static TypeExpr *parse_type_inner(Parser *p) {
 
     if (parser_match(p, Token_Keyword_Volatile)) {
         Token *qualifier = parser_prev(p);
+        p->noalias_ok = noalias_ok;
         TypeExpr *inner = parse_type(p);
         if (inner && inner->kind == Type_Array) {
             parser_error_token(p, qualifier,
@@ -2412,7 +2451,11 @@ static TypeExpr *parse_type_inner(Parser *p) {
                     parser_next(p); // ':'
                 }
 
+                bool was_in_param = p->in_param_type;
+                p->in_param_type = true;
+                p->noalias_ok = true;
                 TypeExpr *arg = parse_type(p);
+                p->in_param_type = was_in_param;
                 if (parser_peek(p)->kind == Token_Equal) {
                     parser_error_token(p, parser_peek(p),
                                        "a proc type's parameters take no default; a call through a "
@@ -4474,7 +4517,10 @@ static ProcDecl *parse_proc_decl(Parser *p, Token *name_tok) {
             parser_expect(p, Token_Colon, "expected ':' after param name");
             Param *param = memops_arena_push_struct(p->arena, Param);
             param->name = token_to_string8(p->arena, param_name);
+            p->in_param_type = true;
+            p->noalias_ok = true;
             param->type = parse_type(p);
+            p->in_param_type = false;
             if (parser_peek(p)->kind == Token_LBracket) {
                 parser_error_token(p, parser_peek(p),
                                    "a parameter takes no attribute; what a parameter wants is a "
@@ -4498,6 +4544,18 @@ static ProcDecl *parse_proc_decl(Parser *p, Token *name_tok) {
             ptr_array_append(p->arena, &decl->params, param);
         } while (parser_match(p, Token_Comma));
         parser_expect(p, Token_RParen, "expected ')'");
+    }
+    /* A noalias slice moves the body into a helper (see emit_proc_noalias), and
+       only the function that declares `...` can call va_start. */
+    if (decl->is_variadic) {
+        for (i32 i = 0; i < decl->params.length; i++) {
+            Param *param = (Param *)decl->params.data[i];
+            if (param->type && param->type->is_noalias && param->type->kind == Type_Generic) {
+                parser_error_token(p, name_tok,
+                                   "'noalias' on a slice cannot be used in a variadic proc; only the "
+                                   "proc that declares '...' can read its arguments");
+            }
+        }
     }
 
     parser_expect(p, Token_Arrow, "expected '->' after params");
@@ -7693,6 +7751,7 @@ static void emit_type(memops_arena *arena, string8 *out, TypeExpr *type, TypeSub
         emit_cstr(arena, out, " *");
         if (type->is_const) emit_cstr(arena, out, " const");
         if (type->is_volatile) emit_cstr(arena, out, " volatile");
+        if (type->is_noalias) emit_cstr(arena, out, " RIN_RESTRICT");
         return;
     }
     if (type->kind == Type_Generic) {
@@ -9677,6 +9736,7 @@ static TypeExpr *clone_type_expr(memops_arena *arena, TypeExpr *src) {
     dst->is_const = src->is_const;
     dst->is_volatile = src->is_volatile;
     dst->is_raw = src->is_raw;
+    dst->is_noalias = src->is_noalias;
     dst->line = src->line;
     dst->col = src->col;
     dst->decl_path = src->decl_path;
@@ -9724,6 +9784,7 @@ static TypeExpr *substitute_type_param(memops_arena *arena, TypeExpr *src, strin
     dst->is_const = src->is_const;
     dst->is_volatile = src->is_volatile;
     dst->is_raw = src->is_raw;
+    dst->is_noalias = src->is_noalias;
     dst->line = src->line;
     dst->col = src->col;
     dst->decl_path = src->decl_path;
@@ -15355,7 +15416,11 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
         return;
     }
     if (e->kind == Expr_ZeroInit) {
-        emit_cstr(arena, out, "{}");
+        /* `{0}`, not `{}`: C's zero initializer for a scalar, an array and a
+           struct alike since C89. `{}` is only C23, and MSVC's cl accepts it on
+           a scalar without initializing it, so `total: T = {}` with T = i32
+           read garbage. */
+        emit_cstr(arena, out, "{0}");
         return;
     }
     if (e->kind == Expr_InitList) {
@@ -16244,8 +16309,164 @@ static void emit_proc_params(memops_arena *arena, string8 *out, ProcDecl *decl, 
     }
 }
 
+/* `noalias` parameters (docs/noalias-variadic.md). A `noalias *T` or `[*]T` is
+   C's restrict on the parameter, written by emit_type. A slice is a struct, and
+   restrict only works on a pointer parameter, so a proc with a `noalias []T`
+   is emitted as two functions: an always-inline helper taking each such slice
+   as a restrict pointer and a length, holding the body, and the public
+   function, with the signature it would have anyway, which checks the promise
+   in Debug and calls the helper. */
+
+static bool param_is_noalias_slice(Param *p) {
+    return p->type && p->type->is_noalias && type_slice_elem(p->type) != null;
+}
+
+static bool proc_has_noalias_slice(ProcDecl *decl) {
+    for (i32 i = 0; i < decl->params.length; i++) {
+        if (param_is_noalias_slice((Param *)decl->params.data[i])) return true;
+    }
+    return false;
+}
+
+static void emit_param_c_name(memops_arena *arena, string8 *out, Param *p, const char *suffix) {
+    emit_string8(arena, out, c_ident(arena, reflect_runtime_c_name(arena, p->name)));
+    if (suffix) emit_cstr(arena, out, suffix);
+}
+
+/* The proc's C name: plain, or its generic instance's. */
+static void emit_proc_c_name(memops_arena *arena, string8 *out, ProcDecl *decl, string8 type_mangled) {
+    if (type_mangled.data) {
+        emit_mono_proc_name(arena, out, decl->name, type_mangled);
+    } else {
+        emit_string8(arena, out, c_ident(arena, reflect_runtime_c_name(arena, decl->name)));
+    }
+}
+
+/* RIN_NOALIAS(n, ...): every pointer or slice parameter, so each noalias one is
+   checked against all the others. Nothing when no parameter is noalias. */
+static void emit_noalias_check(memops_arena *arena, string8 *out, ProcDecl *decl, TypeSub sub) {
+    i32 count = 0;
+    bool any = false;
+    for (i32 i = 0; i < decl->params.length; i++) {
+        Param *p = (Param *)decl->params.data[i];
+        TypeExpr *t = p->type;
+        if (!t) continue;
+        if (type_slice_elem(t) || (t->kind == Type_Ptr && t->elem && t->elem->kind != Type_Proc)) {
+            count += 1;
+            any = any || t->is_noalias;
+        }
+    }
+    if (!any || count < 2) return;
+    emit_line_directive_path(arena, out, decl->source_path, decl->line);
+    char buf[64];
+    snprintf(buf, sizeof(buf), "    RIN_NOALIAS(%d", count);
+    emit_cstr(arena, out, buf);
+    for (i32 i = 0; i < decl->params.length; i++) {
+        Param *p = (Param *)decl->params.data[i];
+        TypeExpr *t = p->type;
+        if (!t) continue;
+        TypeExpr *elem = type_slice_elem(t);
+        bool is_slice = elem != null;
+        if (!is_slice) {
+            if (t->kind != Type_Ptr || !t->elem || t->elem->kind == Type_Proc) continue;
+            elem = t->elem;
+        }
+        bool is_void = elem->kind == Type_Name && string8_equals_cstr(&elem->name, "void");
+        emit_cstr(arena, out, ", ");
+        emit_param_c_name(arena, out, p, is_slice ? ".data, " : ", ");
+        /* Extents are read back as u64, which size_t is not on every target. */
+        if (is_slice) {
+            emit_cstr(arena, out, "(u64)");
+            emit_param_c_name(arena, out, p, ".length * sizeof(");
+            emit_type(arena, out, elem, sub);
+            emit_cstr(arena, out, ")");
+        } else if (t->is_raw || is_void) {
+            emit_cstr(arena, out, "RIN_NOALIAS_ANY");
+        } else {
+            emit_cstr(arena, out, "(u64)sizeof(*");
+            emit_param_c_name(arena, out, p, ")");
+        }
+        emit_cstr(arena, out, ", \"");
+        emit_string8(arena, out, p->name);
+        emit_cstr(arena, out, "\", ");
+        snprintf(buf, sizeof(buf), "%d", (t->is_noalias ? 1 : 0) | (elem->is_const ? 0 : 2));
+        emit_cstr(arena, out, buf);
+    }
+    emit_cstr(arena, out, ");\n");
+}
+
+static void emit_proc_body(memops_arena *arena, string8 *out, ProcDecl *decl, TypeSub sub, string8 generic_name) {
+    for (i32 i = 0; i < decl->body.length; i++) {
+        emit_cstr(arena, out, "    ");
+        emit_stmt(arena, out, (Stmt *)decl->body.data[i], sub, generic_name);
+    }
+}
+
+/* The helper: each noalias slice arrives as a restrict pointer and a length,
+   and is rebuilt as the slice the body expects before the body runs. */
+static void emit_noalias_helper(memops_arena *arena, string8 *out, ProcDecl *decl, TypeSub sub,
+                                string8 type_mangled, string8 generic_name) {
+    emit_line_directive_path(arena, out, decl->source_path, decl->line);
+    emit_cstr(arena, out, "RIN_ALWAYS_INLINE ");
+    emit_type(arena, out, decl->ret_type, sub);
+    emit_cstr(arena, out, " rin_noalias_");
+    emit_proc_c_name(arena, out, decl, type_mangled);
+    emit_cstr(arena, out, "(");
+    for (i32 i = 0; i < decl->params.length; i++) {
+        Param *p = (Param *)decl->params.data[i];
+        if (i > 0) emit_cstr(arena, out, ", ");
+        if (param_is_noalias_slice(p)) {
+            TypeExpr *ptr = type_new(arena, Type_Ptr);
+            ptr->elem = type_slice_elem(p->type);
+            ptr->is_noalias = true;
+            string8 c_name = c_ident(arena, reflect_runtime_c_name(arena, p->name));
+            emit_decl(arena, out, ptr, concat_name2(arena, c_name, "_rin_", string8_from_cstr(arena, "data")), sub);
+            emit_cstr(arena, out, ", u64 ");
+            emit_param_c_name(arena, out, p, "_rin_length");
+        } else {
+            emit_decl(arena, out, p->type, p->name, sub);
+        }
+    }
+    emit_cstr(arena, out, ") {\n");
+    for (i32 i = 0; i < decl->params.length; i++) {
+        Param *p = (Param *)decl->params.data[i];
+        if (!param_is_noalias_slice(p)) continue;
+        emit_cstr(arena, out, "    ");
+        emit_type(arena, out, p->type, sub);
+        emit_cstr(arena, out, " ");
+        emit_param_c_name(arena, out, p, " = { ");
+        emit_param_c_name(arena, out, p, "_rin_data, ");
+        emit_param_c_name(arena, out, p, "_rin_length };\n");
+    }
+    emit_proc_body(arena, out, decl, sub, generic_name);
+    emit_cstr(arena, out, "}\n\n");
+}
+
+/* The public function's body when its proc has noalias slices: the check is
+   already written, so call the helper and return what it returns. */
+static void emit_noalias_forward(memops_arena *arena, string8 *out, ProcDecl *decl, string8 type_mangled) {
+    TypeExpr *ret = decl->ret_type;
+    bool returns = !(ret && ret->kind == Type_Name && string8_equals_cstr(&ret->name, "void"));
+    emit_cstr(arena, out, returns ? "    return rin_noalias_" : "    rin_noalias_");
+    emit_proc_c_name(arena, out, decl, type_mangled);
+    emit_cstr(arena, out, "(");
+    for (i32 i = 0; i < decl->params.length; i++) {
+        Param *p = (Param *)decl->params.data[i];
+        if (i > 0) emit_cstr(arena, out, ", ");
+        if (param_is_noalias_slice(p)) {
+            emit_param_c_name(arena, out, p, ".data, ");
+            emit_param_c_name(arena, out, p, ".length");
+        } else {
+            emit_param_c_name(arena, out, p, null);
+        }
+    }
+    emit_cstr(arena, out, ");\n");
+}
+
 static void emit_proc_decl(memops_arena *arena, string8 *out, ProcDecl *decl) {
     if (decl->is_external) return;
+    bool split = proc_has_noalias_slice(decl);
+    if (split) emit_noalias_helper(arena, out, decl, (TypeSub){0}, (string8){0}, (string8){0});
     emit_line_directive_path(arena, out, decl->source_path, decl->line);
     if (decl->is_static) emit_cstr(arena, out, "static ");
     emit_type(arena, out, decl->ret_type, (TypeSub){0});
@@ -16258,9 +16479,11 @@ static void emit_proc_decl(memops_arena *arena, string8 *out, ProcDecl *decl) {
     emit_cstr(arena, out, "(");
     emit_proc_params(arena, out, decl, (TypeSub){0});
     emit_cstr(arena, out, ") {\n");
-    for (i32 i = 0; i < decl->body.length; i++) {
-        emit_cstr(arena, out, "    ");
-        emit_stmt(arena, out, (Stmt *)decl->body.data[i], (TypeSub){0}, (string8){0});
+    emit_noalias_check(arena, out, decl, (TypeSub){0});
+    if (split) {
+        emit_noalias_forward(arena, out, decl, (string8){0});
+    } else {
+        emit_proc_body(arena, out, decl, (TypeSub){0}, (string8){0});
     }
     emit_cstr(arena, out, "}\n\n");
 }
@@ -16284,8 +16507,10 @@ static void emit_proc_proto(memops_arena *arena, string8 *out, ProcDecl *decl) {
 static void emit_proc_decl_mono(memops_arena *arena, string8 *out, ProcDecl *decl, string8 type_mangled, TypeExpr *arg, GenericInstanceSite *site) {
     if (decl->is_external) return;
     TypeSub sub = proc_sub_for_instance(arena, decl, type_mangled, arg);
+    bool split = proc_has_noalias_slice(decl);
 
     emit_proc_monomorph_comment(arena, out, decl, type_mangled, site);
+    if (split) emit_noalias_helper(arena, out, decl, sub, type_mangled, decl->name);
     emit_line_directive_path(arena, out, decl->source_path, decl->line);
     emit_type(arena, out, decl->ret_type, sub);
     emit_cstr(arena, out, " ");
@@ -16297,9 +16522,11 @@ static void emit_proc_decl_mono(memops_arena *arena, string8 *out, ProcDecl *dec
     emit_cstr(arena, out, "(");
     emit_proc_params(arena, out, decl, sub);
     emit_cstr(arena, out, ") {\n");
-    for (i32 i = 0; i < decl->body.length; i++) {
-        emit_cstr(arena, out, "    ");
-        emit_stmt(arena, out, (Stmt *)decl->body.data[i], sub, decl->name);
+    emit_noalias_check(arena, out, decl, sub);
+    if (split) {
+        emit_noalias_forward(arena, out, decl, type_mangled);
+    } else {
+        emit_proc_body(arena, out, decl, sub, decl->name);
     }
     emit_cstr(arena, out, "}\n\n");
 }
@@ -16460,9 +16687,33 @@ static i32 emit_count_newlines_since(string8 *out, u64 from) {
     return count;
 }
 
+/* `#line` paths are made absolute. The C compiler runs from the CMake build
+   directory, so a relative `#line "src/main.rin"` would be recorded in the PDB
+   as build/cmake/src/main.rin, a file that does not exist, and the debugger
+   would ask where the source is. Diagnostics keep the path as written. */
+static const char *line_directive_path(memops_arena *arena, const char *path) {
+    if (!path || path[0] == '<' || path[0] == '/' || path[0] == '\\' ||
+        (isalpha((unsigned char)path[0]) && path[1] == ':')) {
+        return path;
+    }
+    static const char *seen[64];
+    static const char *full[64];
+    static i32 count = 0;
+    for (i32 i = 0; i < count; i++) {
+        if (seen[i] == path || cstr_equals(seen[i], path)) return full[i];
+    }
+    const char *absolute = canonicalize_path(arena, string8_from_cstr(arena, path));
+    if (count < 64) {
+        seen[count] = path;
+        full[count] = absolute;
+        count += 1;
+    }
+    return absolute;
+}
+
 static void emit_line_directive_path(memops_arena *arena, string8 *out, const char *path, i32 line) {
     if (g_single_file) return;
-    const char *use_path = path ? path : g_source_path;
+    const char *use_path = line_directive_path(arena, path ? path : g_source_path);
     if (!g_emit_all_line_directives &&
         g_line_last_out == out &&
         g_line_last_path &&

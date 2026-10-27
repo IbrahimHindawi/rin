@@ -1,0 +1,65 @@
+import "std/print.rin"
+
+// `noalias` promises that, for one call, memory reached through the parameter
+// is reached through nothing else. On `*T` and `[*]T` it is C's restrict; a
+// proc with a noalias slice is emitted as an always-inline helper holding the
+// body plus the public function, so this also proves RIN_RESTRICT and
+// RIN_ALWAYS_INLINE build on every compiler the suite runs.
+
+mat2: struct = { m: [4]i32; }
+
+add_into: proc(dst: noalias []i32, src: []const i32, k: i32) -> void = {
+    for (i: u64 = 0; i < dst.length; i += 1) {
+        dst[i] += src[i] * k;
+    }
+}
+
+// A generic instance gets its own helper; a value comes back through it.
+sum_into: proc<T>(dst: noalias []T, src: []const T) -> T = {
+    total: T = {};
+    for (i: u64 = 0; i < dst.length; i += 1) {
+        dst[i] += src[i];
+        total += dst[i];
+    }
+    return total;
+}
+
+m2_mul: proc(out: noalias *mat2, a: *const mat2, b: *const mat2) -> void = {
+    out[0].m[0] = a[0].m[0] * b[0].m[0] + a[0].m[1] * b[0].m[2];
+    out[0].m[1] = a[0].m[0] * b[0].m[1] + a[0].m[1] * b[0].m[3];
+    out[0].m[2] = a[0].m[2] * b[0].m[0] + a[0].m[3] * b[0].m[2];
+    out[0].m[3] = a[0].m[2] * b[0].m[1] + a[0].m[3] * b[0].m[3];
+}
+
+copy_raw: proc(dst: noalias [*]u8, src: [*]const u8, n: u64) -> void = {
+    for (i: u64 = 0; i < n; i += 1) { dst[i] = src[i]; }
+}
+
+main: proc() -> i32 = {
+    xs: [8]i32 = { 1, 2, 3, 4, 5, 6, 7, 8 };
+    ys: [8]i32 = { 1, 1, 1, 1, 1, 1, 1, 1 };
+    add_into(xs, ys, 2);
+    printfmt("{} {} {}\n", xs[0], xs[3], xs[7]);
+
+    // Two disjoint halves of one array are fine, and a noalias proc is an
+    // ordinary proc pointer.
+    fp: *proc(dst: []i32, src: []const i32, k: i32) -> void = add_into;
+    fp(xs[0..4], xs[4..8], 1);
+    printfmt("{} {} {}\n", xs[0], xs[3], xs[7]);
+
+    ints: [4]i32 = { 1, 2, 3, 4 };
+    more: [4]i32 = { 10, 20, 30, 40 };
+    printfmt("{}\n", sum_into<i32>(ints, more));
+
+    a: mat2 = { .m = { 1, 2, 3, 4 } };
+    b: mat2 = { .m = { 0, 1, 1, 0 } };
+    c: mat2 = {};
+    m2_mul(c&, a&, b&);
+    printfmt("{} {} {} {}\n", c.m[0], c.m[1], c.m[2], c.m[3]);
+
+    bytes: [4]u8 = { 1, 2, 3, 4 };
+    other: [4]u8 = {};
+    copy_raw(other, bytes, 4);
+    printfmt("{} {}\n", other[0], other[3]);
+    return 0;
+}

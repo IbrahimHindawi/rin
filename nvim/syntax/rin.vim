@@ -13,7 +13,7 @@ syn keyword iTodo TODO FIXME NOTE XXX HACK contained
 " Keywords
 syn keyword iKeyword proc return import cinclude define goto label
 syn keyword iStructure struct enum union alias
-syn keyword iStorageClass const volatile static
+syn keyword iStorageClass const volatile noalias static
 syn keyword iExternal external external_emit
 syn keyword iConditional if else switch case default
 syn keyword iRepeat for while do break continue
@@ -78,10 +78,10 @@ syn match iDelimiter "[(){}\[\]<>]"
 syn keyword iCoreTypeInType i8 i16 i32 i64 u8 u16 u32 u64 f32 f64 usize b32 bool void char va_list FILE contained
 " Qualifiers and storage classes sit in type position, so they must be consumed
 " there or they get coloured as if they were the type name.
-syn keyword iQualifierInType const volatile static contained nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iCoreTypeInType,iQualifierInType,iTypeName skipwhite
+syn keyword iQualifierInType const volatile noalias static contained nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iCoreTypeInType,iQualifierInType,iTypeName skipwhite
 " Declaration kinds are not type names either.
 syn keyword iDeclKindInType proc struct enum union alias label contained
-syn match iTypeName "\%(\<proc\>\|\<struct\>\|\<enum\>\|\<union\>\|\<alias\>\|\<label\>\|\<const\>\|\<volatile\>\|\<static\>\|\<external\>\|\<external_emit\>\)\@!\<[A-Za-z_][A-Za-z0-9_]*\>\%(\s*<\)\@!" contained
+syn match iTypeName "\%(\<proc\>\|\<struct\>\|\<enum\>\|\<union\>\|\<alias\>\|\<label\>\|\<const\>\|\<volatile\>\|\<noalias\>\|\<static\>\|\<external\>\|\<external_emit\>\)\@!\<[A-Za-z_][A-Za-z0-9_]*\>\%(\s*<\)\@!" contained
 syn match iTypePrefix ":\|->" nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iRawPointerPrefix,iCoreTypeInType,iQualifierInType,iDeclKindInType,iTypeName skipwhite
 syn match iTypePointerPrefix "\*" contained nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iRawPointerPrefix,iCoreTypeInType,iQualifierInType,iTypeName skipwhite
 syn match iArrayIndexNumber "\[\s*\zs[0-9]\+\ze\s*]"

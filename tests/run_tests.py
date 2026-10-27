@@ -5062,6 +5062,112 @@ main:proc()->i32 = {
             return 1
     print("ok infer_count")
 
+    # `noalias` on a parameter's own pointer or slice: restrict on `*T` and
+    # `[*]T`; a proc with a noalias slice becomes an always-inline helper plus
+    # the public function, whose C signature does not change. Debug builds
+    # check the promise; NDEBUG builds do not.
+    noalias_rin = TEST_DIR / "noalias.rin"
+    noalias_c = TEST_DIR / "noalias.c"
+    noalias_head = (
+        'import "std/print.rin"\n'
+        "mat2: struct = { m: [4]i32; }\n"
+        "add_into: proc(dst: noalias []i32, src: []const i32, k: i32) -> void = {\n"
+        "    for (i: u64 = 0; i < dst.length; i += 1) { dst[i] += src[i] * k; }\n"
+        "}\n"
+        "m2_mul: proc(out: noalias *mat2, a: *const mat2, b: *const mat2) -> void = {\n"
+        "    out[0].m[0] = a[0].m[0] * b[0].m[0];\n"
+        "}\n"
+        "copy_raw: proc(dst: noalias [*]u8, src: [*]const u8, n: u64) -> void = {\n"
+        "    for (i: u64 = 0; i < n; i += 1) { dst[i] = src[i]; }\n"
+        "}\n"
+        "peek: proc(a: noalias []const i32, b: []const i32) -> i32 = { return a[0] + b[0]; }\n"
+    )
+    noalias_main = (
+        "main: proc() -> i32 = {\n"
+        "    xs: [8]i32 = { 1, 2, 3, 4, 5, 6, 7, 8 };\n"
+        "    a: mat2 = {};\n"
+        "    b: mat2 = {};\n"
+        "    bytes: [4]u8 = { 1, 2, 3, 4 };\n"
+        "    other: [4]u8 = {};\n"
+        "    {body}\n"
+        '    printfmt("passed\\n");\n'
+        "    return 0;\n"
+        "}\n"
+    )
+    def noalias_source(body: str) -> str:
+        return noalias_head + noalias_main.replace("{body}", body)
+
+    noalias_rin.write_text(noalias_source("add_into(xs, xs, 1);"), encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "compile", str(noalias_rin), "-o", str(noalias_c), "--no-header"])
+    noalias_text = noalias_c.read_text(encoding="utf-8") if res.returncode == 0 else ""
+    for needed in (
+        "void add_into(slice_i32 dst, slice_const_i32 src, i32 k);",   # the public signature is unchanged
+        "RIN_ALWAYS_INLINE void rin_noalias_add_into(i32 * RIN_RESTRICT dst_rin_data, u64 dst_rin_length",
+        "slice_i32 dst = { dst_rin_data, dst_rin_length };",
+        "rin_noalias_add_into(dst.data, dst.length, src, k);",
+        "void m2_mul(mat2 * RIN_RESTRICT out, const mat2 * a, const mat2 * b);",
+        "void copy_raw(u8 * RIN_RESTRICT dst, const u8 * src, u64 n)",
+    ):
+        if needed not in noalias_text:
+            print(f"noalias: expected {needed!r} in the emitted C")
+            print(res.stdout)
+            return 1
+    if "rin_noalias_m2_mul" in noalias_text:
+        print("noalias: a proc without noalias slices must not get a helper")
+        return 1
+
+    for body, should_trap, defines, needle in (
+        ("add_into(xs[1..8], xs[0..7], 1);", True, (), "noalias.rin:3: noalias parameters 'dst' and 'src' overlap"),
+        ("m2_mul(a&, a&, b&);", True, (), "noalias.rin:6: noalias parameters 'out' and 'a' overlap"),
+        ("copy_raw(bytes, bytes, 4);", True, (), "noalias.rin:9: noalias parameters 'dst' and 'src' overlap"),
+        ("add_into(xs[0..4], xs[4..8], 1); copy_raw(bytes, other, 4); add_into(xs[0..0], xs, 1); _ = peek(xs, xs);",
+         False, (), "passed"),
+        ("add_into(xs[1..8], xs[0..7], 1);", False, ("-DNDEBUG",), "passed"),
+    ):
+        noalias_rin.write_text(noalias_source(body), encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "compile", str(noalias_rin), "-o", str(noalias_c), "--no-header"])
+        noalias_exe = TEST_DIR / "noalias.exe"
+        build = run(["clang.exe", str(noalias_c), *defines, "-I", "src", "-I", "src/std", "-o", str(noalias_exe)])
+        if res.returncode != 0 or build.returncode != 0:
+            print(f"noalias: {body!r} must build")
+            print(res.stdout, build.stdout)
+            return 1
+        ran = run([str(noalias_exe)])
+        if (ran.returncode != 0) != should_trap or needle not in ran.stdout:
+            print(f"noalias: {body!r} {defines or ''} should {'abort with ' if should_trap else 'print '}{needle!r}")
+            print(ran.stdout)
+            return 1
+
+    for source, needle in (
+        ("f: proc(x: noalias f32) -> void = {}\n", "this type is neither"),
+        ("f: proc(x: noalias [4]f32) -> void = {}\n", "cannot qualify an array"),
+        ("g: noalias *i32 = null;\n", "applies to proc parameters only"),
+        ("s: struct = { p: noalias *i32; }\n", "applies to proc parameters only"),
+        ("f: proc() -> noalias *i32 = { return null; }\n", "applies to proc parameters only"),
+        ("f: proc() -> void = { y: noalias *i32 = null; }\n", "applies to proc parameters only"),
+        ("f: proc(x: []noalias *i32) -> void = {}\n", "a parameter's own pointer"),
+        ("f: proc(x: *noalias *i32) -> void = {}\n", "a parameter's own pointer"),
+        ("f: proc(x: noalias noalias []i32) -> void = {}\n", "already given"),
+        ("f: proc(x: noalias []i32, ...) -> void = {}\n", "cannot be used in a variadic proc"),
+    ):
+        noalias_rin.write_text(source + "main: proc() -> i32 = { return 0; }\n", encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(noalias_rin)])
+        if res.returncode == 0 or needle not in res.stdout:
+            print(f"noalias: {source.strip()!r} must be refused with {needle!r}")
+            print(res.stdout)
+            return 1
+    for source in (
+        "f: proc(x: noalias *i32, ...) -> void = {}\n",
+        "f: proc(x: const noalias *i32, cb: *proc(d: noalias []f32) -> void) -> void = {}\n",
+    ):
+        noalias_rin.write_text(source + "main: proc() -> i32 = { return 0; }\n", encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(noalias_rin)])
+        if res.returncode != 0:
+            print(f"noalias: {source.strip()!r} must be accepted")
+            print(res.stdout)
+            return 1
+    print("ok noalias")
+
     # `rin build` reads build.rin and drives cmake. The whole point is that a
     # project describes its build once, declaratively, and never hand-writes a
     # CMakeLists -- so this checks the generated one says what build.rin did,
@@ -5104,6 +5210,14 @@ main:proc()->i32 = {
             print(f"build_command: generated CMakeLists is missing {needed!r}")
             print(cmake_text)
             return 1
+    # `#line` names the source by its absolute path. The C compiler runs from the
+    # CMake build directory, so a relative one would put build/cmake/src/app.rin
+    # in the PDB and the debugger could not find the file.
+    lines = re.findall(r'#line \d+ "([^"]*app\.rin)"', generated.read_text(encoding="utf-8"))
+    entry_abs = str((build_root / "src" / "app.rin").resolve()).lower()
+    if not lines or any(l.replace("\\\\", "\\").lower() != entry_abs for l in lines):
+        print(f"build_command: #line must name {entry_abs}, got {sorted(set(lines))}")
+        return 1
     # The visualizers the link option points at must have been written.
     if not (build_root / "out" / "rin_gen" / "app.natvis").exists():
         print("build_command: expected app.natvis beside app.c")

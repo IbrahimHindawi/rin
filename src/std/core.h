@@ -115,6 +115,68 @@ static inline u64 rin_range_check(u64 a, u64 b, u64 n, const char *file, int lin
 #define RIN_RANGE(a, b, n) rin_range_check((u64)(a), (u64)(b), (u64)(n), __FILE__, __LINE__)
 #endif
 
+/* `noalias` parameters (docs/noalias-variadic.md). RIN_RESTRICT is C's
+   restrict, spelled the way every compiler accepts in C whatever the standard
+   flag; RIN_ALWAYS_INLINE marks the helper a proc with noalias slices is moved
+   into. clang-cl defines _MSC_VER too, and takes the attribute. MSVC's cl
+   ignores __forceinline in Debug (/Od), so there the helper stays a call. */
+#define RIN_RESTRICT __restrict
+#if defined(_MSC_VER) && !defined(__clang__)
+#define RIN_ALWAYS_INLINE static __forceinline
+#else
+#define RIN_ALWAYS_INLINE static inline __attribute__((always_inline))
+#endif
+
+/* The Debug check that the promise holds, at the top of the proc. Each of the
+   n entries is (pointer, extent in bytes, name, flags): RIN_NOALIAS_PARAM if
+   the parameter is noalias, RIN_NOALIAS_WRITE if it can write. A pair is
+   checked when one side is noalias and one side can write, so the check
+   assumes any non-const parameter may be written. An extent of RIN_NOALIAS_ANY
+   is unknown, a `[*]T`, and only an equal address counts; an extent of 0, an
+   empty slice, overlaps nothing. */
+#define RIN_NOALIAS_PARAM 1
+#define RIN_NOALIAS_WRITE 2
+#define RIN_NOALIAS_ANY (~(u64)0)
+#ifdef NDEBUG
+#define RIN_NOALIAS(...) ((void)0)
+#else
+#include <stdarg.h>
+static inline void rin_noalias_check(const char *file, int line, int n, ...) {
+    const u8 *ptr[16];
+    u64 bytes[16];
+    const char *name[16];
+    int flags[16];
+    va_list args;
+    va_start(args, n);
+    if (n > 16) n = 16;
+    for (int i = 0; i < n; i++) {
+        ptr[i] = (const u8 *)va_arg(args, const void *);
+        bytes[i] = va_arg(args, u64);
+        name[i] = va_arg(args, const char *);
+        flags[i] = va_arg(args, int);
+    }
+    va_end(args);
+    for (int i = 0; i < n; i++) {
+        for (int j = i + 1; j < n; j++) {
+            if (!((flags[i] | flags[j]) & RIN_NOALIAS_PARAM)) continue;
+            if (!((flags[i] | flags[j]) & RIN_NOALIAS_WRITE)) continue;
+            if (!ptr[i] || !ptr[j] || bytes[i] == 0 || bytes[j] == 0) continue;
+            bool overlap;
+            if (bytes[i] == RIN_NOALIAS_ANY || bytes[j] == RIN_NOALIAS_ANY) {
+                overlap = ptr[i] == ptr[j];
+            } else {
+                overlap = ptr[i] < ptr[j] + bytes[j] && ptr[j] < ptr[i] + bytes[i];
+            }
+            if (overlap) {
+                fprintf(stderr, "%s:%d: noalias parameters '%s' and '%s' overlap\n", file, line, name[i], name[j]);
+                abort();
+            }
+        }
+    }
+}
+#define RIN_NOALIAS(n, ...) rin_noalias_check(__FILE__, __LINE__, n, __VA_ARGS__)
+#endif
+
 #ifdef __cplusplus
     #define haikal_alignof(type) alignof(type)
 #else
