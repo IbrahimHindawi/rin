@@ -8,8 +8,8 @@
 
 | part | topic | decision |
 |---|---|---|
-| 1 | `noalias` | qualifier on pointer and slice parameters: `restrict` on `*T` and `[*]T`, an inlined helper for `[]T`, overlap checks in Debug |
-| 2 | variadic procs | `noalias` on `*T` and `[*]T` allowed; on `[]T` an error until rin has built-in `...`, then a `va_list` helper |
+| 1 | `noalias` | qualifier on pointer and slice parameters: `restrict` on `*T` and `^T`, an inlined helper for `[]T`, overlap checks in Debug |
+| 2 | variadic procs | `noalias` on `*T` and `^T` allowed; on `[]T` an error until rin has built-in `...`, then a `va_list` helper |
 
 ---
 
@@ -21,9 +21,9 @@ not reached through anything else.
 
     add_into: proc(dst: noalias []f32, src: []const f32, k: f32) -> void = { ... }
     m4_mul: proc(out: noalias *mat4, a: *const mat4, b: *const mat4) -> void = { ... }
-    copy_raw: proc(dst: noalias [*]u8, src: [*]const u8, n: u64) -> void = { ... }
+    copy_raw: proc(dst: noalias ^u8, src: ^const u8, n: u64) -> void = { ... }
 
-On `*T` and `[*]T` it lowers to C's `restrict`, nothing more. On `[]T` the
+On `*T` and `^T` it lowers to C's `restrict`, nothing more. On `[]T` the
 compiler moves the proc's body into a helper so that `restrict` lands on a
 real C parameter, without changing the proc's signature. Debug builds check
 the promise wherever the parameter's extent is known.
@@ -41,7 +41,7 @@ split into six `f32` columns, 8192 particles, in L2:
 | SSE intrinsics, either compiler | 0.82 | |
 | AVX2 intrinsics, either compiler | 0.53 | |
 
-The same loop through `[]f32` slices instead of `[*]f32` gives identical
+The same loop through `[]f32` slices instead of `^f32` gives identical
 assembly and timings, because with `NDEBUG` a slice index is a plain pointer
 index. gcc gives up because six columns need more runtime overlap checks than
 its default allows; `--param vect-max-version-for-alias-checks=30` makes it
@@ -114,7 +114,7 @@ A prefix qualifier, parsed in `parse_type_inner` beside `const` and
     dst: noalias []f32
     out: noalias *mat4
     src: noalias []const f32
-    raw: noalias [*]u8
+    raw: noalias ^u8
 
 It qualifies the pointer or slice itself, not what it points at, and reads
 left to right like every other rin type: `noalias *const T` is a no-alias
@@ -137,7 +137,7 @@ and tests, rin-dx11 or rin-dod as of this writing.
 ## 1.3 Where it may appear
 
 Only at the top of a parameter's type, in a proc declaration or a proc-pointer
-type, on `*T`, `[*]T` or `[]T`. Generic parameters are fine:
+type, on `*T`, `^T` or `[]T`. Generic parameters are fine:
 `proc<T>(dst: noalias []T, src: []const T)`.
 
 | written | error |
@@ -166,7 +166,7 @@ nothing, since such a type has no body to check and is compared without it
 For the duration of a call: if memory reached through a `noalias` parameter
 is modified during the call, that memory is accessed during the call only
 through that parameter or through pointers derived from it. Indexing,
-sub-slicing, `x[i]&` and arithmetic on a `[*]T` all derive. Overlap that is
+sub-slicing, `x[i]&` and arithmetic on a `^T` all derive. Overlap that is
 only read is allowed.
 
 That is C's rule for a `restrict` parameter, scoped to one call. Two
@@ -232,7 +232,7 @@ Each entry is the pointer, its extent in bytes, the name, and two flags,
 |---|---|---|
 | `[]T` | `length * sizeof(T)` | any overlap |
 | `*T` | `sizeof(T)` | any overlap |
-| `[*]T` | unknown | equal addresses only |
+| `^T` | unknown | equal addresses only |
 
 A zero-length slice overlaps nothing. A failure prints
 `file:line: noalias parameters 'dst' and 'src' overlap` and calls `abort()`,
@@ -244,14 +244,14 @@ declaration before the check, so `file:line` names the `.rin` source.
 - globals reached from the body;
 - pointers inside struct parameters, such as the columns of a `*kayan_world`;
 - anything reached through pointers stored elsewhere;
-- offset overlap of a `[*]T`;
+- offset overlap of a `^T`;
 - other threads;
 - `[external]` procs, which have no rin body;
 - a write through a pointer whose `const` was dropped with `cast`.
 
 ## 1.7 Lowering to C
 
-**`*T` and `[*]T`:** `restrict` on the C parameter, nothing else.
+**`*T` and `^T`:** `restrict` on the C parameter, nothing else.
 
     out: noalias *mat4         ->  mat4 *restrict out
     src: noalias *const mat4   ->  const mat4 *restrict src
@@ -370,7 +370,7 @@ is as described above.
 Each one can fail:
 
 1. **Emission.**
-   - `*T` and `[*]T` put `restrict` on the C parameter;
+   - `*T` and `^T` put `restrict` on the C parameter;
      `noalias *const T` emits `const T *restrict`.
    - A `noalias` slice produces the helper and an unchanged public signature.
    - At `-O0`, no `rin_noalias_` symbol is left in the object file.
@@ -379,7 +379,7 @@ Each one can fail:
    - Overlapping slices abort with the message.
    - Disjoint slices pass, and so do const-const overlaps.
    - Two disjoint slices of one arena block pass.
-   - Equal `[*]T` pointers abort.
+   - Equal `^T` pointers abort.
    - `m4_mul(m&, m&, b&)` aborts.
    - The same program built with `NDEBUG` runs without the checks.
 4. **Proc pointers.** A proc with `noalias` slice parameters is stored in a
@@ -400,7 +400,7 @@ automated.
 
 - Also check at the call site, so calls into `[external]` procs with `noalias`
   parameters are covered.
-- Whether rinbind should emit `noalias [*]T` for C parameters declared
+- Whether rinbind should emit `noalias ^T` for C parameters declared
   `restrict`, which today it drops.
 - A checked-release mode that keeps the overlap checks with optimisation on.
 
@@ -414,7 +414,7 @@ automated.
 - **A proc attribute marking procs whose lowering differs.** Considered while
   the lowering changed signatures. The helper changes nothing a caller sees,
   so the attribute would mark nothing.
-- **Only on `*T` and `[*]T`, as in C.** It would push hot kernels back to
+- **Only on `*T` and `^T`, as in C.** It would push hot kernels back to
   pointer plus length, against the direction of
   [pointers-and-slices.md](pointers-and-slices.md).
 - **`restrict` locals, `restrict` struct fields, split parameters.** Measured
@@ -431,7 +431,7 @@ automated.
   in exactly the case `noalias` is for. It is also clang-only.
 - **Calling it `hot`.** gcc and clang already have a `hot` attribute meaning
   "optimise harder", so a reader would take it for a speed hint.
-- **`[*]T` tied to a length, `[*]f32[noalias(count)]`.** It duplicates what a
+- **`^T` tied to a length, `^f32[noalias(count)]`.** It duplicates what a
   slice already is.
 
 ---
@@ -454,7 +454,7 @@ function itself.
 
 ## 2.2 The rule today
 
-- `noalias` on `*T` and `[*]T` is allowed on variadic procs. It lowers to a
+- `noalias` on `*T` and `^T` is allowed on variadic procs. It lowers to a
   qualifier on the parameter and needs no helper, as `printf`'s
   `const char *restrict format, ...` does in C.
 - `noalias` on `[]T` is an error on a variadic proc:

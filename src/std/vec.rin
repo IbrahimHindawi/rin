@@ -2,7 +2,7 @@ import "memops.rin"
 import "option.rin"
 
 vec: struct<T> = {
-    data: [*]T;
+    data: ^T;
     length: u64;
     border: u64;
 }
@@ -23,83 +23,83 @@ vec<T>reserve: proc<T>(arena: *memops_arena, length: u64) -> vec<T> = {
 }
 
 vec<T>destroy: proc<T>(arena: *memops_arena, array: *vec<T>) -> void = {
-    array[0].data = null;
-    array[0].length = 0;
-    array[0].border = 0;
+    array*.data = null;
+    array*.length = 0;
+    array*.border = 0;
 }
 
-vec<T>resize: proc<T>(arena: *memops_arena, array: *vec<T>) -> [*]T = {
-    old_border: u64 = array[0].border;
-    if (array[0].border == 0) {
-        array[0].border = 1;
+vec<T>resize: proc<T>(arena: *memops_arena, array: *vec<T>) -> ^T = {
+    old_border: u64 = array*.border;
+    if (array*.border == 0) {
+        array*.border = 1;
     } else {
-        array[0].border *= 2;
+        array*.border *= 2;
     }
-    array[0].data = cast(memops_arena_realloc_(arena, sizeof(T) * array[0].border, array[0].data, sizeof(T) * old_border, alignof(T)), *T);
-    if (array[0].data == null) {
+    array*.data = cast(memops_arena_realloc_(arena, sizeof(T) * array*.border, array*.data, sizeof(T) * old_border, alignof(T)), *T);
+    if (array*.data == null) {
         printf("rin runtime: vec resize allocation failure\n");
         exit(1);
     }
-    if (array[0].border > old_border) {
-        memset(cast(array[0].data, [*]u8) + sizeof(T) * old_border, 0, sizeof(T) * (array[0].border - old_border));
+    if (array*.border > old_border) {
+        memset(cast(array*.data, ^u8) + sizeof(T) * old_border, 0, sizeof(T) * (array*.border - old_border));
     }
-    return array[0].data;
+    return array*.data;
 }
 
 vec<T>append: proc<T>(arena: *memops_arena, array: *vec<T>, elem: T) -> *T = {
-    if (array[0].data == null) {
-        array[0].border = 1;
-        array[0].data = cast(memops_arena_push(arena, sizeof(T) * array[0].border, alignof(T)), *T);
+    if (array*.data == null) {
+        array*.border = 1;
+        array*.data = cast(memops_arena_push(arena, sizeof(T) * array*.border, alignof(T)), *T);
     }
-    if (array[0].length >= array[0].border) {
+    if (array*.length >= array*.border) {
         vec<T>resize(arena, array);
     }
-    array[0].data[array[0].length] = elem;
-    result: *T = array[0].data[array[0].length]&;
-    array[0].length += 1;
+    array*.data[array*.length] = elem;
+    result: *T = array*.data[array*.length]&;
+    array*.length += 1;
     return result;
 }
 
 vec<T>at: proc<T>(array: *vec<T>, index: u64) -> *T = {
-    if (array == null || index >= array[0].length) {
+    if (array == null || index >= array*.length) {
         printf("rin runtime: vec index out of bounds\n");
         exit(1);
     }
-    return array[0].data[index]&;
+    return array*.data[index]&;
 }
 
 vec<T>get: proc<T>(array: *vec<T>, index: u64) -> option<T> = {
-    if (array == null || index >= array[0].length) {
+    if (array == null || index >= array*.length) {
         return option<T>none();
     }
-    return option<T>some(array[0].data[index]);
+    return option<T>some(array*.data[index]);
 }
 
 vec<T>last: proc<T>(array: *vec<T>) -> *T = {
-    if (array == null || array[0].length == 0) {
+    if (array == null || array*.length == 0) {
         printf("rin runtime: vec last on an empty vec\n");
         exit(1);
     }
-    return array[0].data[array[0].length - 1]&;
+    return array*.data[array*.length - 1]&;
 }
 
 vec<T>pop: proc<T>(array: *vec<T>) -> T = {
-    x: T = vec<T>last(array)[0];
-    array[0].length -= 1;
+    x: T = vec<T>last(array)*;
+    array*.length -= 1;
     return x;
 }
 
 // The elements as a slice, valid until the next append moves them.
 vec<T>items: proc<T>(array: *vec<T>) -> []T = {
-    return array[0].data[0..array[0].length];
+    return array*.data[0..array*.length];
 }
 
 vec<T>clear: proc<T>(array: *vec<T>) -> void = {
     if (array != null) {
-        array[0].length = 0;
+        array*.length = 0;
     }
 }
 
 vec<T>is_empty: proc<T>(array: *vec<T>) -> b32 = {
-    return array == null || array[0].length == 0;
+    return array == null || array*.length == 0;
 }

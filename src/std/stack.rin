@@ -17,19 +17,19 @@ stack<T>create: proc<T>(arena: *memops_arena) -> *stack<T> = {
 
 stack<T>push: proc<T>(arena: *memops_arena, stack: *stack<T>, data: T) -> void = {
     node: *node<T> = node<T>create(arena, data);
-    node[0].next = stack[0].head;
-    stack[0].head = node;
-    stack[0].length += 1;
+    node*.next = stack*.head;
+    stack*.head = node;
+    stack*.length += 1;
 }
 
 stack<T>pop: proc<T>(arena: *memops_arena, stack: *stack<T>) -> *node<T> = {
-    if (stack == null || stack[0].head == null) {
+    if (stack == null || stack*.head == null) {
         return null;
     }
-    node: *node<T> = stack[0].head;
-    stack[0].head = node[0].next;
-    node[0].next = null;
-    stack[0].length -= 1;
+    node: *node<T> = stack*.head;
+    stack*.head = node*.next;
+    node*.next = null;
+    stack*.length -= 1;
     return node;
 }
 
@@ -37,16 +37,16 @@ stack<T>peek: proc<T>(arena: *memops_arena, stack: *stack<T>) -> *node<T> = {
     if (stack == null) {
         return null;
     }
-    return stack[0].head;
+    return stack*.head;
 }
 
 stack<T>destroy: proc<T>(arena: *memops_arena, stack: *stack<T>) -> void = {
     if (stack != null) {
-        stack[0].head = null;
-        stack[0].length = 0;
+        stack*.head = null;
+        stack*.length = 0;
     }
 }
 
 stack<T>is_empty: proc<T>(stack: *stack<T>) -> b32 = {
-    return stack == null || stack[0].length == 0;
+    return stack == null || stack*.length == 0;
 }

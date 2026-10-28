@@ -6,8 +6,8 @@ import "cstd.rin"
    effectively constant time. `sets` counts the components still apart. */
 
 dsu: struct = {
-    parent: [*]u64;
-    size: [*]u64;
+    parent: ^u64;
+    size: ^u64;
     count: u64;
     sets: u64;
 }
@@ -17,8 +17,8 @@ dsu_make: proc(arena: *memops_arena, n: u64) -> dsu = {
     if (n == 0) {
         return d;
     }
-    d.parent = cast(memops_arena_push(arena, sizeof(u64) * n, alignof(u64)), [*]u64);
-    d.size = cast(memops_arena_push(arena, sizeof(u64) * n, alignof(u64)), [*]u64);
+    d.parent = cast(memops_arena_push(arena, sizeof(u64) * n, alignof(u64)), ^u64);
+    d.size = cast(memops_arena_push(arena, sizeof(u64) * n, alignof(u64)), ^u64);
     if (d.parent == null || d.size == null) {
         printf("rin runtime: dsu allocation failure\n");
         exit(1);
@@ -33,13 +33,13 @@ dsu_make: proc(arena: *memops_arena, n: u64) -> dsu = {
 }
 
 dsu_find: proc(d: *dsu, x: u64) -> u64 = {
-    if (x >= d[0].count) {
+    if (x >= d*.count) {
         printf("rin runtime: dsu element out of range\n");
         exit(1);
     }
-    while (d[0].parent[x] != x) {
-        d[0].parent[x] = d[0].parent[d[0].parent[x]];
-        x = d[0].parent[x];
+    while (d*.parent[x] != x) {
+        d*.parent[x] = d*.parent[d*.parent[x]];
+        x = d*.parent[x];
     }
     return x;
 }
@@ -51,14 +51,14 @@ dsu_unite: proc(d: *dsu, a: u64, b: u64) -> b32 = {
     if (ra == rb) {
         return 0;
     }
-    if (d[0].size[ra] < d[0].size[rb]) {
+    if (d*.size[ra] < d*.size[rb]) {
         t: u64 = ra;
         ra = rb;
         rb = t;
     }
-    d[0].parent[rb] = ra;
-    d[0].size[ra] += d[0].size[rb];
-    d[0].sets -= 1;
+    d*.parent[rb] = ra;
+    d*.size[ra] += d*.size[rb];
+    d*.sets -= 1;
     return 1;
 }
 
@@ -67,5 +67,5 @@ dsu_same: proc(d: *dsu, a: u64, b: u64) -> b32 = {
 }
 
 dsu_set_size: proc(d: *dsu, x: u64) -> u64 = {
-    return d[0].size[dsu_find(d, x)];
+    return d*.size[dsu_find(d, x)];
 }

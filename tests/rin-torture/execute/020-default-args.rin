@@ -19,7 +19,7 @@ flags: proc(value: u32, mask: u32 = ~0, shift: u32 = 1 shl 2) -> u32 = {
     return (value & mask) shr shift;
 }
 
-name_or: proc(name: [*]const char = null) -> [*]const char = {
+name_or: proc(name: ^const char = null) -> ^const char = {
     if (name == null) {
         return "anonymous";
     }
@@ -50,7 +50,7 @@ main: proc() -> i32 = {
     memops_arena_initialize(big&);
     small: memops_arena = {};
     memops_arena_initialize(small&, 1 shl 20);
-    block: [*]u8 = cast(memops_arena_push(small&, 512 * 1024, 16), [*]u8);
+    block: ^u8 = cast(memops_arena_push(small&, 512 * 1024, 16), ^u8);
     block[512 * 1024 - 1] = 9;
     printf("%d %d %d\n", cast(big.reserved == max_alloc_size, i32), cast(small.reserved == (1 shl 20), i32),
            cast(block[512 * 1024 - 1], i32));

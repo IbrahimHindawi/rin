@@ -35,7 +35,7 @@ becomes
     print_cstr("hp ");
     print<i32>(health);
     print_cstr(" name ");
-    print<[*]const char>(name);
+    print<^const char>(name);
     print_cstr("\n");
 
 So the formatting itself already lives in std, in the `print` specialisations

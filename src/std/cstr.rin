@@ -16,7 +16,7 @@ import "string8.rin"
        returning it invites `if (cstr_cmp(a, b))` meaning the opposite of what
        it reads like. `cstr_order` is there for the rare real sort. */
 
-cstr_length: proc(s: [*]const c8) -> u64 = {
+cstr_length: proc(s: ^const c8) -> u64 = {
     if (s == null) {
         return 0;
     }
@@ -27,11 +27,11 @@ cstr_length: proc(s: [*]const c8) -> u64 = {
     return n;
 }
 
-cstr_is_empty: proc(s: [*]const c8) -> b32 = {
+cstr_is_empty: proc(s: ^const c8) -> b32 = {
     return s == null || s[0] == 0;
 }
 
-cstr_equals: proc(a: [*]const c8, b: [*]const c8) -> b32 = {
+cstr_equals: proc(a: ^const c8, b: ^const c8) -> b32 = {
     if (a == null || b == null) {
         return a == b;
     }
@@ -42,7 +42,7 @@ cstr_equals: proc(a: [*]const c8, b: [*]const c8) -> b32 = {
     return a[i] == b[i];
 }
 
-cstr_equals_n: proc(a: [*]const c8, b: [*]const c8, count: u64) -> b32 = {
+cstr_equals_n: proc(a: ^const c8, b: ^const c8, count: u64) -> b32 = {
     if (a == null || b == null) {
         return a == b;
     }
@@ -58,7 +58,7 @@ cstr_equals_n: proc(a: [*]const c8, b: [*]const c8, count: u64) -> b32 = {
 }
 
 /* Negative, zero or positive like strcmp, for the cases that genuinely order. */
-cstr_order: proc(a: [*]const c8, b: [*]const c8) -> i32 = {
+cstr_order: proc(a: ^const c8, b: ^const c8) -> i32 = {
     if (a == null || b == null) {
         if (a == b) { return 0; }
         if (a == null) { return -1; }
@@ -74,7 +74,7 @@ cstr_order: proc(a: [*]const c8, b: [*]const c8) -> i32 = {
 /* Copies at most dst.length-1 bytes and always terminates. Returns the length
    written, so a caller can tell truncation happened by comparing it against
    cstr_length(src). */
-cstr_copy: proc(dst: []c8, src: [*]const c8) -> u64 = {
+cstr_copy: proc(dst: []c8, src: ^const c8) -> u64 = {
     if (dst.data == null || dst.length == 0) {
         return 0;
     }
@@ -91,7 +91,7 @@ cstr_copy: proc(dst: []c8, src: [*]const c8) -> u64 = {
     return n;
 }
 
-cstr_append: proc(dst: []c8, src: [*]const c8) -> u64 = {
+cstr_append: proc(dst: []c8, src: ^const c8) -> u64 = {
     if (dst.data == null || dst.length == 0) {
         return 0;
     }
@@ -104,7 +104,7 @@ cstr_append: proc(dst: []c8, src: [*]const c8) -> u64 = {
 
 /* Index of the first occurrence, or -1. strchr/strstr returned pointers, which
    forced null checks that read as "found"; an index says what it means. */
-cstr_find_char: proc(s: [*]const c8, c: c8) -> i64 = {
+cstr_find_char: proc(s: ^const c8, c: c8) -> i64 = {
     if (s == null) {
         return -1;
     }
@@ -121,7 +121,7 @@ cstr_find_char: proc(s: [*]const c8, c: c8) -> i64 = {
     return -1;
 }
 
-cstr_find: proc(haystack: [*]const c8, needle: [*]const c8) -> i64 = {
+cstr_find: proc(haystack: ^const c8, needle: ^const c8) -> i64 = {
     if (haystack == null || needle == null) {
         return -1;
     }
@@ -146,11 +146,11 @@ cstr_find: proc(haystack: [*]const c8, needle: [*]const c8) -> i64 = {
     return -1;
 }
 
-cstr_starts_with: proc(s: [*]const c8, prefix: [*]const c8) -> b32 = {
+cstr_starts_with: proc(s: ^const c8, prefix: ^const c8) -> b32 = {
     return cstr_equals_n(s, prefix, cstr_length(prefix));
 }
 
-cstr_ends_with: proc(s: [*]const c8, suffix: [*]const c8) -> b32 = {
+cstr_ends_with: proc(s: ^const c8, suffix: ^const c8) -> b32 = {
     sn: u64 = cstr_length(s);
     fn_: u64 = cstr_length(suffix);
     if (fn_ > sn) {
@@ -159,7 +159,7 @@ cstr_ends_with: proc(s: [*]const c8, suffix: [*]const c8) -> b32 = {
     return cstr_equals(s[sn - fn_]&, suffix);
 }
 
-cstr_slice: proc(s: [*]const c8) -> string8slice = {
+cstr_slice: proc(s: ^const c8) -> string8slice = {
     out: string8slice = {};
     if (s == null) {
         return out;
@@ -172,7 +172,7 @@ cstr_slice: proc(s: [*]const c8) -> string8slice = {
 /* Parsing, replacing the sscanf calls. Each reports success separately rather
    than folding failure into a sentinel value, because 0 is a legitimate
    result and sscanf's return count was being ignored at every call site. */
-cstr_parse_i64: proc(s: [*]const c8, out: *i64) -> b32 = {
+cstr_parse_i64: proc(s: ^const c8, out: *i64) -> b32 = {
     if (s == null || out == null) {
         return 0;
     }
@@ -198,14 +198,14 @@ cstr_parse_i64: proc(s: [*]const c8, out: *i64) -> b32 = {
         return 0;
     }
     if (negative != 0) {
-        out[0] = cast(cast(0, u64) - value, i64);
+        out* = cast(cast(0, u64) - value, i64);
     } else {
-        out[0] = cast(value, i64);
+        out* = cast(value, i64);
     }
     return 1;
 }
 
-cstr_parse_f64: proc(s: [*]const c8, out: *f64) -> b32 = {
+cstr_parse_f64: proc(s: ^const c8, out: *f64) -> b32 = {
     if (s == null || out == null) {
         return 0;
     }
@@ -243,7 +243,7 @@ cstr_parse_f64: proc(s: [*]const c8, out: *f64) -> b32 = {
     if (negative != 0) {
         whole = -whole;
     }
-    out[0] = whole;
+    out* = whole;
     return 1;
 }
 
@@ -257,16 +257,16 @@ cstr_parse_f64: proc(s: [*]const c8, out: *f64) -> b32 = {
    Like strtok it writes a terminator into the buffer, so the input must be
    mutable. An empty `delims` returns the whole remainder, which is how the
    callers get "the rest of the line". */
-cstr_token: proc(s: [*]c8, cursor: *u64, delims: [*]const c8) -> [*]c8 = {
+cstr_token: proc(s: ^c8, cursor: *u64, delims: ^const c8) -> ^c8 = {
     if (s == null || cursor == null) {
         return null;
     }
-    i: u64 = cursor[0];
+    i: u64 = cursor*;
     if (delims == null || delims[0] == 0) {
         if (s[i] == 0) {
             return null;
         }
-        cursor[0] = i + cstr_length(s[i]&);
+        cursor* = i + cstr_length(s[i]&);
         return s[i]&;
     }
     /* Skip leading delimiters. */
@@ -274,7 +274,7 @@ cstr_token: proc(s: [*]c8, cursor: *u64, delims: [*]const c8) -> [*]c8 = {
         i += 1;
     }
     if (s[i] == 0) {
-        cursor[0] = i;
+        cursor* = i;
         return null;
     }
     start: u64 = i;
@@ -285,6 +285,6 @@ cstr_token: proc(s: [*]c8, cursor: *u64, delims: [*]const c8) -> [*]c8 = {
         s[i] = 0;
         i += 1;
     }
-    cursor[0] = i;
+    cursor* = i;
     return s[start]&;
 }

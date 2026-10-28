@@ -15,7 +15,7 @@ import "string8.rin"
    converts with its length from its type, `fmt_to(line)`, and part of one is a
    subrange, `fmt_to(out[0..4])`. `capacity` counts the terminator. */
 fmt: struct = {
-    data: [*]c8;
+    data: ^c8;
     capacity: u64;
     length: u64;
     truncated: b32;
@@ -34,27 +34,27 @@ fmt_to: proc(buf: []c8) -> fmt = {
 }
 
 fmt_remaining: proc(f: *const fmt) -> u64 = {
-    if (f[0].data == null || f[0].capacity == 0) {
+    if (f*.data == null || f*.capacity == 0) {
         return 0;
     }
     /* One byte is always held back for the terminator. */
-    if (f[0].length + 1 >= f[0].capacity) {
+    if (f*.length + 1 >= f*.capacity) {
         return 0;
     }
-    return f[0].capacity - f[0].length - 1;
+    return f*.capacity - f*.length - 1;
 }
 
 fmt_char: proc(f: *fmt, c: c8) -> void = {
     if (fmt_remaining(f) == 0) {
-        f[0].truncated = 1;
+        f*.truncated = 1;
         return;
     }
-    f[0].data[f[0].length] = c;
-    f[0].length += 1;
-    f[0].data[f[0].length] = 0;
+    f*.data[f*.length] = c;
+    f*.length += 1;
+    f*.data[f*.length] = 0;
 }
 
-fmt_bytes: proc(f: *fmt, src: [*]const c8, count: u64) -> void = {
+fmt_bytes: proc(f: *fmt, src: ^const c8, count: u64) -> void = {
     if (src == null || count == 0) {
         return;
     }
@@ -62,7 +62,7 @@ fmt_bytes: proc(f: *fmt, src: [*]const c8, count: u64) -> void = {
     n: u64 = count;
     if (n > room) {
         n = room;
-        f[0].truncated = 1;
+        f*.truncated = 1;
     }
     /* room is 0 for a null buffer and for a zero capacity, and in both cases
        there is nowhere to put the terminator either -- writing it anyway
@@ -71,13 +71,13 @@ fmt_bytes: proc(f: *fmt, src: [*]const c8, count: u64) -> void = {
         return;
     }
     for (i: u64 = 0; i < n; i += 1) {
-        f[0].data[f[0].length + i] = src[i];
+        f*.data[f*.length + i] = src[i];
     }
-    f[0].length += n;
-    f[0].data[f[0].length] = 0;
+    f*.length += n;
+    f*.data[f*.length] = 0;
 }
 
-cstr_len_: proc(s: [*]const c8) -> u64 = {
+cstr_len_: proc(s: ^const c8) -> u64 = {
     if (s == null) {
         return 0;
     }
@@ -88,17 +88,17 @@ cstr_len_: proc(s: [*]const c8) -> u64 = {
     return n;
 }
 
-fmt_cstr: proc(f: *fmt, s: [*]const c8) -> void = {
+fmt_cstr: proc(f: *fmt, s: ^const c8) -> void = {
     fmt_bytes(f, s, cstr_len_(s));
 }
 
 fmt_slice: proc(f: *fmt, s: string8slice) -> void = {
-    fmt_bytes(f, cast(s.data, [*]const c8), s.length);
+    fmt_bytes(f, cast(s.data, ^const c8), s.length);
 }
 
 /* Left-justified in a field of `width`, like %-24s. Longer input is written in
    full rather than truncated, which is what printf does too. */
-fmt_cstr_pad: proc(f: *fmt, s: [*]const c8, width: u64) -> void = {
+fmt_cstr_pad: proc(f: *fmt, s: ^const c8, width: u64) -> void = {
     n: u64 = 0;
     if (s != null) {
         n = cstr_len_(s);
@@ -209,11 +209,11 @@ fmt_f64: proc(f: *fmt, value: f64, decimals: u64) -> void = {
 
 /* Length written, not counting the terminator. */
 fmt_done: proc(f: *const fmt) -> u64 = {
-    return f[0].length;
+    return f*.length;
 }
 
 fmt_truncated: proc(f: *const fmt) -> b32 = {
-    return f[0].truncated;
+    return f*.truncated;
 }
 
 /* Expands a format string held in data, which is the one case a call site
@@ -221,7 +221,7 @@ fmt_truncated: proc(f: *const fmt) -> b32 = {
    Only "%d" is recognised, because that is the only conversion those tables
    use; anything else is copied through verbatim so a stray "%s" shows up in
    the output rather than reading a stack slot that was never passed. */
-fmt_expand_i64: proc(dst: []c8, format: [*]const c8, value: i64) -> u64 = {
+fmt_expand_i64: proc(dst: []c8, format: ^const c8, value: i64) -> u64 = {
     f: fmt = fmt_to(dst);
     if (format == null) {
         return 0;
@@ -242,20 +242,20 @@ fmt_expand_i64: proc(dst: []c8, format: [*]const c8, value: i64) -> u64 = {
 /* The dominant snprintf shape by a wide margin is literal fragments joined with
    strings -- "res/fx/%s.json", "%s/%s", "res/%s/mesh/%s.gltf". These cover it
    without a builder at the call site. Each returns the length written. */
-fmt_cat1: proc(dst: []c8, a: [*]const c8) -> u64 = {
+fmt_cat1: proc(dst: []c8, a: ^const c8) -> u64 = {
     f: fmt = fmt_to(dst);
     fmt_cstr(f&, a);
     return f.length;
 }
 
-fmt_cat2: proc(dst: []c8, a: [*]const c8, b: [*]const c8) -> u64 = {
+fmt_cat2: proc(dst: []c8, a: ^const c8, b: ^const c8) -> u64 = {
     f: fmt = fmt_to(dst);
     fmt_cstr(f&, a);
     fmt_cstr(f&, b);
     return f.length;
 }
 
-fmt_cat3: proc(dst: []c8, a: [*]const c8, b: [*]const c8, c: [*]const c8) -> u64 = {
+fmt_cat3: proc(dst: []c8, a: ^const c8, b: ^const c8, c: ^const c8) -> u64 = {
     f: fmt = fmt_to(dst);
     fmt_cstr(f&, a);
     fmt_cstr(f&, b);
@@ -263,7 +263,7 @@ fmt_cat3: proc(dst: []c8, a: [*]const c8, b: [*]const c8, c: [*]const c8) -> u64
     return f.length;
 }
 
-fmt_cat4: proc(dst: []c8, a: [*]const c8, b: [*]const c8, c: [*]const c8, d: [*]const c8) -> u64 = {
+fmt_cat4: proc(dst: []c8, a: ^const c8, b: ^const c8, c: ^const c8, d: ^const c8) -> u64 = {
     f: fmt = fmt_to(dst);
     fmt_cstr(f&, a);
     fmt_cstr(f&, b);
@@ -272,7 +272,7 @@ fmt_cat4: proc(dst: []c8, a: [*]const c8, b: [*]const c8, c: [*]const c8, d: [*]
     return f.length;
 }
 
-fmt_cat5: proc(dst: []c8, a: [*]const c8, b: [*]const c8, c: [*]const c8, d: [*]const c8, e: [*]const c8) -> u64 = {
+fmt_cat5: proc(dst: []c8, a: ^const c8, b: ^const c8, c: ^const c8, d: ^const c8, e: ^const c8) -> u64 = {
     f: fmt = fmt_to(dst);
     fmt_cstr(f&, a);
     fmt_cstr(f&, b);

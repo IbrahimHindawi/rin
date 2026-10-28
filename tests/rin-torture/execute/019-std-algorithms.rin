@@ -8,7 +8,7 @@ import "std/heap.rin"
 import "std/deque.rin"
 import "std/dsu.rin"
 
-printf: proc[external](fmt: [*]const char, ...) -> i32 = {}
+printf: proc[external](fmt: ^const char, ...) -> i32 = {}
 
 edge: struct = {
     to: i64;
@@ -34,8 +34,8 @@ equal: proc<point>(a: point, b: point) -> b32 = {
 
 // A small LCG, so the sort sees the same scrambled input on every compiler.
 next_random: proc(state: *u64) -> u64 = {
-    state[0] = state[0] * 6364136223846793005'u64 + 1442695040888963407'u64;
-    return state[0] shr 33;
+    state* = state* * 6364136223846793005'u64 + 1442695040888963407'u64;
+    return (state*) shr 33;
 }
 
 main: proc() -> i32 = {
@@ -76,7 +76,7 @@ main: proc() -> i32 = {
     for (i: u64 = 0; i < 4; i += 1) {
         at: *u64 = hashmap<i64, u64>get(seen&, 9 - nums[i]);
         if (at != null) {
-            answer_a = at[0];
+            answer_a = at*;
             answer_b = i;
         }
         hashmap<i64, u64>put(arena&, seen&, nums[i], i);
@@ -85,7 +85,7 @@ main: proc() -> i32 = {
 
     counts: hashmap<i64, i64> = {};
     for (i: i64 = 0; i < 5000; i += 1) {
-        hashmap<i64, i64>slot(arena&, counts&, i % 1237)[0] += 1;
+        hashmap<i64, i64>slot(arena&, counts&, i % 1237)* += 1;
     }
     hashmap<i64, i64>remove(counts&, 0);
     total: i64 = 0;
@@ -101,9 +101,9 @@ main: proc() -> i32 = {
     other: [5]c8 = {'h', 'e', 'l', 'l', 'o'};
     words: hashmap<[]c8, i32> = {};
     hashmap<[]c8, i32>put(arena&, words&, word[0..5], 1);
-    hashmap<[]c8, i32>slot(arena&, words&, other[0..5])[0] += 1;
-    hashmap<[]c8, i32>slot(arena&, words&, other[0..4])[0] += 1;
-    printf("words %llu %d\n", words.length, hashmap<[]c8, i32>get(words&, word[0..5])[0]);
+    hashmap<[]c8, i32>slot(arena&, words&, other[0..5])* += 1;
+    hashmap<[]c8, i32>slot(arena&, words&, other[0..4])* += 1;
+    printf("words %llu %d\n", words.length, hashmap<[]c8, i32>get(words&, word[0..5])*);
 
     // hashset with a struct key
     visited: hashset<point> = {};
@@ -148,7 +148,7 @@ main: proc() -> i32 = {
     for (i: i64 = 0; i < 20; i += 1) {
         deque<i64>push_front(arena&, window&, 100 + i);
     }
-    printf("deque %llu %lld %lld %lld\n", window.length, deque<i64>front(window&), deque<i64>back(window&), deque<i64>at(window&, 20)[0]);
+    printf("deque %llu %lld %lld %lld\n", window.length, deque<i64>front(window&), deque<i64>back(window&), deque<i64>at(window&, 20)*);
 
     // dsu
     groups: dsu = dsu_make(arena&, 6);
@@ -163,7 +163,7 @@ main: proc() -> i32 = {
     vec<i64>append(arena&, stack&, 1);
     vec<i64>append(arena&, stack&, 2);
     popped: i64 = vec<i64>pop(stack&);
-    printf("vec %lld %lld %llu\n", popped, vec<i64>last(stack&)[0], stack.length);
+    printf("vec %lld %lld %llu\n", popped, vec<i64>last(stack&)*, stack.length);
 
     // A second instance of the same generic subrange: `items` once emitted the
     // slice type of whichever instance was checked last, for every instance.

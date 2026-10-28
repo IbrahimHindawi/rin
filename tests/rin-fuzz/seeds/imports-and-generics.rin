@@ -22,7 +22,7 @@ add: proc<i32>(a: i32, b: i32) -> i32 = {
     return a + b;
 }
 
-sum: proc<T>(items: [*]T, count: u64) -> T = {
+sum: proc<T>(items: ^T, count: u64) -> T = {
     total: T = {};
     for (i: u64 = 0; i < count; i += 1) {
         total = add<T>(total, items[i]);

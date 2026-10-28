@@ -40,7 +40,7 @@ with it is rin's own rule, no platform knowledge in the compiler. So:
   rasm writes the data's C itself from rin's syntax tree, about 400 lines;
 - rin the language does not change for rasm. When rin changes, rasm's
   parser follows for free. One deliberate divergence: rasm's own files use
-  `*T` for every pointer, where rin has `*T`, `[*]T` and `[]T` (spec §2).
+  `*T` for every pointer, where rin has `*T`, `^T` and `[]T` (spec §2).
   All of them lower to C's `T*` in the data file, so the C is identical.
 
 Reusable pieces in `src/main.c` (19,164 lines), by line as of

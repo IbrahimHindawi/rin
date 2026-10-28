@@ -64,7 +64,7 @@ it to C. decisions.rasm §4.
 the type.
 
 **I. Pointer spelling.** `*T` is the only pointer in `.rasm` files (C's
-`T*`); `[*]T` and `[]T` from imported `.rin` files are read as layouts. The
+`T*`); `^T` and `[]T` from imported `.rin` files are read as layouts. The
 author's point: one-element pointers and slices mean nothing to an
 assembler that never indexes through a type. A deliberate divergence from
 rin, whose pointer kinds stay as they are (the `c-pointer-spelling.md`

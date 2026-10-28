@@ -269,7 +269,7 @@ anything.
 
 > **Succeeded by [pointers-and-slices.md](pointers-and-slices.md):** `*T` stays
 > one word but points at exactly one element, `[]T` is the checked slice, and
-> `[*]T` is the raw pointer.
+> `^T` is the raw pointer.
 
 Making `*T` a pointer plus a length would make `[0]` literally true and every
 index checkable. It breaks too much of [`rin-soul.md`](rin-soul.md):

@@ -86,8 +86,8 @@ syn match iTypePrefix ":\|->" nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iRa
 syn match iTypePointerPrefix "\*" contained nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iRawPointerPrefix,iCoreTypeInType,iQualifierInType,iTypeName skipwhite
 syn match iArrayIndexNumber "\[\s*\zs[0-9]\+\ze\s*]"
 syn match iFixedArrayPrefix "\[\s*[0-9]*\s*]" contained contains=iFixedArrayNumber,iFixedArrayDelimiter transparent nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iRawPointerPrefix,iQualifierInType,iCoreTypeInType,iTypeName skipwhite
-" `[*]T`, a raw pointer
-syn match iRawPointerPrefix "\[\*]" contained nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iRawPointerPrefix,iCoreTypeInType,iQualifierInType,iTypeName skipwhite
+" `^T`, C's pointer
+syn match iRawPointerPrefix "\^" contained nextgroup=iTypePointerPrefix,iFixedArrayPrefix,iRawPointerPrefix,iCoreTypeInType,iQualifierInType,iTypeName skipwhite
 syn match iFixedArrayNumber "[0-9]\+" contained
 syn match iFixedArrayDelimiter "[\[\]]" contained
 

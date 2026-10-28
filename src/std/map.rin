@@ -5,29 +5,29 @@ import "memops.rin"
 #define I_RUNTIME_MAP_INITIAL_CAPACITY 512
 
 map_entry: struct<T> = {
-    key: [*]const char;
+    key: ^const char;
     val: T;
 }
 
 map: struct<T> = {
-    entries: [*]map_entry<T>;
+    entries: ^map_entry<T>;
     length: usize;
     border: usize;
 }
 
 map_iterator: struct<T> = {
-    key: [*]const char;
+    key: ^const char;
     val: T;
     _hashmap: *map<T>;
     _index: usize;
 }
 
-runtime_cstr_copy: proc(arena: *memops_arena, key: [*]const char) -> [*]const char = {
+runtime_cstr_copy: proc(arena: *memops_arena, key: ^const char) -> ^const char = {
     if (key == null) {
         return null;
     }
     byte_count: usize = strlen(key) + 1;
-    copy: [*]char = cast(memops_arena_push(arena, byte_count, alignof(char)), [*]char);
+    copy: ^char = cast(memops_arena_push(arena, byte_count, alignof(char)), ^char);
     if (copy == null) {
         printf("rin runtime: cstring allocation failure\n");
         exit(1);
@@ -36,9 +36,9 @@ runtime_cstr_copy: proc(arena: *memops_arena, key: [*]const char) -> [*]const ch
     return copy;
 }
 
-map_hash_key: proc(key: [*]const char) -> u64 = {
+map_hash_key: proc(key: ^const char) -> u64 = {
     hash: u64 = I_RUNTIME_FNV_OFFSET;
-    p: [*]const char = key;
+    p: ^const char = key;
     if (p == null) {
         return 0;
     }
@@ -50,7 +50,7 @@ map_hash_key: proc(key: [*]const char) -> u64 = {
     return hash;
 }
 
-map<T>set_entry: proc<T>(arena: *memops_arena, entries: [*]map_entry<T>, border: usize, key: [*]const char, val: T, plength: *usize) -> [*]const char = {
+map<T>set_entry: proc<T>(arena: *memops_arena, entries: ^map_entry<T>, border: usize, key: ^const char, val: T, plength: *usize) -> ^const char = {
     hash: u64 = map_hash_key(key);
     index: usize = cast(hash & cast(border - 1, u64), usize);
     while (entries[index].key != null) {
@@ -63,13 +63,13 @@ map<T>set_entry: proc<T>(arena: *memops_arena, entries: [*]map_entry<T>, border:
             index = 0;
         }
     }
-    stored_key: [*]const char = key;
+    stored_key: ^const char = key;
     if (plength != null) {
         stored_key = runtime_cstr_copy(arena, key);
         if (stored_key == null) {
             return null;
         }
-        plength[0] += 1;
+        plength* += 1;
     }
     entries[index].key = stored_key;
     entries[index].val = val;
@@ -77,22 +77,22 @@ map<T>set_entry: proc<T>(arena: *memops_arena, entries: [*]map_entry<T>, border:
 }
 
 map<T>expand: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> b32 = {
-    new_capacity: usize = hashmap[0].border * 2;
-    if (new_capacity < hashmap[0].border) {
+    new_capacity: usize = hashmap*.border * 2;
+    if (new_capacity < hashmap*.border) {
         return 0;
     }
     new_entries: *map_entry<T> = cast(memops_arena_push_zero(arena, sizeof(map_entry<T>) * new_capacity, alignof(map_entry<T>)), *map_entry<T>);
     if (new_entries == null) {
         return 0;
     }
-    for (i: usize = 0; i < hashmap[0].border; i += 1) {
-        entry: map_entry<T> = hashmap[0].entries[i];
+    for (i: usize = 0; i < hashmap*.border; i += 1) {
+        entry: map_entry<T> = hashmap*.entries[i];
         if (entry.key != null) {
             map<T>set_entry(arena, new_entries, new_capacity, entry.key, entry.val, null);
         }
     }
-    hashmap[0].entries = new_entries;
-    hashmap[0].border = new_capacity;
+    hashmap*.entries = new_entries;
+    hashmap*.border = new_capacity;
     return 1;
 }
 
@@ -102,10 +102,10 @@ map<T>create: proc<T>(arena: *memops_arena) -> *map<T> = {
         printf("rin runtime: map allocation failure\n");
         exit(1);
     }
-    hashmap[0].length = 0;
-    hashmap[0].border = I_RUNTIME_MAP_INITIAL_CAPACITY;
-    hashmap[0].entries = cast(memops_arena_push_zero(arena, sizeof(map_entry<T>) * hashmap[0].border, alignof(map_entry<T>)), *map_entry<T>);
-    if (hashmap[0].entries == null) {
+    hashmap*.length = 0;
+    hashmap*.border = I_RUNTIME_MAP_INITIAL_CAPACITY;
+    hashmap*.entries = cast(memops_arena_push_zero(arena, sizeof(map_entry<T>) * hashmap*.border, alignof(map_entry<T>)), *map_entry<T>);
+    if (hashmap*.entries == null) {
         printf("rin runtime: map entries allocation failure\n");
         exit(1);
     }
@@ -114,40 +114,40 @@ map<T>create: proc<T>(arena: *memops_arena) -> *map<T> = {
 
 map<T>destroy: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> void = {
     if (hashmap != null) {
-        hashmap[0].entries = null;
-        hashmap[0].length = 0;
-        hashmap[0].border = 0;
+        hashmap*.entries = null;
+        hashmap*.length = 0;
+        hashmap*.border = 0;
     }
 }
 
-map<T>get: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: [*]const char) -> *T = {
-    if (hashmap == null || hashmap[0].entries == null || hashmap[0].border == 0) {
+map<T>get: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const char) -> *T = {
+    if (hashmap == null || hashmap*.entries == null || hashmap*.border == 0) {
         return null;
     }
     hash: u64 = map_hash_key(key);
-    index: usize = cast(hash & cast(hashmap[0].border - 1, u64), usize);
-    while (hashmap[0].entries[index].key != null) {
-        if (strcmp(key, hashmap[0].entries[index].key) == 0) {
-            return hashmap[0].entries[index].val&;
+    index: usize = cast(hash & cast(hashmap*.border - 1, u64), usize);
+    while (hashmap*.entries[index].key != null) {
+        if (strcmp(key, hashmap*.entries[index].key) == 0) {
+            return hashmap*.entries[index].val&;
         }
         index += 1;
-        if (index >= hashmap[0].border) {
+        if (index >= hashmap*.border) {
             index = 0;
         }
     }
     return null;
 }
 
-map<T>set: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: [*]const char, val: T) -> [*]const char = {
-    if (hashmap[0].length >= hashmap[0].border / 2) {
+map<T>set: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const char, val: T) -> ^const char = {
+    if (hashmap*.length >= hashmap*.border / 2) {
         if (!map<T>expand(arena, hashmap)) {
             return null;
         }
     }
-    return map<T>set_entry(arena, hashmap[0].entries, hashmap[0].border, key, val, hashmap[0].length&);
+    return map<T>set_entry(arena, hashmap*.entries, hashmap*.border, key, val, hashmap*.length&);
 }
 
-map<T>try_emplace: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: [*]const char, val: T) -> *T = {
+map<T>try_emplace: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const char, val: T) -> *T = {
     result: *T = map<T>get(arena, hashmap, key);
     if (result == null) {
         map<T>set(arena, hashmap, key, val);
@@ -160,7 +160,7 @@ map<T>length: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> usize = {
     if (hashmap == null) {
         return 0;
     }
-    return hashmap[0].length;
+    return hashmap*.length;
 }
 
 map_iterator<T>create: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> map_iterator<T> = {
@@ -171,17 +171,17 @@ map_iterator<T>create: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> map_it
 }
 
 map_iterator<T>next: proc<T>(arena: *memops_arena, it: *map_iterator<T>) -> b32 = {
-    hashmap: *map<T> = it[0]._hashmap;
+    hashmap: *map<T> = it*._hashmap;
     if (hashmap == null) {
         return 0;
     }
-    while (it[0]._index < hashmap[0].border) {
-        i: usize = it[0]._index;
-        it[0]._index += 1;
-        if (hashmap[0].entries[i].key != null) {
-            entry: map_entry<T> = hashmap[0].entries[i];
-            it[0].key = entry.key;
-            it[0].val = entry.val;
+    while (it*._index < hashmap*.border) {
+        i: usize = it*._index;
+        it*._index += 1;
+        if (hashmap*.entries[i].key != null) {
+            entry: map_entry<T> = hashmap*.entries[i];
+            it*.key = entry.key;
+            it*.val = entry.val;
             return 1;
         }
     }

@@ -1,6 +1,6 @@
 cinclude "stdio.h"
 
-printf: proc[external](fmt: [*]const char, ...) -> i32 = {}
+printf: proc[external](fmt: ^const char, ...) -> i32 = {}
 
 // Hazards that exist because I lowers to C rather than to machine code. The
 // source is order-independent; the emitted C is not, and C resolves names by a
@@ -71,7 +71,7 @@ main: proc() -> i32 = {
     n.tag = 1;
 
     printf("%d %d\n", is_even(10), is_odd(10));
-    printf("%d\n", n.payload[0].v);
+    printf("%d\n", n.payload*.v);
     printf("%d\n", sibling_scopes());
     printf("%d %d\n", shadows_global(), g_shadow);
     return 0;

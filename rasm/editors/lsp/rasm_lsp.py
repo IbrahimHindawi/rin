@@ -197,8 +197,8 @@ class Index:
         t = t.strip()
         while t.startswith("const "):
             t = t[6:].strip()
-        if t.startswith("[*]") or t.startswith("*"):
-            return ("ptr", t[3:] if t.startswith("[*]") else t[1:])
+        if t.startswith("^") or t.startswith("*"):
+            return ("ptr", t[1:])
         m = re.match(r"^\[([^\]]*)\](.*)$", t)
         if m:
             return ("array", self.count_of(m.group(1)), m.group(2))

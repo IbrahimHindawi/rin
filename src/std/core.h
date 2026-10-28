@@ -147,7 +147,7 @@ RIN_MAYBE_UNUSED static inline u64 rin_range_check(u64 a, u64 b, u64 n, const ch
    the parameter is noalias, RIN_NOALIAS_WRITE if it can write. A pair is
    checked when one side is noalias and one side can write, so the check
    assumes any non-const parameter may be written. An extent of RIN_NOALIAS_ANY
-   is unknown, a `[*]T`, and only an equal address counts; an extent of 0, an
+   is unknown, a `^T`, and only an equal address counts; an extent of 0, an
    empty slice, overlaps nothing. */
 #define RIN_NOALIAS_PARAM 1
 #define RIN_NOALIAS_WRITE 2

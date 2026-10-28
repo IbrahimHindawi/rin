@@ -19,7 +19,7 @@ hash_mix: proc(x: u64) -> u64 = {
     return x;
 }
 
-hash_bytes: proc(data: [*]const u8, count: u64) -> u64 = {
+hash_bytes: proc(data: ^const u8, count: u64) -> u64 = {
     h: u64 = 14695981039346656037'u64;
     for (i: u64 = 0; i < count; i += 1) {
         h ^= cast(data[i], u64);
@@ -49,11 +49,11 @@ hash: proc<c8>(x: c8) -> u64 = {
 }
 
 hash: proc<[]c8>(s: []c8) -> u64 = {
-    return hash_bytes(cast(s.data, [*]const u8), s.length);
+    return hash_bytes(cast(s.data, ^const u8), s.length);
 }
 
 hash: proc<string8slice>(s: string8slice) -> u64 = {
-    return hash_bytes(cast(s.data, [*]const u8), s.length);
+    return hash_bytes(cast(s.data, ^const u8), s.length);
 }
 
 equal: proc<i32>(a: i32, b: i32) -> b32 = {

@@ -22,7 +22,7 @@ import "vec.rin"
    The struct itself is in slicecore.rin, which the compiler imports for `[]T`. */
 import "slicecore.rin"
 
-slice<T>from_parts: proc<T>(data: [*]T, length: u64) -> slice<T> = {
+slice<T>from_parts: proc<T>(data: ^T, length: u64) -> slice<T> = {
     s: slice<T> = {};
     if (data == null || length == 0) {
         return s;
@@ -113,7 +113,7 @@ slice<T>equals: proc<T>(a: slice<T>, b: slice<T>) -> b32 = {
     return memcmp(a.data, b.data, sizeof(T) * a.length) == 0;
 }
 
-slice<T>copy_to: proc<T>(dst: [*]T, s: slice<T>) -> void = {
+slice<T>copy_to: proc<T>(dst: ^T, s: slice<T>) -> void = {
     if (dst == null || s.data == null || s.length == 0) {
         return;
     }

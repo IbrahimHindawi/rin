@@ -109,13 +109,13 @@ Level tags:
     name            a struct, enum or alias
     proc(...) -> T  a proc type, for declarations and function pointers
 
-**One pointer type.** rin distinguishes `*T` (one element), `[*]T` (many)
+**One pointer type.** rin distinguishes `*T` (one element), `^T` (many)
 and `[]T` (a slice) so its compiler can check indexing. rasm never indexes
 through a pointer type: a pointer is used only after `mov rax, p`, and
 `[rax + rcx*4]` or `[rax].vec4.x` name their own type. So `*T` is the only
 pointer in a `.rasm` file, and it means C's `T*`. This diverges from rin on
 purpose: in rin `*T` is one element, and stays so. An imported `.rin` file
-keeps rin's spellings; rasm reads `*T` and `[*]T` alike as a pointer and
+keeps rin's spellings; rasm reads `*T` and `^T` alike as a pointer and
 `[]T` as its 16-byte layout (pointer, length), with no checks. In the data
 file every pointer kind lowers to C's `T*`, so the C is the same either way.
 

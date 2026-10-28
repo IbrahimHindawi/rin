@@ -1,8 +1,12 @@
 # Pointers And Slices
 
+> C's pointer was spelled `[*]T` until 2026-10-28; it is `^T` now, and a single
+> pointer reads through with `p*` as well as `p[0]`. Both are described in
+> [pointer-syntax.md](pointer-syntax.md); this doc uses the new spellings.
+
 > **Implemented** (2026-10-21). Decided in discussion, 2026-10-20 to
 > 2026-10-21. `*T` points at exactly one element, `[]T` is a built-in slice
-> lowered to the existing `slice<T>`, `[*]T` is the raw pointer for C and
+> lowered to the existing `slice<T>`, `^T` is the raw pointer for C and
 > low-level code, and indexing through arrays and slices is bounds checked.
 > What the build found is in "Suggested order" at the end.
 >
@@ -15,14 +19,14 @@
     *T    one element       only [0]                 pointer
     []T   many elements     checked, stored length   pointer + length
     [N]T  array             checked, length N        inline storage
-    [*]T  raw pointer       unchecked                pointer
+    ^T  raw pointer       unchecked                pointer
 
 All four are read with `x[i]` and addressed with `x[i]&`. **None of them gets
-heavier than today**: `*T` and `[*]T` are both a single C pointer, and the
+heavier than today**: `*T` and `^T` are both a single C pointer, and the
 difference between them is which operations the compiler accepts, not what is
 stored.
 
-This is Zig's split (`*T`, `[*]T`, `[]T`) without its fourth type. It keeps
+This is Zig's split (`*T`, `^T`, `[]T`) without its fourth type. It keeps
 what [operators-and-conversions.md](operators-and-conversions.md) section 6
 wanted from "every pointer a slice" -- a reference that cannot be indexed past
 what it points at -- without the cost that section rejected it for: `next: *Node`
@@ -30,7 +34,7 @@ stays eight bytes.
 
 ### `[_]T`: an array counted from its initializer
 
-    names: [_][*]const char = { "imp", "ogre", "wyrm" };   // [3]
+    names: [_]^const char = { "imp", "ogre", "wyrm" };   // [3]
     sparse: [_]f32 = { [4] = 1.0, 2.0 };                    // [6]
 
 `_` is C's `T x[] = {...}`: the count is one past the highest index the
@@ -44,10 +48,12 @@ is nothing to count.
 ## 2. `*T` points at one element
 
     p: *T = thing&;
+    p*;              // ok: the dereference, the same as p[0]
+    p*.field;        // ok
     p[0];            // ok
-    p[1];            // error: '*T' points at one element; use a slice or '[*]T'
+    p[1];            // error: '*T' points at one element; use a slice or '^T'
     p[i];            // error, same
-    p + 1;           // error: pointer arithmetic needs '[*]T'
+    p + 1;           // error: pointer arithmetic needs '^T'
 
 **Only a literal `[0]` is accepted.** A variable index on a `*T` is not checked
 at runtime against a length of one -- it is rejected, because `p[i]` on a
@@ -60,17 +66,17 @@ cost.
     a: [16]T;
     a[i]&;           // *T
     s[i]&;           // *T, from a []T
-    q[i]&;           // *T, from a [*]T
+    q[i]&;           // *T, from a ^T
 
 ### Conversions
 
-    q: [*]T = p;     // implicit: one element is a valid "unknown extent"
+    q: ^T = p;     // implicit: one element is a valid "unknown extent"
     r: *T = q;       // error: say which element
     r: *T = q[0]&;   // ok -- no cast needed
     s: []T = q[0..n];       // a raw pointer becomes a slice when someone
                             // vouches for its length
 
-`[*]T` to `*T` needs no new operator. `q[0]&` already says "the address of one
+`^T` to `*T` needs no new operator. `q[0]&` already says "the address of one
 element", which is exactly what a `*T` is. Building a slice from a raw pointer
 is a subrange of it, `q[0..n]` -- the same `..` that slices a slice, so there is
 no constructor to learn.
@@ -80,17 +86,17 @@ of operators-and-conversions.md decided.
 
 ## 3. The C boundary
 
-**Every C pointer is a `[*]T`.** `rinbind` emits it for every pointer it
+**Every C pointer is a `^T`.** `rinbind` emits it for every pointer it
 imports, and hand-written `[external]` declarations use it too, external struct
 fields included. A C header cannot say whether `T*` means one or many, so Rin
 does not guess: C code stays unchecked, which is the truth, and the program
 converts once it knows what the pointer actually points at.
 
-    // memcpy from the binding: proc(dst: [*]void, src: [*]const void, n: u64)
-    memcpy(constants.mvp, mvp_t, sizeof(constants.mvp));  // arrays convert to [*]
-    memcpy(mapped.pData, data, byte_width);               // pData is [*]void
+    // memcpy from the binding: proc(dst: ^void, src: ^const void, n: u64)
+    memcpy(constants.mvp, mvp_t, sizeof(constants.mvp));  // arrays convert to ^
+    memcpy(mapped.pData, data, byte_width);               // pData is ^void
 
-    // cgltf: data[0].meshes is [*]cgltf_mesh
+    // cgltf: data[0].meshes is ^cgltf_mesh
     mesh: *cgltf_mesh = data[0].meshes[0]&;               // unchanged from today
     meshes: []cgltf_mesh = data[0].meshes[0..data[0].meshes_count];
     meshes[i];                                            // checked from here on
@@ -119,7 +125,7 @@ What the compiler adds on top of the struct:
 - **`[]T` widens to `[]const T`** for free, as it does in every other language
   with slices.
 - **`s[a..b]`** takes a sub-slice, `a` included and `b` excluded, and traps
-  when the range is out of bounds. On a `[*]T` it is unchecked and is how a raw
+  when the range is out of bounds. On a `^T` it is unchecked and is how a raw
   pointer becomes a slice. `slice<T>sub` stays as the library form that clamps.
 
 **The struct must be available without `std/slice.rin`'s imports.** That file
@@ -233,17 +239,17 @@ All five steps are done.
    checked slice access or a conversion reads its slice twice, so the slice
    must be a name, field or index (no calls) -- otherwise it is an error that
    says to store it in a local first.
-2. **Done.** `[*]T` is a flag on the pointer type, the same C pointer, so it
+2. **Done.** `^T` is a flag on the pointer type, the same C pointer, so it
    never changes the generated C. rinbind emits it for every C pointer except
    `void *` and a pointer to an incomplete type: an opaque handle cannot be
-   indexed or moved, so it stays `*T`. A string literal is `[*]c8`, and C
-   strings are `[*]const c8` throughout std and njinn.
+   indexed or moved, so it stays `*T`. A string literal is `^c8`, and C
+   strings are `^const c8` throughout std and njinn.
 3. **Done.** `RIN_INDEX` / `RIN_RANGE` in `core.h`, off under NDEBUG; njinn's
    Debug build carries 714 index checks and its selftests pass with them on.
 4. **Done.** The rules shipped as warnings with a note at each `*` to change:
    992 sites across std, njinn and the tests, almost all a handful of
    declarations -- container `.data` fields, C strings, lookup tables, token
-   arrays. Each such declaration became `[*]T` (generated C byte-identical),
+   arrays. Each such declaration became `^T` (generated C byte-identical),
    and the pointer-plus-length APIs became slices: `fmt_to`, `fmt_cat1`-`5`,
    `fmt_expand_i64`, `cstr_copy`, `cstr_append` in std; in njinn the
    settings-path writers, `fxops_copy_cstr`, the JSON and CSV token readers,
@@ -251,7 +257,7 @@ All five steps are done.
    `pacops_collect_fx_desc_names`, and cryptops' header parser and
    little-endian readers -- `cryptops_read_u64_le(raw[24..32])`.
 5. **Done: errors.** Indexing a `*T` past `[0]`, a range of one, arithmetic on
-   one, and a `[*]T` becoming a `*T` without naming the element are all
+   one, and a `^T` becoming a `*T` without naming the element are all
    errors. Covered by `builtin_slices`, `bounds_runtime`, `constant_bounds` and
    `pointer_rules`.
 

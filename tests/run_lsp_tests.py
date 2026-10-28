@@ -165,7 +165,7 @@ mix3:proc(a:i32, b:i32, c:i32)->i32 = {
     return a + b + c;
 }
 
-text_amount:proc(text:[*]const char, amount:i32)->i32 = {
+text_amount:proc(text:^const char, amount:i32)->i32 = {
     return amount;
 }
 
@@ -267,7 +267,7 @@ main:proc()->i32 = {{
     score:i32 = v;
     payload_ptr:*Payload = p;
     payload_type_field:i32 = Payload.;
-    payload_reflect_field:[*]const char = Payload<>.;
+    payload_reflect_field:^const char = Payload<>.;
     kind_reflect_field:u64 = Kind<>.;
     dot_kind_reflect_field:u64 = dot_kind<>.;
     payload_variant_arm:u64 = Payload<>.variant.;
@@ -2016,7 +2016,7 @@ main:proc()->i32 = {
         reflect_field_col,
     )
     if (
-        not any(item.name == "name" and item.detail == "Payload<>.name: [*]const c8" for item in reflect_field_items)
+        not any(item.name == "name" and item.detail == "Payload<>.name: ^const c8" for item in reflect_field_items)
         or not any(item.name == "count" and item.detail == "Payload<>.count: u64" for item in reflect_field_items)
         or not any(item.name == "kind" and item.detail == "Payload<>.kind: i32" for item in reflect_field_items)
         or not any(item.name == "variant" and item.detail == "Payload<>.variant: const reflect_variant" for item in reflect_field_items)
@@ -2141,7 +2141,7 @@ main:proc()->i32 = {
         'import "std/reflect.rin"\n'
         "Point:struct = { x:i32; }\n"
         "main:proc()->i32 = {\n"
-        "    f:[*]const reflect_field = reflect_fields(Point<>&);\n"
+        "    f:^const reflect_field = reflect_fields(Point<>&);\n"
         "    return f != null ? 1 : 0;\n"
         "}\n",
         encoding="utf-8", newline="\n",
@@ -3541,7 +3541,7 @@ main:proc()->i32 = {
         or string_inner_signature.get("activeParameter") != 0
         or not string_inner_signature.get("signatures")
         or string_inner_signature["signatures"][0].get("parameters")
-        != [{"label": "text:[*]const c8"}, {"label": "amount:i32"}]
+        != [{"label": "text:^const c8"}, {"label": "amount:i32"}]
     ):
         print("lsp: expected comma inside string literal to keep signature help on first parameter")
         print(string_inner_signature)

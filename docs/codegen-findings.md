@@ -221,7 +221,7 @@ Each of these came up in c-dod:
    inlined.** The calling convention for a 32-byte vector depends on whether
    AVX is enabled, and clang warns about it (`-Wpsabi`). Pass by pointer,
    force inlining, or require one set of target flags for the whole program.
-4. **Load and store through `memcpy`** from `[*]f32` or `[]f32`, never by
+4. **Load and store through `memcpy`** from `^f32` or `[]f32`, never by
    casting a `*f32` to a vector pointer, which breaks C's aliasing rules.
    `memcpy` compiles to a single vector move and needs no alignment.
 5. **Runtime dispatch,** if wanted, maps to `__attribute__((target("avx2")))`

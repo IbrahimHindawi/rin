@@ -138,7 +138,7 @@ fx_step: proc(dt :f32) -> void = { external_emit; }
 makeg: proc<T>(x: T) -> T = { return x; }
 
 // requirement implementation for i32
-hash: proc<i32>(x: *i32) -> u64 = { return hash_fnv1a(x, sizeof(x[0])); }
+hash: proc<i32>(x: *i32) -> u64 = { return hash_fnv1a(x, sizeof(x*)); }
 
 // constrained generic proc
 makehash: proc<T: hash>(x: T) -> u64 = { return hash<T>(&x); }

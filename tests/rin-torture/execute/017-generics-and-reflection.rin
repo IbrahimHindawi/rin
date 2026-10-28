@@ -2,7 +2,7 @@ cinclude "stdio.h"
 
 import "std/reflect.rin"
 
-printf: proc[external](fmt: [*]const char, ...) -> i32 = {}
+printf: proc[external](fmt: ^const char, ...) -> i32 = {}
 
 // Generics and reflection are I's distinctive features, which makes them the
 // least battle-tested part of the compiler. Monomorphisation in particular has
@@ -22,7 +22,7 @@ Box<T>make: proc<T>(v: T, tag: i32) -> Box<T> = {
 }
 
 Box<T>get: proc<T>(b: *Box<T>) -> T = {
-    return b[0].v;
+    return b*.v;
 }
 
 // A generic whose field is itself an instantiation of a generic.
@@ -48,7 +48,7 @@ Slot: enum = {
 Point: struct = {
     x: i32;
     y: i32;
-    label: [*]const char;
+    label: ^const char;
 }
 
 // Union members overlap. Reflection reports a union as its own kind rather than
@@ -152,8 +152,8 @@ recursive_field_sum: proc() -> i32 = {
     total: u64 = 0;
     for (i: u64 = 0; i < Nest<>.count; i += 1) {
         info: *const reflect = Nest<>.variant.fields[i].info;
-        if (info != null && info[0].kind == reflect_kind_struct) {
-            total += info[0].count;
+        if (info != null && info*.kind == reflect_kind_struct) {
+            total += info*.count;
         }
     }
     return cast(total, i32);
@@ -194,12 +194,12 @@ main: proc() -> i32 = {
         Color<>.variant.values[2].name);
     printf("%d %d\n", Slot<>.variant.values[0].value, Slot<>.variant.values[1].value);
     printf("%s %s %s %s %s\n",
-        Nest<>.variant.fields[0].info[0].name,
-        Nest<>.variant.fields[1].info[0].name,
-        Nest<>.variant.fields[2].info[0].name,
+        Nest<>.variant.fields[0].info*.name,
+        Nest<>.variant.fields[1].info*.name,
+        Nest<>.variant.fields[2].info*.name,
         Nest<>.variant.fields[3].info == null ? "null" : "linked",
-        Nest<>.variant.fields[4].info[0].name);
-    printf("%s\n", Node<>.variant.fields[1].info[0].name);
+        Nest<>.variant.fields[4].info*.name);
+    printf("%s\n", Node<>.variant.fields[1].info*.name);
     printf("%s %s %s\n",
         reflect_kind_name(Point<>.kind),
         reflect_kind_name(Word<>.kind),

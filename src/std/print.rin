@@ -2,7 +2,7 @@ cinclude "stdio.h"
 import "cstd.rin"
 import "reflect.rin"
 
-print_cstr: proc(text: [*]const char) -> void = {
+print_cstr: proc(text: ^const char) -> void = {
     if (text == null) {
         printf("(null)");
         return;
@@ -66,11 +66,11 @@ print: proc<b32>(x: b32) -> void = {
     }
 }
 
-print: proc<[*]char>(x: [*]char) -> void = {
+print: proc<^char>(x: ^char) -> void = {
     print_cstr(x);
 }
 
-print: proc<[*]const char>(x: [*]const char) -> void = {
+print: proc<^const char>(x: ^const char) -> void = {
     print_cstr(x);
 }
 
@@ -78,10 +78,10 @@ print: proc<[*]const char>(x: [*]const char) -> void = {
 // name, or `type(value)` when the value is not a member -- one read from a
 // file or a cast, say -- so a miss still says which enum and what it held.
 print_enum: proc(type: *const reflect, value: i32) -> void = {
-    name: [*]const char = reflect_name_from_value(type, value);
+    name: ^const char = reflect_name_from_value(type, value);
     if (name != null) {
         printf("%s", name);
         return;
     }
-    printf("%s(%d)", type[0].name, value);
+    printf("%s(%d)", type*.name, value);
 }

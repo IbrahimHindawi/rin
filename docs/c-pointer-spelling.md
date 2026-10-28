@@ -2,7 +2,8 @@
 
 > **Deprecated 2026-10-25.** rin keeps its current pointer spelling (`*T`, `[*]T`, `[]T`);
 > this rewrite was dropped. Only rasm uses a plain `*T`, and that is rasm's own rule.
-> Kept as a record of the discussion.
+> Kept as a record of the discussion. The 2026-10-28 proposal that replaces it,
+> keeping `*T` and spelling C's pointer `^T`, is [pointer-syntax.md](pointer-syntax.md).
 
 *Status: a proposal, discussed 2026-10-23. Nothing here is implemented.*
 

@@ -24,7 +24,7 @@
 ; Settled by default unless you object (open-questions C, G, I):
 ;   - labels are plain `again:` lines
 ;   - a typed operand takes its size from its type: `mov desc.Usage, 1` is a dword
-;   - one pointer type, `*T`; [*]T and []T only arrive in imported .rin files
+;   - one pointer type, `*T`; ^T and []T only arrive in imported .rin files
 
 
 ; =============================================================================

@@ -18,28 +18,28 @@ list<T>create: proc<T>(arena: *memops_arena) -> *list<T> = {
 
 list<T>append: proc<T>(arena: *memops_arena, list: *list<T>, item: T) -> void = {
     node: *node<T> = node<T>create(arena, item);
-    if (list[0].head == null) {
-        list[0].head = node;
-        list[0].length += 1;
+    if (list*.head == null) {
+        list*.head = node;
+        list*.length += 1;
         return;
     }
-    iter: *node<T> = list[0].head;
-    while (iter[0].next != null) {
-        iter = iter[0].next;
+    iter: *node<T> = list*.head;
+    while (iter*.next != null) {
+        iter = iter*.next;
     }
-    iter[0].next = node;
-    list[0].length += 1;
+    iter*.next = node;
+    list*.length += 1;
 }
 
 list<T>prepend: proc<T>(arena: *memops_arena, list: *list<T>, item: T) -> void = {
     node: *node<T> = node<T>create(arena, item);
-    node[0].next = list[0].head;
-    list[0].head = node;
-    list[0].length += 1;
+    node*.next = list*.head;
+    list*.head = node;
+    list*.length += 1;
 }
 
 list<T>insert_at: proc<T>(arena: *memops_arena, list: *list<T>, item: T, index: i32) -> void = {
-    if (list == null || index < 0 || cast(index, usize) > list[0].length) {
+    if (list == null || index < 0 || cast(index, usize) > list*.length) {
         printf("rin runtime: list invalid index\n");
         return;
     }
@@ -47,7 +47,7 @@ list<T>insert_at: proc<T>(arena: *memops_arena, list: *list<T>, item: T, index: 
         list<T>prepend(arena, list, item);
         return;
     }
-    if (cast(index, usize) == list[0].length) {
+    if (cast(index, usize) == list*.length) {
         list<T>append(arena, list, item);
         return;
     }
@@ -56,89 +56,89 @@ list<T>insert_at: proc<T>(arena: *memops_arena, list: *list<T>, item: T, index: 
         return;
     }
     node: *node<T> = node<T>create(arena, item);
-    node[0].next = prev[0].next;
-    prev[0].next = node;
-    list[0].length += 1;
+    node*.next = prev*.next;
+    prev*.next = node;
+    list*.length += 1;
 }
 
 list<T>get_length: proc<T>(arena: *memops_arena, list: *list<T>) -> usize = {
     if (list == null) {
         return 0;
     }
-    return list[0].length;
+    return list*.length;
 }
 
 list<T>get_at: proc<T>(arena: *memops_arena, list: *list<T>, index: i32) -> *node<T> = {
-    if (list == null || index < 0 || cast(index, usize) >= list[0].length) {
+    if (list == null || index < 0 || cast(index, usize) >= list*.length) {
         return null;
     }
-    iter: *node<T> = list[0].head;
+    iter: *node<T> = list*.head;
     count: i32 = 0;
     while (iter != null) {
         if (count == index) {
             return iter;
         }
-        iter = iter[0].next;
+        iter = iter*.next;
         count += 1;
     }
     return null;
 }
 
 list<T>remove_at: proc<T>(arena: *memops_arena, list: *list<T>, index: i32) -> *node<T> = {
-    if (list == null || index < 0 || cast(index, usize) >= list[0].length) {
+    if (list == null || index < 0 || cast(index, usize) >= list*.length) {
         return null;
     }
-    iter: *node<T> = list[0].head;
+    iter: *node<T> = list*.head;
     prev: *node<T> = null;
     count: i32 = 0;
     while (iter != null) {
         if (count == index) {
             if (prev == null) {
-                list[0].head = iter[0].next;
+                list*.head = iter*.next;
             } else {
-                prev[0].next = iter[0].next;
+                prev*.next = iter*.next;
             }
-            iter[0].next = null;
-            list[0].length -= 1;
+            iter*.next = null;
+            list*.length -= 1;
             return iter;
         }
         prev = iter;
-        iter = iter[0].next;
+        iter = iter*.next;
         count += 1;
     }
     return null;
 }
 
 list<T>remove: proc<T>(arena: *memops_arena, list: *list<T>, item: T) -> *node<T> = {
-    if (list == null || list[0].length == 0) {
+    if (list == null || list*.length == 0) {
         return null;
     }
-    iter: *node<T> = list[0].head;
+    iter: *node<T> = list*.head;
     prev: *node<T> = null;
     while (iter != null) {
-        if (runtime_equal<T>(iter[0].data, item)) {
+        if (runtime_equal<T>(iter*.data, item)) {
             if (prev == null) {
-                list[0].head = iter[0].next;
+                list*.head = iter*.next;
             } else {
-                prev[0].next = iter[0].next;
+                prev*.next = iter*.next;
             }
-            iter[0].next = null;
-            list[0].length -= 1;
+            iter*.next = null;
+            list*.length -= 1;
             return iter;
         }
         prev = iter;
-        iter = iter[0].next;
+        iter = iter*.next;
     }
     return null;
 }
 
 list<T>destroy: proc<T>(arena: *memops_arena, list: *list<T>) -> void = {
     if (list != null) {
-        list[0].head = null;
-        list[0].length = 0;
+        list*.head = null;
+        list*.length = 0;
     }
 }
 
 list<T>is_empty: proc<T>(list: *list<T>) -> b32 = {
-    return list == null || list[0].length == 0;
+    return list == null || list*.length == 0;
 }

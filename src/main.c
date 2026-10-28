@@ -203,6 +203,7 @@ static const char *g_exe_import_root = null;
    that takes a single file. Paths in it are this machine's and would only
    travel with the submission, so #line is off and comments name files only. */
 static bool g_single_file = false;
+static bool g_report_derefs = false; // --report-derefs: list literal `[0]` sites, for the `x*` rewrite
 
 /* A source path as a generated comment shows it: in full, or with
    --single-file just the file name. */
@@ -588,7 +589,7 @@ struct TypeExpr {
        one call. Not part of the type's identity, its mangle, or any comparison;
        see docs/noalias-variadic.md. */
     bool is_noalias;
-    /* `[*]T`, a raw pointer: a Type_Ptr that may be indexed anywhere and moved
+    /* `^T`, C's pointer: a Type_Ptr that may be indexed anywhere and moved
        with arithmetic, unchecked. A plain `*T` points at one element. Both are
        the same C pointer, so they are equal as types and only the operations
        allowed on them differ. */
@@ -641,6 +642,9 @@ struct Expr {
        type phase, which does know, can rewrite a value's `<>` to its
        type's reflection record. Empty for `Type<>`. */
     string8 reflect_base;
+    /* `p*`: an Expr_Index of literal 0 written as a postfix dereference. It is
+       `p[0]` in every pass but one: on a slice or an array it is an error. */
+    bool is_deref;
     string8 string_lit;
     Vec_voidptr args;      // Expr*
     Vec_voidptr type_args; // TypeExpr*
@@ -2232,7 +2236,9 @@ static string8 type_mangle_concrete(memops_arena *arena, TypeExpr *type) {
         return out;
     }
     if (type->kind == Type_Ptr) {
-        string8_append_cstr(arena, &out, "ptr_");
+        /* `^T` and `*T` are the same C pointer but allow different operations,
+           so a generic instance over each is its own instance. */
+        string8_append_cstr(arena, &out, type->is_raw ? "raw_" : "ptr_");
         string8 inner = type_mangle_concrete(arena, type->elem);
         string8_append_bytes(arena, &out, inner.data, inner.length);
         return out;
@@ -2476,10 +2482,25 @@ static TypeExpr *parse_type_inner(Parser *p) {
         return t;
     }
 
+    if (parser_match(p, Token_Caret)) {
+        /* `^T`: C's pointer, to an unknown number of elements, unchecked. See
+           docs/pointer-syntax.md. `^^T` lexes as two carets. */
+        Token *caret = parser_prev(p);
+        TypeExpr *ptr = type_new(p->arena, Type_Ptr);
+        ptr->is_raw = true;
+        ptr->line = caret->line;
+        ptr->col = caret->col;
+        ptr->decl_path = g_source_path;
+        ptr->elem = parse_type(p);
+        return ptr;
+    }
+
     if (parser_peek(p)->kind == Token_LBracket && parser_peek_n(p, 1)->kind == Token_Star &&
         parser_peek_n(p, 2)->kind == Token_RBracket) {
-        /* `[*]T`: a pointer to an unknown number of elements, unchecked. */
+        /* `[*]T` was the old spelling of `^T`. It still builds the type, so
+           checking carries on past the error. */
         Token *lb = parser_next(p);
+        parser_error_token(p, lb, "'[*]T' is now spelled '^T'");
         parser_next(p);
         parser_next(p);
         TypeExpr *ptr = type_new(p->arena, Type_Ptr);
@@ -3121,6 +3142,28 @@ static bool parser_at_postfix_addr(Parser *p) {
            !token_starts_operand(parser_peek_n(p, 1)->kind);
 }
 
+/* `p*` reads through a pointer, told apart from multiplication the same way:
+   `w*.count`, `w* = v` and `a* * b` dereference, `a * b` multiplies. A misread
+   (`w* - 1` taken as `w * -1`) multiplies a pointer, which the type checker
+   rejects, so it never compiles to something else. See docs/pointer-syntax.md. */
+static bool parser_at_postfix_deref(Parser *p) {
+    Token *star = parser_peek(p);
+    if (star->kind != Token_Star) return false;
+    Token *next = parser_peek_n(p, 1);
+    /* A prefix `&` is not rin (it only parses to be reported), so `w*&` and
+       `w* & mask` are a dereference followed by an address or an AND. */
+    if (next->kind == Token_Ampersand || !token_starts_operand(next->kind)) return true;
+    /* Spacing decides the rest: a `*` glued to its operand and followed by a
+       space is a dereference, so `p* - 1` needs no parentheses, while `a * b`
+       and `a*b` multiply. Either misreading is a type error -- a pointer
+       multiplied, or a non-pointer dereferenced -- never a silent one. */
+    Token *before = p->index > 0 ? &p->tokens.data[p->index - 1] : null;
+    bool glued_left = before && before->text.data && star->text.data &&
+                      before->text.data + before->text.length == star->text.data;
+    bool space_after = !next->text.data || next->text.data != star->text.data + star->text.length;
+    return glued_left && space_after;
+}
+
 static Expr *parse_postfix(Parser *p, Expr *base) {
     Expr *result = base;
     for (;;) {
@@ -3135,9 +3178,21 @@ static Expr *parse_postfix(Parser *p, Expr *base) {
            for expressions with no postfix at all. */
         TokenKind ahead = parser_peek(p)->kind;
         bool postfix_addr = parser_at_postfix_addr(p);
-        if ((ahead == Token_LBracket || ahead == Token_Dot || postfix_addr) &&
+        bool postfix_deref = parser_at_postfix_deref(p);
+        if ((ahead == Token_LBracket || ahead == Token_Dot || postfix_addr || postfix_deref) &&
             !parser_note_expr_node(p)) {
             return result;
+        }
+        if (postfix_deref) {
+            Token *star = parser_next(p);
+            Expr *idx = expr_new(p->arena, Expr_Index);
+            idx->base = result;
+            idx->index_expr = expr_number_zero(p->arena, star->line, star->col);
+            idx->is_deref = true;
+            idx->line = star->line;
+            idx->col = star->col;
+            result = idx;
+            continue;
         }
         if (postfix_addr) {
             Token *amp = parser_next(p);
@@ -3172,7 +3227,7 @@ static Expr *parse_postfix(Parser *p, Expr *base) {
                access and nothing else; both still build their node so checking
                carries on past the error. */
             if (parser_match(p, Token_Star)) {
-                parser_error_token(p, parser_prev(p), "'.*' was removed; dereference with '[0]'");
+                parser_error_token(p, parser_prev(p), "'.*' was removed; dereference with a postfix '*', as 'p*'");
                 Expr *idx = expr_new(p->arena, Expr_Index);
                 idx->base = result;
                 idx->index_expr = expr_number_zero(p->arena, dot->line, dot->col);
@@ -7806,7 +7861,7 @@ static string8 type_mangle_impl(memops_arena *arena, TypeExpr *type, TypeSub sub
         return out;
     }
     if (type->kind == Type_Ptr) {
-        emit_cstr(arena, &out, "ptr_");
+        emit_cstr(arena, &out, type->is_raw ? "raw_" : "ptr_");
         string8 inner = type_mangle(arena, type->elem, sub);
         emit_string8(arena, &out, inner);
         return out;
@@ -7870,7 +7925,7 @@ static void format_type_i(memops_arena *arena, string8 *out, TypeExpr *type, Typ
         return;
     }
     if (type->kind == Type_Ptr) {
-        emit_cstr(arena, out, type->is_raw ? "[*]" : "*");
+        emit_cstr(arena, out, type->is_raw ? "^" : "*");
         format_type_i(arena, out, type->elem, sub);
         return;
     }
@@ -10971,6 +11026,23 @@ static TypeExpr *resolve_alias_type(Program *prog, TypeExpr *type) {
     return current ? current : type;
 }
 
+/* A `*T` and a `^T` are one C pointer, so at the top level they convert. As a
+   generic argument each makes its own instance (`vec_ptr_u8`, `vec_raw_u8`),
+   a different C struct, so there they are different types. */
+static bool type_raw_differs(Program *prog, TypeExpr *a, TypeExpr *b) {
+    a = resolve_alias_type(prog, a);
+    b = resolve_alias_type(prog, b);
+    if (!a || !b || a->kind != b->kind) return false;
+    if (a->kind == Type_Ptr) return a->is_raw != b->is_raw || type_raw_differs(prog, a->elem, b->elem);
+    if (a->kind == Type_Array) return type_raw_differs(prog, a->elem, b->elem);
+    if (a->kind == Type_Generic && a->args.length == b->args.length) {
+        for (i32 i = 0; i < a->args.length; i++) {
+            if (type_raw_differs(prog, (TypeExpr *)a->args.data[i], (TypeExpr *)b->args.data[i])) return true;
+        }
+    }
+    return false;
+}
+
 static bool type_expr_equal_resolved(Program *prog, TypeExpr *a, TypeExpr *b) {
     if (!a || !b) return false;
     a = resolve_alias_type(prog, a);
@@ -10991,6 +11063,7 @@ static bool type_expr_equal_resolved(Program *prog, TypeExpr *a, TypeExpr *b) {
         if (!string8_equals(&a->name, &b->name) || a->args.length != b->args.length) return false;
         for (i32 i = 0; i < a->args.length; i++) {
             if (!type_expr_equal_resolved(prog, (TypeExpr *)a->args.data[i], (TypeExpr *)b->args.data[i])) return false;
+            if (type_raw_differs(prog, (TypeExpr *)a->args.data[i], (TypeExpr *)b->args.data[i])) return false;
         }
         return true;
     }
@@ -11029,6 +11102,7 @@ static bool type_expr_assignable_qualified(Program *prog, TypeExpr *dst, TypeExp
             TypeExpr *dst_arg = (TypeExpr *)dst->args.data[i];
             TypeExpr *src_arg = (TypeExpr *)src->args.data[i];
             if (!type_expr_assignable_qualified(prog, dst_arg, src_arg, true)) return false;
+            if (type_raw_differs(prog, dst_arg, src_arg)) return false;
         }
         return true;
     }
@@ -11353,6 +11427,8 @@ static void type_error_incompatible(
     diag_finish_at(line, col);
 }
 
+static void type_note_pointer_multiply(TokenKind op, TypeExpr *left, i32 line, i32 col);
+
 static void type_error_compound_assignment(
     TokenKind op,
     Program *prog,
@@ -11398,6 +11474,7 @@ static void type_error_compound_assignment(
     type_note_array_pointer_mismatch(prog, dst, src, arena);
     type_note_proc_signature_mismatch(prog, dst, src, arena);
     type_note_pointer_value_mismatch(prog, dst, src);
+    type_note_pointer_multiply(op, resolve_alias_type(prog, dst), line, col);
     diag_finish_at(line, col);
 }
 
@@ -12545,6 +12622,18 @@ static void type_error_proc_pointer_argument(
     diag_finish_at(line, col);
 }
 
+/* `p * -1` and `p*-1` multiply: a postfix dereference is a `*` glued to its
+   operand and followed by a space, or by a token that ends an operand.
+   Multiplying a pointer is never valid, so a misspaced dereference lands here,
+   and the note says how to write it. */
+static void type_note_pointer_multiply(TokenKind op, TypeExpr *left, i32 line, i32 col) {
+    if (g_diag_json || !left || left->kind != Type_Ptr) return;
+    if (op != Token_Star && op != Token_StarEqual) return;
+    printf("%s:%d:%d: note: a pointer cannot be multiplied; to read through it, glue the '*' to it "
+           "and follow it with a space, as 'p* - 1', or 'p* = v' to assign\n",
+           g_diag_source_path ? g_diag_source_path : g_source_path, line, col);
+}
+
 static void type_error_binary_op(TokenKind op, TypeExpr *left, TypeExpr *right, i32 line, i32 col, memops_arena *arena) {
     string8 left_name = type_mangle(arena, left, (TypeSub){0});
     string8 right_name = type_mangle(arena, right, (TypeSub){0});
@@ -12575,6 +12664,7 @@ static void type_error_binary_op(TokenKind op, TypeExpr *left, TypeExpr *right, 
         (int)right_name.length,
         right_name.data
     );
+    type_note_pointer_multiply(op, left, line, col);
     diag_finish_at(line, col);
 }
 
@@ -13451,9 +13541,9 @@ static void slice_coerce(Program *prog, TypeExpr *dst, TypeExpr *src, Expr *src_
 
 /* A plain `*T` points at one element. Indexing it anywhere but `[0]`, taking a
    range of it or moving it with arithmetic treats it as many, which is what
-   `[]T` (with a length) and `[*]T` (without one) are for. */
+   `[]T` (with a length) and `^T` (without one) are for. */
 /* The rules shipped as warnings first, with this note pointing at each `*` to
-   change; njinn's 900-odd sites became `[*]T` or a slice, so they are errors. */
+   change; njinn's 900-odd sites became `^T` or a slice, so they are errors. */
 static void pointer_declared_note(TypeExpr *ptr) {
     if (g_diag_json || !ptr || !ptr->decl_path || ptr->line <= 0) return;
     printf("%s:%d:%d: note: the pointer type is written here\n", ptr->decl_path, ptr->line, ptr->col);
@@ -13461,7 +13551,7 @@ static void pointer_declared_note(TypeExpr *ptr) {
 
 static void pointer_one_violation(const char *what, TypeExpr *ptr, i32 line, i32 col) {
     char message[512];
-    snprintf(message, sizeof(message), "%s; '*T' points at one element -- use a slice '[]T', or '[*]T' for a raw pointer", what);
+    snprintf(message, sizeof(message), "%s; '*T' points at one element -- use a slice '[]T', or '^T' for C's pointer", what);
     type_error_message(message, line, col);
     pointer_declared_note(ptr);
 }
@@ -13475,7 +13565,7 @@ static void check_raw_to_one(Program *prog, TypeExpr *dst, TypeExpr *src, i32 li
     TypeExpr *s = resolve_alias_type(prog, src);
     if (!d || !s || d->kind != Type_Ptr || s->kind != Type_Ptr) return;
     if (d->is_raw || !s->is_raw || type_is_void_pointer(d) || type_is_void_pointer(s)) return;
-    type_error_message("a raw '[*]T' becomes a '*T' only by naming the element, as q[0]&", line, col);
+    type_error_message("a '^T' becomes a '*T' only by naming the element, as q[0]&", line, col);
     pointer_declared_note(dst);
 }
 
@@ -13528,13 +13618,71 @@ static void index_set(Expr *e, IndexBase base, bool checked, string8 count) {
     if (e->index_base != base || e->index_checked != checked) e->index_varies = true;
 }
 
+/* Where an operand's source text begins: the left end of `a.b[i].c`, so a
+   rewrite can put a parenthesis there. */
+static void expr_start_position(Expr *e, i32 *line, i32 *col) {
+    while (e) {
+        if ((e->kind == Expr_Field || e->kind == Expr_Index || e->kind == Expr_Call) && e->base) {
+            e = e->base;
+            continue;
+        }
+        if (e->kind == Expr_Addr && e->inner) {
+            e = e->inner;
+            continue;
+        }
+        break;
+    }
+    if (e) {
+        *line = e->line;
+        *col = e->col;
+    }
+}
+
 /* How `x[i]` and `x[a..b]` are bounds-checked. A constant index into an array
    is decided now; anything else into an array or a slice is checked at run
    time, unless NDEBUG is defined. A raw pointer has no length to check. */
 static void type_check_index_bounds(Expr *e, TypeExpr *base, Program *prog, memops_arena *arena) {
+    if (base && base->kind == Type_Ptr && base->elem && type_is_void_type(prog, base->elem)) {
+        /* C rejects it as well; rin says why, at the .rin line. An external
+           struct with no fields is not caught: rin cannot know whether C sees it
+           as complete (FILE is), so that stays C's call. */
+        type_error_message(e->is_deref
+                               ? "a 'void' pointer has nothing to read through; cast it to a typed pointer first"
+                               : "a 'void' pointer cannot be indexed; 'void' has no size, so cast it to a typed pointer first",
+                           e->line, e->col);
+    }
+    if (e->is_deref && base && base->kind != Type_Ptr) {
+        type_error_message(base->kind == Type_Array || type_slice_elem(base)
+                               ? "'p*' reads through a pointer; this has many values, so index it, as 'x[i]'"
+                               : "'p*' reads through a pointer, and this is not one",
+                           e->line, e->col);
+    }
+    if (g_report_derefs && !e->is_deref && !e->index_end && expr_is_literal_zero(e->index_expr)) {
+        /* For the `x[0]` to `x*` rewrite: where each literal `[0]` is, and whether
+           its base is a one-element pointer here. A generic body reports once per
+           instance, so a site is a dereference only if every report says so. */
+        i32 start_line = 0, start_col = 0;
+        expr_start_position(e->base, &start_line, &start_col);
+        printf("RIN_DEREF\t%s\t%d\t%d\t%d\t%d\t%s\n", diag_current_path(), e->line, e->col,
+               start_line, start_col,
+               type_is_one_pointer(base) ? "one" : (base && base->kind == Type_Ptr && base->is_raw) ? "raw" : "other");
+    }
     if (type_is_one_pointer(base)) {
         if (e->index_end) pointer_one_violation("a range of a pointer", base, e->line, e->col);
-        else if (!expr_is_literal_zero(e->index_expr)) pointer_one_violation("indexing a pointer past [0]", base, e->line, e->col);
+        else if (e->index_expr && e->index_expr->kind == Expr_Number && !expr_is_literal_zero(e->index_expr)) {
+            pointer_one_violation("indexing a pointer past [0]", base, e->line, e->col);
+        } else if (!expr_is_literal_zero(e->index_expr)) {
+            /* A variable or a constant, even one that is 0: only the literal
+               `[0]` is allowed, so "past [0]" would be wrong. */
+            bool named = e->base && e->base->kind == Expr_Name;
+            char message[512];
+            snprintf(message, sizeof(message),
+                     "a '*T' points at one element and takes no index but a literal [0] -- read it with '%.*s*', "
+                     "or use a slice '[]T', or '^T' for C's pointer",
+                     named ? (int)e->base->name.length : 1, named ? (const char *)e->base->name.data : "p");
+            type_error_message(message, e->line, e->col);
+            pointer_declared_note(base);
+        }
     }
     TypeExpr *slice_elem = type_slice_elem(base);
     if (!base || (base->kind != Type_Array && !slice_elem)) {
@@ -16444,7 +16592,7 @@ static void emit_proc_params(memops_arena *arena, string8 *out, ProcDecl *decl, 
     }
 }
 
-/* `noalias` parameters (docs/noalias-variadic.md). A `noalias *T` or `[*]T` is
+/* `noalias` parameters (docs/noalias-variadic.md). A `noalias *T` or `^T` is
    C's restrict on the parameter, written by emit_type. A slice is a struct, and
    restrict only works on a pointer parameter, so a proc with a `noalias []T`
    is emitted as two functions: an always-inline helper taking each such slice
@@ -19161,6 +19309,10 @@ i32 main(i32 argc, char *argv[]) {
         }
         if (cstr_equals(arg, "--single-file")) {
             g_single_file = true;
+            continue;
+        }
+        if (cstr_equals(arg, "--report-derefs")) {
+            g_report_derefs = true;
             continue;
         }
         if (cstr_equals(arg, "--modules")) {

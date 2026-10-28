@@ -18,27 +18,27 @@ queue<T>create: proc<T>(arena: *memops_arena) -> *queue<T> = {
 
 queue<T>enqueue: proc<T>(arena: *memops_arena, queue: *queue<T>, data: T) -> void = {
     node: *node<T> = node<T>create(arena, data);
-    if (queue[0].head == null) {
-        queue[0].head = node;
-        queue[0].tail = node;
-        queue[0].length = 1;
+    if (queue*.head == null) {
+        queue*.head = node;
+        queue*.tail = node;
+        queue*.length = 1;
         return;
     }
-    queue[0].tail[0].next = node;
-    queue[0].tail = node;
-    queue[0].length += 1;
+    queue*.tail*.next = node;
+    queue*.tail = node;
+    queue*.length += 1;
 }
 
 queue<T>dequeue: proc<T>(arena: *memops_arena, queue: *queue<T>) -> *node<T> = {
-    if (queue == null || queue[0].head == null) {
+    if (queue == null || queue*.head == null) {
         return null;
     }
-    node: *node<T> = queue[0].head;
-    queue[0].head = node[0].next;
-    node[0].next = null;
-    queue[0].length -= 1;
-    if (queue[0].length == 0) {
-        queue[0].tail = null;
+    node: *node<T> = queue*.head;
+    queue*.head = node*.next;
+    node*.next = null;
+    queue*.length -= 1;
+    if (queue*.length == 0) {
+        queue*.tail = null;
     }
     return node;
 }
@@ -47,17 +47,17 @@ queue<T>peek: proc<T>(arena: *memops_arena, queue: *queue<T>) -> *node<T> = {
     if (queue == null) {
         return null;
     }
-    return queue[0].head;
+    return queue*.head;
 }
 
 queue<T>destroy: proc<T>(arena: *memops_arena, queue: *queue<T>) -> void = {
     if (queue != null) {
-        queue[0].head = null;
-        queue[0].tail = null;
-        queue[0].length = 0;
+        queue*.head = null;
+        queue*.tail = null;
+        queue*.length = 0;
     }
 }
 
 queue<T>is_empty: proc<T>(queue: *queue<T>) -> b32 = {
-    return queue == null || queue[0].length == 0;
+    return queue == null || queue*.length == 0;
 }

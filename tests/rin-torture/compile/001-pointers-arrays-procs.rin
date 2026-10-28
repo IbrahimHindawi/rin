@@ -9,10 +9,10 @@ torture_visit: proc(node: *TortureNode, scale: i32) -> i32 = {
     if (node == cast(0, *TortureNode)) {
         return 0;
     }
-    return node[0].value * scale;
+    return node*.value * scale;
 }
 
-torture_apply: proc(nodes: [*]TortureNode, count: i32, cb: TortureCallback) -> i32 = {
+torture_apply: proc(nodes: ^TortureNode, count: i32, cb: TortureCallback) -> i32 = {
     total: i32 = 0;
     for (i: i32 = 0; i < count; i += 1) {
         total += cb(nodes[i]&, i + 1);

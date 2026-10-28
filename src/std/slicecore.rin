@@ -6,6 +6,6 @@
    `slice<const T>`. Indexing a slice, `s[i]`, is bounds checked unless NDEBUG
    is defined; `s.data[i]` is the raw, unchecked access. */
 slice: struct<T> = {
-    data: [*]T;
+    data: ^T;
     length: u64;
 }

@@ -1,6 +1,6 @@
 cinclude "stdio.h"
 
-printf: proc[external](fmt: [*]const char, ...) -> i32 = {}
+printf: proc[external](fmt: ^const char, ...) -> i32 = {}
 
 // A generic proc can take several type parameters. Each instantiation
 // monomorphises to one symbol whose suffix joins the arguments in order, so
@@ -27,7 +27,7 @@ sum_pair: proc<T, U>(a: T, b: T, tag: U) -> T = {
 }
 
 count_through: proc<T, U>(value: T, out: *U, seen: U) -> T = {
-    out[0] = seen;
+    out* = seen;
     return value;
 }
 

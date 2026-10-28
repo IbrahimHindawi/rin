@@ -65,7 +65,7 @@ memops_arena_push_array:proc<T>(arena:*memops_arena, count:u64)->*void={
 array:struct<T> = {
     length:u64;
     border:u64;
-    data:[*]T;
+    data:^T;
 }
 
 array<T>reserve:proc<T>(arena:*memops_arena, length:u64)->array<T>={
@@ -73,7 +73,7 @@ array<T>reserve:proc<T>(arena:*memops_arena, length:u64)->array<T>={
     if (length == 0) {
         return arr;
     }
-    arr.data = cast(memops_arena_push_array<T>(arena, length), [*]T);
+    arr.data = cast(memops_arena_push_array<T>(arena, length), ^T);
     arr.border = length;
     return arr;
 }
@@ -115,7 +115,7 @@ main:proc()->i32={
     return 0;
 }
 ''',
-        expected_stdout="10 11 12 13 array_i32 8 3 length u64 0 0 data ptr_i32 1 1 2 array i32 i32 i32\n",
+        expected_stdout="10 11 12 13 array_i32 8 3 length u64 0 0 data raw_i32 1 1 2 array i32 i32 i32\n",
         generated_contains=("array_i32_reflect", "memops_arena_push_array_i32", "generic_arg_type", "I monomorph: struct array<T> -> array_i32;", "I monomorph: proc array<T>reserve -> array_i32_reserve;", "instantiated at"),
         header_contains=("void memops_arena_initialize(memops_arena * arena, u64 reserve);", "I monomorph: struct array<T> -> array_i32;", "I monomorph: proc array<T>reserve -> array_i32_reserve;"),
     ),
@@ -123,7 +123,7 @@ main:proc()->i32={
         name="comments",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 
 // top-level line comment
 /* top-level block comment */
@@ -149,7 +149,7 @@ main:proc()->i32 = {
         name="enum_dot_members",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 
 Kind:enum = {
     None,
@@ -191,7 +191,7 @@ print: proc<Payload>(value: Payload)->void = {
 
 main: proc()->i32 = {
     count: u64 = 4;
-    label: [*]const char = "hi";
+    label: ^const char = "hi";
     p: Payload = {.x = 7, .y = 2.5};
     i: i32 = 1;
     printfmt("a {} {} {} {}\n", 3, count, 1.5, label);
@@ -240,11 +240,11 @@ Payload:struct = {
     kind:Kind;
 }
 
-reflect_type_name:proc(type:*const reflect)->[*]const char = {
+reflect_type_name:proc(type:*const reflect)->^const char = {
     return type[0].name;
 }
 
-reflect_enum_name:proc(type:*const reflect, value:i32)->[*]const char = {
+reflect_enum_name:proc(type:*const reflect, value:i32)->^const char = {
     for (i:u64 = 0; i < type[0].count; i += 1) {
         if (type[0].variant.values[i].value == value) {
             return type[0].variant.values[i].name;
@@ -362,7 +362,7 @@ main:proc()->i32 = {
         name="generic_delayed_numeric_algorithms",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 
 add:proc<T>(x:T, y:T)->T = {
     return x + y;
@@ -405,7 +405,7 @@ add: proc<i32>(x: i32, y: i32) -> i32 = {
     return x + y;
 }
 
-sum: proc<T>(items: [*]T, count: u64) -> T = {
+sum: proc<T>(items: ^T, count: u64) -> T = {
     result: T = {};
     for (i: u64 = 0; i < count; i += 1) {
         result = add<T>(result, items[i]);
@@ -413,7 +413,7 @@ sum: proc<T>(items: [*]T, count: u64) -> T = {
     return result;
 }
 
-main: proc(argc: i32, argv: *[*]char)-> i32 = {
+main: proc(argc: i32, argv: *^char)-> i32 = {
     arena: memops_arena = {};
     memops_arena_initialize(arena&);
     // todo: this line is intentionally a rin comment, not C preprocessor output.
@@ -665,7 +665,7 @@ main:proc()->i32 = {
 cinclude "stdio.h"
 import "std/string8.rin"
 
-printf: proc[external](f: [*]const char, ...) -> i32 = {}
+printf: proc[external](f: ^const char, ...) -> i32 = {}
 
 main: proc() -> i32 = {
     scratch: memops_arena = {};
@@ -712,7 +712,7 @@ main: proc() -> i32 = {
 cinclude "stdio.h"
 import "std/slice.rin"
 
-printf: proc[external](f: [*]const char, ...) -> i32 = {}
+printf: proc[external](f: ^const char, ...) -> i32 = {}
 
 main: proc() -> i32 = {
     arena: memops_arena = {};
@@ -758,7 +758,7 @@ cinclude "stdio.h"
 import "std/fmt.rin"
 import "std/cstr.rin"
 
-printf: proc[external](f: [*]const char, ...) -> i32 = {}
+printf: proc[external](f: ^const char, ...) -> i32 = {}
 
 main: proc() -> i32 = {
     buf: [128]c8 = {};
@@ -830,7 +830,7 @@ import "std/fmt.rin"
 import "std/cstr.rin"
 import "std/slice.rin"
 
-printf: proc[external](f: [*]const char, ...) -> i32 = {}
+printf: proc[external](f: ^const char, ...) -> i32 = {}
 
 main: proc() -> i32 = {
     // A buffer with no room for even one byte, and a null buffer. fmt_bytes
@@ -908,7 +908,7 @@ Bag:struct<T> = {
 Player:struct = {
     kind:Color;
     hp:i32 @ "editor,serialize";
-    label:[*]const char;
+    label:^const char;
     score:i32 @ "editor,path\\tag";
     inventory:[3]i32;
     bag:Bag<i32>;
@@ -936,8 +936,8 @@ main:proc()->i32={
     blue_value:*const reflect_value = reflect_find_value_by_value(Color_reflect&, Color_Blue);
     blue_index_value:*const reflect_value = reflect_value_at(Color_reflect&, 2);
     missing_index_value:*const reflect_value = reflect_value_at(Color_reflect&, Color_reflect.count);
-    green_name:[*]const char = reflect_name_from_value(Color_reflect&, Color_Green);
-    missing_name:[*]const char = reflect_name_from_value(Color_reflect&, 99);
+    green_name:^const char = reflect_name_from_value(Color_reflect&, Color_Green);
+    missing_name:^const char = reflect_name_from_value(Color_reflect&, 99);
     generic_kind_field:*const reflect_field = reflect_find_field_with_kind(Player_reflect&, 2);
     missing_kind_field:*const reflect_field = reflect_find_field_with_kind(Player_reflect&, 4);
     first_name_kind_field:*const reflect_field = reflect_next_field_with_kind(Player_reflect&, 0, null);
@@ -1044,7 +1044,7 @@ main:proc()->i32={
         name="reflect_angle_syntax",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 
 Payload:struct = {
     x:i32;
@@ -1063,7 +1063,7 @@ main:proc()->i32 = {
         name="boring_c_surface",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 #define WINCALL
 #define TWICE(x) ((x) * 2)
 
@@ -1116,8 +1116,8 @@ main:proc()->i32={
     nodes[1].value = 22;
     nodes[2].value = 33;
     nodes[2].parent = nodes[0]&;
-    node_index:long = cast(nodes[2]&, [*]Node) - nodes;
-    parent_index:long = cast(nodes[2].parent, [*]Node) - nodes;
+    node_index:long = cast(nodes[2]&, ^Node) - nodes;
+    parent_index:long = cast(nodes[2].parent, ^Node) - nodes;
     printf("%d %llu %llu %llu %llu %d %llu %llu %d %ld %ld %d\n",
         total + TWICE(4),
         Packet_reflect.count,
@@ -1145,7 +1145,7 @@ main:proc()->i32={
         name="postfix_addr",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](f: [*]const char, ...)->i32 = {}
+printf: proc[external](f: ^const char, ...)->i32 = {}
 Node: struct = { value: i32; next: *Node; }
 read: proc(p: *i32) -> i32 = { return p[0]; }
 
@@ -1166,7 +1166,7 @@ main: proc() -> i32 = {
     neg: i32 = x & -2;
     inv: i32 = x & ~2;
     both: b32 = x > 0 && p& != null || x < 0;
-    second: *Node = cast(nodes[0]&, [*]Node)[1]&;
+    second: *Node = cast(nodes[0]&, ^Node)[1]&;
     printf("%d %d %d %d %d %d %d %d %d %d\n", same, third, read(nodes[1].value&), eq,
            masked, neg, inv, both, second[0].value, read(x&));
     return 0;
@@ -1179,7 +1179,7 @@ main: proc() -> i32 = {
         name="contextual_literals",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](f: [*]const char, ...)->i32 = {}
+printf: proc[external](f: ^const char, ...)->i32 = {}
 half: proc(x: f32) -> f32 = { return x * 0.5; }
 
 main: proc() -> i32 = {
@@ -1203,7 +1203,7 @@ main: proc() -> i32 = {
         name="narrow_arithmetic",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](f: [*]const char, ...)->i32 = {}
+printf: proc[external](f: ^const char, ...)->i32 = {}
 
 main: proc() -> i32 = {
     a: u8 = 200;
@@ -1229,7 +1229,7 @@ main: proc() -> i32 = {
         name="builtin_slices",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](f: [*]const char, ...) -> i32 = {}
+printf: proc[external](f: ^const char, ...) -> i32 = {}
 
 sum: proc(xs: []const i32) -> i32 = {
     total: i32 = 0;
@@ -1252,7 +1252,7 @@ main: proc() -> i32 = {
     printf("%d %d %d %d %llu\n", sum(arr), sum(all), sum(mid), all[k], mid.length);
     printf("%u %u\n", read_u16(raw[0..2]), read_u16(raw[2..4]));
     tail: []i32 = all[3..all.length];
-    p: [*]i32 = arr[0]&;
+    p: ^i32 = arr[0]&;
     from_raw: []i32 = p[1..3];
     old: slice<i32> = all;
     printf("%d %d %llu\n", sum(tail), sum(from_raw), old.length);
@@ -1276,7 +1276,7 @@ main: proc() -> i32 = {
         name="gin_c_surface",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 #define WINCALL
 
 I32:alias = i32;
@@ -1302,7 +1302,7 @@ choose:proc(a:i32, ...)->i32 = {
 
 main:proc()->i32 = {
     v:Value = {};
-    label:[*]const char = "he" "llo";
+    label:^const char = "he" "llo";
     v.i = 3;
     cb:Binary = add;
     total:i32 = 0;
@@ -1333,7 +1333,7 @@ main:proc()->i32 = {
         name="external_c_array_alias_generic_specialization",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 cinclude "external_c_array_alias_generic_specialization_types.h"
 
 vec2:alias = [2]f32;
@@ -1430,7 +1430,7 @@ main:proc()->i32 = {
         name="initializer_lists",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 
 Pair:struct = {
     a:i32;
@@ -1462,7 +1462,7 @@ main:proc()->i32 = {
         name="typed_compound_initializers",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 
 Payload:struct = {
     x:i32;
@@ -1503,7 +1503,7 @@ main:proc()->i32 = {
         name="generic_value_struct_order_and_bare_init_arg",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 
 Box:struct<T> = {
     value:T;
@@ -1535,7 +1535,7 @@ main:proc()->i32 = {
         name="postfix_address_deref",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 
 Node:struct = {
     value:i32;
@@ -1568,9 +1568,9 @@ main:proc()->i32 = {
         name="function_pointer_types",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 
-Callback:alias = *proc(x:i32, label:[*]const char)->i32;
+Callback:alias = *proc(x:i32, label:^const char)->i32;
 
 Holder:struct = {
     cb:Callback;
@@ -1580,7 +1580,7 @@ call_twice:proc(cb:Callback)->i32 = {
     return cb(5, "hi") + cb(7, "ok");
 }
 
-add_label:proc(x:i32, label:[*]const char)->i32 = {
+add_label:proc(x:i32, label:^const char)->i32 = {
     return x + cast(label[0], i32);
 }
 
@@ -1600,7 +1600,7 @@ main:proc()->i32 = {
         name="external_globals",
         source=r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 
 State:struct = {
     value:i32;
@@ -1641,7 +1641,7 @@ shared_sum:proc(p:*SharedPayload)->i32 = {
 
 
 MODULE_APP_SOURCE = r'''
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 cinclude "stdio.h"
 import "module.rin"
 
@@ -1737,7 +1737,7 @@ def main() -> int:
     bounds_c = TEST_DIR / "bounds_runtime.c"
     bounds_i.write_text(r'''
 cinclude "stdio.h"
-printf: proc[external](f: [*]const char, ...) -> i32 = {}
+printf: proc[external](f: ^const char, ...) -> i32 = {}
 main: proc() -> i32 = {
     arr: [4]i32 = {};
     s: []i32 = arr;
@@ -2870,7 +2870,7 @@ $
     check_json_format_i = TEST_DIR / "check_json_format.rin"
     check_json_format_i.write_text(r'''
 main:proc()->i32 = {
-    fmt:[*]const char = "{}\n";
+    fmt:^const char = "{}\n";
     printfmt(fmt, 1);
     return 0;
 }
@@ -3680,7 +3680,7 @@ main:proc()->i32 = {
     # Declaring it is what makes it callable.
     undeclared_i.write_text(
         'cinclude "stdio.h"\n'
-        "printf: proc[external](fmt: [*]const char, ...)->i32 = {}\n"
+        "printf: proc[external](fmt: ^const char, ...)->i32 = {}\n"
         'main:proc()->i32 = { printf("hi\\n"); return 0; }\n',
         encoding="utf-8", newline="\n",
     )
@@ -3694,7 +3694,7 @@ main:proc()->i32 = {
     # call, so it has no declaration to find and must not be reported.
     undeclared_i.write_text(
         'cinclude "stdio.h"\n'
-        "printf: proc[external](fmt: [*]const char, ...)->i32 = {}\n"
+        "printf: proc[external](fmt: ^const char, ...)->i32 = {}\n"
         'main:proc()->i32 = { printfmt("n={}\\n", 3); return 0; }\n',
         encoding="utf-8", newline="\n",
     )
@@ -3765,13 +3765,13 @@ main:proc()->i32 = {
     redecl_app = TEST_DIR / "redecl_app.rin"
     redecl_mod.write_text(
         'cinclude "stdio.h"\n'
-        "printf: proc[external](fmt: [*]const char, ...)->i32 = {}\n"
+        "printf: proc[external](fmt: ^const char, ...)->i32 = {}\n"
         "mod_helper:proc()->i32 = { return 1; }\n",
         encoding="utf-8", newline="\n")
     redecl_app.write_text(
         'cinclude "stdio.h"\n'
         'import "redecl_mod.rin"\n'
-        "printf: proc[external](fmt: [*]const char, ...)->i32 = {}\n"
+        "printf: proc[external](fmt: ^const char, ...)->i32 = {}\n"
         'main:proc()->i32 = { printf("%d\\n", mod_helper()); return 0; }\n',
         encoding="utf-8", newline="\n")
     same = run([str(RIN_EXE), "check", str(redecl_app)])
@@ -3783,7 +3783,7 @@ main:proc()->i32 = {
     redecl_app.write_text(
         'cinclude "stdio.h"\n'
         'import "redecl_mod.rin"\n'
-        "printf: proc[external](fmt: [*]const char)->i32 = {}\n"
+        "printf: proc[external](fmt: ^const char)->i32 = {}\n"
         'main:proc()->i32 = { printf("x"); return mod_helper(); }\n',
         encoding="utf-8", newline="\n")
     differs = run([str(RIN_EXE), "check", str(redecl_app)])
@@ -3877,12 +3877,12 @@ main:proc()->i32 = {
          "main:proc()->i32 = { p:*FILE = null; if (p == null) { return 1; } return 0; }\n",
          "struct[external] = {} is the opaque form"),
         ('cinclude "stdio.h"\n'
-         "printf: proc[external](fmt: [*]const char, ...)->i32 = {}\n"
+         "printf: proc[external](fmt: ^const char, ...)->i32 = {}\n"
          'main:proc()->i32 = { printf("hi\\n"); return 0; }\n',
          "proc[external]"),
         ("#define WINCALL\n"
          'cinclude "stdio.h"\n'
-         "printf: proc[external, callconv(WINCALL)](fmt: [*]const char, ...)->i32 = {}\n"
+         "printf: proc[external, callconv(WINCALL)](fmt: ^const char, ...)->i32 = {}\n"
          'main:proc()->i32 = { printf("hi\\n"); return 0; }\n',
          "proc[external, callconv(WINCALL)] -- two attributes"),
         ('cinclude "stdio.h"\n'
@@ -3896,7 +3896,7 @@ main:proc()->i32 = {
          "main:proc()->i32 = { t:timespec = {}; return cast(t.tv_sec, i32); }\n",
          "legacy struct = { external; ... }"),
         ('cinclude "stdio.h"\n'
-         "printf: proc[external](fmt: [*]const char, ...)->i32 = {}\n"
+         "printf: proc[external](fmt: ^const char, ...)->i32 = {}\n"
          'main:proc()->i32 = { printf("hi\\n"); return 0; }\n',
          "legacy proc = { external; }"),
         ("#define WINCALL\n"
@@ -3918,7 +3918,7 @@ main:proc()->i32 = {
         'cinclude "stdio.h"\n'
         "FILE: struct[external] = {}\n"
         "Local: struct = { a: i32; }\n"
-        "printf: proc[external](fmt: [*]const char, ...)->i32 = {}\n"
+        "printf: proc[external](fmt: ^const char, ...)->i32 = {}\n"
         'main:proc()->i32 = { l:Local = {}; printf("%d\\n", l.a); return 0; }\n',
         encoding="utf-8", newline="\n")
     emitted = run([str(RIN_EXE), "compile", str(attr_i), "-o", str(attr_c), "--no-header"])
@@ -4076,7 +4076,7 @@ main:proc()->i32 = {
         "P: struct[packed] = { a: u8; b: u32; }\n"
         "V: struct[align(16)] = { x: f32; }\n"
         "E: enum[u32] = { A, B, }\n"
-        "printf: proc[external](f: [*]const char, ...)->i32 = {}\n"
+        "printf: proc[external](f: ^const char, ...)->i32 = {}\n"
         "main:proc()->i32 = {\n"
         '    printf("%d %d %d", cast(sizeof(P), i32), cast(alignof(V), i32), cast(sizeof(E), i32));\n'
         "    return 0;\n}\n",
@@ -4106,7 +4106,7 @@ main:proc()->i32 = {
         'cinclude "stdio.h"\n'
         "Binary: alias = *proc[callconv(WINCALL)](a: i32, b: i32)->i32;\n"
         "add: proc[callconv(WINCALL)](a: i32, b: i32)->i32 = { return a + b; }\n"
-        "printf: proc[external, callconv(WINCALL)](f: [*]const char, ...)->i32 = {}\n"
+        "printf: proc[external, callconv(WINCALL)](f: ^const char, ...)->i32 = {}\n"
         "main:proc()->i32 = { fp: Binary = add; return fp(1, 2); }\n",
         encoding="utf-8", newline="\n")
     cc = run([str(RIN_EXE), "check", str(attr2_i)])
@@ -4252,7 +4252,7 @@ main:proc()->i32 = {
     widths_exe = TEST_DIR / "scalar_widths.exe"
     widths_i.write_text(
         'cinclude "stdio.h"\n'
-        "printf: proc[external](f: [*]const char, ...)->i32 = {}\n"
+        "printf: proc[external](f: ^const char, ...)->i32 = {}\n"
         "main:proc()->i32 = {\n"
         '    printf("%d %d %d %d %d %d %d %d %d %d",\n'
         "        cast(sizeof(b8), i32), cast(sizeof(b16), i32),\n"
@@ -4290,10 +4290,10 @@ main:proc()->i32 = {
     c8_i.write_text(
         'cinclude "stdio.h"\n'
         'cinclude "string.h"\n'
-        "printf: proc[external](f: [*]const char, ...)->i32 = {}\n"
-        "strlen: proc[external](s: [*]const c8)->usize = {}\n"
-        "take_c8:   proc(s: [*]const c8)->usize   = { return strlen(s); }\n"
-        "take_char: proc(s: [*]const char)->usize = { return take_c8(s); }\n"
+        "printf: proc[external](f: ^const char, ...)->i32 = {}\n"
+        "strlen: proc[external](s: ^const c8)->usize = {}\n"
+        "take_c8:   proc(s: ^const c8)->usize   = { return strlen(s); }\n"
+        "take_char: proc(s: ^const char)->usize = { return take_c8(s); }\n"
         "main:proc()->i32 = {\n"
         '    printf("%d %d", cast(take_c8("abcd"), i32), cast(take_char("xyz"), i32));\n'
         "    return 0;\n}\n",
@@ -4362,7 +4362,7 @@ main:proc()->i32 = {
     nest_exe = TEST_DIR / "directive_positions.exe"
     body = (
         'cinclude "stdio.h"\n'
-        "printf: proc[external](f: [*]const char, ...)->i32 = {}\n"
+        "printf: proc[external](f: ^const char, ...)->i32 = {}\n"
         "P: struct = {\n"
         "    x: i32;\n"
         "#ifdef EXTRA\n"
@@ -4754,7 +4754,7 @@ main:proc()->i32 = {
     decl_c = TEST_DIR / "decl_attribute_rule.c"
     decl_exe = TEST_DIR / "decl_attribute_rule.exe"
     decl_i.write_text(
-        "cinclude \"stdio.h\"\nprintf: proc[external](f: [*]const char, ...)->i32 = {}\nP: struct = { a: u8; b: i32[align(16)]; }\ng_buf: [4]f32[align(64)] = {};\nmain:proc()->i32 = {\n    v: i32[align(32)] = 5;\n    printf(\"%d %d %d %d\", cast(alignof(P), i32), cast(sizeof(P), i32),\n        cast(cast(g_buf&, uintptr) % 64, i32),\n        cast(cast(v&, uintptr) % 32, i32));\n    return 0;\n}\n",
+        "cinclude \"stdio.h\"\nprintf: proc[external](f: ^const char, ...)->i32 = {}\nP: struct = { a: u8; b: i32[align(16)]; }\ng_buf: [4]f32[align(64)] = {};\nmain:proc()->i32 = {\n    v: i32[align(32)] = 5;\n    printf(\"%d %d %d %d\", cast(alignof(P), i32), cast(sizeof(P), i32),\n        cast(cast(g_buf&, uintptr) % 64, i32),\n        cast(cast(v&, uintptr) % 32, i32));\n    return 0;\n}\n",
         encoding="utf-8", newline="\n")
     gen = run([str(RIN_EXE), "compile", str(decl_i), "-o", str(decl_c), "--no-header"])
     if gen.returncode != 0:
@@ -4917,7 +4917,7 @@ main:proc()->i32 = {
     must_use_rin = TEST_DIR / "must_use.rin"
     must_use_c = TEST_DIR / "must_use.c"
     must_use_head = (
-        "printf: proc[external](fmt: [*]const char, ...) -> i32 = {}\n"
+        "printf: proc[external](fmt: ^const char, ...) -> i32 = {}\n"
         "status: enum[must_use] = { ok, failed, }\n"
         "plain: enum = { a, b, }\n"
         "load: proc() -> status = { return status.ok; }\n"
@@ -5031,7 +5031,7 @@ main:proc()->i32 = {
     infer_rin = TEST_DIR / "infer_count.rin"
     infer_c = TEST_DIR / "infer_count.c"
     infer_rin.write_text(
-        'names: [_][*]const char = { "a", "b", "c" };\n'
+        'names: [_]^const char = { "a", "b", "c" };\n'
         "grid: [_][2]i32 = { { 1, 2 }, { 3, 4 } };\n"
         "main: proc() -> i32 = {\n"
         "    primes: [_]i32 = { 2, 3, 5, 7, 11 };\n"
@@ -5063,7 +5063,7 @@ main:proc()->i32 = {
     print("ok infer_count")
 
     # `noalias` on a parameter's own pointer or slice: restrict on `*T` and
-    # `[*]T`; a proc with a noalias slice becomes an always-inline helper plus
+    # `^T`; a proc with a noalias slice becomes an always-inline helper plus
     # the public function, whose C signature does not change. Debug builds
     # check the promise; NDEBUG builds do not.
     noalias_rin = TEST_DIR / "noalias.rin"
@@ -5077,7 +5077,7 @@ main:proc()->i32 = {
         "m2_mul: proc(out: noalias *mat2, a: *const mat2, b: *const mat2) -> void = {\n"
         "    out[0].m[0] = a[0].m[0] * b[0].m[0];\n"
         "}\n"
-        "copy_raw: proc(dst: noalias [*]u8, src: [*]const u8, n: u64) -> void = {\n"
+        "copy_raw: proc(dst: noalias ^u8, src: ^const u8, n: u64) -> void = {\n"
         "    for (i: u64 = 0; i < n; i += 1) { dst[i] = src[i]; }\n"
         "}\n"
         "peek: proc(a: noalias []const i32, b: []const i32) -> i32 = { return a[0] + b[0]; }\n"
@@ -5168,6 +5168,120 @@ main:proc()->i32 = {
             return 1
     print("ok noalias")
 
+    # `p*` reads through a pointer: the same node as `p[0]`, so the same C. It is
+    # told from multiplication by what follows, and every misreading multiplies
+    # a pointer, which is an error that says how to write the dereference.
+    deref_rin = TEST_DIR / "postfix_deref.rin"
+    deref_c = TEST_DIR / "postfix_deref.c"
+    deref_exe = TEST_DIR / "postfix_deref.exe"
+    deref_rin.write_text(
+        'import "std/print.rin"\n'
+        "world: struct = { count: u32; xs: [4]f32; }\n"
+        "bump: proc(w: *world, k: *f32) -> f32 = {\n"
+        "    w*.count += 1;\n"
+        "    w*.xs[1] = k* * 2.0;\n"
+        "    k* = k* + 1.0;\n"
+        "    v: f32 = k*;\n"
+        "    p: *world = w*&;\n"
+        "    return v + p*.xs[1] + cast(w*.count, f32) - k* - 1.0 + 1.0;\n"
+        "}\n"
+        "main: proc() -> i32 = {\n"
+        "    w: world = {};\n"
+        "    k: f32 = 3.0;\n"
+        '    printfmt("{}\\n", bump(w&, k&));\n'
+        "    raw: ^f32 = w.xs;\n"
+        "    raw* = 7.0;\n"
+        "    kp: *f32 = k&;\n"
+        "    pp: **f32 = kp&;\n"
+        '    printfmt("{} {}\\n", w.xs[0], pp**);\n'
+        "    return 0;\n"
+        "}\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "compile", str(deref_rin), "-o", str(deref_c), "--no-header"])
+    deref_text = deref_c.read_text(encoding="utf-8") if res.returncode == 0 else ""
+    for needed in ("w[0].count += 1;", "k[0] = (k[0] + 1.0f);", "world * p = &(w[0]);"):
+        if needed not in deref_text:
+            print(f"postfix_deref: expected {needed!r}, the C of `[0]`")
+            print(res.stdout)
+            return 1
+    build = run(["clang.exe", str(deref_c), "-I", "src", "-I", "src/std", "-o", str(deref_exe)]) if res.returncode == 0 else res
+    ran = run([str(deref_exe)]) if build.returncode == 0 else build
+    if ran.stdout.split("\n")[:2] != ["7.000000", "7.000000 4.000000"]:
+        print("postfix_deref: wrong results")
+        print(res.stdout, build.stdout, ran.stdout)
+        return 1
+    for body, needle in (
+        ("xs: [4]i32 = {}; y: i32 = xs*;", "this has many values, so index it"),
+        ("s: []i32 = {}; y: i32 = s*;", "this has many values, so index it"),
+        ("k: f32 = 1.0; p: *f32 = k&; y: f32 = p * -1.0;", "glue the '*' to it and follow it with a space"),
+        ("k: f32 = 1.0; p: *f32 = k&; y: f32 = p*-1.0;", "glue the '*' to it and follow it with a space"),
+        ("k: f32 = 1.0; p: *f32 = k&; p*= 2.0;", "glue the '*' to it and follow it with a space"),
+        ("x: f32 = 2.0; y: f32 = x* 3.0;", "expected ';'"),
+        ("k: f32 = 1.0; p: *f32 = k&; y: f32 = p.*;", "'.*' was removed"),
+    ):
+        deref_rin.write_text("main: proc() -> i32 = {\n    " + body + "\n    return 0;\n}\n",
+                             encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(deref_rin)])
+        if res.returncode == 0 or needle not in res.stdout:
+            print(f"postfix_deref: {body!r} must be refused with {needle!r}")
+            print(res.stdout)
+            return 1
+    print("ok postfix_deref")
+
+    # `^T` is C's pointer, the old `[*]T`, which is now an error. A generic
+    # instance over `^T` is its own instance (`vec_raw_i32`), since `^T` allows
+    # indexing that `*T` does not, and the two are not interchangeable there.
+    caret_rin = TEST_DIR / "caret_pointer.rin"
+    caret_c = TEST_DIR / "caret_pointer.c"
+    caret_exe = TEST_DIR / "caret_pointer.exe"
+    caret_rin.write_text(
+        'import "std/print.rin"\n'
+        'import "std/vec.rin"\n'
+        "sum: proc(xs: ^const i32, n: u64) -> i32 = {\n"
+        "    t: i32 = 0;\n"
+        "    for (i: u64 = 0; i < n; i += 1) { t += xs[i]; }\n"
+        "    return t + xs*;\n"
+        "}\n"
+        "count: proc<T>(v: vec<T>) -> u64 = { return v.length; }\n"
+        "main: proc(argc: i32, argv: ^^c8) -> i32 = {\n"
+        "    a: [3]i32 = { 1, 2, 3 };\n"
+        "    one: *i32 = a[0]&;\n"
+        "    raw: ^i32 = one;\n"
+        "    vs: vec<*i32> = {};\n"
+        "    vr: vec<^i32> = {};\n"
+        '    printfmt("{} {} {}\\n", sum(a, 3), raw[2], count<*i32>(vs) + count<^i32>(vr));\n'
+        "    return 0;\n"
+        "}\n",
+        encoding="utf-8", newline="\n")
+    res = run([str(RIN_EXE), "compile", str(caret_rin), "-o", str(caret_c), "--no-header"])
+    caret_text = caret_c.read_text(encoding="utf-8") if res.returncode == 0 else ""
+    for needed in ("i32 sum(const i32 * xs, u64 n)", "i32 * raw = one;", "structdef(vec_ptr_i32)",
+                   "structdef(vec_raw_i32)", "count_ptr_i32(", "count_raw_i32("):
+        if needed not in caret_text:
+            print(f"caret_pointer: expected {needed!r} in the emitted C")
+            print(res.stdout)
+            return 1
+    build = run(["clang.exe", str(caret_c), "-I", "src", "-I", "src/std", "-o", str(caret_exe)]) if res.returncode == 0 else res
+    ran = run([str(caret_exe)]) if build.returncode == 0 else build
+    if not ran.stdout.startswith("7 3 0"):
+        print("caret_pointer: wrong results")
+        print(res.stdout, build.stdout, ran.stdout)
+        return 1
+    for body, needle in (
+        ("x: [*]i32 = null;", "'[*]T' is now spelled '^T'"),
+        ("v: ^void = null; y: i32 = cast(v[0], i32);", "a 'void' pointer cannot be indexed"),
+        ("v: *void = null; y: i32 = v*;", "a 'void' pointer has nothing to read through"),
+        ("a: vec<*i32> = {}; b: vec<^i32> = a;", "expected 'vec_raw_i32', got 'vec_ptr_i32'"),
+    ):
+        caret_rin.write_text('import "std/vec.rin"\nmain: proc() -> i32 = {\n    ' + body + "\n    return 0;\n}\n",
+                             encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(caret_rin)])
+        if res.returncode == 0 or needle not in res.stdout:
+            print(f"caret_pointer: {body!r} must be refused with {needle!r}")
+            print(res.stdout)
+            return 1
+    print("ok caret_pointer")
+
     # --single-file puts core.h in the main file, where clang warns about every
     # unused static inline function. A Debug build of a program with no slices
     # left rin_index_check, rin_range_check and rin_noalias_check uncalled, so
@@ -5188,6 +5302,42 @@ main:proc()->i32 = {
             print(res.stdout, built.stdout)
             return 1
     print("ok single_file_werror")
+
+    # std must not include <windows.h>: every rin program gets std, and the
+    # header's `#define near` and `#define far` (and min, max) erased locals of
+    # those names from the generated C. rin-dod's commands lesson has both.
+    winmacro_rin = TEST_DIR / "windows_macro_names.rin"
+    winmacro_c = TEST_DIR / "windows_macro_names.c"
+    winmacro_exe = TEST_DIR / "windows_macro_names.exe"
+    winmacro_rin.write_text(
+        'import "std/print.rin"\n'
+        'import "std/vec.rin"\n'
+        "main: proc() -> i32 = {\n"
+        "    near: f32 = 0.1;\n"
+        "    far: f32 = 100.0;\n"
+        "    min: i32 = 2;\n"
+        "    max: i32 = 5;\n"
+        "    small: i32 = 1;\n"
+        "    arena: memops_arena = {};\n"
+        "    memops_arena_initialize(arena&);\n"
+        "    xs: vec<i32> = {};\n"
+        "    vec<i32>append(arena&, xs&, max - min);\n"
+        '    printfmt("{} {} {} {}\\n", near, far, xs.data[0], small);\n'
+        "    return 0;\n"
+        "}\n", encoding="utf-8", newline="\n")
+    for mode in (["--single-file"], ["--no-header"]):
+        res = run([str(RIN_EXE), "compile", str(winmacro_rin), "-o", str(winmacro_c), *mode])
+        include = [] if mode == ["--single-file"] else ["-I", "src", "-I", "src/std"]
+        built = run(["clang.exe", str(winmacro_c), *include, "-o", str(winmacro_exe)]) if res.returncode == 0 else res
+        ran = run([str(winmacro_exe)]) if built.returncode == 0 else built
+        if ran.returncode != 0 or ran.stdout.replace("\r\n", "\n") != "0.100000 100.000000 3 1\n":
+            print(f"windows_macro_names: locals named near, far, min, max, small must work ({mode[0]})")
+            print(res.stdout, built.stdout, ran.stdout)
+            return 1
+        if re.search(r"#\s*include\s*[<\"]windows\.h", winmacro_c.read_text(encoding="utf-8"), re.I):
+            print("windows_macro_names: std must not include <windows.h>")
+            return 1
+    print("ok windows_macro_names")
 
     # u64 is unsigned long on Linux and unsigned long long on Windows, so a
     # fixed %llu is a -Wformat warning on one of them. printfmt uses
@@ -5241,12 +5391,12 @@ main:proc()->i32 = {
     (build_root / "src" / "app.rin").write_text(
         "main: proc() -> i32 = { return 0; }\n", encoding="utf-8", newline="\n")
     (build_root / "build.rin").write_text(
-        'build_name:         [*]const char = "buildcmd_probe";\n'
-        'build_entry:        [*]const char = "src/app.rin";\n'
-        'build_dir:          [*]const char = "out";\n'
-        'build_include_dirs: [1][*]const char = { "src" };\n'
-        'build_defines:      [1][*]const char = { "PROBE_DEFINE" };\n'
-        'build_libraries:    [1][*]const char = { "user32" };\n',
+        'build_name:         ^const char = "buildcmd_probe";\n'
+        'build_entry:        ^const char = "src/app.rin";\n'
+        'build_dir:          ^const char = "out";\n'
+        'build_include_dirs: [1]^const char = { "src" };\n'
+        'build_defines:      [1]^const char = { "PROBE_DEFINE" };\n'
+        'build_libraries:    [1]^const char = { "user32" };\n',
         encoding="utf-8", newline="\n")
 
     # build.rin is ordinary rin: it must type-check like any other module.
@@ -5289,7 +5439,7 @@ main:proc()->i32 = {
 
     # A required field left out is an error, not a default.
     (build_root / "build.rin").write_text(
-        'build_entry: [*]const char = "src/app.rin";\n', encoding="utf-8", newline="\n")
+        'build_entry: ^const char = "src/app.rin";\n', encoding="utf-8", newline="\n")
     res = run([str(RIN_EXE), "build"], cwd=str(build_root))
     if res.returncode == 0 or "must set build_name" not in res.stdout:
         print("build_command: a build.rin without build_name must be refused")
@@ -5301,10 +5451,10 @@ main:proc()->i32 = {
     # for it would leave clang-cl inlining almost nothing.
     def build_type_probe(build_type: str) -> subprocess.CompletedProcess:
         (build_root / "build.rin").write_text(
-            'build_name:  [*]const char = "buildcmd_probe";\n'
-            'build_entry: [*]const char = "src/app.rin";\n'
-            'build_dir:   [*]const char = "out_type";\n'
-            f'build_type:  [*]const char = "{build_type}";\n', encoding="utf-8", newline="\n")
+            'build_name:  ^const char = "buildcmd_probe";\n'
+            'build_entry: ^const char = "src/app.rin";\n'
+            'build_dir:   ^const char = "out_type";\n'
+            f'build_type:  ^const char = "{build_type}";\n', encoding="utf-8", newline="\n")
         return run([str(RIN_EXE), "build"], cwd=str(build_root))
     res = build_type_probe("Relase")
     if res.returncode == 0 or "Debug, Release, RelWithDebInfo, MinSizeRel" not in res.stdout:
@@ -5331,9 +5481,9 @@ main:proc()->i32 = {
         (multi_root / "src" / f"{n}.rin").write_text(
             "main: proc() -> i32 = { return 0; }\n", encoding="utf-8", newline="\n")
     (multi_root / "build.rin").write_text(
-        'build_name:    [*]const char = "multi_probe";\n'
-        'build_dir:     [*]const char = "out";\n'
-        'build_entries: [2][*]const char = { "src/alpha.rin", "src/beta.rin" };\n',
+        'build_name:    ^const char = "multi_probe";\n'
+        'build_dir:     ^const char = "out";\n'
+        'build_entries: [2]^const char = { "src/alpha.rin", "src/beta.rin" };\n',
         encoding="utf-8", newline="\n")
 
     res = run([str(RIN_EXE), "build"], cwd=str(multi_root))
@@ -5358,7 +5508,7 @@ main:proc()->i32 = {
 
     # Neither entry form given at all is an error.
     (multi_root / "build.rin").write_text(
-        'build_name: [*]const char = "multi_probe";\n',
+        'build_name: ^const char = "multi_probe";\n',
         encoding="utf-8", newline="\n")
     res = run([str(RIN_EXE), "build"], cwd=str(multi_root))
     if res.returncode == 0 or "build_entry or build_entries" not in res.stdout:
@@ -5604,7 +5754,7 @@ main:proc()->i32 = {
     tf_c = TEST_DIR / "true_false.c"
     tf_exe = TEST_DIR / "true_false.exe"
     tf_i.write_text(
-        "cinclude \"stdio.h\"\nprintf: proc[external](f: [*]const char, ...)->i32 = {}\ng_on: b32 = true;\nmain:proc()->i32 = {\n    f: b32 = false;\n    if (g_on && !f) { printf(\"%d %d\", g_on, f); }\n    return 0;\n}\n",
+        "cinclude \"stdio.h\"\nprintf: proc[external](f: ^const char, ...)->i32 = {}\ng_on: b32 = true;\nmain:proc()->i32 = {\n    f: b32 = false;\n    if (g_on && !f) { printf(\"%d %d\", g_on, f); }\n    return 0;\n}\n",
         encoding="utf-8", newline="\n")
     gen = run([str(RIN_EXE), "compile", str(tf_i), "-o", str(tf_c), "--no-header"])
     if gen.returncode != 0:
@@ -6217,7 +6367,7 @@ main:proc()->i32 = {{
     diamond_shared_dot_path = f"{TEST_DIR.as_posix()}/./diamond_shared.rin"
     diamond_shared_i.write_text(r'''
 cinclude "stdio.h"
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 #define DIAMOND_SHARED_FLAG 1
 
 DiamondPayload:struct = {
@@ -6247,7 +6397,7 @@ diamond_right:proc(p:DiamondPayload)->i32 = {{
 }}
 '''.strip() + "\n", encoding="utf-8", newline="\n")
     diamond_app_i.write_text(f'''
-printf: proc[external](fmt: [*]const char, ...)->i32 = {{}}
+printf: proc[external](fmt: ^const char, ...)->i32 = {{}}
 cinclude "stdio.h"
 import "{diamond_left_i.as_posix()}"
 import "{diamond_right_i.as_posix()}"
@@ -6297,7 +6447,7 @@ main:proc()->i32 = {{
     diamond_rev_app_c = TEST_DIR / "diamond_rev_app.c"
     diamond_rev_app_exe = TEST_DIR / "diamond_rev_app.exe"
     diamond_rev_app_i.write_text(f'''
-printf: proc[external](fmt: [*]const char, ...)->i32 = {{}}
+printf: proc[external](fmt: ^const char, ...)->i32 = {{}}
 cinclude "stdio.h"
 import "{diamond_right_i.as_posix()}"
 import "{diamond_left_i.as_posix()}"
@@ -6465,7 +6615,7 @@ main:proc()->i32 = {
         print("single_file: generated header or core.h not inlined exactly once")
         return 1
     win32 = single_lines.index("#ifdef _WIN32")
-    windows_h = single_lines.index("#include <windows.h>")
+    windows_h = single_lines.index("__declspec(dllimport) void __stdcall DebugBreak(void);")
     posix = single_lines.index("#include <sys/mman.h>")
     if not win32 < windows_h < posix:
         print("single_file: platform includes moved out of their #ifdef")
@@ -7277,7 +7427,7 @@ Payload:struct = {
     value:i32;
 }
 
-sum:proc<T>(items:[*]T, count:u64)->T = {
+sum:proc<T>(items:^T, count:u64)->T = {
     result:T = {};
     for (i:u64 = 0; i < count; i += 1) {
         result = add<T>(result, items[i]);
@@ -7828,9 +7978,9 @@ main:proc()->i32 = {
     type_binary_pointer_i.write_text(r'''
 main:proc()->i32 = {
     values:[4]i32 = {};
-    p:[*]i32 = values;
-    q:[*]i32 = p + 2;
-    r:[*]i32 = values + 1;
+    p:^i32 = values;
+    q:^i32 = p + 2;
+    r:^i32 = values + 1;
     delta:long = q - p;
     delta2:long = r - values;
     return cast(delta + delta2, i32);
@@ -7849,8 +7999,8 @@ main:proc()->i32 = {
 main:proc()->i32 = {
     ints:[2]i32 = {};
     floats:[2]f32 = {};
-    p:[*]i32 = ints;
-    q:[*]f32 = floats;
+    p:^i32 = ints;
+    q:^f32 = floats;
     delta:long = p - q;
     return cast(delta, i32);
 }
@@ -7858,7 +8008,7 @@ main:proc()->i32 = {
     type_binary_pointer_mismatch = run([str(RIN_EXE), str(type_binary_pointer_mismatch_i), str(type_binary_pointer_mismatch_c)])
     if (
         type_binary_pointer_mismatch.returncode == 0
-        or "type error: operator '-' cannot be applied to 'ptr_i32' and 'ptr_f32'" not in type_binary_pointer_mismatch.stdout
+        or "type error: operator '-' cannot be applied to 'raw_i32' and 'raw_f32'" not in type_binary_pointer_mismatch.stdout
         or "    delta:long = p - q;" not in type_binary_pointer_mismatch.stdout
         or "^" not in type_binary_pointer_mismatch.stdout
     ):
@@ -7872,8 +8022,8 @@ main:proc()->i32 = {
     type_binary_pointer_const_i.write_text(r'''
 main:proc()->i32 = {
     values:[2]i32 = {};
-    p:[*]const i32 = values;
-    q:[*]i32 = values;
+    p:^const i32 = values;
+    q:^i32 = values;
     delta:long = p - q;
     return cast(delta, i32);
 }
@@ -7908,15 +8058,15 @@ main:proc()->i32 = {
 main:proc()->i32 = {
     ints:[2]i32 = {};
     floats:[2]f32 = {};
-    p:[*]i32 = ints;
-    q:[*]f32 = floats;
+    p:^i32 = ints;
+    q:^f32 = floats;
     return p < q;
 }
 '''.strip() + "\n", encoding="utf-8", newline="\n")
     type_binary_pointer_compare_mismatch = run([str(RIN_EXE), str(type_binary_pointer_compare_mismatch_i), str(type_binary_pointer_compare_mismatch_c)])
     if (
         type_binary_pointer_compare_mismatch.returncode == 0
-        or "type error: operator '<' cannot be applied to 'ptr_i32' and 'ptr_f32'" not in type_binary_pointer_compare_mismatch.stdout
+        or "type error: operator '<' cannot be applied to 'raw_i32' and 'raw_f32'" not in type_binary_pointer_compare_mismatch.stdout
         or "    return p < q;" not in type_binary_pointer_compare_mismatch.stdout
         or "^" not in type_binary_pointer_compare_mismatch.stdout
     ):
@@ -8076,7 +8226,7 @@ main:proc()->i32 = {
     type_compound_pointer_int_i.write_text(r'''
 main:proc()->i32 = {
     values:[4]i32 = {};
-    p:[*]i32 = values;
+    p:^i32 = values;
     p += 1;
     p -= 1;
     return p[0];
@@ -8094,7 +8244,7 @@ main:proc()->i32 = {
     type_compound_pointer_float_i.write_text(r'''
 main:proc()->i32 = {
     values:[4]i32 = {};
-    p:[*]i32 = values;
+    p:^i32 = values;
     p += 1.0;
     return p[0];
 }
@@ -8102,7 +8252,7 @@ main:proc()->i32 = {
     type_compound_pointer_float = run([str(RIN_EXE), str(type_compound_pointer_float_i), str(type_compound_pointer_float_c)])
     if (
         type_compound_pointer_float.returncode == 0
-        or "type error: operator '+=' cannot be applied to 'ptr_i32' and 'f64'" not in type_compound_pointer_float.stdout
+        or "type error: operator '+=' cannot be applied to 'raw_i32' and 'f64'" not in type_compound_pointer_float.stdout
         or "    p += 1.0;" not in type_compound_pointer_float.stdout
         or "^" not in type_compound_pointer_float.stdout
     ):
@@ -10176,30 +10326,30 @@ int IB_log(const char *fmt, ...);
             '#define IB_ANON_READY 7',
             "IB_Mode: enum[external] = {",
             "    IB_MODE_READY = 1,",
-            "IB_Callback: alias = *proc(x:i32, label:[*]const char)->i32;",
-            "IB_DataCallback: alias = *proc(ctx:*void, data:*const void)->void;",
+            "IB_Callback: alias = *proc(x:i32, label:^const char)->i32;",
+            "IB_DataCallback: alias = *proc(ctx:^void, data:^const void)->void;",
             "IB_VarCallback: alias = *proc(code:i32, ...)->i32;",
             "IB_StdCallback: alias = *proc[callconv(__stdcall)](value:i32)->i32;",
             "IB_WChar: alias = u16;",
-            "IB_LPCWSTR: alias = [*]const IB_WChar;",
+            "IB_LPCWSTR: alias = ^const IB_WChar;",
             "IB_Vec3: alias = [3]f32;",
             "IB_Mat3: alias = [3]IB_Vec3;",
             "IB_Mat4: alias = [4][4]f32;",
             "IB_Opaque: struct[external] = {}",
             "IB_Private: struct[external] = {}",
             "IB_FieldOpaque: struct[external] = {}",
-            "IB_Handle: alias = *IB_Private;",
-            "IB_ConstHandle: alias = *const IB_Private;",
+            "IB_Handle: alias = ^IB_Private;",
+            "IB_ConstHandle: alias = ^const IB_Private;",
             "IB_Payload: struct[external] = {",
             "    value:i32;",
             "    weights:[4]f32;",
             "    cb:IB_Callback;",
             "    data_cb:IB_DataCallback;",
             "    var_cb:IB_VarCallback;",
-            "    raw_cb:*proc(count:i32, label:[*]const char)->i32;",
+            "    raw_cb:*proc(count:i32, label:^const char)->i32;",
             "    title:IB_LPCWSTR;",
             "    handle:IB_Handle;",
-            "    field_opaque:*IB_FieldOpaque;",
+            "    field_opaque:^IB_FieldOpaque;",
             "IB_Defined: struct[external] = {",
             "    value:i32;",
             "IB_Bits: struct[external] = {",
@@ -10231,14 +10381,14 @@ int IB_log(const char *fmt, ...);
             "IB_Flex: struct[external] = {",
             "    count:u32;",
             "    // rinbind: incomplete_array bytes",
-            "    bytes:[*]char;",
-            "IB_do: proc[external_emit](cb: IB_Callback, payload: [*]IB_Payload)->i32 = {}",
-            "IB_copy: proc[external_emit](dst: *void, src: *const void, count: u32)->*void = {}",
-            "IB_use_handle: proc[external_emit](handle: IB_Handle, opaque: *const IB_Opaque, defined: [*]IB_Defined)->i32 = {}",
+            "    bytes:^char;",
+            "IB_do: proc[external_emit](cb: IB_Callback, payload: ^IB_Payload)->i32 = {}",
+            "IB_copy: proc[external_emit](dst: ^void, src: ^const void, count: u32)->^void = {}",
+            "IB_use_handle: proc[external_emit](handle: IB_Handle, opaque: ^const IB_Opaque, defined: ^IB_Defined)->i32 = {}",
             "IB_call: proc[external_emit, callconv(__stdcall)](cb: IB_StdCallback, value: i32)->i32 = {}",
-            "IB_wide: proc[external_emit](title: IB_LPCWSTR, out_title: [*]IB_WChar)->i32 = {}",
+            "IB_wide: proc[external_emit](title: IB_LPCWSTR, out_title: ^IB_WChar)->i32 = {}",
             "IB_use_vec: proc[external_emit](v: IB_Vec3, m: IB_Mat3, mm: IB_Mat4)->i32 = {}",
-            "IB_log: proc[external_emit](fmt: [*]const char, ...)->i32 = {}",
+            "IB_log: proc[external_emit](fmt: ^const char, ...)->i32 = {}",
         ):
             if needle not in rinbind_text:
                 print(f"rinbind_bindgen: generated binding missing {needle!r}")
@@ -10312,7 +10462,7 @@ int IB_array_use(IB_ArrayVec3 v, IB_ArrayMat3 m, IB_ArrayMat4 mm, IB_ArrayVec3s 
         rinbind_array_alias_use_c = TEST_DIR / "rinbind_array_alias_use.c"
         rinbind_array_alias_use_exe = TEST_DIR / "rinbind_array_alias_use.exe"
         rinbind_array_alias_source = r'''
-printf: proc[external](fmt: [*]const char, ...)->i32 = {}
+printf: proc[external](fmt: ^const char, ...)->i32 = {}
 cinclude "stdio.h"
 cinclude "rinbind_array_alias.h"
 import "{IBIND_OUT}"
@@ -10391,7 +10541,7 @@ typedef struct IB_FilterPayload {
             print(rinbind_filter.stdout)
             return rinbind_filter.returncode
         rinbind_filter_text = rinbind_filter_out.read_text(encoding="utf-8")
-        if "IB_FilterPayload: struct[external] = {" not in rinbind_filter_text or "noise:[*]IB_FilterNoise;" not in rinbind_filter_text:
+        if "IB_FilterPayload: struct[external] = {" not in rinbind_filter_text or "noise:^IB_FilterNoise;" not in rinbind_filter_text:
             print("rinbind_bindgen_filter: expected selected header declaration and dependency type reference")
             print(rinbind_filter_text)
             return 1
@@ -10509,7 +10659,7 @@ main:proc()->i32 = {
             ("arr[3]",),
         ),
         # `*T` points at one element: only `[0]`, no ranges, no arithmetic, and a
-        # raw `[*]T` turns into one only by naming the element.
+        # raw `^T` turns into one only by naming the element.
         (
             "pointer_rules",
             r'''
@@ -10522,17 +10672,18 @@ main:proc()->i32 = {
     b:i32 = p[i].value;
     q:*Node = p + 1;
     s:[]Node = p[0..2];
-    raw:[*]Node = nodes;
+    raw:^Node = nodes;
     one:*Node = raw;
     ok:*Node = raw[2]&;
     fine:i32 = p[0].value + raw[3].value + ok[0].value;
-    moved:[*]Node = raw + 1;
+    moved:^Node = raw + 1;
     return fine;
 }
 ''',
-            ("pointer_rules.rin:5:14: type error: indexing a pointer past [0]", "pointer_rules.rin:7:14: type error: indexing a pointer past [0]",
+            ("pointer_rules.rin:5:14: type error: indexing a pointer past [0]",
+             "pointer_rules.rin:7:14: type error: a '*T' points at one element and takes no index but a literal [0] -- read it with 'p*'",
              "pointer arithmetic; '*T' points at one element", "a range of a pointer",
-             "a raw '[*]T' becomes a '*T' only by naming the element, as q[0]&",
+             "a '^T' becomes a '*T' only by naming the element, as q[0]&",
              "note: the pointer type is written here"),
             ("pointer_rules.rin:12:", "pointer_rules.rin:13:", "pointer_rules.rin:14:"),
         ),
@@ -11329,7 +11480,7 @@ main:proc()->i32 = {
         'cinclude "stdio.h"\n'
         'import "alpha.rin"\n'
         'import "beta.rin"\n'
-        "printf: proc[external](fmt: [*]const char, ...)->i32 = {}\n"
+        "printf: proc[external](fmt: ^const char, ...)->i32 = {}\n"
         "main: proc()->i32 = {\n"
         "    s: Shared = {}; s.n = 0;\n"
         '    printf("%d\\n", alpha_val() + beta_val() + s.n);\n'
@@ -11504,7 +11655,7 @@ main:proc()->i32 = {
     for first, second in (("Foo", "Bar"), ("T", "U")):
         tp_rin.write_text(
             "cinclude \"stdio.h\"\n"
-            "printf: proc[external](f: [*]const char, ...) -> i32 = {}\n"
+            "printf: proc[external](f: ^const char, ...) -> i32 = {}\n"
             f"Pair: struct<{first}, {second}> = {{ a: {first}; b: {second}; }}\n"
             f"make: proc<{first}, {second}>(a: {first}, b: {second}) -> Pair<{first}, {second}> = {{\n"
             f"    p: Pair<{first}, {second}> = {{}};\n"

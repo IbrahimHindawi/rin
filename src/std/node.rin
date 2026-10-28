@@ -12,18 +12,18 @@ node<T>create: proc<T>(arena: *memops_arena, data: T) -> *node<T> = {
         printf("rin runtime: node allocation failure\n");
         exit(1);
     }
-    node[0].next = null;
-    node[0].data = data;
+    node*.next = null;
+    node*.data = data;
     return node;
 }
 
 node<T>destroy: proc<T>(arena: *memops_arena, node: **node<T>) -> void = {
-    node[0] = null;
+    node* = null;
 }
 
 node<T>value: proc<T>(node: *node<T>) -> option<T> = {
     if (node == null) {
         return option<T>none();
     }
-    return option<T>some(node[0].data);
+    return option<T>some(node*.data);
 }

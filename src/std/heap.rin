@@ -11,7 +11,7 @@ import "order.rin"
        largest: i64 = heap<i64>pop(h&); */
 
 heap: struct<T> = {
-    data: [*]T;
+    data: ^T;
     length: u64;
     border: u64;
     less: *proc(a: T, b: T) -> b32;
@@ -24,67 +24,67 @@ heap<T>make: proc<T>(less: *proc(a: T, b: T) -> b32) -> heap<T> = {
 }
 
 heap<T>push: proc<T>(arena: *memops_arena, h: *heap<T>, x: T) -> void = {
-    if (h[0].length == h[0].border) {
-        old_border: u64 = h[0].border;
-        h[0].border = old_border == 0 ? 16 : old_border * 2;
-        h[0].data = cast(memops_arena_realloc_(arena, sizeof(T) * h[0].border, h[0].data, sizeof(T) * old_border, alignof(T)), [*]T);
-        if (h[0].data == null) {
+    if (h*.length == h*.border) {
+        old_border: u64 = h*.border;
+        h*.border = old_border == 0 ? 16 : old_border * 2;
+        h*.data = cast(memops_arena_realloc_(arena, sizeof(T) * h*.border, h*.data, sizeof(T) * old_border, alignof(T)), ^T);
+        if (h*.data == null) {
             printf("rin runtime: heap allocation failure\n");
             exit(1);
         }
     }
-    i: u64 = h[0].length;
-    h[0].length += 1;
+    i: u64 = h*.length;
+    h*.length += 1;
     while (i > 0) {
         parent: u64 = (i - 1) / 2;
-        if (!h[0].less(x, h[0].data[parent])) {
+        if (!h*.less(x, h*.data[parent])) {
             break;
         }
-        h[0].data[i] = h[0].data[parent];
+        h*.data[i] = h*.data[parent];
         i = parent;
     }
-    h[0].data[i] = x;
+    h*.data[i] = x;
 }
 
 heap<T>top: proc<T>(h: *heap<T>) -> T = {
-    if (h[0].length == 0) {
+    if (h*.length == 0) {
         printf("rin runtime: heap top on an empty heap\n");
         exit(1);
     }
-    return h[0].data[0];
+    return h*.data[0];
 }
 
 heap<T>pop: proc<T>(h: *heap<T>) -> T = {
     top: T = heap<T>top(h);
-    h[0].length -= 1;
-    n: u64 = h[0].length;
+    h*.length -= 1;
+    n: u64 = h*.length;
     if (n == 0) {
         return top;
     }
-    x: T = h[0].data[n];
+    x: T = h*.data[n];
     i: u64 = 0;
     while (1) {
         child: u64 = 2 * i + 1;
         if (child >= n) {
             break;
         }
-        if (child + 1 < n && h[0].less(h[0].data[child + 1], h[0].data[child])) {
+        if (child + 1 < n && h*.less(h*.data[child + 1], h*.data[child])) {
             child += 1;
         }
-        if (!h[0].less(h[0].data[child], x)) {
+        if (!h*.less(h*.data[child], x)) {
             break;
         }
-        h[0].data[i] = h[0].data[child];
+        h*.data[i] = h*.data[child];
         i = child;
     }
-    h[0].data[i] = x;
+    h*.data[i] = x;
     return top;
 }
 
 heap<T>is_empty: proc<T>(h: *heap<T>) -> b32 = {
-    return h[0].length == 0;
+    return h*.length == 0;
 }
 
 heap<T>clear: proc<T>(h: *heap<T>) -> void = {
-    h[0].length = 0;
+    h*.length = 0;
 }

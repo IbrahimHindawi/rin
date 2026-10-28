@@ -12,12 +12,12 @@ TortureHandler: struct = {
 }
 
 torture_bits_visit: proc(bits: *TortureBitsAlias, add: i32) -> i32 = {
-    return bits[0].i + add;
+    return bits*.i + add;
 }
 
 torture_handler_run: proc(handler: *TortureHandler) -> i32 = {
-    visit: TortureVisitor = handler[0].visit;
-    return visit(handler[0].payload&, 3);
+    visit: TortureVisitor = handler*.visit;
+    return visit(handler*.payload&, 3);
 }
 
 main: proc() -> i32 = {

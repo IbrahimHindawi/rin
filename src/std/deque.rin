@@ -7,82 +7,82 @@ import "cstd.rin"
    frontiers and sliding windows. */
 
 deque: struct<T> = {
-    data: [*]T;
+    data: ^T;
     head: u64;
     length: u64;
     border: u64;
 }
 
 deque<T>grow: proc<T>(arena: *memops_arena, d: *deque<T>) -> void = {
-    border: u64 = d[0].border == 0 ? 16 : d[0].border * 2;
-    data: [*]T = cast(memops_arena_push(arena, sizeof(T) * border, alignof(T)), [*]T);
+    border: u64 = d*.border == 0 ? 16 : d*.border * 2;
+    data: ^T = cast(memops_arena_push(arena, sizeof(T) * border, alignof(T)), ^T);
     if (data == null) {
         printf("rin runtime: deque allocation failure\n");
         exit(1);
     }
-    for (i: u64 = 0; i < d[0].length; i += 1) {
-        data[i] = d[0].data[(d[0].head + i) % d[0].border];
+    for (i: u64 = 0; i < d*.length; i += 1) {
+        data[i] = d*.data[(d*.head + i) % d*.border];
     }
-    d[0].data = data;
-    d[0].head = 0;
-    d[0].border = border;
+    d*.data = data;
+    d*.head = 0;
+    d*.border = border;
 }
 
 deque<T>push_back: proc<T>(arena: *memops_arena, d: *deque<T>, x: T) -> void = {
-    if (d[0].length == d[0].border) {
+    if (d*.length == d*.border) {
         deque<T>grow(arena, d);
     }
-    d[0].data[(d[0].head + d[0].length) % d[0].border] = x;
-    d[0].length += 1;
+    d*.data[(d*.head + d*.length) % d*.border] = x;
+    d*.length += 1;
 }
 
 deque<T>push_front: proc<T>(arena: *memops_arena, d: *deque<T>, x: T) -> void = {
-    if (d[0].length == d[0].border) {
+    if (d*.length == d*.border) {
         deque<T>grow(arena, d);
     }
-    d[0].head = (d[0].head + d[0].border - 1) % d[0].border;
-    d[0].data[d[0].head] = x;
-    d[0].length += 1;
+    d*.head = (d*.head + d*.border - 1) % d*.border;
+    d*.data[d*.head] = x;
+    d*.length += 1;
 }
 
 deque<T>at: proc<T>(d: *deque<T>, index: u64) -> *T = {
-    if (index >= d[0].length) {
+    if (index >= d*.length) {
         printf("rin runtime: deque index out of bounds\n");
         exit(1);
     }
-    return d[0].data[(d[0].head + index) % d[0].border]&;
+    return d*.data[(d*.head + index) % d*.border]&;
 }
 
 deque<T>front: proc<T>(d: *deque<T>) -> T = {
-    return deque<T>at(d, 0)[0];
+    return deque<T>at(d, 0)*;
 }
 
 deque<T>back: proc<T>(d: *deque<T>) -> T = {
-    if (d[0].length == 0) {
+    if (d*.length == 0) {
         printf("rin runtime: deque back on an empty deque\n");
         exit(1);
     }
-    return deque<T>at(d, d[0].length - 1)[0];
+    return deque<T>at(d, d*.length - 1)*;
 }
 
 deque<T>pop_front: proc<T>(d: *deque<T>) -> T = {
     x: T = deque<T>front(d);
-    d[0].head = (d[0].head + 1) % d[0].border;
-    d[0].length -= 1;
+    d*.head = (d*.head + 1) % d*.border;
+    d*.length -= 1;
     return x;
 }
 
 deque<T>pop_back: proc<T>(d: *deque<T>) -> T = {
     x: T = deque<T>back(d);
-    d[0].length -= 1;
+    d*.length -= 1;
     return x;
 }
 
 deque<T>is_empty: proc<T>(d: *deque<T>) -> b32 = {
-    return d[0].length == 0;
+    return d*.length == 0;
 }
 
 deque<T>clear: proc<T>(d: *deque<T>) -> void = {
-    d[0].head = 0;
-    d[0].length = 0;
+    d*.head = 0;
+    d*.length = 0;
 }

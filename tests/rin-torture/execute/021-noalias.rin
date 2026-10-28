@@ -1,7 +1,7 @@
 import "std/print.rin"
 
 // `noalias` promises that, for one call, memory reached through the parameter
-// is reached through nothing else. On `*T` and `[*]T` it is C's restrict; a
+// is reached through nothing else. On `*T` and `^T` it is C's restrict; a
 // proc with a noalias slice is emitted as an always-inline helper holding the
 // body plus the public function, so this also proves RIN_RESTRICT and
 // RIN_ALWAYS_INLINE build on every compiler the suite runs.
@@ -25,13 +25,13 @@ sum_into: proc<T>(dst: noalias []T, src: []const T) -> T = {
 }
 
 m2_mul: proc(out: noalias *mat2, a: *const mat2, b: *const mat2) -> void = {
-    out[0].m[0] = a[0].m[0] * b[0].m[0] + a[0].m[1] * b[0].m[2];
-    out[0].m[1] = a[0].m[0] * b[0].m[1] + a[0].m[1] * b[0].m[3];
-    out[0].m[2] = a[0].m[2] * b[0].m[0] + a[0].m[3] * b[0].m[2];
-    out[0].m[3] = a[0].m[2] * b[0].m[1] + a[0].m[3] * b[0].m[3];
+    out*.m[0] = a*.m[0] * b*.m[0] + a*.m[1] * b*.m[2];
+    out*.m[1] = a*.m[0] * b*.m[1] + a*.m[1] * b*.m[3];
+    out*.m[2] = a*.m[2] * b*.m[0] + a*.m[3] * b*.m[2];
+    out*.m[3] = a*.m[2] * b*.m[1] + a*.m[3] * b*.m[3];
 }
 
-copy_raw: proc(dst: noalias [*]u8, src: [*]const u8, n: u64) -> void = {
+copy_raw: proc(dst: noalias ^u8, src: ^const u8, n: u64) -> void = {
     for (i: u64 = 0; i < n; i += 1) { dst[i] = src[i]; }
 }
 

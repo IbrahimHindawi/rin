@@ -65,7 +65,7 @@ greater_c8: proc(a: c8, b: c8) -> b32 = {
 }
 
 swap: proc<T>(a: *T, b: *T) -> void = {
-    t: T = a[0];
-    a[0] = b[0];
-    b[0] = t;
+    t: T = a*;
+    a* = b*;
+    b* = t;
 }

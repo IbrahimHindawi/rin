@@ -25,8 +25,8 @@ Syntax rin and rasm share:
     f: proc[external](...) -> i32 = {}    declared, defined elsewhere
     T: struct[external] = { ... }         a type the C header already defines
     x&                                    postfix address-of
-    p[0]                                  the only index allowed on *T
-    [*]T                                  raw pointer, C's T*
+    p*                                    the value at p (p[0] also allowed on *T)
+    ^T                                    raw pointer, C's T*
     []T                                   slice (pointer + length)
     [N]T                                  array
     // and /* */                          comments
@@ -34,7 +34,7 @@ Syntax rin and rasm share:
     done: label = { ... }                 labels take a block
 
 Pointer spelling: [`docs/pointers-and-slices.md`](../../docs/pointers-and-slices.md) (implemented
-2026-10-21) has `*T` as one element, `[*]T` as the raw pointer and `[]T` as a
+2026-10-21) has `*T` as one element, `^T` as the raw pointer and `[]T` as a
 slice. That stays: the proposal in `c-pointer-spelling.md` to swap to `*T`
 raw and `&T` one element was dropped by the author on 2026-10-24. rasm uses
 `*T` alone for any pointer (spec §2), a deliberate divergence; imported

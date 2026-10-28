@@ -15,7 +15,7 @@ TortureBox: struct<T> = {
 }
 
 TortureBox<T>get: proc<T>(box: *TortureBox<T>) -> TortureMaybe<T> = {
-    return TortureMaybe<T>some(box[0].value);
+    return TortureMaybe<T>some(box*.value);
 }
 
 TorturePayload: struct = {

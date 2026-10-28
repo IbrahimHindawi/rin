@@ -48,7 +48,7 @@ DEFAULT_VCVARS = pathlib.Path(
 # including inside an `if` and a `for`, because a drift usually starts partway
 # down rather than at the first statement.
 FIXTURE = """cinclude "stdio.h"
-printf: proc[external](f: [*]const char, ...) -> i32 = {}
+printf: proc[external](f: ^const char, ...) -> i32 = {}
 
 main: proc() -> i32 = {
     total: i32 = 0;
