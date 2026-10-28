@@ -5282,6 +5282,34 @@ main:proc()->i32 = {
             return 1
     print("ok caret_pointer")
 
+    # docs/agent-guide.md teaches the language to agents, so its examples must
+    # compile: every ```rin block is a complete file and must pass `rin check`,
+    # and the first, a whole program, must run as the guide says.
+    guide = (ROOT / "docs" / "agent-guide.md").read_text(encoding="utf-8")
+    guide_blocks = re.findall(r"^```rin\n(.*?)^```$", guide, flags=re.S | re.M)
+    if len(guide_blocks) < 5:
+        print(f"docs_agent_guide: expected the guide's rin examples, found {len(guide_blocks)}")
+        return 1
+    for index, block in enumerate(guide_blocks):
+        block_rin = TEST_DIR / f"agent_guide_{index}.rin"
+        block_rin.write_text(block, encoding="utf-8", newline="\n")
+        res = run([str(RIN_EXE), "check", str(block_rin)])
+        if res.returncode != 0:
+            print(f"docs_agent_guide: example {index} in docs/agent-guide.md no longer compiles")
+            print(block)
+            print(res.stdout)
+            return 1
+    first_c = TEST_DIR / "agent_guide_0.c"
+    first_exe = TEST_DIR / "agent_guide_0.exe"
+    res = run([str(RIN_EXE), "compile", str(TEST_DIR / "agent_guide_0.rin"), "-o", str(first_c), "--no-header"])
+    build = run(["clang.exe", str(first_c), "-I", "src", "-I", "src/std", "-o", str(first_exe)]) if res.returncode == 0 else res
+    ran = run([str(first_exe)]) if build.returncode == 0 else build
+    if ran.stdout.split("\n")[:2] != ["imp is down", "ogre has 20 hp"]:
+        print("docs_agent_guide: the guide's first program should print 'imp is down' and 'ogre has 20 hp'")
+        print(res.stdout, build.stdout, ran.stdout)
+        return 1
+    print("ok docs_agent_guide")
+
     # --single-file puts core.h in the main file, where clang warns about every
     # unused static inline function. A Debug build of a program with no slices
     # left rin_index_check, rin_range_check and rin_noalias_check uncalled, so
