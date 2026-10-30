@@ -606,21 +606,37 @@ code, since `keys` is a raw pointer. A `vec<[3]u64>` element taken by
 pointer is a C-level compile error, since the emitter has no pointer-to-array
 declarator; the C compiler catches it, so it is a gap, not a hole.
 
-**rin-dod, ported.** The real measure. The four entity lessons of the ECS
-course, 736 lines written for C's model with the world a value on the stack
-and procs taking `*kayan_world`, check in safe mode after two changes:
-`printf("%5.2f", x)` became `printfmt("{:5.2}", x)`, since `printfmt` now
-takes a width and precision and `printf` is C's; and `get_position` returns
-`?*vec2`, because it returns null for a dead handle, so its two callers test
-the result, one of them gaining a three-line branch for a case the original
-assumed away. No region block, no `in R`, no `[trusted]`: the returned
-pointer is a borrow of the world by elision. They print their original
-`.expected` files and run clean under both sanitizers; they are in
-`ecs/safe/1.entities` of rin-dod with a README on the cost. The later parts
-of the course, which build tables and archetypes over `vec`, are the next
-measure and will need `make(r)` and region fields; `list`, `map`, `queue`
-and `stack` got their `make(r)` and arena-free procs in this round so that
-every std container can be owned by a region.
+**rin-dod, ported: all of it.** The real measure. Every program in rin-dod,
+the fifteen ECS chapters, the seven layout lessons with their shared
+library, and the dojo's thirteen blocks with their harnesses, katas, levels
+and playgrounds, exists in the safe subset: 100 programs, 23,039 lines,
+1,444 procs, each printing its original `.expected` byte for byte and
+running clean under both sanitizers, with `tools/check.py` running the two
+versions side by side. 134 procs are `[trusted]`, none `[unsafe]`. Of the
+trusted ones, nearly all are one thing repeated per lesson: the type-erased
+byte column that an archetype table is built on, allocated with a size and
+an alignment and viewed as `[]T`, which is unsafe by nature in any language
+and is the `unsafe` block inside every Rust ECS crate too. The rest are
+reading `argv`, `strcmp`, a struct made of bytes for the reflection
+inspector, and the shared library's allocation core. The four entity lessons
+needed two `?` and a format spec; the table lessons needed `level: region;`,
+a `world_make(r: region level)` and `*vec<T> in level` on the world's
+fields; the systems lessons made the frame arena a `frame: region in level;`
+opened once per frame, so no command can outlive its frame by construction.
+The ported course is in rin-dod's `safe` branch, each `safe` folder with a
+README on what changed.
+
+Porting it found five rules that were right but too blunt, now fixed: a
+`printfmt` in a loop killed the borrows it printed, since it was an unknown
+callee; `exit(1)` did not end a branch for narrowing; a checked reader
+taking `*const world` killed every borrow in its caller, because the struct
+holds pointers a body could push through, which marked twenty library procs
+trusted for saying "I only read" until the moves analysis replaced the rule
+(each checked proc now carries the set of parameters its body reaches a
+moving call with, a fixpoint over the program; a trusted proc's set is its
+signature; raw pointers and value parameters reach nothing); and a proc
+pointer was treated as a pointer into memory, so a struct holding one was a
+carrier and a proc could not be returned as a value.
 
 **Where this leaves it against Rust.** Rust's safe subset has three things
 this does not: a type system that proves every pointer, every container and
@@ -643,5 +659,6 @@ to integer cast out of range, which is undefined in C and only caught in
 Debug; `make(r)` for `hashset` and `dlist`, and an iterator for `hashmap`;
 pointers to array elements in generated C; a mechanical check that a
 `[trusted]` signature is honest, which stays a review, though three attack
-rounds are the next best thing; and the rest of rin-dod, parts 2 and 3 of
-the ECS course and the dojo, which still check only with `--unsafe`.
+rounds are the next best thing; a brace escape in `printfmt`; and a C name
+collision when a struct is called `system`, which the emitter does not
+mangle.

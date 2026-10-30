@@ -15082,7 +15082,11 @@ static u64 moves_roots(MovesCtx *c, Expr *e, i32 depth) {
     if (!e || depth > 12) return 0;
     if (e->kind == Expr_Name) {
         i32 pi = moves_param_index(c->proc, e->name);
-        if (pi >= 0) return 1ull << pi;
+        if (pi >= 0) {
+            /* A value parameter, an id or a count, reaches no storage. */
+            TypeExpr *pt = ((Param *)c->proc->params.data[pi])->type;
+            return type_may_point_anywhere(c->prog, pt) ? (1ull << pi) : 0;
+        }
         for (i32 i = c->local_names.length - 1; i >= 0; i--) {
             if (string8_equals(&c->local_names.data[i], &e->name)) return (u64)(uintptr_t)c->local_roots.data[i];
         }
@@ -15128,10 +15132,8 @@ static void moves_visit_stmt(Stmt *s, void *ctx, memops_arena *arena) {
                 found = true; break;
             }
         }
-        if (!found && r) {
-            Vec_string8_append(arena, &c->local_names, s->lhs->name);
-            ptr_array_append(arena, &c->local_roots, (void *)(uintptr_t)r);
-        }
+        /* A name never declared as a pointer local holds a value: nothing to track. */
+        (void)found;
     }
 }
 
@@ -15165,6 +15167,17 @@ static void compute_proc_moves(Program *prog, memops_arena *arena) {
             for (i32 j = 0; j < p->body.length; j++) stmt_walk((Stmt *)p->body.data[j], moves_visit_expr, null, &c, arena);
             u64 mask = c.found & ~MOVES_ANY;
             if ((p->moves | mask) != p->moves) { p->moves |= mask; changed = true; }
+        }
+    }
+    if (getenv("RIN_DEBUG_MOVES")) {
+        for (i32 i = 0; i < n; i++) {
+            ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+            if (p->moves == 0 || p->is_trusted || p->is_unsafe || p->is_external) continue;
+            printf("moves: %.*s:", (int)p->name.length, p->name.data);
+            for (i32 j = 0; j < p->params.length && j < 63; j++) {
+                if ((p->moves >> j) & 1) printf(" %.*s", (int)((Param *)p->params.data[j])->name.length, ((Param *)p->params.data[j])->name.data);
+            }
+            printf("\n");
         }
     }
 }
