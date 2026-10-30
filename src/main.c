@@ -886,6 +886,7 @@ struct ProcDecl {
        caller's arena from under it, so that is an error; and its address may
        not be taken, since a call through a pointer could not be checked. */
     Vec_string8 opens;
+    u64 moves; // bit i: a call through parameter i may move storage; see compute_proc_moves
     /* `proc<T>` is one entry; `proc<T, U, V>` is three. A non-generic proc has
        none. Structs are still single-parameter, so StructDecl keeps a bare
        string8. */
@@ -15003,6 +15004,155 @@ static void compute_proc_opens(Program *prog, memops_arena *arena) {
     }
 }
 
+/* ---- Which parameters a proc may move storage through.
+
+   A checked body moves nothing by itself: writes to a carrier's fields are
+   errors, and an assignment replaces a pointer without freeing anything. It
+   moves storage only by calling a proc that does, with something reached
+   through one of its parameters. So each checked proc gets a bitmask of the
+   parameters that reach such a call, computed over the whole program as a
+   fixpoint; a trusted proc's mask is its signature, a pointer or slice whose
+   pointee is not const. This is what lets `kayan_alive(w: *const world)` be
+   a checked reader that kills nothing in its caller, while `grow(ww: *const
+   w)` pushing through `ww*.hp` kills what was taken from `ww`. */
+#define MOVES_ANY (1ull << 63)
+
+static bool type_param_shallow_may_move(Program *prog, TypeExpr *pt) {
+    pt = resolve_alias_type(prog, pt);
+    if (!pt) return false;
+    /* A raw pointer cannot carry a borrow: safe code never turns one into
+       the other, so nothing taken from a container arrives through it. */
+    if (pt->kind == Type_Ptr && pt->is_raw) return false;
+    TypeExpr *elem = null;
+    if (pt->kind == Type_Ptr) elem = resolve_alias_type(prog, pt->elem);
+    else if (type_slice_elem(pt)) elem = resolve_alias_type(prog, type_slice_elem(pt));
+    else return false;
+    return !elem || !elem->is_const;
+}
+
+static bool type_may_point_anywhere(Program *prog, TypeExpr *t) {
+    t = resolve_alias_type(prog, t);
+    if (!t) return false;
+    return t->kind == Type_Ptr || type_slice_elem(t) != null || t->kind == Type_Array || t->kind == Type_Proc;
+}
+
+typedef struct MovesCtx {
+    ProcDecl *proc;
+    Program *prog;
+    memops_arena *arena;
+    Vec_string8 local_names; // pointer locals and what they reach
+    Vec_voidptr local_roots; // u64 masks, stored as pointers
+    u64 found;               // the parameters that reach a moving call
+} MovesCtx;
+
+static string8 expr_path(Expr *e, memops_arena *arena);
+static string8 path_root(string8 path);
+static bool call_is_new(Expr *call);
+typedef void (*ExprVisit)(Expr *e, void *ctx, memops_arena *arena);
+typedef void (*StmtVisit)(Stmt *s, void *ctx, memops_arena *arena);
+static void stmt_walk(Stmt *s, ExprVisit fe, StmtVisit fs, void *ctx, memops_arena *arena);
+
+static i32 moves_param_index(ProcDecl *proc, string8 name) {
+    for (i32 i = 0; i < proc->params.length && i < 63; i++) {
+        if (string8_equals(&((Param *)proc->params.data[i])->name, &name)) return i;
+    }
+    return -1;
+}
+
+/* The parameters an expression may reach: through a parameter's name, a
+   local that was filled from one, or the arguments of a call it is made
+   from. A name nobody tracked reaches nothing. */
+static u64 moves_roots(MovesCtx *c, Expr *e, i32 depth) {
+    if (!e || depth > 12) return 0;
+    if (e->kind == Expr_Name) {
+        i32 pi = moves_param_index(c->proc, e->name);
+        if (pi >= 0) return 1ull << pi;
+        for (i32 i = c->local_names.length - 1; i >= 0; i--) {
+            if (string8_equals(&c->local_names.data[i], &e->name)) return (u64)(uintptr_t)c->local_roots.data[i];
+        }
+        return 0;
+    }
+    if (e->kind == Expr_Call) {
+        if (call_is_new(e)) return 0;
+        u64 m = 0;
+        for (i32 i = 0; i < e->args.length; i++) m |= moves_roots(c, (Expr *)e->args.data[i], depth + 1);
+        return m;
+    }
+    if (e->kind == Expr_Ternary) return moves_roots(c, e->right, depth + 1) | moves_roots(c, e->third, depth + 1);
+    if (e->kind == Expr_Field || e->kind == Expr_Index) return moves_roots(c, e->base, depth + 1);
+    if (e->kind == Expr_Addr || e->kind == Expr_Unary || e->kind == Expr_Cast) return moves_roots(c, e->inner, depth + 1);
+    return 0;
+}
+
+static void moves_visit_expr(Expr *e, void *ctx, memops_arena *arena) {
+    MovesCtx *c = (MovesCtx *)ctx;
+    if (!e || e->kind != Expr_Call || call_is_new(e)) return;
+    if (!e->base && call_name_is_builtin(e->name)) return;
+    ProcDecl *decl = e->base ? null : lookup_proc_decl(c->prog, e->name);
+    for (i32 i = 0; i < e->args.length; i++) {
+        Expr *arg = (Expr *)e->args.data[i];
+        /* A call through a pointer, or to a name that is a local: the worst
+           case for every argument. */
+        bool may_move = decl ? (i < decl->params.length && ((decl->moves >> i) & 1)) : true;
+        if (may_move) c->found |= moves_roots(c, arg, 0);
+    }
+}
+
+static void moves_visit_stmt(Stmt *s, void *ctx, memops_arena *arena) {
+    MovesCtx *c = (MovesCtx *)ctx;
+    if (s->kind == Stmt_Var && s->expr && type_may_point_anywhere(c->prog, s->type)) {
+        Vec_string8_append(arena, &c->local_names, s->name);
+        ptr_array_append(arena, &c->local_roots, (void *)(uintptr_t)moves_roots(c, s->expr, 0));
+    } else if (s->kind == Stmt_Assign && s->lhs && s->lhs->kind == Expr_Name && s->expr) {
+        u64 r = moves_roots(c, s->expr, 0);
+        bool found = false;
+        for (i32 i = c->local_names.length - 1; i >= 0; i--) {
+            if (string8_equals(&c->local_names.data[i], &s->lhs->name)) {
+                c->local_roots.data[i] = (void *)(uintptr_t)((u64)(uintptr_t)c->local_roots.data[i] | r);
+                found = true; break;
+            }
+        }
+        if (!found && r) {
+            Vec_string8_append(arena, &c->local_names, s->lhs->name);
+            ptr_array_append(arena, &c->local_roots, (void *)(uintptr_t)r);
+        }
+    }
+}
+
+static void compute_proc_moves(Program *prog, memops_arena *arena) {
+    if (!g_safety) return;
+    i32 n = prog->procs.length;
+    for (i32 i = 0; i < n; i++) {
+        ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+        p->moves = 0;
+        bool trusted = p->is_trusted || p->is_unsafe || p->is_external;
+        if (!trusted) continue;
+        for (i32 j = 0; j < p->params.length && j < 63; j++) {
+            if (type_param_shallow_may_move(prog, ((Param *)p->params.data[j])->type)) p->moves |= 1ull << j;
+        }
+        if (p->is_variadic) p->moves |= MOVES_ANY;
+    }
+    bool changed = true;
+    for (i32 round = 0; changed && round < 64; round++) {
+        changed = false;
+        for (i32 i = 0; i < n; i++) {
+            ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+            if (p->is_trusted || p->is_unsafe || p->is_external) continue;
+            MovesCtx c = { .proc = p, .prog = prog, .arena = arena };
+            c.local_names = Vec_string8_reserve(arena, 8);
+            c.local_roots = ptr_array_reserve(arena, 8);
+            /* Locals first, in order, so a call sees what its arguments reach;
+               two passes, since a local may be assigned after a use. */
+            for (i32 pass = 0; pass < 2; pass++) {
+                for (i32 j = 0; j < p->body.length; j++) stmt_walk((Stmt *)p->body.data[j], null, moves_visit_stmt, &c, arena);
+            }
+            for (i32 j = 0; j < p->body.length; j++) stmt_walk((Stmt *)p->body.data[j], moves_visit_expr, null, &c, arena);
+            u64 mask = c.found & ~MOVES_ANY;
+            if ((p->moves | mask) != p->moves) { p->moves |= mask; changed = true; }
+        }
+    }
+}
+
 /* ---- Borrowed pointers taken from containers. See docs/regions.md.
 
    A borrowed `*T` or `[]T` local taken from a container -- `vec<T>at(w*.hp, i)`,
@@ -15242,6 +15392,7 @@ static bool type_has_pointer_deep(Program *prog, TypeExpr *type, memops_arena *a
 static bool param_type_may_move(Program *prog, TypeExpr *pt, bool trusted, memops_arena *arena) {
     pt = resolve_alias_type(prog, pt);
     if (!pt) return false;
+    if (pt->kind == Type_Ptr && pt->is_raw) return false; // see type_param_shallow_may_move
     TypeExpr *elem = null;
     if (pt->kind == Type_Ptr) elem = resolve_alias_type(prog, pt->elem);
     else if (type_slice_elem(pt)) elem = resolve_alias_type(prog, type_slice_elem(pt));
@@ -15251,14 +15402,28 @@ static bool param_type_may_move(Program *prog, TypeExpr *pt, bool trusted, memop
     return type_has_pointer_deep(prog, elem, arena, 0);
 }
 
+/* The callee is known: a checked proc moves only through the parameters its
+   body reaches a moving call with (compute_proc_moves); a trusted one
+   through every non-const pointer in its signature. */
+static bool decl_param_may_move(Program *prog, ProcDecl *decl, i32 i, memops_arena *arena) {
+    if (!decl || i >= decl->params.length) return false;
+    bool trusted = decl->is_trusted || decl->is_unsafe || decl->is_external;
+    TypeExpr *pt = ((Param *)decl->params.data[i])->type;
+    if (trusted) return param_type_may_move(prog, pt, true, arena);
+    if (i >= 63) return param_type_may_move(prog, pt, false, arena);
+    return ((decl->moves >> i) & 1) != 0;
+}
+
 /* After a call: the arguments passed where the callee may move things kill the
    borrows taken from those places; and a borrow passed in the same call as
    the place it was taken from may be stale before the callee reads it. */
-static void borrows_after_call(Expr *call, Vec_voidptr *param_types, bool trusted, TypeScope *scope, Program *prog, memops_arena *arena) {
+static void borrows_after_call(Expr *call, Vec_voidptr *param_types, ProcDecl *decl, TypeScope *scope, Program *prog, memops_arena *arena) {
     if (!g_safe_body) return;
     Vec_string8 killed = Vec_string8_reserve(arena, 4);
     for (i32 i = 0; i < call->args.length && i < param_types->length; i++) {
-        if (!param_type_may_move(prog, (TypeExpr *)param_types->data[i], trusted, arena)) continue;
+        bool may_move = decl ? decl_param_may_move(prog, decl, i, arena)
+                             : param_type_may_move(prog, (TypeExpr *)param_types->data[i], false, arena);
+        if (!may_move) continue;
         string8 p = expr_path((Expr *)call->args.data[i], arena);
         if (p.length > 0) Vec_string8_append(arena, &killed, p);
     }
@@ -15319,10 +15484,7 @@ static void borrows_prescan_expr(Expr *e, Program *prog, Vec_string8 *out, memop
         bool read_only_builtin = !e->base && call_name_is_builtin(e->name);
         for (i32 i = 0; i < e->args.length && !read_only_builtin; i++) {
             bool may_move = true; // a call through a pointer: assume the worst
-            if (decl) {
-                bool trusted = decl->is_trusted || decl->is_unsafe || decl->is_external;
-                may_move = i < decl->params.length && param_type_may_move(prog, ((Param *)decl->params.data[i])->type, trusted, arena);
-            }
+            if (decl) may_move = decl_param_may_move(prog, decl, i, arena);
             if (!may_move) continue;
             string8 p = expr_path((Expr *)e->args.data[i], arena);
             if (p.length > 0 && !array_string8_contains(out, p)) Vec_string8_append(arena, out, p);
@@ -15395,9 +15557,6 @@ static void borrows_join(BorrowState *base, BorrowState *a, BorrowState *b) {
 
 /* Walk a statement tree, calling fe on every expression and fs on every
    statement; for the prescans that look ahead of a loop or a proc body. */
-typedef void (*ExprVisit)(Expr *e, void *ctx, memops_arena *arena);
-typedef void (*StmtVisit)(Stmt *s, void *ctx, memops_arena *arena);
-
 static void expr_walk(Expr *e, ExprVisit fe, void *ctx, memops_arena *arena) {
     if (!e) return;
     fe(e, ctx, arena);
@@ -15642,7 +15801,7 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
                 type_check_expr((Expr *)call->args.data[i], scope, prog, arena);
             }
         }
-        borrows_after_call(call, &proc_type->args, false, scope, prog, arena);
+        borrows_after_call(call, &proc_type->args, null, scope, prog, arena);
         return;
     }
 
@@ -15740,7 +15899,7 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
                 type_check_expr((Expr *)call->args.data[i], scope, prog, arena);
             }
         }
-        borrows_after_call(call, &proc_type->args, false, scope, prog, arena);
+        borrows_after_call(call, &proc_type->args, null, scope, prog, arena);
         return;
     }
     if (g_safety) {
@@ -15864,7 +16023,7 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
     {
         Vec_voidptr param_types = ptr_array_reserve(arena, decl->params.length + 1);
         for (i32 i = 0; i < decl->params.length; i++) ptr_array_append(arena, &param_types, ((Param *)decl->params.data[i])->type);
-        borrows_after_call(call, &param_types, decl->is_trusted || decl->is_unsafe || decl->is_external, scope, prog, arena);
+        borrows_after_call(call, &param_types, decl, scope, prog, arena);
     }
 }
 
@@ -16889,6 +17048,7 @@ static void type_check_program(Program *prog, memops_arena *arena) {
     type_scope_add_function_like_macros(arena, &globals, prog);
     g_safe_body = g_safety;
     compute_proc_opens(prog, arena);
+    compute_proc_moves(prog, arena);
     {
         /* `permanent`, the region that is open for the whole program. */
         TypeExpr *perm = type_new(arena, Type_Region);
