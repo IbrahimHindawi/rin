@@ -1,0 +1,27 @@
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/file.rin"
+
+/* A char array goes to C through cstr_of, and a raw local may be used while what
+   it came from stands. */
+open_named: proc(name: []const c8) -> file = {
+    return file_open(cstr_of(name), "rb");
+}
+main: proc() -> i32 = {
+    buf: [8]c8 = {};
+    _ = cstr_copy(buf, "abc");
+    p: ^const c8 = cstr_of(buf);
+    print_cstr(p);
+    printfmt(" {}\n", cstr_length(p));
+    f: file = open_named(buf);
+    printfmt("{}\n", file_is_open(f));
+    s: str = "kept";
+    q: ^const c8 = s;
+    print_cstr(q);
+    conv();
+    printfmt("\n");
+    return 0;
+}
+conv: proc() -> void = {
+    printfmt("{:.3g} {:x} {:.2e}\n", 1.5, 255, 1000.0);
+}

@@ -15476,8 +15476,11 @@ static void borrow_paths_from_expr(Expr *init, TypeScope *scope, Program *prog, 
             if (!(type_mentions_pointer(prog, at, 0) || at->kind == Type_Array)) continue;
             /* Safe code never makes a raw pointer from a checked one, so what
                came back did not come from anything taken through this one:
-               `f = fopen(path, "rb")` is no borrow of `path`. */
-            if (at->kind == Type_Ptr && at->is_raw) continue;
+               `f = fopen(path, "rb")` is no borrow of `path`. Unless this one is
+               itself a local known to have come from a call with a source. */
+            if (at->kind == Type_Ptr && at->is_raw &&
+                !(arg->kind == Expr_Name && borrow_find(arg->name) && borrow_find(arg->name)->paths.length +
+                                                                     borrow_find(arg->name)->regions.length > 0)) continue;
             borrow_paths_from_expr(arg, scope, prog, arena, out, out_regions);
         }
         return;
@@ -15496,6 +15499,14 @@ static void borrow_paths_from_expr(Expr *init, TypeScope *scope, Program *prog, 
         }
     }
     borrow_expand_path(path, arena, out);
+}
+
+/* A raw local that came from a trusted proc may point into what the proc was
+   given, a buffer or a region: `p = fmt_text(f)`. It cannot be read through here,
+   but it can be handed on, so it is a borrow like any other. A `str` lasts. */
+static bool type_is_tracked_raw(Program *prog, TypeExpr *type) {
+    type = resolve_alias_type(prog, type);
+    return type && type->kind == Type_Ptr && type->is_raw && !type->is_str;
 }
 
 static void borrow_register(string8 name, Expr *init, TypeScope *scope, Program *prog, memops_arena *arena) {
@@ -16877,7 +16888,7 @@ static void type_check_stmt(
         type_scope_add(arena, scope, s->name, local_type);
         Vec_string8_append(arena, &g_decl_names, s->name);
         ptr_array_append(arena, &g_decl_types, local_type);
-        if (g_safe_body && s->expr && type_is_checked_pointer(prog, local_type)) {
+        if (g_safe_body && s->expr && (type_is_checked_pointer(prog, local_type) || type_is_tracked_raw(prog, local_type))) {
             borrow_register(s->name, s->expr, scope, prog, arena);
         }
         if (g_safe_body) {
@@ -16901,7 +16912,8 @@ static void type_check_stmt(
             type_error_assignment_target(s->lhs);
         }
         type_check_expr(s->expr, scope, prog, arena);
-        if (g_safe_body && s->lhs && s->lhs->kind == Expr_Name && borrow_find(s->lhs->name) && s->assign_op == Token_Equal) {
+        if (g_safe_body && s->lhs && s->lhs->kind == Expr_Name && s->assign_op == Token_Equal &&
+            (borrow_find(s->lhs->name) || type_is_tracked_raw(prog, type_scope_lookup(scope, s->lhs->name)))) {
             /* Taken again: alive, from the new places. */
             borrow_retake(s->lhs->name, s->expr, scope, prog, arena);
         }
@@ -17649,6 +17661,8 @@ static u64 printfmt_placeholder_at(string8 lit, u64 i, string8 *spec) {
         j++;
         while (j < lit.length - 1 && lit.data[j] >= '0' && lit.data[j] <= '9') j++;
     }
+    /* `{:.6g}`, `{:x}`: a conversion, kept to one the argument's type can take. */
+    if (j < lit.length - 1 && (lit.data[j] == 'g' || lit.data[j] == 'e' || lit.data[j] == 'x' || lit.data[j] == 'X')) j++;
     if (j >= lit.length - 1 || lit.data[j] != '}' || j == i + 2) return 0;
     if (spec) *spec = (string8){ .data = lit.data + i + 2, .length = j - (i + 2) };
     return j - i + 1;
@@ -17757,6 +17771,25 @@ static const char *printfmt_spec_for_type(Program *prog, TypeExpr *type) {
 
 static bool printfmt_spec_is_cstr(const char *spec) {
     return spec && spec[0] == '%' && spec[1] == 's' && spec[2] == 0;
+}
+
+/* `%`, the width, and the conversion the type gave, or the one written if the
+   type can take it: g or e for a float, x for 32 bits or fewer. */
+static void printfmt_append_conversion(memops_arena *arena, string8 *out, string8 width, const char *spec) {
+    u8 last = width.length > 0 ? width.data[width.length - 1] : 0;
+    bool written = last == 'g' || last == 'e' || last == 'x' || last == 'X';
+    bool is_float = spec[1] == 'f';
+    bool is_small_int = spec[1] == 'd' || spec[1] == 'u';
+    string8_append_byte(arena, out, '%');
+    if (written) width.length--;
+    string8_append_bytes(arena, out, width.data, width.length);
+    if (written && (last == 'g' || last == 'e') && is_float) {
+        string8_append_byte(arena, out, last);
+    } else if (written && (last == 'x' || last == 'X') && is_small_int) {
+        string8_append_byte(arena, out, last);
+    } else {
+        string8_append_cstr(arena, out, spec + 1);
+    }
 }
 
 /* A `%` in the author's text is literal, so it has to be doubled on the way into
@@ -17908,9 +17941,7 @@ static bool printfmt_try_single_call(
             TypeExpr *type = infer_expr_type(arg, scope, prog, arena);
             const char *spec = printfmt_spec_for_type(prog, type);
             /* The width goes right after the '%', before the conversion. */
-            string8_append_byte(arena, &built, '%');
-            string8_append_bytes(arena, &built, width.data, width.length);
-            string8_append_cstr(arena, &built, spec + 1);
+            printfmt_append_conversion(arena, &built, width, spec);
 
             /* print_cstr prints "(null)" for a null pointer; printf with %s would
                be undefined. The guard keeps the behaviour without costing a call. */
@@ -18056,9 +18087,8 @@ static void rewrite_printfmt_call_stmt_inner(Stmt *stmt, TypeScope *scope, Progr
             if (spec) {
                 /* This one argument as its own printf, with the width. */
                 string8 built = string8_reserve(arena, 16 + width.length);
-                string8_append_cstr(arena, &built, "\"%");
-                string8_append_bytes(arena, &built, width.data, width.length);
-                string8_append_cstr(arena, &built, spec + 1);
+                string8_append_byte(arena, &built, '"');
+                printfmt_append_conversion(arena, &built, width, spec);
                 string8_append_byte(arena, &built, '"');
                 Expr *printf_call = printfmt_call_expr(arena, "printf", arg->line, arg->col);
                 Expr *fmt_arg = expr_new(arena, Expr_String);
@@ -18207,6 +18237,11 @@ static bool emit_region_name(memops_arena *arena, string8 *out, string8 name) {
             target = g_region_alias_targets.data[i];
             break;
         }
+    }
+    /* `permanent` has no block to open it, so its first use does. */
+    if (string8_equals_cstr(&target, "permanent")) {
+        emit_cstr(arena, out, "rin_region_open(&rin_region_permanent)");
+        return true;
     }
     emit_cstr(arena, out, "(&rin_region_");
     emit_string8(arena, out, target);
@@ -19074,7 +19109,17 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
             emit_cstr(arena, out, "));\n");
             return;
         }
-        /* `xs = {}`: C does not assign arrays, so the literal is copied in. */
+        /* `x = {}` zeroes in place: a copy of a literal would go through the
+           stack, and some of these are megabytes. */
+        if (s->lhs && s->expr && s->expr->kind == Expr_ZeroInit && s->assign_op == Token_Equal) {
+            emit_cstr(arena, out, "memset(&(");
+            emit_expr(arena, out, s->lhs, sub, generic_name);
+            emit_cstr(arena, out, "), 0, sizeof(");
+            emit_expr(arena, out, s->lhs, sub, generic_name);
+            emit_cstr(arena, out, "));\n");
+            return;
+        }
+        /* `xs = { 1, 2 }`: C does not assign arrays, so the literal is copied in. */
         if (s->lhs && s->expr && (s->expr->kind == Expr_ZeroInit || s->expr->kind == Expr_InitList) &&
             s->expr->cast_type && s->expr->cast_type->kind == Type_Array) {
             emit_cstr(arena, out, "memcpy(&(");

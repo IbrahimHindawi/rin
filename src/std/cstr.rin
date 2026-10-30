@@ -27,6 +27,19 @@ cstr_length: proc[trusted](s: ^const c8) -> u64 = {
     return n;
 }
 
+/* A char array as a C string, for safe code to hand to C. The terminator is
+   looked for inside the array, so the callee cannot read past it; no terminator
+   is a checked stop, as an index out of bounds is. The result is a borrow of
+   the array. */
+cstr_of: proc[trusted](chars: []const c8) -> ^const c8 = {
+    for (i: u64 = 0; i < chars.length; i += 1) {
+        if (chars[i] == 0) { return chars.data; }
+    }
+    printf("rin runtime: a C string with no terminator in its %llu chars\n", cast(chars.length, u64));
+    exit(1);
+    return null;
+}
+
 cstr_is_empty: proc[trusted](s: ^const c8) -> b32 = {
     return s == null || s[0] == 0;
 }

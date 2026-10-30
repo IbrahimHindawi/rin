@@ -1,0 +1,18 @@
+// expect: may be stale
+import "std/print.rin"
+import "std/fmt.rin"
+level: region;
+frame: region in level;
+same: proc[trusted](s: ^const c8) -> ^const c8 = { return s; }
+main: proc() -> i32 = {
+    level: region = {
+        p: ^const c8 = "start";
+        frame: region = {
+            f: *fmt in frame = fmt_make(frame, 16);
+            q: ^const c8 = fmt_text(f);
+            p = same(q);
+        }
+        print_cstr(p);
+    }
+    return 0;
+}

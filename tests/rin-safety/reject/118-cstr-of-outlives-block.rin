@@ -1,0 +1,12 @@
+// expect: may be stale
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    p: ^const c8 = "start";
+    if (1) {
+        buf: [8]c8 = {};
+        p = cstr_of(buf);
+    }
+    print_cstr(p);
+    return 0;
+}
