@@ -1,0 +1,7 @@
+// expect: does not become a raw
+import "std/print.rin"
+main: proc() -> i32 = {
+    x: [3]c8 = { 97, 98, 99 };
+    print_cstr(x[0]&);
+    printfmt("\n{}\n", x[0]&);
+    return 0; }

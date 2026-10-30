@@ -1,0 +1,10 @@
+// expect: a slice
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [3]i32 = { 1, 2, 3 };
+    b: [3000000]i32 = {};
+    xs: []i32 = a[0..3];
+    ys: []i32 = b[0..3000000];
+    ys.data = xs.data;
+    printfmt("{}\n", ys[2000000]);
+    return 0; }

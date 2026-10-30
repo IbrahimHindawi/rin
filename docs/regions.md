@@ -366,10 +366,10 @@ regions, and declines the rest rather than fighting them.
 The `regions` branch builds all of the above except dynamic regions and the
 debug guard pages, and adds a few things the design left open. Everything
 here is tested by `tests/run_rin_safety.py`: seven programs that must check,
-compile and print their `.expected`, and fifty-nine that must be rejected
-with the message in their first line. The same fifty-nine check clean with
-`--unsafe`, except the two about the shape of a region block, which hold
-either way. The seven programs also run clean under AddressSanitizer and
+compile and print their `.expected`, and sixty-eight that must be rejected
+with the message in their first line. The same sixty-eight check clean with
+`--unsafe`, except the five about the shape of a region block and its
+syntax, which hold either way. The seven programs also run clean under AddressSanitizer and
 UndefinedBehaviorSanitizer with the same output.
 
 **Safe by default, `--unsafe` to turn it off.** Every proc body is checked
@@ -575,6 +575,37 @@ proc's `*const T` is a promise, so it still kills nothing; a checked proc's
 is shallow, so it kills when T holds a pointer anywhere inside. Ten correct
 programs written to provoke false positives all passed.
 
+**The third attack: std itself.** The checker trusts 314 signatures, so
+seventy-three programs called the trusted procs from safe code with the
+worst arguments their signatures allow. The bodies held: every bad index,
+empty pop, zero capacity, huge allocation and misaligned type ended in a
+`rin runtime:` message or a correct result. Fourteen programs got through,
+and every one was a signature that lied, in five shapes, now reject tests
+072 to 077:
+
+  * `node.next`, `list.head`, `queue.head` and `.tail`, `stack.head` and
+    dlist's links were `*node<T>` and null at the tail or when empty; safe
+    code read them as borrows and dereferenced. They are `?*node<T>` now,
+    and the checker demands the test.
+  * A slice's `length` and `data` were plain fields, so `xs.length =
+    100000000` forged the bounds check. They are read-only in a safe body,
+    like a carrier's.
+  * A `*T` converted to `^void`, and `*c8` to `^const char`, so a trusted
+    proc taking a raw pointer took the address of anything: a `memmove` at
+    an offset into an `i32`, `print_cstr` reading a `[3]c8` past its end. A
+    checked pointer no longer becomes a raw one in safe code at all: raw
+    pointers there come from literals or trusted procs.
+  * `reflect_field_at`, `reflect_value_at`, `reflect_field_info` and
+    `reflect_find_field_info` returned `*const` and null out of range. They
+    return `?*const` now, like the `find` procs before them.
+
+Still trusted-only after this pass, and said so rather than fixed: `hashset`
+and `dlist` have no `make(r)`; `string8`, `string8slice` and the builder are
+carriers with no region constructor; a hashmap cannot be iterated from safe
+code, since `keys` is a raw pointer. A `vec<[3]u64>` element taken by
+pointer is a C-level compile error, since the emitter has no pointer-to-array
+declarator; the C compiler catches it, so it is a gap, not a hole.
+
 **rin-dod, ported.** The real measure. The four entity lessons of the ECS
 course, 736 lines written for C's model with the world a value on the stack
 and procs taking `*kayan_world`, check in safe mode after two changes:
@@ -609,6 +640,8 @@ code with `^const char` literals; `+%` and the other explicitly wrapping
 operators, which are not needed now that wrapping is the default;
 `INT_MIN / -1`, which traps on x86 and wraps on ARM in release, and a float
 to integer cast out of range, which is undefined in C and only caught in
-Debug; a mechanical check that a `[trusted]` signature is honest, which
-stays a review; and the rest of rin-dod, parts 2 and 3 of the ECS course and
-the dojo, which still check only with `--unsafe`.
+Debug; `make(r)` for `hashset` and `dlist`, and an iterator for `hashmap`;
+pointers to array elements in generated C; a mechanical check that a
+`[trusted]` signature is honest, which stays a review, though three attack
+rounds are the next best thing; and the rest of rin-dod, parts 2 and 3 of
+the ECS course and the dojo, which still check only with `--unsafe`.

@@ -2,7 +2,7 @@ import "memops.rin"
 import "node.rin"
 
 stack: struct<T> = {
-    head: *node<T>;
+    head: ?*node<T>;
     length: usize;
     /* Set by stack<T>make; see list.rin. */
     arena: ^memops_arena;

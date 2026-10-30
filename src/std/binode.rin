@@ -2,8 +2,8 @@ import "memops.rin"
 import "option.rin"
 
 binode: struct<T> = {
-    next: *binode<T>;
-    prev: *binode<T>;
+    next: ?*binode<T>;
+    prev: ?*binode<T>;
     data: T;
 }
 

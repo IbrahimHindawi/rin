@@ -3,7 +3,7 @@ import "node.rin"
 import "equal.rin"
 
 list: struct<T> = {
-    head: *node<T>;
+    head: ?*node<T>;
     length: usize;
     /* Set by list<T>make: the arena the nodes come from, so the procs that
        take no arena can be called from safe code. Null for a list made by

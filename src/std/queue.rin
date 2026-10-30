@@ -2,8 +2,8 @@ import "memops.rin"
 import "node.rin"
 
 queue: struct<T> = {
-    head: *node<T>;
-    tail: *node<T>;
+    head: ?*node<T>;
+    tail: ?*node<T>;
     length: usize;
     /* Set by queue<T>make; see list.rin. */
     arena: ^memops_arena;

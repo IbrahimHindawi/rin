@@ -171,7 +171,7 @@ reflect_cstr_equal: proc[trusted](a: ^const char, b: ^const char) -> b32 = {
     return a[i] == 0 && b[i] == 0;
 }
 
-reflect_field_at: proc[trusted](type: *const reflect, index: u64) -> *const reflect_field = {
+reflect_field_at: proc[trusted](type: *const reflect, index: u64) -> ?*const reflect_field = {
     fields: ^const reflect_field = reflect_fields(type);
     if (fields == null || index >= type*.count) { return null; }
     return fields[index]&;
@@ -198,12 +198,12 @@ reflect_find_field_index: proc[trusted](type: *const reflect, name: ^const char,
 // The record for a field's own type, so a walk can recurse instead of stopping
 // at the type-name string. Null when the field's type has no table: a builtin,
 // an external type, a proc.
-reflect_field_info: proc[trusted](field: *const reflect_field) -> *const reflect = {
+reflect_field_info: proc[trusted](field: *const reflect_field) -> ?*const reflect = {
     if (field == null) { return null; }
     return field*.info;
 }
 
-reflect_find_field_info: proc[trusted](type: *const reflect, name: ^const char) -> *const reflect = {
+reflect_find_field_info: proc[trusted](type: *const reflect, name: ^const char) -> ?*const reflect = {
     return reflect_field_info(reflect_find_field(type, name));
 }
 
@@ -211,7 +211,7 @@ reflect_find_field_info: proc[trusted](type: *const reflect, name: ^const char) 
 // Enum values
 // ---------------------------------------------------------------------------
 
-reflect_value_at: proc[trusted](type: *const reflect, index: u64) -> *const reflect_value = {
+reflect_value_at: proc[trusted](type: *const reflect, index: u64) -> ?*const reflect_value = {
     values: ^const reflect_value = reflect_values(type);
     if (values == null || index >= type*.count) { return null; }
     return values[index]&;

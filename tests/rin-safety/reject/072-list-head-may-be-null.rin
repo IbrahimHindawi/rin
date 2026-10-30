@@ -1,0 +1,15 @@
+// expect: may be null
+import "std/print.rin"
+import "std/list.rin"
+import "std/queue.rin"
+import "std/stack.rin"
+import "std/map.rin"
+level: region;
+
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<i32> in level = list<i32>make(level);
+        h: *node<i32> = l*.head;
+        printfmt("{}\n", h*.data);
+    }
+    return 0; }

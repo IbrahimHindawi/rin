@@ -1,0 +1,10 @@
+// expect: does not become a raw
+import "std/print.rin"
+import "std/reflect.rin"
+big: struct = { a: [100000000]u64; last: u64; }
+main: proc() -> i32 = {
+    small: i32 = 1;
+    other: i32 = 2;
+    ok: b32 = reflect_field_copy_by_name(small&, other&, big<>&, "last");
+    printfmt("{} {}\n", ok, small);
+    return 0; }

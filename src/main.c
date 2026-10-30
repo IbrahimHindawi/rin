@@ -14589,6 +14589,16 @@ static bool region_flow_rejects(Program *prog, TypeExpr *dst, TypeExpr *src, i32
                            "the callee's result could not say which region it is in", line, col);
         return true;
     }
+    if (g_safe_body && d->kind == Type_Ptr && d->is_raw && !type_is_void_pointer(s) &&
+        ((s->kind == Type_Ptr && !s->is_raw) || type_slice_elem(s))) {
+        /* `print_cstr(x[0]&)` with `x: [3]c8`, or `copy(small&, ...)` into a
+           `^void`: the callee reads or writes past what the pointer names. A
+           raw pointer in safe code comes from a literal or a trusted proc. */
+        type_error_message("a checked pointer does not become a raw '^T' in safe code: the callee would read or write "
+                           "past what it names, with no length or type to stop it; a C string is a literal or comes "
+                           "from a trusted proc", line, col);
+        return true;
+    }
     if (g_safe_body && d->kind == Type_Ptr && s->kind == Type_Ptr && !d->is_raw && !d->is_nullable && s->is_nullable) {
         type_error_message(type_is_void_pointer(s)
             ? "null cannot go where a '*T' is promised; make the place '?*T'"
@@ -15495,6 +15505,8 @@ static string8 assign_writes_carrier_field(Expr *lhs, TypeScope *scope, Program 
         if (e->kind == Expr_Field) {
             TypeExpr *bt = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
             if (bt && bt->kind == Type_Ptr) bt = resolve_alias_type(prog, bt->elem);
+            /* A slice's data and length are the bounds check's whole basis. */
+            if (bt && type_slice_elem(bt)) return string8_from_cstr(arena, "a slice");
             if (bt && type_is_carrier(prog, bt, arena)) return type_mangle(arena, bt, (TypeSub){0});
             e = e->base;
         } else if (e->kind == Expr_Index) {
@@ -17336,11 +17348,29 @@ static void rewrite_printfmt_call_stmt(Stmt *stmt, TypeScope *scope, Program *pr
         if (n) {
             printfmt_append_print_cstr(arena, out, stmt, lit.data + chunk_start, i - chunk_start, fmt->line, fmt->col);
             Expr *arg = (Expr *)call->args.data[arg_index + 1];
-            if (width.length > 0) {
+            const char *spec = width.length > 0 ? printfmt_spec_for_type(prog, infer_expr_type(arg, scope, prog, arena)) : null;
+            if (width.length > 0 && !spec) {
                 printfmt_error_at(stmt->source_path, arg->line, arg->col,
                                   "a width or precision needs a number, character or C string; this argument prints through its own print<T>");
             }
-            printfmt_append_print_arg(arena, out, stmt, arg, arg_index + 1, scope, prog);
+            if (spec) {
+                /* This one argument as its own printf, with the width. */
+                string8 built = string8_reserve(arena, 16 + width.length);
+                string8_append_cstr(arena, &built, "\"%");
+                string8_append_bytes(arena, &built, width.data, width.length);
+                string8_append_cstr(arena, &built, spec + 1);
+                string8_append_byte(arena, &built, '"');
+                Expr *printf_call = printfmt_call_expr(arena, "printf", arg->line, arg->col);
+                Expr *fmt_arg = expr_new(arena, Expr_String);
+                fmt_arg->line = arg->line;
+                fmt_arg->col = arg->col;
+                fmt_arg->string_lit = built;
+                ptr_array_append(arena, &printf_call->args, fmt_arg);
+                ptr_array_append(arena, &printf_call->args, arg);
+                ptr_array_append(arena, out, printfmt_expr_stmt(arena, printf_call, stmt));
+            } else {
+                printfmt_append_print_arg(arena, out, stmt, arg, arg_index + 1, scope, prog);
+            }
             arg_index++;
             i += n - 1;
             chunk_start = i + 1;

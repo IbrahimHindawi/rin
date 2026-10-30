@@ -3,8 +3,8 @@ import "binode.rin"
 import "equal.rin"
 
 dlist: struct<T> = {
-    head: *binode<T>;
-    tail: *binode<T>;
+    head: ?*binode<T>;
+    tail: ?*binode<T>;
     length: usize;
 }
 
