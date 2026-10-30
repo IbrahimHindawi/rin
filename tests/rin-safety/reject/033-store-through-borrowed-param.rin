@@ -1,0 +1,5 @@
+// expect: a pointer into region 'frame' cannot be kept where region 'level' is promised
+region level > frame;
+holder: struct = { p: ?*i32 in level; }
+set: proc(h: *holder, x: *i32 in frame) -> void = { h*.p = x; }
+main: proc() -> i32 = { return 0; }

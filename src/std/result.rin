@@ -8,7 +8,7 @@ result: struct<T> = {
     error: i32;
 }
 
-result<T>ok: proc<T>(value: T) -> result<T> = {
+result<T>ok: proc[trusted]<T>(value: T) -> result<T> = {
     result: result<T> = {};
     result.ok = 1;
     result.value = value;
@@ -16,22 +16,22 @@ result<T>ok: proc<T>(value: T) -> result<T> = {
     return result;
 }
 
-result<T>err: proc<T>(error: i32) -> result<T> = {
+result<T>err: proc[trusted]<T>(error: i32) -> result<T> = {
     result: result<T> = {};
     result.ok = 0;
     result.error = error;
     return result;
 }
 
-result<T>is_ok: proc<T>(result: result<T>) -> b32 = {
+result<T>is_ok: proc[trusted]<T>(result: result<T>) -> b32 = {
     return result.ok;
 }
 
-result<T>is_err: proc<T>(result: result<T>) -> b32 = {
+result<T>is_err: proc[trusted]<T>(result: result<T>) -> b32 = {
     return !result.ok;
 }
 
-result<T>unwrap: proc<T>(result: result<T>) -> T = {
+result<T>unwrap: proc[trusted]<T>(result: result<T>) -> T = {
     if (!result.ok) {
         printf("rin runtime: result unwrap on error %d\n", result.error);
         exit(1);
@@ -39,7 +39,7 @@ result<T>unwrap: proc<T>(result: result<T>) -> T = {
     return result.value;
 }
 
-result<T>unwrap_or: proc<T>(result: result<T>, fallback: T) -> T = {
+result<T>unwrap_or: proc[trusted]<T>(result: result<T>, fallback: T) -> T = {
     if (result.ok) {
         return result.value;
     }

@@ -1,0 +1,3 @@
+// expect: is C's, and takes or returns a pointer
+import "std/cstd.rin"
+main: proc() -> i32 = { x: [4]u8 = {}; memset(x[0]&, 0, 4); return 0; }

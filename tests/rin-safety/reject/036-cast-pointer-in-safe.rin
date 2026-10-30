@@ -1,0 +1,4 @@
+// expect: a cast to or from a pointer is unsafe
+e: struct = { hp: i32; }
+f: proc(p: *e) -> u64 = { return cast(p, u64); }
+main: proc() -> i32 = { return 0; }

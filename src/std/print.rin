@@ -2,7 +2,7 @@ cinclude "stdio.h"
 import "cstd.rin"
 import "reflect.rin"
 
-print_cstr: proc(text: ^const char) -> void = {
+print_cstr: proc[trusted](text: ^const char) -> void = {
     if (text == null) {
         printf("(null)");
         return;
@@ -10,55 +10,55 @@ print_cstr: proc(text: ^const char) -> void = {
     printf("%s", text);
 }
 
-print: proc<i8>(x: i8) -> void = {
+print: proc[trusted]<i8>(x: i8) -> void = {
     printf("%d", x);
 }
 
-print: proc<i16>(x: i16) -> void = {
+print: proc[trusted]<i16>(x: i16) -> void = {
     printf("%d", x);
 }
 
-print: proc<i32>(x: i32) -> void = {
+print: proc[trusted]<i32>(x: i32) -> void = {
     printf("%d", x);
 }
 
-print: proc<i64>(x: i64) -> void = {
+print: proc[trusted]<i64>(x: i64) -> void = {
     rin_print_i64(x);
 }
 
-print: proc<u8>(x: u8) -> void = {
+print: proc[trusted]<u8>(x: u8) -> void = {
     printf("%u", x);
 }
 
-print: proc<u16>(x: u16) -> void = {
+print: proc[trusted]<u16>(x: u16) -> void = {
     printf("%u", x);
 }
 
-print: proc<u32>(x: u32) -> void = {
+print: proc[trusted]<u32>(x: u32) -> void = {
     printf("%u", x);
 }
 
-print: proc<u64>(x: u64) -> void = {
+print: proc[trusted]<u64>(x: u64) -> void = {
     rin_print_u64(x);
 }
 
-print: proc<usize>(x: usize) -> void = {
+print: proc[trusted]<usize>(x: usize) -> void = {
     printf("%zu", x);
 }
 
-print: proc<f32>(x: f32) -> void = {
+print: proc[trusted]<f32>(x: f32) -> void = {
     printf("%f", cast(x, f64));
 }
 
-print: proc<f64>(x: f64) -> void = {
+print: proc[trusted]<f64>(x: f64) -> void = {
     printf("%f", x);
 }
 
-print: proc<char>(x: char) -> void = {
+print: proc[trusted]<char>(x: char) -> void = {
     printf("%c", x);
 }
 
-print: proc<b32>(x: b32) -> void = {
+print: proc[trusted]<b32>(x: b32) -> void = {
     if (x) {
         print_cstr("true");
     } else {
@@ -66,18 +66,18 @@ print: proc<b32>(x: b32) -> void = {
     }
 }
 
-print: proc<^char>(x: ^char) -> void = {
+print: proc[trusted]<^char>(x: ^char) -> void = {
     print_cstr(x);
 }
 
-print: proc<^const char>(x: ^const char) -> void = {
+print: proc[trusted]<^const char>(x: ^const char) -> void = {
     print_cstr(x);
 }
 
 // What printfmt prints for an enum with no print<E> of its own: the member's
 // name, or `type(value)` when the value is not a member -- one read from a
 // file or a cast, say -- so a miss still says which enum and what it held.
-print_enum: proc(type: *const reflect, value: i32) -> void = {
+print_enum: proc[trusted](type: *const reflect, value: i32) -> void = {
     name: ^const char = reflect_name_from_value(type, value);
     if (name != null) {
         printf("%s", name);

@@ -1,0 +1,64 @@
+import "std/print.rin"
+
+region level > frame > scratch;
+
+entity: struct = {
+    hp: i32;
+    target: ?*entity in level;
+}
+
+command: struct = {
+    who: ?*entity in level;
+    damage: i32;
+}
+
+make_entity: proc(r: region R in level, hp: i32) -> *entity in R = {
+    e: *entity in R = new<entity>(r);
+    e*.hp = hp;
+    return e;
+}
+
+gather: proc(r: region R in level, a: *entity in level, b: *entity in level) -> []command in R = {
+    cmds: []command in R = new_slice<command>(r, 2);
+    cmds[0] = { .who = a, .damage = 3 };
+    cmds[1] = { .who = b, .damage = 5 };
+    return cmds;
+}
+
+apply: proc(cmds: []command) -> void = {
+    for (i: u64 = 0; i < cmds.length; i += 1) {
+        who: ?*entity in level = cmds[i].who;
+        if (who) {
+            who*.hp -= cmds[i].damage;
+        }
+    }
+}
+
+main: proc() -> i32 = {
+    total: i32 = 0;
+    region level {
+        a: *entity in level = make_entity(level, 10);
+        b: *entity in level = make_entity(level, 20);
+        a*.target = b;
+        frames: i32 = 0;
+        while (frames < 3) {
+            region frame {
+                cmds: []command in frame = gather(frame, a, b);
+                apply(cmds);
+                region scratch of frame {
+                    tmp: []i32 in scratch = new_slice<i32>(scratch, 4);
+                    tmp[0] = a*.hp;
+                    total += tmp[0];
+                    if (total > 1000) { break; }
+                }
+                t: ?*entity in level = a*.target;
+                if (t != null) {
+                    printfmt("frame {}: a {} b {} target {}\n", frames, a*.hp, b*.hp, t*.hp);
+                }
+            }
+            frames += 1;
+        }
+    }
+    printfmt("total {}\n", total);
+    return 0;
+}

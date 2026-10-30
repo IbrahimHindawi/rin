@@ -22,7 +22,7 @@ import "vec.rin"
    The struct itself is in slicecore.rin, which the compiler imports for `[]T`. */
 import "slicecore.rin"
 
-slice<T>from_parts: proc<T>(data: ^T, length: u64) -> slice<T> = {
+slice<T>from_parts: proc[trusted]<T>(data: ^T, length: u64) -> slice<T> = {
     s: slice<T> = {};
     if (data == null || length == 0) {
         return s;
@@ -32,21 +32,21 @@ slice<T>from_parts: proc<T>(data: ^T, length: u64) -> slice<T> = {
     return s;
 }
 
-slice<T>from_array: proc<T>(array: array<T>) -> slice<T> = {
+slice<T>from_array: proc[trusted]<T>(array: array<T>) -> slice<T> = {
     return slice<T>from_parts(array.data, array.length);
 }
 
-slice<T>from_vec: proc<T>(vec: vec<T>) -> slice<T> = {
+slice<T>from_vec: proc[trusted]<T>(vec: vec<T>) -> slice<T> = {
     return slice<T>from_parts(vec.data, vec.length);
 }
 
-slice<T>is_empty: proc<T>(s: slice<T>) -> b32 = {
+slice<T>is_empty: proc[trusted]<T>(s: slice<T>) -> b32 = {
     return s.length == 0;
 }
 
 /* Aborts on a bad index. The option form below is the one to reach for when
    the index came from outside. */
-slice<T>at: proc<T>(s: slice<T>, index: u64) -> *T = {
+slice<T>at: proc[trusted]<T>(s: slice<T>, index: u64) -> *T = {
     if (s.data == null || index >= s.length) {
         printf("rin runtime: slice index out of bounds\n");
         exit(1);
@@ -54,18 +54,18 @@ slice<T>at: proc<T>(s: slice<T>, index: u64) -> *T = {
     return s.data[index]&;
 }
 
-slice<T>get: proc<T>(s: slice<T>, index: u64) -> option<T> = {
+slice<T>get: proc[trusted]<T>(s: slice<T>, index: u64) -> option<T> = {
     if (s.data == null || index >= s.length) {
         return option<T>none();
     }
     return option<T>some(s.data[index]);
 }
 
-slice<T>first: proc<T>(s: slice<T>) -> option<T> = {
+slice<T>first: proc[trusted]<T>(s: slice<T>) -> option<T> = {
     return slice<T>get(s, 0);
 }
 
-slice<T>last: proc<T>(s: slice<T>) -> option<T> = {
+slice<T>last: proc[trusted]<T>(s: slice<T>) -> option<T> = {
     if (s.length == 0) {
         return option<T>none();
     }
@@ -74,7 +74,7 @@ slice<T>last: proc<T>(s: slice<T>) -> option<T> = {
 
 /* Clamped rather than fatal: a sub-range that runs off the end yields the part
    that exists, which is what every caller wants when scanning. */
-slice<T>sub: proc<T>(s: slice<T>, start: u64, count: u64) -> slice<T> = {
+slice<T>sub: proc[trusted]<T>(s: slice<T>, start: u64, count: u64) -> slice<T> = {
     out: slice<T> = {};
     if (s.data == null || start >= s.length) {
         return out;
@@ -86,7 +86,7 @@ slice<T>sub: proc<T>(s: slice<T>, start: u64, count: u64) -> slice<T> = {
     return slice<T>from_parts(s.data[start]&, count);
 }
 
-slice<T>skip: proc<T>(s: slice<T>, count: u64) -> slice<T> = {
+slice<T>skip: proc[trusted]<T>(s: slice<T>, count: u64) -> slice<T> = {
     if (count >= s.length) {
         out: slice<T> = {};
         return out;
@@ -94,13 +94,13 @@ slice<T>skip: proc<T>(s: slice<T>, count: u64) -> slice<T> = {
     return slice<T>sub(s, count, s.length - count);
 }
 
-slice<T>take: proc<T>(s: slice<T>, count: u64) -> slice<T> = {
+slice<T>take: proc[trusted]<T>(s: slice<T>, count: u64) -> slice<T> = {
     return slice<T>sub(s, 0, count);
 }
 
 /* Byte equality over sizeof(T) * length. Correct for the plain data slices are
    made of; a T holding a pointer compares the pointer, not what it points at. */
-slice<T>equals: proc<T>(a: slice<T>, b: slice<T>) -> b32 = {
+slice<T>equals: proc[trusted]<T>(a: slice<T>, b: slice<T>) -> b32 = {
     if (a.length != b.length) {
         return 0;
     }
@@ -113,7 +113,7 @@ slice<T>equals: proc<T>(a: slice<T>, b: slice<T>) -> b32 = {
     return memcmp(a.data, b.data, sizeof(T) * a.length) == 0;
 }
 
-slice<T>copy_to: proc<T>(dst: ^T, s: slice<T>) -> void = {
+slice<T>copy_to: proc[trusted]<T>(dst: ^T, s: slice<T>) -> void = {
     if (dst == null || s.data == null || s.length == 0) {
         return;
     }
@@ -121,7 +121,7 @@ slice<T>copy_to: proc<T>(dst: ^T, s: slice<T>) -> void = {
 }
 
 /* The owning copy, when a view has to outlive what it borrowed from. */
-slice<T>to_array: proc<T>(arena: *memops_arena, s: slice<T>) -> array<T> = {
+slice<T>to_array: proc[trusted]<T>(arena: *memops_arena, s: slice<T>) -> array<T> = {
     out: array<T> = array<T>reserve(arena, s.length);
     slice<T>copy_to(out.data, s);
     return out;

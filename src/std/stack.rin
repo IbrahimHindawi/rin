@@ -6,7 +6,7 @@ stack: struct<T> = {
     length: usize;
 }
 
-stack<T>create: proc<T>(arena: *memops_arena) -> *stack<T> = {
+stack<T>create: proc[trusted]<T>(arena: *memops_arena) -> *stack<T> = {
     stack: *stack<T> = cast(memops_arena_push_zero(arena, sizeof(stack<T>), alignof(stack<T>)), *stack<T>);
     if (stack == null) {
         printf("rin runtime: stack allocation failure\n");
@@ -15,14 +15,14 @@ stack<T>create: proc<T>(arena: *memops_arena) -> *stack<T> = {
     return stack;
 }
 
-stack<T>push: proc<T>(arena: *memops_arena, stack: *stack<T>, data: T) -> void = {
+stack<T>push: proc[trusted]<T>(arena: *memops_arena, stack: *stack<T>, data: T) -> void = {
     node: *node<T> = node<T>create(arena, data);
     node*.next = stack*.head;
     stack*.head = node;
     stack*.length += 1;
 }
 
-stack<T>pop: proc<T>(arena: *memops_arena, stack: *stack<T>) -> *node<T> = {
+stack<T>pop: proc[trusted]<T>(arena: *memops_arena, stack: *stack<T>) -> *node<T> = {
     if (stack == null || stack*.head == null) {
         return null;
     }
@@ -33,20 +33,20 @@ stack<T>pop: proc<T>(arena: *memops_arena, stack: *stack<T>) -> *node<T> = {
     return node;
 }
 
-stack<T>peek: proc<T>(arena: *memops_arena, stack: *stack<T>) -> *node<T> = {
+stack<T>peek: proc[trusted]<T>(arena: *memops_arena, stack: *stack<T>) -> *node<T> = {
     if (stack == null) {
         return null;
     }
     return stack*.head;
 }
 
-stack<T>destroy: proc<T>(arena: *memops_arena, stack: *stack<T>) -> void = {
+stack<T>destroy: proc[trusted]<T>(arena: *memops_arena, stack: *stack<T>) -> void = {
     if (stack != null) {
         stack*.head = null;
         stack*.length = 0;
     }
 }
 
-stack<T>is_empty: proc<T>(stack: *stack<T>) -> b32 = {
+stack<T>is_empty: proc[trusted]<T>(stack: *stack<T>) -> b32 = {
     return stack == null || stack*.length == 0;
 }

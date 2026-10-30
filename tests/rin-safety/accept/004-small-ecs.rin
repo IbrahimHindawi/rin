@@ -1,0 +1,135 @@
+// A small entity world in the safe subset: handles with generations into a
+// slot map (dojo blocks 1 and 3), components in columns, a frame of systems
+// that record commands into a frame region and apply them after. No raw
+// pointer, no cast, no C call outside std, and every pointer kept in memory
+// names its region.
+import "std/print.rin"
+import "std/vec.rin"
+
+region level > frame;
+
+handle: struct = { index: u32; generation: u32; }
+
+slot: struct = { generation: u32; row: u32; alive: b32; }
+
+world: struct = {
+    slots: *vec<slot> in level;
+    free: *vec<u32> in level;
+    // Packed rows: one entry per live entity, in row order.
+    owners: *vec<handle> in level;
+    hp: *vec<i32> in level;
+    x: *vec<f32> in level;
+}
+
+command: struct = { target: handle; damage: i32; dx: f32; }
+
+// The world's pointers may not be null, so it is made whole: new<T>(r, value)
+// copies a complete value into the region.
+world_make: proc(r: region level) -> *world in level = {
+    return new<world>(r, {
+        .slots = vec<slot>make(r, 8),
+        .free = vec<u32>make(r, 8),
+        .owners = vec<handle>make(r, 8),
+        .hp = vec<i32>make(r, 8),
+        .x = vec<f32>make(r, 8),
+    });
+}
+
+spawn: proc(w: *world, hp: i32, x: f32) -> handle = {
+    index: u32 = 0;
+    if (w*.free*.length > 0) {
+        index = vec<u32>at(w*.free, w*.free*.length - 1)*;
+        w*.free*.length -= 1;
+    } else {
+        index = cast(w*.slots*.length, u32);
+        _ = vec<slot>push(w*.slots, { .generation = 1, .row = 0, .alive = 0 });
+    }
+    s: *slot = vec<slot>at(w*.slots, index);
+    s*.row = cast(w*.owners*.length, u32);
+    s*.alive = 1;
+    h: handle = { .index = index, .generation = s*.generation };
+    _ = vec<handle>push(w*.owners, h);
+    _ = vec<i32>push(w*.hp, hp);
+    _ = vec<f32>push(w*.x, x);
+    return h;
+}
+
+alive: proc(w: *world, h: handle) -> b32 = {
+    if (h.index >= w*.slots*.length) { return 0; }
+    s: *slot = vec<slot>at(w*.slots, h.index);
+    return s*.alive && s*.generation == h.generation;
+}
+
+// Swap-remove the row; the moved entity's slot learns its new row.
+despawn: proc(w: *world, h: handle) -> b32 = {
+    if (!alive(w, h)) { return 0; }
+    s: *slot = vec<slot>at(w*.slots, h.index);
+    row: u32 = s*.row;
+    last: u32 = cast(w*.owners*.length - 1, u32);
+    if (row != last) {
+        moved: handle = vec<handle>at(w*.owners, last)*;
+        vec<handle>at(w*.owners, row)* = moved;
+        vec<i32>at(w*.hp, row)* = vec<i32>at(w*.hp, last)*;
+        vec<f32>at(w*.x, row)* = vec<f32>at(w*.x, last)*;
+        vec<slot>at(w*.slots, moved.index)*.row = row;
+    }
+    w*.owners*.length -= 1;
+    w*.hp*.length -= 1;
+    w*.x*.length -= 1;
+    s*.alive = 0;
+    s*.generation += 1;
+    _ = vec<u32>push(w*.free, h.index);
+    return 1;
+}
+
+// Systems walk the columns and record what should change; nothing moves
+// while they walk.
+gather: proc(r: region R, w: *world) -> *vec<command> in R = {
+    cmds: *vec<command> in R = vec<command>make(r, 8);
+    for (row: u64 = 0; row < w*.owners*.length; row += 1) {
+        h: handle = vec<handle>at(w*.owners, row)*;
+        hp: i32 = vec<i32>at(w*.hp, row)*;
+        _ = vec<command>push(cmds, { .target = h, .damage = hp > 10 ? 4 : 1, .dx = 0.5 });
+    }
+    return cmds;
+}
+
+apply: proc(w: *world, cmds: *vec<command>) -> void = {
+    for (i: u64 = 0; i < cmds*.length; i += 1) {
+        c: command = vec<command>at(cmds, i)*;
+        if (!alive(w, c.target)) { continue; }
+        row: u32 = vec<slot>at(w*.slots, c.target.index)*.row;
+        vec<i32>at(w*.hp, row)* -= c.damage;
+        vec<f32>at(w*.x, row)* += c.dx;
+        if (vec<i32>at(w*.hp, row)* <= 0) { _ = despawn(w, c.target); }
+    }
+}
+
+draw: proc(w: *world, frame_no: i32) -> void = {
+    printfmt("frame {}:", frame_no);
+    for (row: u64 = 0; row < w*.owners*.length; row += 1) {
+        h: handle = vec<handle>at(w*.owners, row)*;
+        printfmt(" [{}:{} hp {} x {}]", h.index, h.generation, vec<i32>at(w*.hp, row)*, vec<f32>at(w*.x, row)*);
+    }
+    printfmt("\n");
+}
+
+main: proc() -> i32 = {
+    region level {
+        w: *world in level = world_make(level);
+        a: handle = spawn(w, 12, 0.0);
+        b: handle = spawn(w, 3, 1.0);
+        c: handle = spawn(w, 20, 2.0);
+        for (frame_no: i32 = 0; frame_no < 4; frame_no += 1) {
+            region frame {
+                cmds: *vec<command> in frame = gather(frame, w);
+                apply(w, cmds);
+            }
+            draw(w, frame_no);
+        }
+        printfmt("a {} b {} c {}\n", alive(w, a) ? "alive" : "dead", alive(w, b) ? "alive" : "dead", alive(w, c) ? "alive" : "dead");
+        d: handle = spawn(w, 1, 9.0);
+        printfmt("d reuses index {} in generation {}; b {} is {}\n", d.index, d.generation, b.generation, alive(w, b) ? "alive" : "dead");
+    }
+    return 0;
+}

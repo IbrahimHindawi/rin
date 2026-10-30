@@ -1,0 +1,5 @@
+// expect: cannot be kept where region 'permanent' is promised
+f: proc(r: region R) -> *i32 in R = { return new<i32>(r); }
+g: proc() -> *i32 in permanent = { region_missing: i32 = 0; return f(permanent); }
+bad: proc(r: region R) -> *i32 in permanent = { return f(r); }
+main: proc() -> i32 = { return 0; }

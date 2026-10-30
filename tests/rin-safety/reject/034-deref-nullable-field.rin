@@ -1,0 +1,4 @@
+// expect: this pointer may be null
+region level;
+node: struct = { v: i32; next: ?*node in level; }
+main: proc() -> i32 = { region level { n: *node in level = new<node>(level); return n*.next*.v; } return 0; }

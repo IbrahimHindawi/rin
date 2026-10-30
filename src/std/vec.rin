@@ -5,9 +5,12 @@ vec: struct<T> = {
     data: ^T;
     length: u64;
     border: u64;
+    /* Set by vec<T>make: the arena the vec grows into, so vec<T>push needs
+       none handed to it. Null for a vec made the old way, by value. */
+    arena: ^memops_arena;
 }
 
-vec<T>reserve: proc<T>(arena: *memops_arena, length: u64) -> vec<T> = {
+vec<T>reserve: proc[trusted]<T>(arena: *memops_arena, length: u64) -> vec<T> = {
     arr: vec<T> = {};
     if (length == 0) {
         return arr;
@@ -22,13 +25,30 @@ vec<T>reserve: proc<T>(arena: *memops_arena, length: u64) -> vec<T> = {
     return arr;
 }
 
-vec<T>destroy: proc<T>(arena: *memops_arena, array: *vec<T>) -> void = {
+/* A vec that lives in a region, for safe code: the header and its storage both
+   come from the region's arena, so a `*vec<T> in R` points into R and nothing
+   in it outlives R. Grows into the same arena. */
+vec<T>make: proc[trusted]<T>(r: region R, reserve: u64) -> *vec<T> in R = {
+    v: *vec<T> in R = cast(memops_arena_push_zero(r, sizeof(vec<T>), alignof(vec<T>)), *vec<T> in R);
+    v*.arena = r;
+    if (reserve > 0) {
+        v*.data = cast(memops_arena_push_zero(r, sizeof(T) * reserve, alignof(T)), *T);
+        v*.border = reserve;
+    }
+    return v;
+}
+/* Push onto a vec made by vec<T>make: it grows into the arena it was made
+   from. The pointer returned is borrowed; it is stale after the next push. */
+vec<T>push: proc[trusted]<T>(array: *vec<T>, elem: T) -> *T = {
+    return vec<T>append(array*.arena[0]&, array, elem);
+}
+vec<T>destroy: proc[trusted]<T>(arena: *memops_arena, array: *vec<T>) -> void = {
     array*.data = null;
     array*.length = 0;
     array*.border = 0;
 }
 
-vec<T>resize: proc<T>(arena: *memops_arena, array: *vec<T>) -> ^T = {
+vec<T>resize: proc[trusted]<T>(arena: *memops_arena, array: *vec<T>) -> ^T = {
     old_border: u64 = array*.border;
     if (array*.border == 0) {
         array*.border = 1;
@@ -46,7 +66,7 @@ vec<T>resize: proc<T>(arena: *memops_arena, array: *vec<T>) -> ^T = {
     return array*.data;
 }
 
-vec<T>append: proc<T>(arena: *memops_arena, array: *vec<T>, elem: T) -> *T = {
+vec<T>append: proc[trusted]<T>(arena: *memops_arena, array: *vec<T>, elem: T) -> *T = {
     if (array*.data == null) {
         array*.border = 1;
         array*.data = cast(memops_arena_push(arena, sizeof(T) * array*.border, alignof(T)), *T);
@@ -60,7 +80,7 @@ vec<T>append: proc<T>(arena: *memops_arena, array: *vec<T>, elem: T) -> *T = {
     return result;
 }
 
-vec<T>at: proc<T>(array: *vec<T>, index: u64) -> *T = {
+vec<T>at: proc[trusted]<T>(array: *vec<T>, index: u64) -> *T = {
     if (array == null || index >= array*.length) {
         printf("rin runtime: vec index out of bounds\n");
         exit(1);
@@ -68,14 +88,14 @@ vec<T>at: proc<T>(array: *vec<T>, index: u64) -> *T = {
     return array*.data[index]&;
 }
 
-vec<T>get: proc<T>(array: *vec<T>, index: u64) -> option<T> = {
+vec<T>get: proc[trusted]<T>(array: *vec<T>, index: u64) -> option<T> = {
     if (array == null || index >= array*.length) {
         return option<T>none();
     }
     return option<T>some(array*.data[index]);
 }
 
-vec<T>last: proc<T>(array: *vec<T>) -> *T = {
+vec<T>last: proc[trusted]<T>(array: *vec<T>) -> *T = {
     if (array == null || array*.length == 0) {
         printf("rin runtime: vec last on an empty vec\n");
         exit(1);
@@ -83,23 +103,23 @@ vec<T>last: proc<T>(array: *vec<T>) -> *T = {
     return array*.data[array*.length - 1]&;
 }
 
-vec<T>pop: proc<T>(array: *vec<T>) -> T = {
+vec<T>pop: proc[trusted]<T>(array: *vec<T>) -> T = {
     x: T = vec<T>last(array)*;
     array*.length -= 1;
     return x;
 }
 
 // The elements as a slice, valid until the next append moves them.
-vec<T>items: proc<T>(array: *vec<T>) -> []T = {
+vec<T>items: proc[trusted]<T>(array: *vec<T>) -> []T = {
     return array*.data[0..array*.length];
 }
 
-vec<T>clear: proc<T>(array: *vec<T>) -> void = {
+vec<T>clear: proc[trusted]<T>(array: *vec<T>) -> void = {
     if (array != null) {
         array*.length = 0;
     }
 }
 
-vec<T>is_empty: proc<T>(array: *vec<T>) -> b32 = {
+vec<T>is_empty: proc[trusted]<T>(array: *vec<T>) -> b32 = {
     return array == null || array*.length == 0;
 }

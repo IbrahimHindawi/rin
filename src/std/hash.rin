@@ -19,7 +19,7 @@ hash_mix: proc(x: u64) -> u64 = {
     return x;
 }
 
-hash_bytes: proc(data: ^const u8, count: u64) -> u64 = {
+hash_bytes: proc[trusted](data: ^const u8, count: u64) -> u64 = {
     h: u64 = 14695981039346656037'u64;
     for (i: u64 = 0; i < count; i += 1) {
         h ^= cast(data[i], u64);
@@ -28,55 +28,55 @@ hash_bytes: proc(data: ^const u8, count: u64) -> u64 = {
     return h;
 }
 
-hash: proc<i32>(x: i32) -> u64 = {
+hash: proc[trusted]<i32>(x: i32) -> u64 = {
     return hash_mix(cast(cast(x, i64), u64));
 }
 
-hash: proc<i64>(x: i64) -> u64 = {
+hash: proc[trusted]<i64>(x: i64) -> u64 = {
     return hash_mix(cast(x, u64));
 }
 
-hash: proc<u32>(x: u32) -> u64 = {
+hash: proc[trusted]<u32>(x: u32) -> u64 = {
     return hash_mix(cast(x, u64));
 }
 
-hash: proc<u64>(x: u64) -> u64 = {
+hash: proc[trusted]<u64>(x: u64) -> u64 = {
     return hash_mix(x);
 }
 
-hash: proc<c8>(x: c8) -> u64 = {
+hash: proc[trusted]<c8>(x: c8) -> u64 = {
     return hash_mix(cast(cast(x, u8), u64));
 }
 
-hash: proc<[]c8>(s: []c8) -> u64 = {
+hash: proc[trusted]<[]c8>(s: []c8) -> u64 = {
     return hash_bytes(cast(s.data, ^const u8), s.length);
 }
 
-hash: proc<string8slice>(s: string8slice) -> u64 = {
+hash: proc[trusted]<string8slice>(s: string8slice) -> u64 = {
     return hash_bytes(cast(s.data, ^const u8), s.length);
 }
 
-equal: proc<i32>(a: i32, b: i32) -> b32 = {
+equal: proc[trusted]<i32>(a: i32, b: i32) -> b32 = {
     return a == b;
 }
 
-equal: proc<i64>(a: i64, b: i64) -> b32 = {
+equal: proc[trusted]<i64>(a: i64, b: i64) -> b32 = {
     return a == b;
 }
 
-equal: proc<u32>(a: u32, b: u32) -> b32 = {
+equal: proc[trusted]<u32>(a: u32, b: u32) -> b32 = {
     return a == b;
 }
 
-equal: proc<u64>(a: u64, b: u64) -> b32 = {
+equal: proc[trusted]<u64>(a: u64, b: u64) -> b32 = {
     return a == b;
 }
 
-equal: proc<c8>(a: c8, b: c8) -> b32 = {
+equal: proc[trusted]<c8>(a: c8, b: c8) -> b32 = {
     return a == b;
 }
 
-equal: proc<[]c8>(a: []c8, b: []c8) -> b32 = {
+equal: proc[trusted]<[]c8>(a: []c8, b: []c8) -> b32 = {
     if (a.length != b.length) {
         return 0;
     }
@@ -88,6 +88,6 @@ equal: proc<[]c8>(a: []c8, b: []c8) -> b32 = {
     return 1;
 }
 
-equal: proc<string8slice>(a: string8slice, b: string8slice) -> b32 = {
+equal: proc[trusted]<string8slice>(a: string8slice, b: string8slice) -> b32 = {
     return string8slice_equals(a, b);
 }

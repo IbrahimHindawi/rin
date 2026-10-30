@@ -205,6 +205,14 @@ static const char *g_exe_import_root = null;
 static bool g_single_file = false;
 static bool g_report_derefs = false; // --report-derefs: list literal `[0]` sites, for the `x*` rewrite
 
+/* The safety checks of docs/regions.md. On by default; `--unsafe` turns them
+   off for a program written before them, and `rin check --unsafe` too. */
+static bool g_safety = true;
+/* True while the body being checked belongs to a proc that is neither
+   [trusted] nor [unsafe]: there, every operation C allows and the safe subset
+   does not is an error. Global initializers count as a safe body. */
+static bool g_safe_body = false;
+
 /* A source path as a generated comment shows it: in full, or with
    --single-file just the file name. */
 static const char *comment_path(const char *path) {
@@ -462,6 +470,8 @@ typedef enum TokenKind {
     Token_Keyword_Static,
     Token_Keyword_True,
     Token_Keyword_False,
+    Token_Keyword_Region, // `region frame { }`, `region a > b;`, `r: region R`
+    Token_Keyword_In,     // `*T in frame`: the region a pointer points into
 } TokenKind;
 
 typedef struct Token Token;
@@ -577,6 +587,7 @@ typedef enum TypeKind {
     Type_Generic,
     Type_Array,
     Type_Proc,
+    Type_Region, // `region R`: an arena handle whose region the type system knows
 } TypeKind;
 
 struct TypeExpr {
@@ -594,6 +605,21 @@ struct TypeExpr {
        the same C pointer, so they are equal as types and only the operations
        allowed on them differ. */
     bool is_raw;
+    /* `?*T`: may be null, and must be tested before it is used. Only a
+       Type_Ptr carries it. Erased in C, like the region. */
+    bool is_nullable;
+    /* A scope entry made by narrowing, `if (p) { ... }`: p as a `*T` for the
+       branch. An assignment to p puts its declared type back. */
+    bool narrowed;
+    /* `*T in frame`: the region the pointee lives in, on a Type_Ptr or on the
+       `slice` generic. Empty means borrowed: usable, never stored or returned.
+       A region parameter's name when the proc took `r: region R`. On a
+       Type_Region, the region the value names. See docs/regions.md. */
+    string8 region;
+    /* `r: region R in level`: R is bound at each call to a region that lives
+       no longer than level, so inside the proc, level outlives R. On a
+       Type_Region only. */
+    string8 region_bound;
     /* `[_]T`: the count is taken from the initializer, as `T x[] = {...}` does
        in C. Set while parsing, cleared once the count is filled in. */
     Token *infer_count;
@@ -725,6 +751,7 @@ typedef enum StmtKind {
     Stmt_Goto,
     Stmt_Label,
     Stmt_Directive, // a '#' line written inside a body; `name` holds it verbatim
+    Stmt_Region,    // `region frame { }`: an arena that lives exactly as long as the block
 } StmtKind;
 
 struct Stmt {
@@ -738,6 +765,10 @@ struct Stmt {
     bool is_static;
     bool is_uninitialized; // '= ?': deliberately left with indeterminate contents
     bool is_discard;       // '_ = expr;': a Stmt_Expr whose value is thrown away on purpose
+    /* Stmt_Region: `region scratch of frame { }` marks `frame`'s arena and
+       rewinds it at the brace, instead of clearing an arena of its own. Empty
+       for a plain `region name { }`. The body is in while_body. */
+    string8 region_parent;
     Expr *lhs;
     Expr *expr;
     TokenKind assign_op;
@@ -841,6 +872,15 @@ struct ProcDecl {
     bool emit_external_proto;
     bool is_variadic;
     bool is_static;
+    /* [trusted]: the body is checked loosely and the signature is believed;
+       [unsafe]: the same, and every call to it is an unsafe operation. */
+    bool is_trusted;
+    bool is_unsafe;
+    /* The regions this proc may open, in its own body or in anything it
+       calls by name. A call to it while one of them is open would clear the
+       caller's arena from under it, so that is an error; and its address may
+       not be taken, since a call through a pointer could not be checked. */
+    Vec_string8 opens;
     /* `proc<T>` is one entry; `proc<T, U, V>` is three. A non-generic proc has
        none. Structs are still single-parameter, so StructDecl keeps a bare
        string8. */
@@ -884,6 +924,10 @@ typedef struct Program {
     Vec_voidptr aliases; // AliasDecl*
     Vec_voidptr procs;   // ProcDecl*
     Vec_voidptr globals; // Stmt* (var decl)
+    /* `region level > frame > scratch;`: the program's regions, longest-lived
+       first. `permanent` is implied before them. See docs/regions.md. */
+    Vec_string8 regions;
+    bool uses_regions; // a region was declared, entered or named somewhere: emit their storage
     /* Array types whose count is a symbolic constant (`[Enum.Member]`) rather
        than a literal. The enum may be declared after — or imported alongside —
        the use, so the text is kept as written and resolved to its C name once
@@ -930,6 +974,7 @@ typedef struct Parser {
     bool in_param_type; // inside a parameter's type, for a better 'noalias' error
     i32 last_error_token; // token index of the most recent parse error
     bool uses_slice_type; // `[]T` was written, so the slice struct is imported
+    bool uses_regions;    // a region was declared, entered or named, so memops is imported
 } Parser;
 
 /* Types and statements recurse through their own functions, so the expression
@@ -1515,6 +1560,8 @@ static void lex_tokens(memops_arena *arena, string8 src, Vec_Token *out_tokens,
             else if (string8slice_equals_cstr(text, "static")) kind = Token_Keyword_Static;
             else if (string8slice_equals_cstr(text, "true")) kind = Token_Keyword_True;
             else if (string8slice_equals_cstr(text, "false")) kind = Token_Keyword_False;
+            else if (string8slice_equals_cstr(text, "region")) kind = Token_Keyword_Region;
+            else if (string8slice_equals_cstr(text, "in")) kind = Token_Keyword_In;
             /* 'shl='/'shr=' are compound assignment; the '=' must touch the keyword. */
             if ((kind == Token_Keyword_Shl || kind == Token_Keyword_Shr) &&
                 p < end && *p == '=' && !((p + 1) < end && p[1] == '=')) {
@@ -2235,6 +2282,10 @@ static string8 type_mangle_concrete(memops_arena *arena, TypeExpr *type) {
         string8_append_bytes(arena, &out, type->name.data, type->name.length);
         return out;
     }
+    if (type->kind == Type_Region) {
+        string8_append_cstr(arena, &out, "region");
+        return out;
+    }
     if (type->kind == Type_Ptr) {
         /* `^T` and `*T` are the same C pointer but allow different operations,
            so a generic instance over each is its own instance. */
@@ -2307,6 +2358,11 @@ typedef struct DeclAttributes {
     string8 underlying;  /* enum[u32] and friends, empty when unset */
     string8 callconv;
     bool must_use;       /* enum[must_use]: a result of this type may not be ignored */
+    /* proc[trusted]: the body may use raw pointers, casts and C, and the author
+       vouches for its signature; anyone may call it. proc[unsafe]: the same
+       body, but calling it is itself unsafe. See docs/regions.md. */
+    bool is_trusted;
+    bool is_unsafe;
 } DeclAttributes;
 static DeclAttributes parse_decl_attributes(Parser *p, bool is_enum);
 
@@ -2350,6 +2406,17 @@ static string8 parse_trailing_decl_attributes(Parser *p, TypeExpr *type) {
 }
 
 static TypeExpr *parse_type_inner(Parser *p);
+
+/* `*T in frame`, `[]T in frame`: the region the pointee lives in. It binds to
+   the pointer or slice just parsed, the innermost one, so `[]*node in level`
+   puts the node pointers in level and leaves the slice itself borrowed;
+   `[]*node in level in frame` names both. */
+static void parse_region_suffix(Parser *p, TypeExpr *t) {
+    if (!parser_match(p, Token_Keyword_In)) return;
+    Token *name = parser_expect(p, Token_Identifier, "expected a region name after 'in', as in '*T in frame'");
+    if (name && t) t->region = token_to_string8(p->arena, name);
+    p->uses_regions = true;
+}
 
 /* Guarded wrapper. Every recursive path -- `*T`, `[N]T`, `const T`, generic
    arguments, proc parameter and return types -- goes back through parse_type,
@@ -2524,6 +2591,7 @@ static TypeExpr *parse_type_inner(Parser *p) {
         t->col = lb->col;
         t->args = ptr_array_reserve(p->arena, 1);
         ptr_array_append(p->arena, &t->args, parse_type(p));
+        parse_region_suffix(p, t);
         return t;
     }
 
@@ -2585,6 +2653,39 @@ static TypeExpr *parse_type_inner(Parser *p) {
         return array;
     }
 
+    if (parser_match(p, Token_Question)) {
+        /* `?*T`: a pointer that may be null, and must be tested before use. */
+        Token *q = parser_prev(p);
+        TypeExpr *inner = parse_type(p);
+        if (!inner || inner->kind != Type_Ptr || inner->is_raw) {
+            parser_error_token(p, q, "'?' marks a '*T' that may be null; a slice, an array or a '^T' takes no '?'");
+        } else if (inner->is_nullable) {
+            parser_error_token(p, q, "'?' is already given");
+        }
+        if (inner) inner->is_nullable = true;
+        return inner;
+    }
+
+    if (parser_match(p, Token_Keyword_Region)) {
+        /* `r: region R`: an arena handle whose region the type system calls R.
+           R is bound at each call from what the caller passes. */
+        Token *kw = parser_prev(p);
+        Token *name = parser_expect(p, Token_Identifier, "expected a region name after 'region', as in 'r: region R'");
+        TypeExpr *t = type_new(p->arena, Type_Region);
+        t->name = string8_from_cstr(p->arena, "region");
+        if (name) t->region = token_to_string8(p->arena, name);
+        if (parser_match(p, Token_Keyword_In)) {
+            /* `region R in level`: whatever R is bound to lives no longer than
+               level, so values in R may point into level. */
+            Token *bound = parser_expect(p, Token_Identifier, "expected a region name after 'in', as in 'r: region R in level'");
+            if (bound) t->region_bound = token_to_string8(p->arena, bound);
+        }
+        t->line = kw->line;
+        t->col = kw->col;
+        p->uses_regions = true;
+        return t;
+    }
+
     if (parser_match(p, Token_Star)) {
         Token *star = parser_prev(p);
         TypeExpr *inner = parse_type(p);
@@ -2593,6 +2694,7 @@ static TypeExpr *parse_type_inner(Parser *p) {
         ptr->line = star->line;
         ptr->col = star->col;
         ptr->decl_path = g_source_path;
+        parse_region_suffix(p, ptr);
         return ptr;
     }
 
@@ -3048,6 +3150,12 @@ static Expr *parse_primary(Parser *p) {
                 name = concat_name2(p->arena, base_name, "@", tail);
             }
 
+            if (string8_equals_cstr(&name, "new") || string8_equals_cstr(&name, "new_slice")) {
+                /* The allocation builtins: their arena module and, for a slice,
+                   the slice struct. */
+                p->uses_regions = true;
+                p->uses_slice_type = true;
+            }
             parser_expect(p, Token_LParen, "expected '(' after type args");
             Vec_voidptr args = ptr_array_reserve(p->arena, 4);
             if (!parser_match(p, Token_RParen)) {
@@ -3888,6 +3996,29 @@ static Stmt *parse_stmt_inner(Parser *p) {
         return s;
     }
 
+    if (parser_match(p, Token_Keyword_Region)) {
+        /* `region frame { }`: the arena named frame lives for the block. With
+           `of parent`, it is a mark on parent's arena instead. */
+        Token *kw = parser_prev(p);
+        Token *name = parser_expect(p, Token_Identifier, "expected a region name after 'region'");
+        Stmt *s = stmt_new(p->arena, Stmt_Region);
+        s->line = kw->line;
+        s->col = kw->col;
+        if (name) s->name = token_to_string8(p->arena, name);
+        s->while_body = ptr_array_reserve(p->arena, 8);
+        if (parser_peek(p)->kind == Token_Identifier && string8slice_equals_cstr(parser_peek(p)->text, "of")) {
+            parser_next(p);
+            Token *parent = parser_expect(p, Token_Identifier, "expected the parent region's name after 'of'");
+            if (parent) s->region_parent = token_to_string8(p->arena, parent);
+        }
+        parser_expect(p, Token_LBrace, "expected '{' after the region name");
+        while (!parser_at_block_end(p)) {
+            ptr_array_append(p->arena, &s->while_body, parse_stmt_recovering(p));
+        }
+        p->uses_regions = true;
+        return s;
+    }
+
     if (parser_match(p, Token_Keyword_While)) {
         Token *while_tok = parser_prev(p);
         Stmt *s = stmt_new(p->arena, Stmt_While);
@@ -4203,10 +4334,14 @@ static DeclAttributes parse_decl_attributes(Parser *p, bool is_enum) {
                     "'must_use' marks an enum; put it on the status enum the proc returns, "
                     "as in 'E: enum[must_use] = { ... }'");
             }
+        } else if (string8slice_equals_cstr(tok->text, "trusted")) {
+            attrs.is_trusted = true;
+        } else if (string8slice_equals_cstr(tok->text, "unsafe")) {
+            attrs.is_unsafe = true;
         } else {
             parser_error_token(p, tok,
                 "unknown attribute; expected one of external, external_emit, "
-                "no_layout_check, packed, align(N), callconv(NAME), must_use");
+                "no_layout_check, packed, align(N), callconv(NAME), must_use, trusted, unsafe");
         }
     } while (parser_match(p, Token_Comma));
     parser_expect(p, Token_RBracket, "expected ']' after attributes");
@@ -4523,6 +4658,12 @@ static ProcDecl *parse_proc_decl(Parser *p, Token *name_tok) {
         decl->is_external = true;
         decl->emit_external_proto = proc_attrs.emit_external_proto;
     }
+    decl->is_trusted = proc_attrs.is_trusted;
+    decl->is_unsafe = proc_attrs.is_unsafe;
+    if (proc_attrs.is_trusted && proc_attrs.is_unsafe) {
+        parser_error_token(p, name_tok, "a proc is 'trusted' or 'unsafe', not both: trusted may be called from "
+                                        "safe code and vouches for its signature; unsafe may not");
+    }
 
     if (parser_match(p, Token_LAngle)) {
         Token *first = parser_peek(p);
@@ -4668,6 +4809,7 @@ static Program parse_program(Parser *p) {
     prog.imports = Vec_string8_reserve(p->arena, 8);
     prog.c_imports = Vec_string8_reserve(p->arena, 8);
     prog.i_imports = Vec_string8_reserve(p->arena, 8);
+    prog.regions = Vec_string8_reserve(p->arena, 8);
     prog.i_import_lines = Vec_i32_reserve(p->arena, 8);
     prog.i_import_cols = Vec_i32_reserve(p->arena, 8);
     prog.structs = ptr_array_reserve(p->arena, 8);
@@ -4722,6 +4864,23 @@ static Program parse_program(Parser *p) {
             Token *path_tok = parser_expect(p, Token_String, "expected string literal after cinclude");
             Vec_string8_append(p->arena, &prog.c_imports, token_to_string8(p->arena, path_tok));
             parser_match(p, Token_Semicolon);
+            continue;
+        }
+
+        if (parser_match(p, Token_Keyword_Region)) {
+            /* `region level > frame > scratch;` declares the regions and their
+               order of lifetimes, longest first. `permanent` is always first and
+               is not written. */
+            do {
+                Token *n = parser_expect(p, Token_Identifier, "expected a region name, as in 'region level > frame;'");
+                if (!n) break;
+                if (string8slice_equals_cstr(n->text, "permanent")) {
+                    parser_error_token(p, n, "'permanent' is every program's first region and is not declared");
+                }
+                Vec_string8_append(p->arena, &prog.regions, token_to_string8(p->arena, n));
+            } while (parser_match(p, Token_RAngle));
+            parser_expect(p, Token_Semicolon, "expected ';' after the region declaration");
+            p->uses_regions = true;
             continue;
         }
 
@@ -4825,6 +4984,17 @@ static Program parse_program(Parser *p) {
         Vec_i32_append(p->arena, &prog.i_import_cols, 0);
         Vec_string8_append(p->arena, &prog.imports, path);
     }
+    /* A region is an arena, so a program that enters one gets the arena module
+       the way a program that writes `[]T` gets the slice struct. */
+    if (p->uses_regions && !g_no_std) {
+        string8 path = string8_from_cstr(p->arena, "\"std/memops.rin\"");
+        Vec_string8_append(p->arena, &prog.i_imports, path);
+        Vec_i32_append(p->arena, &prog.i_import_lines, 0);
+        Vec_i32_append(p->arena, &prog.i_import_cols, 0);
+        Vec_string8_append(p->arena, &prog.imports, path);
+    }
+
+    prog.uses_regions = p->uses_regions;
 
     /* A `[_]` that no declaration counted: a field, a parameter, a return type,
        an inner dimension, a generic argument. C has no answer for those either. */
@@ -5894,6 +6064,20 @@ static void semantic_check_stmt(Program *prog, Stmt *stmt, Scope *scope, Vec_str
             semantic_check_stmt(prog, (Stmt *)stmt->while_body.data[i], &loop_scope, known_types, generic_params, arena);
         }
         semantic_check_expr(stmt->while_cond, &loop_scope, known_types, generic_params);
+        return;
+    }
+    if (stmt->kind == Stmt_Region) {
+        /* The region's name is a value inside the block: the arena, where
+           `new<T>(frame)` and std's containers want one. */
+        Scope block_scope = *scope;
+        scope_copy_locals(arena, &block_scope, scope, 16);
+        if (stmt->name.length > 0) {
+            Vec_string8_append(arena, &block_scope.locals, stmt->name);
+            ptr_array_append(arena, &block_scope.local_sites, local_decl_site_new(arena, stmt->name, stmt->line, stmt->col));
+        }
+        for (i32 i = 0; i < stmt->while_body.length; i++) {
+            semantic_check_stmt(prog, (Stmt *)stmt->while_body.data[i], &block_scope, known_types, generic_params, arena);
+        }
         return;
     }
     if (stmt->kind == Stmt_Break || stmt->kind == Stmt_Continue) {
@@ -7252,6 +7436,9 @@ static void semantic_check_program(Program *prog, memops_arena *arena) {
     Vec_voidptr global_sites = ptr_array_reserve(arena, 64);
 
     semantic_add_import_symbols(prog, &base, &structs, arena);
+    /* The program's first region, usable everywhere as the arena that is never
+       cleared. */
+    Vec_string8_append(arena, &base.globals, string8_from_cstr(arena, "permanent"));
 
     for (i32 i = 0; i < prog->preprocessor_lines.length; i++) {
         string8 define_name = preprocessor_define_name(arena, prog->preprocessor_lines.data[i]);
@@ -7820,6 +8007,11 @@ static void emit_type(memops_arena *arena, string8 *out, TypeExpr *type, TypeSub
         emit_string8(arena, out, mangle);
         return;
     }
+    if (type->kind == Type_Region) {
+        /* Erased: a region is its arena at run time. */
+        emit_cstr(arena, out, "memops_arena *");
+        return;
+    }
     if (type->kind == Type_Array) {
         emit_type(arena, out, type->elem, sub);
         return;
@@ -7864,6 +8056,10 @@ static string8 type_mangle_impl(memops_arena *arena, TypeExpr *type, TypeSub sub
         emit_cstr(arena, &out, type->is_raw ? "raw_" : "ptr_");
         string8 inner = type_mangle(arena, type->elem, sub);
         emit_string8(arena, &out, inner);
+        return out;
+    }
+    if (type->kind == Type_Region) {
+        emit_cstr(arena, &out, "region");
         return out;
     }
     if (type->kind == Type_Generic) {
@@ -8705,7 +8901,7 @@ static void collect_type_instances_from_stmt(Stmt *s, string8 base, Vec_string8 
         for (i32 i = 0; i < s->while_body.length; i++) {
             collect_type_instances_from_stmt((Stmt *)s->while_body.data[i], base, out, arena);
         }
-    } else if (s->kind == Stmt_DoWhile || s->kind == Stmt_Label) {
+    } else if (s->kind == Stmt_DoWhile || s->kind == Stmt_Label || s->kind == Stmt_Region) {
         for (i32 i = 0; i < s->while_body.length; i++) {
             collect_type_instances_from_stmt((Stmt *)s->while_body.data[i], base, out, arena);
         }
@@ -8821,7 +9017,7 @@ static void collect_type_instances_from_stmt_sub(Stmt *s, string8 base, Vec_stri
         for (i32 i = 0; i < s->while_body.length; i++) {
             collect_type_instances_from_stmt_sub((Stmt *)s->while_body.data[i], base, out, arena, sub);
         }
-    } else if (s->kind == Stmt_DoWhile || s->kind == Stmt_Label) {
+    } else if (s->kind == Stmt_DoWhile || s->kind == Stmt_Label || s->kind == Stmt_Region) {
         for (i32 i = 0; i < s->while_body.length; i++) {
             collect_type_instances_from_stmt_sub((Stmt *)s->while_body.data[i], base, out, arena, sub);
         }
@@ -9307,7 +9503,7 @@ static bool collect_generic_calls_from_stmt(
         }
         return changed;
     }
-    if (s->kind == Stmt_DoWhile || s->kind == Stmt_Label) {
+    if (s->kind == Stmt_DoWhile || s->kind == Stmt_Label || s->kind == Stmt_Region) {
         for (i32 i = 0; i < s->while_body.length; i++) {
             if (collect_generic_calls_from_stmt((Stmt *)s->while_body.data[i], sub, entries, constraint_sites, arena)) changed = true;
         }
@@ -9797,6 +9993,9 @@ static TypeExpr *clone_type_expr(memops_arena *arena, TypeExpr *src) {
     dst->is_volatile = src->is_volatile;
     dst->is_raw = src->is_raw;
     dst->is_noalias = src->is_noalias;
+    dst->is_nullable = src->is_nullable;
+    dst->region = src->region;
+    dst->region_bound = src->region_bound;
     dst->line = src->line;
     dst->col = src->col;
     dst->decl_path = src->decl_path;
@@ -9845,6 +10044,9 @@ static TypeExpr *substitute_type_param(memops_arena *arena, TypeExpr *src, strin
     dst->is_volatile = src->is_volatile;
     dst->is_raw = src->is_raw;
     dst->is_noalias = src->is_noalias;
+    dst->is_nullable = src->is_nullable;
+    dst->region = src->region;
+    dst->region_bound = src->region_bound;
     dst->line = src->line;
     dst->col = src->col;
     dst->decl_path = src->decl_path;
@@ -10404,6 +10606,25 @@ static ProcDecl *lookup_call_proc_decl(
 }
 
 static bool type_compatible(Program *prog, TypeExpr *dst, TypeExpr *src);
+
+/* The region checks, defined with the call checker below and used by type
+   inference and compatibility above it. See docs/regions.md. */
+typedef struct RegionBindings {
+    Vec_string8 names;
+    Vec_string8 values;
+} RegionBindings;
+static i32 region_rank(Program *prog, string8 name);
+static bool region_ge(Program *prog, string8 a, string8 b);
+static string8 type_region_of(Program *prog, TypeExpr *type);
+static bool type_is_checked_pointer(Program *prog, TypeExpr *type);
+static bool type_has_nonnull_pointer(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth);
+static bool region_flow_rejects(Program *prog, TypeExpr *dst, TypeExpr *src, i32 line, i32 col);
+static TypeExpr *regions_substitute(memops_arena *arena, TypeExpr *type, RegionBindings *rb);
+static RegionBindings call_region_bindings(Program *prog, ProcDecl *decl, Expr *call, TypeScope *scope, memops_arena *arena, bool report);
+static TypeExpr *new_call_type(Program *prog, Expr *call, TypeScope *scope, memops_arena *arena);
+static bool call_is_new(Expr *call);
+static string8 expr_place_region(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena);
+static bool stmt_list_ends_in_jump(Vec_voidptr *body);
 static void collect_generic_struct_instances(Program *prog, StructDecl *decl, Vec_string8 *out, memops_arena *arena);
 
 static TypeExpr *proc_decl_pointer_type(memops_arena *arena, ProcDecl *decl) {
@@ -10517,6 +10738,7 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
             TypeExpr *void_t = type_name_expr(arena, "void");
             TypeExpr *ptr_t = type_new(arena, Type_Ptr);
             ptr_t->elem = void_t;
+            ptr_t->is_nullable = true; // so it may not become a `*T`, only a `?*T` or a `^T`
             return ptr_t;
         }
         /* `x<>` where x is a value, not a type. The parser writes every `<>` as
@@ -10608,6 +10830,9 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
         if (!inner) return null;
         TypeExpr *ptr_t = type_new(arena, Type_Ptr);
         ptr_t->elem = inner;
+        /* The address of a local is borrowed; of a global, permanent; of an
+           element or a field, in the region of what holds it. */
+        ptr_t->region = expr_place_region(e->inner, scope, prog, arena);
         return ptr_t;
     }
     if (e->kind == Expr_Unary) {
@@ -10628,7 +10853,14 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
         if (base && (base->kind == Type_Ptr || base->kind == Type_Array)) elem = base->elem;
         else elem = type_slice_elem(base);
         if (!elem) return null;
-        if (e->index_end) return type_slice_of(arena, elem);  // `x[a..b]` is a slice
+        if (e->index_end) {
+            /* `x[a..b]` is a slice of the same memory, so it is in the same
+               region: x's for a pointer or slice, the place's for an array. */
+            TypeExpr *range = type_slice_of(arena, elem);
+            range->region = base->kind == Type_Array ? expr_place_region(e->base, scope, prog, arena)
+                                                     : type_region_of(prog, base);
+            return range;
+        }
         return elem;
     }
     if (e->kind == Expr_Field) {
@@ -10664,20 +10896,27 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
             TypeExpr *proc_type = callee ? type_proc_from_callable_type(prog, callee) : null;
             return proc_type ? proc_type->ret_type : null;
         }
+        if (call_is_new(e)) return new_call_type(prog, e, scope, arena);
         TypeExpr *type_arg = null;
         ProcDecl *decl = lookup_call_proc_decl(prog, e, scope, arena, &type_arg, null);
         if (decl) {
+            TypeExpr *ret = null;
             if (decl->is_generic) {
                 TypeSub call_sub = proc_call_sub_in_scope(arena, decl, e, type_arg, scope);
-                if (call_sub.has) return substitute_type_sub(arena, decl->ret_type, call_sub);
+                /* Without a substitution the type argument is missing or wrong,
+                   which is reported at the call. Returning unknown keeps the
+                   unsubstituted type param from leaking into surrounding checks
+                   as a second, confusing error. */
+                if (!call_sub.has) return null;
+                ret = substitute_type_sub(arena, decl->ret_type, call_sub);
+            } else {
+                ret = type_scope_apply_sub(scope, arena, decl->ret_type);
             }
-            if (decl->is_generic) {
-                /* The type argument is missing or wrong, which is reported at the
-                   call. Returning unknown keeps the unsubstituted type param from
-                   leaking into surrounding checks as a second, confusing error. */
-                return null;
+            if (g_safety && ret && (ret->region.length > 0 || ret->kind == Type_Ptr || ret->kind == Type_Generic)) {
+                RegionBindings rb = call_region_bindings(prog, decl, e, scope, arena, false);
+                ret = regions_substitute(arena, ret, &rb);
             }
-            return type_scope_apply_sub(scope, arena, decl->ret_type);
+            return ret;
         }
         TypeExpr *callee_type = type_scope_lookup(scope, e->name);
         TypeExpr *proc_type = type_proc_from_callable_type(prog, callee_type);
@@ -11053,6 +11292,9 @@ static bool type_expr_equal_resolved(Program *prog, TypeExpr *a, TypeExpr *b) {
     if (a->kind == Type_Name) {
         return string8_equals(&a->name, &b->name);
     }
+    if (a->kind == Type_Region) {
+        return true; // every region is the same C type; which one is the checker's business
+    }
     if (a->kind == Type_Ptr) {
         return type_expr_equal_resolved(prog, a->elem, b->elem);
     }
@@ -11155,6 +11397,25 @@ static bool type_compatible(Program *prog, TypeExpr *dst, TypeExpr *src) {
     if (!dst || !src) return true;
     dst = resolve_alias_type(prog, dst);
     src = resolve_alias_type(prog, src);
+    /* Regions and nullability come first: the C-level types below are the same
+       on both sides and would say yes. */
+    if (src->kind == Type_Region && dst->kind == Type_Region) return true;
+    if (src->kind == Type_Region) {
+        /* A region is its arena where an arena is wanted, borrowed or raw. */
+        if (dst->kind != Type_Ptr || dst->region.length > 0 || !dst->elem) return false;
+        TypeExpr *de = resolve_alias_type(prog, dst->elem);
+        return de && de->kind == Type_Name && string8_equals_cstr(&de->name, "memops_arena");
+    }
+    if (dst->kind == Type_Region) return false;
+    if (g_safe_body && dst->kind == Type_Ptr && src->kind == Type_Ptr && !dst->is_raw && !dst->is_nullable && src->is_nullable) return false;
+    if (g_safety && type_is_checked_pointer(prog, dst) && !type_is_void_pointer(src)) {
+        string8 dreg = type_region_of(prog, dst);
+        if (dreg.length > 0) {
+            if (!type_is_checked_pointer(prog, src)) return false;
+            string8 sreg = type_region_of(prog, src);
+            if (sreg.length == 0 || !region_ge(prog, sreg, dreg)) return false;
+        }
+    }
     if (type_expr_equal_resolved(prog, dst, src)) return true;
     if (type_expr_assignable_qualified(prog, dst, src, false)) return true;
     if (dst->kind == Type_Proc && src->kind == Type_Ptr && src->elem && type_expr_assignable_qualified(prog, dst, src->elem, false)) return true;
@@ -13745,6 +14006,7 @@ static void check_assignment_compatible(
     memops_arena *arena
 ) {
     if (!dst || !src) return;
+    if (region_flow_rejects(prog, dst, src, line, col)) return;
     if (!type_compatible(prog, dst, src)) {
         type_error_incompatible(context, prog, dst, src, line, col, arena);
         return;
@@ -13906,6 +14168,22 @@ static void type_check_initializer_against(
         TypeExpr *actual = infer_expr_type(value, scope, prog, arena);
         check_assignment_compatible("field initializer", prog, field_type, actual, value, scope, init->line, init->col, arena);
     }
+    /* What the list left out is zero, and a pointer that promises never to be
+       null cannot be. */
+    if (g_safe_body) {
+        for (i32 f = 0; f < decl->fields.length; f++) {
+            Field *field = (Field *)decl->fields.data[f];
+            if (!field->type || field->name.length == 0) continue;
+            if (string8_vec_find(&initialized_fields, field->name) >= 0) continue;
+            TypeExpr *ft = substitute_type_sub(arena, field->type, sub);
+            if (!type_has_nonnull_pointer(prog, ft, arena, 0)) continue;
+            char message[512];
+            snprintf(message, sizeof(message),
+                     "field '%.*s' is left zero, and it holds a pointer that may not be null; set it here, or make it '?*T'",
+                     (int)field->name.length, field->name.data);
+            type_error_message(message, init->line, init->col);
+        }
+    }
 }
 
 static void type_error_missing_type_operation(Expr *call, TypeExpr *type_arg, memops_arena *arena) {
@@ -13946,6 +14224,695 @@ static void type_error_missing_type_operation(Expr *call, TypeExpr *type_arg, me
     return;
 }
 
+/* ---- The safe subset: what a body may do unless its proc is [trusted] or
+   [unsafe]. See docs/regions.md. Each check reports only inside a safe body,
+   so the same code runs unchanged with --unsafe or in a trusted proc. */
+
+static void safety_error(const char *message, i32 line, i32 col) {
+    if (!g_safe_body) return;
+    type_error_message(message, line, col);
+}
+
+/* A type that is, or holds by value, a C pointer, a proc pointer or a slice:
+   what a call across the C boundary could do anything with. */
+static bool type_mentions_pointer(Program *prog, TypeExpr *type, i32 depth) {
+    if (!type || depth > 16) return false;
+    type = resolve_alias_type(prog, type);
+    if (!type) return false;
+    if (type->kind == Type_Ptr || type->kind == Type_Proc) return true;
+    if (type->kind == Type_Array) return type_mentions_pointer(prog, type->elem, depth + 1);
+    if (type_slice_elem(type)) return true;
+    if (type->kind == Type_Name && type_is_c_opaque_pointer_name(type->name)) return true;
+    return false;
+}
+
+static bool proc_touches_pointers(Program *prog, ProcDecl *decl) {
+    if (decl->is_variadic) return true;
+    if (type_mentions_pointer(prog, decl->ret_type, 0)) return true;
+    for (i32 i = 0; i < decl->params.length; i++) {
+        if (type_mentions_pointer(prog, ((Param *)decl->params.data[i])->type, 0)) return true;
+    }
+    return false;
+}
+
+/* A carrier is a struct that holds a raw pointer, `^T`, by value, directly or
+   through a field: a vec, a hashmap, an arena. Its pointers are outside the
+   region system, so safe code may hold one only through a pointer into a
+   region, never by value, or a copy could outlive the memory it points into.
+   `slice<T>` is the one struct with a raw pointer that is checked instead, so
+   it is not a carrier. */
+static bool type_is_carrier_depth(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth) {
+    if (!type || depth > 8) return false;
+    type = resolve_alias_type(prog, type);
+    if (!type) return false;
+    if (type->kind == Type_Array) return type_is_carrier_depth(prog, type->elem, arena, depth + 1);
+    if (type->kind != Type_Name && type->kind != Type_Generic) return false;
+    if (type_slice_elem(type)) return false;
+    TypeSub sub = {0};
+    StructDecl *decl = lookup_aggregate_decl(prog, type, &sub, arena);
+    if (!decl) return false;
+    for (i32 i = 0; i < decl->fields.length; i++) {
+        Field *field = (Field *)decl->fields.data[i];
+        if (!field->type) continue;
+        TypeExpr *ft = sub.has ? substitute_type_sub(arena, field->type, sub) : field->type;
+        TypeExpr *r = resolve_alias_type(prog, ft);
+        if (!r) continue;
+        /* A raw pointer, or a checked pointer that names no region: either
+           way the struct's author, not the checker, knows what it points at. */
+        if (r->kind == Type_Ptr && (r->is_raw || r->region.length == 0)) return true;
+        if (type_slice_elem(r) && r->region.length == 0) return true;
+        if (r->kind == Type_Array) {
+            TypeExpr *elem = resolve_alias_type(prog, r->elem);
+            if (elem && elem->kind == Type_Ptr && (elem->is_raw || elem->region.length == 0)) return true;
+            if (elem && type_slice_elem(elem) && elem->region.length == 0) return true;
+        }
+        if (type_is_carrier_depth(prog, ft, arena, depth + 1)) return true;
+    }
+    return false;
+}
+
+static bool type_is_carrier(Program *prog, TypeExpr *type, memops_arena *arena) {
+    return type_is_carrier_depth(prog, type, arena, 0);
+}
+
+static void safety_check_carrier_value(const char *what, Program *prog, TypeExpr *type, memops_arena *arena, i32 line, i32 col) {
+    if (!g_safe_body || !type_is_carrier(prog, type, arena)) return;
+    string8 shown = type_mangle(arena, type, (TypeSub){0});
+    char message[512];
+    snprintf(message, sizeof(message),
+             "%s holds '%.*s' by value, and it carries a pointer whose region the checker cannot see; safe code "
+             "keeps such a value through a pointer into a region, '*%.*s in R', made by a trusted proc",
+             what, (int)shown.length, shown.data, (int)shown.length, shown.data);
+    type_error_message(message, line, col);
+}
+
+/* ---- Regions. See docs/regions.md.
+
+   The program declares its regions in order of lifetime, longest first, and
+   `permanent` comes before them all. A region's rank is its place in that
+   order, so a lower rank lives longer. A proc may also name regions it does
+   not know, its region variables, bound at each call from the arguments; such
+   a region is only as long-lived as itself. */
+static Vec_string8 g_region_vars;       // the region variables of the proc being checked
+static Vec_string8 g_region_var_bounds; // each one's `in level` bound, or empty
+static Vec_string8 g_active_regions;    // the region blocks open at this point of the body
+
+static string8 region_var_bound(string8 name) {
+    for (i32 i = 0; i < g_region_vars.length && i < g_region_var_bounds.length; i++) {
+        if (string8_equals(&g_region_vars.data[i], &name)) return g_region_var_bounds.data[i];
+    }
+    return (string8){0};
+}
+
+static i32 region_rank(Program *prog, string8 name) {
+    if (string8_equals_cstr(&name, "permanent")) return 0;
+    for (i32 i = 0; i < prog->regions.length; i++) {
+        if (string8_equals(&prog->regions.data[i], &name)) return i + 1;
+    }
+    return -1;
+}
+
+static bool region_known(Program *prog, string8 name) {
+    return region_rank(prog, name) >= 0 || array_string8_contains(&g_region_vars, name);
+}
+
+/* Does memory in region `a` live at least as long as memory in region `b`? */
+static bool region_ge(Program *prog, string8 a, string8 b) {
+    if (string8_equals(&a, &b)) return true;
+    if (string8_equals_cstr(&a, "permanent")) return true;
+    i32 ra = region_rank(prog, a);
+    i32 rb = region_rank(prog, b);
+    if (rb < 0) {
+        /* b is a region variable: it lives no longer than its bound, if it
+           has one, so anything at least as long as the bound outlives it. */
+        string8 bound = region_var_bound(b);
+        return bound.length > 0 && region_ge(prog, a, bound);
+    }
+    if (ra < 0) return false;
+    return ra <= rb;
+}
+
+/* The region of a checked pointer or slice type; empty for anything else,
+   borrowed pointers included. */
+static string8 type_region_of(Program *prog, TypeExpr *type) {
+    type = resolve_alias_type(prog, type);
+    if (!type) return (string8){0};
+    if (type->kind == Type_Ptr && !type->is_raw) return type->region;
+    if (type_slice_elem(type)) return type->region;
+    return (string8){0};
+}
+
+static bool type_is_checked_pointer(Program *prog, TypeExpr *type) {
+    type = resolve_alias_type(prog, type);
+    if (!type) return false;
+    return (type->kind == Type_Ptr && !type->is_raw) || type_slice_elem(type) != null;
+}
+
+static void region_error(const char *format, string8 a, string8 b, i32 line, i32 col) {
+    char message[640];
+    snprintf(message, sizeof(message), format, (int)a.length, a.data, (int)b.length, b.data);
+    type_error_message(message, line, col);
+}
+
+/* Every pointer that lives in memory, rather than in a local or a parameter,
+   must say its region, and must point into memory that lives at least as long
+   as the memory holding it: `outer`, when known. Walks through struct fields,
+   array elements, generic arguments and pointees. A carrier's own one-pointers
+   are its author's business, so inside one only the generic arguments are
+   held to the rule. */
+static void check_type_stored(Program *prog, TypeExpr *type, string8 outer, bool in_carrier,
+                              i32 line, i32 col, memops_arena *arena, i32 depth, Vec_string8 *seen) {
+    if (!g_safety || !type || depth > 12) return;
+    TypeExpr *r = resolve_alias_type(prog, type);
+    if (!r) return;
+    if (r->kind == Type_Array) {
+        check_type_stored(prog, r->elem, outer, in_carrier, line, col, arena, depth + 1, seen);
+        return;
+    }
+    if (r->kind == Type_Proc) return;
+    if (r->kind == Type_Region) {
+        /* A region handle outliving its block would allocate into a cleared
+           arena, so it lives only in parameters. */
+        type_error_message("a region handle is not kept in memory: it lives in a parameter, 'r: region R', "
+                           "for the length of a call", line, col);
+        return;
+    }
+    if (r->kind == Type_Ptr && r->is_raw) {
+        check_type_stored(prog, r->elem, outer, in_carrier, line, col, arena, depth + 1, seen);
+        return;
+    }
+    if (type_is_checked_pointer(prog, r)) {
+        string8 region = r->region;
+        TypeExpr *elem = r->kind == Type_Ptr ? r->elem : type_slice_elem(r);
+        if (region.length == 0) {
+            if (!in_carrier) {
+                type_error_message("a pointer kept in memory names the region it points into: write '*T in R' "
+                                   "(or '[]T in R'); only a local or a parameter may leave it off", line, col);
+            }
+            check_type_stored(prog, elem, outer, in_carrier, line, col, arena, depth + 1, seen);
+            return;
+        }
+        if (!region_known(prog, region)) {
+            region_error("unknown region '%.*s'%.0s; declare it, as 'region level > frame;', or take it as 'r: region R'",
+                         region, (string8){0}, line, col);
+            return;
+        }
+        /* An unbounded region variable as the holder is decided at each call,
+           once it is bound; here nothing is known about it. */
+        bool outer_open = outer.length > 0 && region_rank(prog, outer) < 0 && region_var_bound(outer).length == 0;
+        if (outer.length > 0 && !outer_open && !region_ge(prog, region, outer)) {
+            region_error("this points into region '%.*s', which may end before the memory in region '%.*s' that holds it",
+                         region, outer, line, col);
+        }
+        check_type_stored(prog, elem, region, false, line, col, arena, depth + 1, seen);
+        return;
+    }
+    if (r->kind == Type_Name || r->kind == Type_Generic) {
+        TypeSub sub = {0};
+        StructDecl *decl = lookup_aggregate_decl(prog, r, &sub, arena);
+        if (!decl || decl->is_external) return;
+        string8 key = type_mangle(arena, r, (TypeSub){0});
+        if (array_string8_contains(seen, key)) return;
+        Vec_string8_append(arena, seen, key);
+        bool carrier = in_carrier || type_is_carrier(prog, r, arena);
+        for (i32 i = 0; i < decl->fields.length; i++) {
+            Field *field = (Field *)decl->fields.data[i];
+            if (!field->type) continue;
+            TypeExpr *ft = sub.has ? substitute_type_sub(arena, field->type, sub) : field->type;
+            check_type_stored(prog, ft, outer, carrier, line, col, arena, depth + 1, seen);
+        }
+        seen->length--;
+    }
+}
+
+static void check_type_stored_at(Program *prog, TypeExpr *type, string8 outer, i32 line, i32 col, memops_arena *arena) {
+    Vec_string8 seen = Vec_string8_reserve(arena, 8);
+    check_type_stored(prog, type, outer, false, line, col, arena, 0, &seen);
+}
+
+/* A type written in a body or a signature: if it is a pointer into a region,
+   what it points at must obey the rule relative to that region. */
+static void check_type_regions_wf(Program *prog, TypeExpr *type, i32 line, i32 col, memops_arena *arena) {
+    if (!g_safety || !type) return;
+    TypeExpr *r = resolve_alias_type(prog, type);
+    if (!r) return;
+    if (r->kind == Type_Region) return; // a parameter's region name is checked where it is declared
+    if (type_is_checked_pointer(prog, r)) {
+        string8 region = r->region;
+        TypeExpr *elem = r->kind == Type_Ptr ? r->elem : type_slice_elem(r);
+        if (region.length > 0) {
+            if (!region_known(prog, region)) {
+                region_error("unknown region '%.*s'%.0s; declare it, as 'region level > frame;', or take it as 'r: region R'",
+                             region, (string8){0}, line, col);
+                return;
+            }
+            check_type_stored_at(prog, elem, region, line, col, arena);
+        }
+        return;
+    }
+    if (r->kind == Type_Array) check_type_regions_wf(prog, r->elem, line, col, arena);
+}
+
+/* A zeroed value of this type would hold a null in a pointer that promises
+   never to be null. */
+static bool type_has_nonnull_pointer(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth) {
+    if (!type || depth > 8) return false;
+    TypeExpr *r = resolve_alias_type(prog, type);
+    if (!r) return false;
+    if (r->kind == Type_Ptr) return !r->is_raw && !r->is_nullable;
+    if (r->kind == Type_Array) return type_has_nonnull_pointer(prog, r->elem, arena, depth + 1);
+    if (r->kind == Type_Name || r->kind == Type_Generic) {
+        if (type_slice_elem(r)) return false;
+        TypeSub sub = {0};
+        StructDecl *decl = lookup_aggregate_decl(prog, r, &sub, arena);
+        if (!decl || decl->is_external) return false;
+        for (i32 i = 0; i < decl->fields.length; i++) {
+            Field *field = (Field *)decl->fields.data[i];
+            if (!field->type) continue;
+            TypeExpr *ft = sub.has ? substitute_type_sub(arena, field->type, sub) : field->type;
+            if (type_has_nonnull_pointer(prog, ft, arena, depth + 1)) return true;
+        }
+    }
+    return false;
+}
+
+static void safety_check_zeroed(const char *what, Program *prog, TypeExpr *type, memops_arena *arena, i32 line, i32 col) {
+    if (!g_safe_body || !type_has_nonnull_pointer(prog, type, arena, 0)) return;
+    string8 shown = type_mangle(arena, type, (TypeSub){0});
+    char message[512];
+    snprintf(message, sizeof(message),
+             "%s of type '%.*s' would hold a null in a pointer that may not be null; give every pointer a value, "
+             "or make the pointer '?*T'", what, (int)shown.length, shown.data);
+    type_error_message(message, line, col);
+}
+
+/* The region rule as a flow check, with a message that names the regions,
+   since the C-level type names the error would otherwise print are the same
+   on both sides. Returns true when it reported. */
+static bool region_flow_rejects(Program *prog, TypeExpr *dst, TypeExpr *src, i32 line, i32 col) {
+    if (!g_safety || !dst || !src) return false;
+    TypeExpr *d = resolve_alias_type(prog, dst);
+    TypeExpr *s = resolve_alias_type(prog, src);
+    if (!d || !s) return false;
+    if (g_safe_body && d->kind == Type_Ptr && s->kind == Type_Ptr && !d->is_raw && !d->is_nullable && s->is_nullable) {
+        type_error_message(type_is_void_pointer(s)
+            ? "null cannot go where a '*T' is promised; make the place '?*T'"
+            : "this pointer may be null, and the place it goes promises never to be; test it first, or make the place '?*T'",
+            line, col);
+        return true;
+    }
+    if (!type_is_checked_pointer(prog, d)) return false;
+    string8 dreg = type_region_of(prog, d);
+    if (dreg.length == 0) return false;
+    if (type_is_void_pointer(s)) return false; // null
+    if (!type_is_checked_pointer(prog, s)) return false;
+    string8 sreg = type_region_of(prog, s);
+    if (sreg.length == 0) {
+        region_error("a borrowed pointer cannot be kept in region '%.*s'%.0s: nothing says how long it lives; "
+                     "take or make it with a region, '*T in R'", dreg, (string8){0}, line, col);
+        return true;
+    }
+    if (!region_ge(prog, sreg, dreg)) {
+        region_error("a pointer into region '%.*s' cannot be kept where region '%.*s' is promised: it may end first",
+                     sreg, dreg, line, col);
+        return true;
+    }
+    return false;
+}
+
+/* A call binds the callee's region variables from the arguments: a
+   `region R` parameter from the region passed, and a pointer parameter's
+   region variable from the argument's region. The bindings then rewrite the
+   callee's parameter and return types for this call. */
+static string8 region_binding_lookup(RegionBindings *rb, string8 name) {
+    for (i32 i = 0; i < rb->names.length; i++) {
+        if (string8_equals(&rb->names.data[i], &name)) return rb->values.data[i];
+    }
+    return (string8){0};
+}
+
+static TypeExpr *regions_substitute(memops_arena *arena, TypeExpr *type, RegionBindings *rb) {
+    if (!type || rb->names.length == 0) return type;
+    TypeExpr *t = clone_type_expr(arena, type);
+    if (t->region.length > 0) {
+        string8 bound = region_binding_lookup(rb, t->region);
+        if (bound.length > 0) t->region = bound;
+    }
+    t->elem = regions_substitute(arena, t->elem, rb);
+    t->ret_type = regions_substitute(arena, t->ret_type, rb);
+    for (i32 i = 0; i < t->args.length; i++) {
+        t->args.data[i] = regions_substitute(arena, (TypeExpr *)t->args.data[i], rb);
+    }
+    return t;
+}
+
+static bool region_is_callee_var(Program *prog, string8 name) {
+    return name.length > 0 && region_rank(prog, name) < 0;
+}
+
+static RegionBindings call_region_bindings(Program *prog, ProcDecl *decl, Expr *call, TypeScope *scope, memops_arena *arena, bool report) {
+    RegionBindings rb = {0};
+    rb.names = Vec_string8_reserve(arena, 4);
+    rb.values = Vec_string8_reserve(arena, 4);
+    for (i32 i = 0; i < call->args.length && i < decl->params.length; i++) {
+        Param *param = (Param *)decl->params.data[i];
+        TypeExpr *pt = resolve_alias_type(prog, param->type);
+        Expr *arg = (Expr *)call->args.data[i];
+        if (!pt || !arg) continue;
+        string8 var = {0};
+        string8 value = {0};
+        if (pt->kind == Type_Region) {
+            var = pt->region;
+            TypeExpr *at = resolve_alias_type(prog, infer_expr_type(arg, scope, prog, arena));
+            if (at && at->kind == Type_Region) value = at->region;
+            if (region_rank(prog, var) >= 0) {
+                /* `r: region level` wants the declared region itself, so the
+                   proc can allocate in it by name. Nothing to bind. */
+                if (report && value.length > 0 && !string8_equals(&var, &value)) {
+                    region_error("this parameter is region '%.*s' itself; '%.*s' was passed", var, value, arg->line, arg->col);
+                }
+                continue;
+            }
+            /* `region R in level` takes only a region that lives no longer
+               than level. */
+            if (report && value.length > 0 && pt->region_bound.length > 0 && !region_ge(prog, pt->region_bound, value)) {
+                region_error("region '%.*s' may outlive '%.*s', which this parameter's region must not", value, pt->region_bound, arg->line, arg->col);
+            }
+        } else if (type_is_checked_pointer(prog, pt) && region_is_callee_var(prog, pt->region)) {
+            var = pt->region;
+            value = type_region_of(prog, infer_expr_type(arg, scope, prog, arena));
+        }
+        if (var.length == 0 || value.length == 0) continue;
+        if (region_binding_lookup(&rb, var).length > 0) continue; // first binding wins; the check reports a mismatch
+        Vec_string8_append(arena, &rb.names, var);
+        Vec_string8_append(arena, &rb.values, value);
+    }
+    return rb;
+}
+
+/* `new<T>(r)` and `new_slice<T>(r, n)`: the result's type, with the region of
+   the arena handed in. */
+static TypeExpr *new_call_type(Program *prog, Expr *call, TypeScope *scope, memops_arena *arena) {
+    if (call->type_args.length != 1 || call->args.length < 1) return null;
+    TypeExpr *t = type_scope_apply_sub(scope, arena, (TypeExpr *)call->type_args.data[0]);
+    TypeExpr *rt = resolve_alias_type(prog, infer_expr_type((Expr *)call->args.data[0], scope, prog, arena));
+    string8 region = (rt && rt->kind == Type_Region) ? rt->region : (string8){0};
+    TypeExpr *result;
+    if (string8_equals_cstr(&call->name, "new_slice")) {
+        result = type_slice_of(arena, t);
+    } else {
+        result = type_new(arena, Type_Ptr);
+        result->elem = t;
+    }
+    result->region = region;
+    return result;
+}
+
+static bool call_is_new(Expr *call) {
+    return call && !call->base && call->type_args.length == 1 &&
+           (string8_equals_cstr(&call->name, "new") || string8_equals_cstr(&call->name, "new_slice"));
+}
+
+static void type_check_new_call(Expr *call, TypeScope *scope, Program *prog, memops_arena *arena) {
+    bool slice = string8_equals_cstr(&call->name, "new_slice");
+    /* `new<T>(r)` zeroes; `new<T>(r, value)` copies a whole value in, which
+       is how a struct with a pointer that may not be null is made. */
+    bool with_value = !slice && call->args.length == 2;
+    i32 wanted = slice ? 2 : (with_value ? 2 : 1);
+    TypeExpr *t = type_scope_apply_sub(scope, arena, (TypeExpr *)call->type_args.data[0]);
+    if (with_value) type_check_initializer_against((Expr *)call->args.data[1], t, scope, prog, arena);
+    for (i32 i = 0; i < call->args.length; i++) type_check_expr((Expr *)call->args.data[i], scope, prog, arena);
+    if (call->args.length != wanted) {
+        type_error_message(slice ? "new_slice<T> takes a region and a count: new_slice<T>(frame, n)"
+                                 : "new<T> takes a region, and optionally the value: new<T>(frame) or new<T>(frame, { ... })",
+                           call->line, call->col);
+        return;
+    }
+    TypeExpr *rt = resolve_alias_type(prog, infer_expr_type((Expr *)call->args.data[0], scope, prog, arena));
+    if (!rt || rt->kind != Type_Region) {
+        type_error_message("new<T> takes a region: a region block's name, 'permanent', or a 'region R' parameter; "
+                           "a bare arena has no region the checker can see", call->line, call->col);
+        return;
+    }
+    check_type_stored_at(prog, t, rt->region, call->line, call->col, arena);
+    safety_check_carrier_value("a value made by new", prog, t, arena, call->line, call->col);
+    if (with_value) {
+        Expr *value = (Expr *)call->args.data[1];
+        TypeExpr *actual = infer_expr_type(value, scope, prog, arena);
+        check_assignment_compatible("new's value", prog, t, actual, value, scope, value->line, value->col, arena);
+        if (value->kind == Expr_ZeroInit) safety_check_zeroed("a value made by new", prog, t, arena, call->line, call->col);
+    } else {
+        safety_check_zeroed("a value made by new", prog, t, arena, call->line, call->col);
+    }
+    if (slice) {
+        Expr *n = (Expr *)call->args.data[1];
+        TypeExpr *nt = resolve_alias_type(prog, infer_expr_type(n, scope, prog, arena));
+        if (nt && !type_is_integer(nt)) {
+            type_error_message("new_slice<T>'s count is an integer", n->line, n->col);
+        }
+        if (n->kind != Expr_Name && n->kind != Expr_Number && n->kind != Expr_Field) {
+            type_error_message("new_slice<T>'s count is written twice in the C, so it must be a name, a number or a field; "
+                               "put the expression in a local first", n->line, n->col);
+        }
+        lit_into(prog, type_name_expr(arena, "u64"), n, true, scope, arena);
+    }
+}
+
+/* The region of the memory an lvalue names: a local's is none (the stack, so
+   borrowed), a global's is permanent, an element's or a field's is its
+   container's. */
+static string8 expr_place_region(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena) {
+    if (!e) return (string8){0};
+    if (e->kind == Expr_Name) {
+        for (TypeScope *level = scope; level; level = level->parent) {
+            for (i32 i = level->names.length - 1; i >= 0; i--) {
+                if (string8_equals(&level->names.data[i], &e->name)) {
+                    return level->parent ? (string8){0} : string8_from_cstr(arena, "permanent");
+                }
+            }
+        }
+        return (string8){0};
+    }
+    if (e->kind == Expr_Field) return expr_place_region(e->base, scope, prog, arena);
+    if (e->kind == Expr_Index) {
+        TypeExpr *base = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
+        if (!base) return (string8){0};
+        if (base->kind == Type_Array) return expr_place_region(e->base, scope, prog, arena);
+        return type_region_of(prog, base);
+    }
+    return (string8){0};
+}
+
+/* ---- Narrowing for `?*T`: inside `if (p)`, `if (p != null)`, the left of
+   `p && ...`, and after `if (!p) { return; }`, p is a `*T`. */
+static void narrow_add(memops_arena *arena, TypeScope *into, string8 name, TypeExpr *nullable) {
+    if (!into || !nullable) return;
+    TypeExpr *t = clone_type_expr(arena, nullable);
+    t->is_nullable = false;
+    t->narrowed = true;
+    type_scope_add(arena, into, name, t);
+}
+
+/* The type a name was declared with, past any narrowing of it. */
+static TypeExpr *type_scope_lookup_declared(TypeScope *s, string8 name) {
+    for (TypeScope *level = s; level; level = level->parent) {
+        for (i32 i = level->names.length - 1; i >= 0; i--) {
+            if (!string8_equals(&level->names.data[i], &name)) continue;
+            TypeExpr *t = (TypeExpr *)level->types.data[i];
+            if (t && t->narrowed) continue;
+            return t;
+        }
+    }
+    return null;
+}
+
+/* `p = ...` inside `if (p) { }`: p may be null again from here on, in this
+   block and in every enclosing block up to the one the narrowing lives in. */
+static void narrow_undo_on_assign(memops_arena *arena, TypeScope *scope, string8 name) {
+    TypeExpr *current = type_scope_lookup(scope, name);
+    if (!current || !current->narrowed) return;
+    TypeExpr *declared = type_scope_lookup_declared(scope, name);
+    if (!declared) return;
+    for (TypeScope *level = scope; level; level = level->parent) {
+        bool holds_narrowing = false;
+        for (i32 i = 0; i < level->names.length; i++) {
+            TypeExpr *t = (TypeExpr *)level->types.data[i];
+            if (string8_equals(&level->names.data[i], &name) && t && t->narrowed) holds_narrowing = true;
+        }
+        type_scope_add(arena, level, name, declared);
+        if (holds_narrowing) break;
+    }
+}
+
+static void narrow_copy(memops_arena *arena, TypeScope *from, TypeScope *into) {
+    if (!into) return;
+    for (i32 i = 0; i < from->names.length; i++) {
+        type_scope_add(arena, into, from->names.data[i], (TypeExpr *)from->types.data[i]);
+    }
+}
+
+static void type_check_condition_narrowing(Expr *cond, TypeScope *scope, TypeScope *then_scope, TypeScope *else_scope,
+                                           Program *prog, memops_arena *arena) {
+    if (!cond) return;
+    if (cond->kind == Expr_Binary && (cond->op == Token_AmpAmp || cond->op == Token_PipePipe)) {
+        bool and_op = cond->op == Token_AmpAmp;
+        /* The right side runs only when the left decided nothing: after a true
+           left for &&, a false one for ||. So it is checked with the left's
+           narrowing for that outcome. */
+        TypeScope mid = type_scope_copy(arena, scope);
+        type_check_condition_narrowing(cond->left, scope, and_op ? &mid : null, and_op ? null : &mid, prog, arena);
+        narrow_copy(arena, &mid, and_op ? then_scope : else_scope);
+        type_check_condition_narrowing(cond->right, &mid, and_op ? then_scope : null, and_op ? null : else_scope, prog, arena);
+        return;
+    }
+    type_check_expr(cond, scope, prog, arena);
+    TypeExpr *ct = resolve_alias_type(prog, infer_expr_type(cond, scope, prog, arena));
+    if (ct && !type_is_truthy(prog, ct)) {
+        type_error_condition("condition", ct, cond->line, cond->col, arena);
+    }
+    Expr *name = null;
+    bool when_true = true;
+    if (cond->kind == Expr_Name) {
+        name = cond;
+    } else if (cond->kind == Expr_Unary && cond->op == Token_Bang && cond->inner && cond->inner->kind == Expr_Name) {
+        name = cond->inner;
+        when_true = false;
+    } else if (cond->kind == Expr_Binary && (cond->op == Token_BangEqual || cond->op == Token_EqualEqual)) {
+        Expr *l = cond->left;
+        Expr *r = cond->right;
+        bool l_null = l && l->kind == Expr_Name && string8_equals_cstr(&l->name, "null");
+        bool r_null = r && r->kind == Expr_Name && string8_equals_cstr(&r->name, "null");
+        if (r_null && l && l->kind == Expr_Name) name = l;
+        else if (l_null && r && r->kind == Expr_Name) name = r;
+        when_true = cond->op == Token_BangEqual;
+    }
+    if (!name) return;
+    TypeExpr *t = resolve_alias_type(prog, type_scope_lookup(scope, name->name));
+    if (!t || t->kind != Type_Ptr || !t->is_nullable) return;
+    narrow_add(arena, when_true ? then_scope : else_scope, name->name, t);
+}
+
+/* The region names a signature mentions that are not declared: the proc's
+   region variables. */
+static void collect_region_names(Program *prog, TypeExpr *type, Vec_string8 *out, memops_arena *arena, i32 depth) {
+    if (!type || depth > 12) return;
+    if (type->region.length > 0 && region_rank(prog, type->region) < 0 && !array_string8_contains(out, type->region)) {
+        Vec_string8_append(arena, out, type->region);
+    }
+    collect_region_names(prog, type->elem, out, arena, depth + 1);
+    collect_region_names(prog, type->ret_type, out, arena, depth + 1);
+    for (i32 i = 0; i < type->args.length; i++) {
+        collect_region_names(prog, (TypeExpr *)type->args.data[i], out, arena, depth + 1);
+    }
+}
+
+static bool stmt_list_has_goto_or_label(Vec_voidptr *body);
+
+static bool stmt_has_goto_or_label(Stmt *s) {
+    if (!s) return false;
+    if (s->kind == Stmt_Goto || s->kind == Stmt_Label) return true;
+    if (stmt_list_has_goto_or_label(&s->for_body)) return true;
+    if (stmt_list_has_goto_or_label(&s->while_body)) return true;
+    if (stmt_list_has_goto_or_label(&s->if_then_body)) return true;
+    if (stmt_list_has_goto_or_label(&s->if_else_body)) return true;
+    if (stmt_has_goto_or_label(s->if_else_if)) return true;
+    if (stmt_list_has_goto_or_label(&s->switch_default_body)) return true;
+    for (i32 i = 0; i < s->switch_cases.length; i++) {
+        SwitchCase *c = (SwitchCase *)s->switch_cases.data[i];
+        if (c && stmt_list_has_goto_or_label(&c->body)) return true;
+    }
+    return false;
+}
+
+static bool stmt_list_has_goto_or_label(Vec_voidptr *body) {
+    for (i32 i = 0; i < body->length; i++) {
+        if (stmt_has_goto_or_label((Stmt *)body->data[i])) return true;
+    }
+    return false;
+}
+
+/* ---- Which regions each proc opens, through every by-name call: a fixpoint
+   over the whole program, before the bodies are checked. */
+static void opens_collect_stmt(Program *prog, Stmt *s, Vec_string8 *regions, Vec_string8 *calls, memops_arena *arena);
+
+static void opens_collect_expr(Program *prog, Expr *e, Vec_string8 *calls, memops_arena *arena) {
+    if (!e) return;
+    if (e->kind == Expr_Call && !e->base && e->name.length > 0 && !array_string8_contains(calls, e->name)) {
+        Vec_string8_append(arena, calls, e->name);
+    }
+    opens_collect_expr(prog, e->inner, calls, arena);
+    opens_collect_expr(prog, e->left, calls, arena);
+    opens_collect_expr(prog, e->right, calls, arena);
+    opens_collect_expr(prog, e->third, calls, arena);
+    opens_collect_expr(prog, e->base, calls, arena);
+    opens_collect_expr(prog, e->index_expr, calls, arena);
+    opens_collect_expr(prog, e->index_end, calls, arena);
+    for (i32 i = 0; i < e->args.length; i++) opens_collect_expr(prog, (Expr *)e->args.data[i], calls, arena);
+}
+
+static void opens_collect_body(Program *prog, Vec_voidptr *body, Vec_string8 *regions, Vec_string8 *calls, memops_arena *arena) {
+    for (i32 i = 0; i < body->length; i++) opens_collect_stmt(prog, (Stmt *)body->data[i], regions, calls, arena);
+}
+
+static void opens_collect_stmt(Program *prog, Stmt *s, Vec_string8 *regions, Vec_string8 *calls, memops_arena *arena) {
+    if (!s) return;
+    if (s->kind == Stmt_Region && s->name.length > 0 && !array_string8_contains(regions, s->name)) {
+        Vec_string8_append(arena, regions, s->name);
+    }
+    opens_collect_expr(prog, s->expr, calls, arena);
+    opens_collect_expr(prog, s->lhs, calls, arena);
+    opens_collect_expr(prog, s->for_cond, calls, arena);
+    opens_collect_expr(prog, s->while_cond, calls, arena);
+    opens_collect_expr(prog, s->if_cond, calls, arena);
+    opens_collect_expr(prog, s->switch_expr, calls, arena);
+    opens_collect_stmt(prog, s->for_init, regions, calls, arena);
+    opens_collect_stmt(prog, s->for_step, regions, calls, arena);
+    opens_collect_stmt(prog, s->if_else_if, regions, calls, arena);
+    opens_collect_body(prog, &s->for_body, regions, calls, arena);
+    opens_collect_body(prog, &s->while_body, regions, calls, arena);
+    opens_collect_body(prog, &s->if_then_body, regions, calls, arena);
+    opens_collect_body(prog, &s->if_else_body, regions, calls, arena);
+    opens_collect_body(prog, &s->switch_default_body, regions, calls, arena);
+    for (i32 i = 0; i < s->switch_cases.length; i++) {
+        SwitchCase *c = (SwitchCase *)s->switch_cases.data[i];
+        if (c) {
+            opens_collect_expr(prog, c->expr, calls, arena);
+            opens_collect_body(prog, &c->body, regions, calls, arena);
+        }
+    }
+}
+
+static void compute_proc_opens(Program *prog, memops_arena *arena) {
+    if (!g_safety) return;
+    i32 n = prog->procs.length;
+    Vec_voidptr callees = ptr_array_reserve(arena, n);
+    for (i32 i = 0; i < n; i++) {
+        ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+        p->opens = Vec_string8_reserve(arena, 2);
+        Vec_string8 *calls = memops_arena_push_struct(arena, Vec_string8);
+        *calls = Vec_string8_reserve(arena, 8);
+        opens_collect_body(prog, &p->body, &p->opens, calls, arena);
+        ptr_array_append(arena, &callees, calls);
+    }
+    bool changed = true;
+    for (i32 round = 0; changed && round < 64; round++) {
+        changed = false;
+        for (i32 i = 0; i < n; i++) {
+            ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+            Vec_string8 *calls = (Vec_string8 *)callees.data[i];
+            for (i32 j = 0; j < calls->length; j++) {
+                ProcDecl *callee = lookup_proc_decl(prog, calls->data[j]);
+                if (!callee || callee == p) continue;
+                for (i32 k = 0; k < callee->opens.length; k++) {
+                    if (array_string8_contains(&p->opens, callee->opens.data[k])) continue;
+                    Vec_string8_append(arena, &p->opens, callee->opens.data[k]);
+                    changed = true;
+                }
+            }
+        }
+    }
+}
+
 static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_arena *arena) {
     /* Indirect call through an expression -- a proc pointer in a field, an array
        element, and so on. Argument checking is the same as for a proc-pointer
@@ -13975,7 +14942,9 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
             type_check_initializer_against(arg, expected, scope, prog, arena);
             type_check_expr(arg, scope, prog, arena);
             TypeExpr *actual = infer_expr_type(arg, scope, prog, arena);
-            if (expected && actual && !type_compatible(prog, expected, actual)) {
+            if (expected && actual && region_flow_rejects(prog, expected, actual, arg ? arg->line : call->line, arg ? arg->col : call->col)) {
+                // reported
+            } else if (expected && actual && !type_compatible(prog, expected, actual)) {
                 type_error_proc_pointer_argument(prog, callee_name, proc_type, i, expected, actual,
                                                  arg ? arg->line : call->line, arg ? arg->col : call->col, arena);
             } else {
@@ -13990,6 +14959,11 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
                 type_check_expr((Expr *)call->args.data[i], scope, prog, arena);
             }
         }
+        return;
+    }
+
+    if (call_is_new(call)) {
+        type_check_new_call(call, scope, prog, arena);
         return;
     }
 
@@ -14066,7 +15040,9 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
             type_check_initializer_against(arg, expected, scope, prog, arena);
             type_check_expr(arg, scope, prog, arena);
             TypeExpr *actual = infer_expr_type(arg, scope, prog, arena);
-            if (expected && actual && !type_compatible(prog, expected, actual)) {
+            if (expected && actual && region_flow_rejects(prog, expected, actual, arg ? arg->line : call->line, arg ? arg->col : call->col)) {
+                // reported
+            } else if (expected && actual && !type_compatible(prog, expected, actual)) {
                 type_error_proc_pointer_argument(prog, call->name, proc_type, i, expected, actual, arg ? arg->line : call->line, arg ? arg->col : call->col, arena);
             } else {
                 lit_into(prog, expected, arg, true, scope, arena);
@@ -14081,6 +15057,41 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
             }
         }
         return;
+    }
+    if (g_safety) {
+        /* The callee may open regions; none of them may be open here, and
+           each must be shorter-lived than everything that is. */
+        for (i32 i = 0; i < decl->opens.length; i++) {
+            string8 r = decl->opens.data[i];
+            if (array_string8_contains(&g_active_regions, r)) {
+                region_error("'%.*s' opens region '%.*s', which is open here; its block would clear the arena this "
+                             "code is still using", decl->name, r, call->line, call->col);
+                continue;
+            }
+            for (i32 j = 0; j < g_active_regions.length; j++) {
+                if (region_rank(prog, g_active_regions.data[j]) >= region_rank(prog, r)) {
+                    region_error("'%.*s' opens region '%.*s', which is declared to live longer than a region open here",
+                                 decl->name, r, call->line, call->col);
+                    break;
+                }
+            }
+        }
+    }
+    if (g_safe_body) {
+        if (decl->is_unsafe) {
+            char message[512];
+            snprintf(message, sizeof(message),
+                     "'%.*s' is an unsafe proc; it may be called only from a proc marked [trusted] or [unsafe]",
+                     (int)decl->name.length, decl->name.data);
+            type_error_message(message, call->line, call->col);
+        } else if (decl->is_external && proc_touches_pointers(prog, decl)) {
+            char message[512];
+            snprintf(message, sizeof(message),
+                     "'%.*s' is C's, and takes or returns a pointer, so nothing checks what it does with it; "
+                     "call it from a proc marked [trusted], or through one in std",
+                     (int)decl->name.length, decl->name.data);
+            type_error_message(message, call->line, call->col);
+        }
     }
     if (decl->is_generic) {
         i32 wanted = decl->type_params.length > 0 ? decl->type_params.length : 1;
@@ -14112,6 +15123,8 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
         }
     }
 
+    RegionBindings region_bindings = {0};
+    if (g_safety) region_bindings = call_region_bindings(prog, decl, call, scope, arena, true);
     for (i32 i = 0; i < call->args.length && i < decl->params.length; i++) {
         Param *param = (Param *)decl->params.data[i];
         TypeExpr *expected = param->type;
@@ -14119,11 +15132,19 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
             TypeSub call_sub = proc_call_sub_in_scope(arena, decl, call, type_arg, scope);
             if (call_sub.has) expected = substitute_type_sub(arena, param->type, call_sub);
         }
+        if (g_safety) expected = regions_substitute(arena, expected, &region_bindings);
         Expr *arg = (Expr *)call->args.data[i];
+        /* With the callee's region variables bound, its parameter types must
+           obey the rule in the caller's terms: this is where a generic
+           container's element regions meet the region it is made in. */
+        check_type_regions_wf(prog, expected, arg ? arg->line : call->line, arg ? arg->col : call->col, arena);
+        safety_check_carrier_value("an argument", prog, expected, arena, arg ? arg->line : call->line, arg ? arg->col : call->col);
         type_check_initializer_against(arg, expected, scope, prog, arena);
         type_check_expr(arg, scope, prog, arena);
         TypeExpr *actual = infer_expr_type(arg, scope, prog, arena);
-        if (expected && actual && !type_compatible(prog, expected, actual)) {
+        if (expected && actual && region_flow_rejects(prog, expected, actual, arg ? arg->line : call->line, arg ? arg->col : call->col)) {
+            // reported, with the regions named
+        } else if (expected && actual && !type_compatible(prog, expected, actual)) {
             type_error_proc_argument(prog, decl, param, i, type_arg, expected, actual, arg ? arg->line : call->line, arg ? arg->col : call->col, arena);
         } else {
             lit_into(prog, expected, arg, true, scope, arena);
@@ -14136,6 +15157,24 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
         for (i32 i = decl->params.length; i < call->args.length; i++) {
             type_check_expr((Expr *)call->args.data[i], scope, prog, arena);
         }
+    }
+    if (g_safety && decl->ret_type) {
+        /* The result, with the call's bindings: the same rule, in the caller's
+           terms, and every region variable it mentions must have been bound. */
+        TypeExpr *ret = decl->ret_type;
+        if (decl->is_generic) {
+            TypeSub call_sub = proc_call_sub_in_scope(arena, decl, call, type_arg, scope);
+            if (call_sub.has) ret = substitute_type_sub(arena, ret, call_sub);
+        }
+        ret = regions_substitute(arena, ret, &region_bindings);
+        Vec_string8 unbound = Vec_string8_reserve(arena, 2);
+        collect_region_names(prog, ret, &unbound, arena, 0);
+        for (i32 i = 0; i < unbound.length; i++) {
+            if (array_string8_contains(&g_region_vars, unbound.data[i])) continue;
+            region_error("the result is in region '%.*s', which this call never bound%.0s; pass the region, or a pointer in it",
+                         unbound.data[i], (string8){0}, call->line, call->col);
+        }
+        if (unbound.length == 0) check_type_regions_wf(prog, ret, call->line, call->col, arena);
     }
 }
 
@@ -14152,9 +15191,12 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         return;
     }
     if (e->kind == Expr_Ternary) {
-        type_check_expr(e->left, scope, prog, arena);
-        type_check_expr(e->right, scope, prog, arena);
-        type_check_expr(e->third, scope, prog, arena);
+        /* `p ? p*.x : 0`: p is a `*T` in the middle arm. */
+        TypeScope true_scope = type_scope_copy(arena, scope);
+        TypeScope false_scope = type_scope_copy(arena, scope);
+        type_check_condition_narrowing(e->left, scope, &true_scope, &false_scope, prog, arena);
+        type_check_expr(e->right, &true_scope, prog, arena);
+        type_check_expr(e->third, &false_scope, prog, arena);
         type_check_ternary(e, scope, prog, arena);
         return;
     }
@@ -14165,10 +15207,24 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         type_check_expr(e->inner, scope, prog, arena);
         return;
     }
+    if (e->kind == Expr_Name && g_safety && e->name.length > 0 && !type_scope_lookup(scope, e->name)) {
+        /* A proc used as a value: a call through the pointer could not be
+           checked against the regions open at that point. */
+        ProcDecl *as_value = lookup_proc_decl(prog, e->name);
+        if (as_value && as_value->opens.length > 0) {
+            region_error("'%.*s' opens region '%.*s', so it is called by name, not through a pointer: a call through "
+                         "a pointer cannot be checked against the regions open there", e->name, as_value->opens.data[0], e->line, e->col);
+        }
+        return;
+    }
     if (e->kind == Expr_Cast) {
         type_check_expr(e->inner, scope, prog, arena);
         TypeExpr *actual = infer_expr_type(e->inner, scope, prog, arena);
         TypeExpr *cast_type = type_scope_apply_sub(scope, arena, e->cast_type);
+        if (g_safe_body && (type_mentions_pointer(prog, cast_type, 0) || type_mentions_pointer(prog, actual, 0))) {
+            type_error_message("a cast to or from a pointer is unsafe: it could make any type out of any bytes; "
+                               "convert with q[0]& or a subrange, or mark the proc [trusted]", e->line, e->col);
+        }
         if (!type_allows_cast(prog, cast_type, actual)) {
             type_error_cast(prog, cast_type, actual, e->line, e->col, arena);
         } else {
@@ -14220,6 +15276,16 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         if (base && base->kind != Type_Ptr && base->kind != Type_Array && !type_slice_elem(base)) {
             type_error_index_base(base, e->line, e->col, arena);
             return;
+        }
+        if (base && base->kind == Type_Ptr && base->is_raw) {
+            safety_error(e->is_deref
+                ? "dereferencing a '^T' is unsafe: nothing says it points at anything; take a '*T' or a slice, "
+                  "or mark the proc [trusted]"
+                : "indexing a '^T' is unsafe: it has no length to check against; take a '[]T', or mark the proc [trusted]",
+                e->line, e->col);
+        }
+        if (base && base->kind == Type_Ptr && base->is_nullable) {
+            safety_error("this pointer may be null: test it first, as 'if (p) { ... }', or take a '*T'", e->line, e->col);
         }
         TypeExpr *index_type = resolve_alias_type(prog, infer_expr_type(e->index_expr, scope, prog, arena));
         if (index_type && !type_is_numeric(index_type) && !type_is_program_enum(prog, index_type)) {
@@ -14416,8 +15482,14 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
         ok = numeric_or_same_enum ||
              type_pointer_compare_compatible(prog, left, right);
     } else if (e->op == Token_EqualEqual || e->op == Token_BangEqual) {
+        /* `p == null` is how a `?*T` is tested, whatever p's constness or
+           nullability, so null compares with any pointer. */
+        bool left_null = e->left && e->left->kind == Expr_Name && string8_equals_cstr(&e->left->name, "null");
+        bool right_null = e->right && e->right->kind == Expr_Name && string8_equals_cstr(&e->right->name, "null");
         ok = type_compatible(prog, left, right) ||
-             type_compatible(prog, right, left);
+             type_compatible(prog, right, left) ||
+             (left_null && right && right->kind == Type_Ptr) ||
+             (right_null && left && left->kind == Type_Ptr);
     } else if (e->op == Token_AmpAmp || e->op == Token_PipePipe) {
         ok = type_is_truthy(prog, left) && type_is_truthy(prog, right);
     } else {
@@ -14490,6 +15562,26 @@ static void type_check_stmt(
     g_diag_import_chain = s->import_chain;
     if (s->kind == Stmt_Var) {
         TypeExpr *local_type = type_scope_apply_sub(scope, arena, s->type);
+        if (s->is_uninitialized) {
+            safety_error("'= ?' leaves the value with whatever bytes were there, which is unsafe to read; "
+                         "let it zero, or mark the proc [trusted]", s->line, s->col);
+        }
+        safety_check_carrier_value("a local", prog, local_type, arena, s->line, s->col);
+        if (region_rank(prog, s->name) >= 0) {
+            region_error("'%.*s' is a region's name%.0s; a local cannot take it", s->name, (string8){0}, s->line, s->col);
+        }
+        check_type_regions_wf(prog, local_type, s->line, s->col, arena);
+        if (g_safety && local_type && resolve_alias_type(prog, local_type) && resolve_alias_type(prog, local_type)->kind == Type_Region) {
+            type_error_message("a region handle is not kept in a local: use the region's name, or the parameter it came in as",
+                               s->line, s->col);
+        }
+        if (!s->expr && !s->is_uninitialized) {
+            safety_error("a local without a value has whatever bytes were there, which is unsafe to read; "
+                         "give it one, '= {}'", s->line, s->col);
+        }
+        if (!s->expr || s->expr->kind == Expr_ZeroInit) {
+            safety_check_zeroed("a local", prog, local_type, arena, s->line, s->col);
+        }
         type_check_expr(s->expr, scope, prog, arena);
         type_check_initializer_against(s->expr, local_type, scope, prog, arena);
         TypeExpr *actual = infer_expr_type(s->expr, scope, prog, arena);
@@ -14505,7 +15597,17 @@ static void type_check_stmt(
         }
         type_check_expr(s->lhs, scope, prog, arena);
         type_check_expr(s->expr, scope, prog, arena);
+        if (s->lhs && s->lhs->kind == Expr_Name) narrow_undo_on_assign(arena, scope, s->lhs->name);
         TypeExpr *expected = infer_expr_type(s->lhs, scope, prog, arena);
+        safety_check_carrier_value("an assignment", prog, expected, arena, s->line, s->col);
+        if (s->expr && s->expr->kind == Expr_ZeroInit) {
+            safety_check_zeroed("an assignment", prog, expected, arena, s->line, s->col);
+        }
+        if (s->lhs && s->lhs->kind == Expr_Field && type_is_checked_pointer(prog, expected) &&
+            type_region_of(prog, expected).length == 0) {
+            safety_error("this field's pointer names no region, so only the struct's trusted procs may set it; "
+                         "give the field a region, '*T in R', to set it from safe code", s->line, s->col);
+        }
         TypeExpr *const_source = expr_const_lvalue_source_type(s->lhs, scope, prog, arena);
         if (const_source) {
             type_error_const_assignment(prog, s->lhs, expected, const_source, arena);
@@ -14516,7 +15618,9 @@ static void type_check_stmt(
             type_is_one_pointer(resolve_alias_type(prog, expected))) {
             pointer_one_violation("pointer arithmetic", resolve_alias_type(prog, expected), s->line, s->col);
         }
-        if (!type_allows_compound_assign(prog, s->assign_op, expected, actual)) {
+        if (s->assign_op == Token_Equal && region_flow_rejects(prog, expected, actual, s->line, s->col)) {
+            // reported, with the regions named
+        } else if (!type_allows_compound_assign(prog, s->assign_op, expected, actual)) {
             if (s->assign_op == Token_Equal) {
                 type_error_incompatible("assignment", prog, expected, actual, s->line, s->col, arena);
             } else {
@@ -14578,18 +15682,22 @@ static void type_check_stmt(
         return;
     }
     if (s->kind == Stmt_If) {
-        type_check_condition("if", s->if_cond, scope, prog, arena);
+        /* `if (p)` makes p a `*T` in the then branch; `if (!p)` in the else
+           branch, and after the if when the then branch always leaves. */
         TypeScope then_scope = type_scope_copy(arena, scope);
+        TypeScope else_scope = type_scope_copy(arena, scope);
+        type_check_condition_narrowing(s->if_cond, scope, &then_scope, &else_scope, prog, arena);
         for (i32 i = 0; i < s->if_then_body.length; i++) {
             type_check_stmt((Stmt *)s->if_then_body.data[i], &then_scope, prog, return_type, current_proc, arena);
         }
         if (s->if_else_if) {
-            TypeScope else_if_scope = type_scope_copy(arena, scope);
-            type_check_stmt(s->if_else_if, &else_if_scope, prog, return_type, current_proc, arena);
+            type_check_stmt(s->if_else_if, &else_scope, prog, return_type, current_proc, arena);
         } else {
-            TypeScope else_scope = type_scope_copy(arena, scope);
             for (i32 i = 0; i < s->if_else_body.length; i++) {
                 type_check_stmt((Stmt *)s->if_else_body.data[i], &else_scope, prog, return_type, current_proc, arena);
+            }
+            if (s->if_else_body.length == 0 && stmt_list_ends_in_jump(&s->if_then_body)) {
+                narrow_copy(arena, &else_scope, scope);
             }
         }
         g_diag_source_path = prev_diag_source_path;
@@ -14597,8 +15705,8 @@ static void type_check_stmt(
         return;
     }
     if (s->kind == Stmt_While) {
-        type_check_condition("while", s->while_cond, scope, prog, arena);
         TypeScope loop_scope = type_scope_copy(arena, scope);
+        type_check_condition_narrowing(s->while_cond, scope, &loop_scope, null, prog, arena);
         for (i32 i = 0; i < s->while_body.length; i++) {
             type_check_stmt((Stmt *)s->while_body.data[i], &loop_scope, prog, return_type, current_proc, arena);
         }
@@ -14606,7 +15714,53 @@ static void type_check_stmt(
         g_diag_import_chain = prev_diag_import_chain;
         return;
     }
-    if (s->kind == Stmt_DoWhile || s->kind == Stmt_Label) {
+    if (s->kind == Stmt_Region) {
+        /* The block opens a declared region, inside every longer-lived one that
+           is open, and names it as a value for the body. */
+        i32 rank = region_rank(prog, s->name);
+        if (string8_equals_cstr(&s->name, "permanent")) {
+            type_error_message("'permanent' is open for the whole program and is not entered", s->line, s->col);
+        } else if (rank < 0) {
+            region_error("unknown region '%.*s'%.0s; declare the program's regions first, as 'region level > frame;'",
+                         s->name, (string8){0}, s->line, s->col);
+        } else if (array_string8_contains(&g_active_regions, s->name)) {
+            region_error("region '%.*s' is already open here%.0s; a region block does not nest inside itself",
+                         s->name, (string8){0}, s->line, s->col);
+        } else {
+            for (i32 i = 0; i < g_active_regions.length; i++) {
+                string8 open = g_active_regions.data[i];
+                if (region_rank(prog, open) >= rank) {
+                    region_error("region '%.*s' is declared to live longer than '%.*s', which is open here; "
+                                 "open the longer-lived region outside the shorter one", s->name, open, s->line, s->col);
+                }
+            }
+            if (s->region_parent.length > 0) {
+                if (!array_string8_contains(&g_active_regions, s->region_parent)) {
+                    region_error("'of %.*s' needs that region to be open here%.0s", s->region_parent, (string8){0}, s->line, s->col);
+                } else if (region_rank(prog, s->region_parent) >= rank) {
+                    region_error("'%.*s' must be declared shorter-lived than its parent '%.*s'", s->name, s->region_parent, s->line, s->col);
+                }
+            }
+        }
+        if (stmt_list_has_goto_or_label(&s->while_body)) {
+            type_error_message("a region block has no goto or label inside it: a jump could skip its end, "
+                               "and the arena would never be cleared", s->line, s->col);
+        }
+        Vec_string8_append(arena, &g_active_regions, s->name);
+        TypeScope block_scope = type_scope_copy(arena, scope);
+        TypeExpr *handle = type_new(arena, Type_Region);
+        handle->name = string8_from_cstr(arena, "region");
+        handle->region = s->name;
+        type_scope_add(arena, &block_scope, s->name, handle);
+        for (i32 i = 0; i < s->while_body.length; i++) {
+            type_check_stmt((Stmt *)s->while_body.data[i], &block_scope, prog, return_type, current_proc, arena);
+        }
+        g_active_regions.length--;
+        g_diag_source_path = prev_diag_source_path;
+        g_diag_import_chain = prev_diag_import_chain;
+        return;
+    }
+    if (s->kind == Stmt_DoWhile || s->kind == Stmt_Label || s->kind == Stmt_Region) {
         TypeScope loop_scope = type_scope_copy(arena, scope);
         for (i32 i = 0; i < s->while_body.length; i++) {
             type_check_stmt((Stmt *)s->while_body.data[i], &loop_scope, prog, return_type, current_proc, arena);
@@ -14708,16 +15862,73 @@ static void type_check_proc_body(
 
     TypeScope scope = type_scope_copy(arena, globals);
     scope.sub = sub;
+    bool prev_safe_body = g_safe_body;
+    g_safe_body = g_safety && !p->is_trusted && !p->is_unsafe && !p->is_external;
+    /* The signature's region variables: every region it names that the program
+       did not declare. Each must be bound by a parameter, or a call could not
+       tell which region the result is in. */
+    g_region_vars.length = 0;
+    g_active_regions.length = 0;
+    Vec_string8 from_params = Vec_string8_reserve(arena, 4);
+    for (i32 j = 0; j < p->params.length; j++) {
+        collect_region_names(prog, ((Param *)p->params.data[j])->type, &from_params, arena, 0);
+    }
+    g_region_var_bounds.length = 0;
+    for (i32 j = 0; j < from_params.length; j++) {
+        Vec_string8_append(arena, &g_region_vars, from_params.data[j]);
+        string8 bound = {0};
+        for (i32 k = 0; k < p->params.length; k++) {
+            TypeExpr *pt = ((Param *)p->params.data[k])->type;
+            if (pt && pt->kind == Type_Region && string8_equals(&pt->region, &from_params.data[j])) {
+                bound = pt->region_bound;
+                if (bound.length > 0 && region_rank(prog, bound) < 0 && g_safety) {
+                    region_error("the bound of '%.*s' must be a declared region or 'permanent'; '%.*s' is neither",
+                                 pt->region, bound, p->line, p->col);
+                }
+            }
+        }
+        Vec_string8_append(arena, &g_region_var_bounds, bound);
+    }
+    Vec_string8 from_ret = Vec_string8_reserve(arena, 2);
+    collect_region_names(prog, p->ret_type, &from_ret, arena, 0);
+    for (i32 j = 0; j < from_ret.length; j++) {
+        if (array_string8_contains(&from_params, from_ret.data[j])) continue;
+        Vec_string8_append(arena, &g_region_vars, from_ret.data[j]);
+        if (g_safety) {
+            region_error("region '%.*s' appears only in the return type%.0s, so a call could not tell which region "
+                         "it is; take it as a parameter, 'r: region R', or name a declared region", from_ret.data[j], (string8){0}, p->line, p->col);
+        }
+    }
     for (i32 j = 0; j < p->params.length; j++) {
         Param *param = (Param *)p->params.data[j];
         TypeExpr *param_type = type_scope_apply_sub(&scope, arena, param->type);
+        safety_check_carrier_value("a parameter", prog, param_type, arena, param->line, param->col);
+        check_type_regions_wf(prog, param_type, param->line, param->col, arena);
+        if (g_safety && param_type && param_type->kind == Type_Region && region_rank(prog, param_type->region) >= 0 &&
+            param_type->region_bound.length > 0) {
+            region_error("'region %.*s' is a declared region%.0s and needs no bound; a bound goes on a region variable, "
+                         "as 'region R in level'", param_type->region, (string8){0}, param->line, param->col);
+        }
+        if (region_rank(prog, param->name) >= 0) {
+            region_error("'%.*s' is a region's name%.0s; a parameter cannot take it", param->name, (string8){0}, param->line, param->col);
+        }
         type_scope_add(arena, &scope, param->name, param_type);
     }
 
     TypeExpr *return_type = type_scope_apply_sub(&scope, arena, p->ret_type);
+    safety_check_carrier_value("a return type", prog, return_type, arena, p->line, p->col);
+    check_type_regions_wf(prog, return_type, p->line, p->col, arena);
+    if (g_safety && return_type && resolve_alias_type(prog, return_type) && resolve_alias_type(prog, return_type)->kind == Type_Region) {
+        type_error_message("a proc does not return a region handle: the caller already has the region it passed in", p->line, p->col);
+    }
+    if (g_safe_body && type_is_checked_pointer(prog, return_type) && type_region_of(prog, return_type).length == 0) {
+        type_error_message("a returned pointer names its region, '-> *T in R': a borrowed one could point at a local "
+                           "that is gone when the caller looks; a [trusted] proc may return a borrowed pointer", p->line, p->col);
+    }
     for (i32 j = 0; j < p->body.length; j++) {
         type_check_stmt((Stmt *)p->body.data[j], &scope, prog, return_type, p, arena);
     }
+    g_safe_body = prev_safe_body;
 
     g_diag_source_path = prev_diag_source_path;
     g_diag_import_chain = prev_diag_import_chain;
@@ -14767,8 +15978,44 @@ static void type_check_program(Program *prog, memops_arena *arena) {
     TypeScope globals = type_scope_make(arena, 64);
     type_scope_add_reflection_globals(arena, &globals, prog);
     type_scope_add_function_like_macros(arena, &globals, prog);
+    g_safe_body = g_safety;
+    compute_proc_opens(prog, arena);
+    {
+        /* `permanent`, the region that is open for the whole program. */
+        TypeExpr *perm = type_new(arena, Type_Region);
+        perm->name = string8_from_cstr(arena, "region");
+        perm->region = string8_from_cstr(arena, "permanent");
+        type_scope_add(arena, &globals, perm->region, perm);
+    }
+    /* A struct's pointer fields live in memory, so each names its region and
+       points at least as far as any pointer to the struct could. */
+    if (g_safety) {
+        for (i32 i = 0; i < prog->structs.length; i++) {
+            StructDecl *decl = (StructDecl *)prog->structs.data[i];
+            if (decl->is_generic || decl->is_external) continue;
+            const char *prev_diag_source_path = g_diag_source_path;
+            const char *prev_diag_import_chain = g_diag_import_chain;
+            if (decl->source_path) g_diag_source_path = decl->source_path;
+            g_diag_import_chain = decl->import_chain;
+            bool carrier = type_is_carrier(prog, type_name_expr_from_string(arena, decl->name), arena);
+            for (i32 j = 0; j < decl->fields.length; j++) {
+                Field *field = (Field *)decl->fields.data[j];
+                if (!field->type) continue;
+                Vec_string8 seen = Vec_string8_reserve(arena, 4);
+                Vec_string8_append(arena, &seen, decl->name);
+                check_type_stored(prog, field->type, (string8){0}, carrier, field->line, field->col, arena, 0, &seen);
+            }
+            g_diag_source_path = prev_diag_source_path;
+            g_diag_import_chain = prev_diag_import_chain;
+        }
+    }
     for (i32 i = 0; i < prog->globals.length; i++) {
         Stmt *g = (Stmt *)prog->globals.data[i];
+        safety_check_carrier_value("a global", prog, g->type, arena, g->line, g->col);
+        check_type_stored_at(prog, g->type, string8_from_cstr(arena, "permanent"), g->line, g->col, arena);
+        if (!g->expr || g->expr->kind == Expr_ZeroInit) {
+            safety_check_zeroed("a global", prog, g->type, arena, g->line, g->col);
+        }
         const char *prev_diag_source_path = g_diag_source_path;
         const char *prev_diag_import_chain = g_diag_import_chain;
         if (g->source_path) {
@@ -15212,7 +16459,7 @@ static void rewrite_printfmt_stmt_in_place(Stmt *s, TypeScope *scope, Program *p
         rewrite_printfmt_body(&s->while_body, &loop_scope, prog, arena);
         return;
     }
-    if (s->kind == Stmt_DoWhile || s->kind == Stmt_Label) {
+    if (s->kind == Stmt_DoWhile || s->kind == Stmt_Label || s->kind == Stmt_Region) {
         TypeScope loop_scope = type_scope_copy(arena, scope);
         rewrite_printfmt_body(&s->while_body, &loop_scope, prog, arena);
         rewrite_printfmt_in_expr(s->while_cond, path);
@@ -15278,6 +16525,116 @@ static void emit_pre_directives(memops_arena *arena, string8 *out, Vec_string8 *
 static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name);
 static void emit_expr_value(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name);
 static void emit_expr_condition(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name);
+
+/* ---- Regions in the emitter. See docs/regions.md.
+
+   A region's name is a value in its block: the address of its arena. A
+   `region scratch of frame { }` block shares frame's arena, so `scratch` emits
+   as frame's address while that block is open; the alias stack says so. */
+static Vec_string8 *g_emit_regions = null; // the program's declared regions
+static Vec_string8 g_region_alias_names;
+static Vec_string8 g_region_alias_targets;
+
+static bool emit_region_name(memops_arena *arena, string8 *out, string8 name) {
+    bool is_region = string8_equals_cstr(&name, "permanent") ||
+                     (g_emit_regions && array_string8_contains(g_emit_regions, name));
+    if (!is_region) return false;
+    string8 target = name;
+    for (i32 i = g_region_alias_names.length - 1; i >= 0; i--) {
+        if (string8_equals(&g_region_alias_names.data[i], &name)) {
+            target = g_region_alias_targets.data[i];
+            break;
+        }
+    }
+    emit_cstr(arena, out, "(&rin_region_");
+    emit_string8(arena, out, target);
+    emit_cstr(arena, out, ")");
+    return true;
+}
+
+/* `new<T>(r)` and `new_slice<T>(r, n)`: a zeroed T, or n zeroed Ts, from the
+   region's arena. The slice's count is written twice, so the checker only
+   accepts a name, a number or a field for it. */
+static void emit_new_call(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
+    TypeExpr *t = (TypeExpr *)e->type_args.data[0];
+    bool slice = string8_equals_cstr(&e->name, "new_slice");
+    if (!slice && e->args.length == 2) {
+        /* `new<T>(r, value)`: push, then copy the value in. The value sits in
+           a one-element compound literal so a plain T expression and a
+           `{ ... }` literal both work; memcpy hands the pointer back. */
+        emit_cstr(arena, out, "((");
+        emit_type(arena, out, t, sub);
+        emit_cstr(arena, out, " *)memcpy(memops_arena_push(");
+        emit_expr_value(arena, out, (Expr *)e->args.data[0], sub, generic_name);
+        emit_cstr(arena, out, ", sizeof(");
+        emit_type(arena, out, t, sub);
+        emit_cstr(arena, out, "), _Alignof(");
+        emit_type(arena, out, t, sub);
+        emit_cstr(arena, out, ")), (");
+        emit_type(arena, out, t, sub);
+        emit_cstr(arena, out, "[]){ ");
+        emit_expr_value(arena, out, (Expr *)e->args.data[1], sub, generic_name);
+        emit_cstr(arena, out, " }, sizeof(");
+        emit_type(arena, out, t, sub);
+        emit_cstr(arena, out, ")))");
+        return;
+    }
+    if (slice) {
+        emit_cstr(arena, out, "((");
+        emit_string8(arena, out, type_mangle(arena, type_slice_of(arena, t), sub));
+        emit_cstr(arena, out, "){ (");
+    } else {
+        emit_cstr(arena, out, "((");
+    }
+    emit_type(arena, out, t, sub);
+    emit_cstr(arena, out, " *)memops_arena_push_zero(");
+    emit_expr_value(arena, out, (Expr *)e->args.data[0], sub, generic_name);
+    emit_cstr(arena, out, ", sizeof(");
+    emit_type(arena, out, t, sub);
+    emit_cstr(arena, out, ")");
+    if (slice && e->args.length >= 2) {
+        emit_cstr(arena, out, " * (u64)(");
+        emit_expr_value(arena, out, (Expr *)e->args.data[1], sub, generic_name);
+        emit_cstr(arena, out, ")");
+    }
+    emit_cstr(arena, out, ", _Alignof(");
+    emit_type(arena, out, t, sub);
+    emit_cstr(arena, out, "))");
+    if (slice) {
+        emit_cstr(arena, out, ", (u64)(");
+        if (e->args.length >= 2) emit_expr_value(arena, out, (Expr *)e->args.data[1], sub, generic_name);
+        else emit_cstr(arena, out, "0");
+        emit_cstr(arena, out, ") })");
+    } else {
+        emit_cstr(arena, out, ")");
+    }
+}
+
+/* What a region block must run when it is left: its clear, or its rewind.
+   `return`, `break` and `continue` leave blocks too, so each emits the
+   cleanups of every region block between it and where it lands: a return,
+   all of them in the proc; a break, those inside the nearest loop or switch;
+   a continue, those inside the nearest loop. `goto` is not allowed to cross a
+   region block, so it needs nothing. */
+static Vec_string8 g_region_cleanups;      // C statements, innermost last
+static Vec_i32 g_region_marks;            // g_region_cleanups.length when a loop or switch began
+static Vec_i32 g_region_mark_is_loop;     // 1 for a loop, 0 for a switch
+static TypeExpr *g_emit_ret_type = null;  // the proc being emitted, for `return expr` past a cleanup
+static TypeSub g_emit_ret_sub;
+static i32 g_region_mark_serial = 0;
+
+static void emit_region_cleanups_from(memops_arena *arena, string8 *out, i32 from) {
+    for (i32 i = g_region_cleanups.length - 1; i >= from; i--) {
+        emit_string8(arena, out, g_region_cleanups.data[i]);
+    }
+}
+
+static i32 emit_region_mark_height(bool loop_only) {
+    for (i32 i = g_region_marks.length - 1; i >= 0; i--) {
+        if (!loop_only || g_region_mark_is_loop.data[i]) return g_region_marks.data[i];
+    }
+    return 0;
+}
 static void emit_stmt(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, string8 generic_name);
 
 /* True when control cannot run off the end of the list, so an appended break
@@ -15729,6 +17086,7 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
             emit_string8(arena, out, reflect_record_name(arena, param_arg));
             return;
         }
+        if (emit_region_name(arena, out, e->name)) return;
         emit_string8(arena, out, c_ident(arena, reflect_runtime_c_name(arena, e->name)));
         return;
     }
@@ -15823,6 +17181,11 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
             emit_cstr(arena, out, ")");
             return;
         }
+        if (e->type_args.length == 1 && e->args.length >= 1 &&
+            (string8_equals_cstr(&e->name, "new") || string8_equals_cstr(&e->name, "new_slice"))) {
+            emit_new_call(arena, out, e, sub, generic_name);
+            return;
+        }
         if (e->type_args.length > 1) {
             /* Several type arguments join into one suffix, so `first<i32, f32>`
                calls `first_i32_f32` -- the same name the instance was recorded
@@ -15857,9 +17220,79 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
     }
 }
 
+static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, string8 generic_name);
+
+/* A loop or a switch is where a `break` or `continue` lands, so each marks how
+   many region cleanups were open when it began. */
 static void emit_stmt(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, string8 generic_name) {
     if (!s) return;
+    bool loop = s->kind == Stmt_For || s->kind == Stmt_While || s->kind == Stmt_DoWhile;
+    bool mark = loop || s->kind == Stmt_Switch;
+    if (mark) {
+        Vec_i32_append(arena, &g_region_marks, g_region_cleanups.length);
+        Vec_i32_append(arena, &g_region_mark_is_loop, loop ? 1 : 0);
+    }
+    emit_stmt_inner(arena, out, s, sub, generic_name);
+    if (mark) {
+        g_region_marks.length--;
+        g_region_mark_is_loop.length--;
+    }
+}
+
+static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, string8 generic_name) {
+    if (!s) return;
     emit_line_directive_path(arena, out, s->source_path, s->line);
+    if (s->kind == Stmt_Region) {
+        /* `{ open; body; clear; }`, or with `of parent`, a mark on the parent's
+           arena and a rewind to it. Inside, the name is the arena. */
+        string8 target = s->region_parent.length > 0 ? s->region_parent : s->name;
+        for (i32 i = g_region_alias_names.length - 1; i >= 0; i--) {
+            if (string8_equals(&g_region_alias_names.data[i], &target)) {
+                target = g_region_alias_targets.data[i];
+                break;
+            }
+        }
+        i32 serial = g_region_mark_serial++;
+        string8 cleanup = string8_reserve(arena, 96);
+        emit_cstr(arena, out, "{ /* region ");
+        emit_string8(arena, out, s->name);
+        emit_cstr(arena, out, " */\n");
+        if (s->region_parent.length > 0) {
+            emit_cstr(arena, out, "        memops_arena_temp rin_region_mark_");
+            emit_string8(arena, out, string8_from_i64(arena, serial));
+            emit_cstr(arena, out, " = memops_arena_temp_begin(rin_region_open(&rin_region_");
+            emit_string8(arena, out, target);
+            emit_cstr(arena, out, "));\n");
+            string8_append_cstr(arena, &cleanup, "memops_arena_temp_end(rin_region_mark_");
+            string8 n = string8_from_i64(arena, serial);
+            string8_append_bytes(arena, &cleanup, n.data, n.length);
+            string8_append_cstr(arena, &cleanup, "); ");
+        } else {
+            emit_cstr(arena, out, "        rin_region_open(&rin_region_");
+            emit_string8(arena, out, target);
+            emit_cstr(arena, out, ");\n");
+            string8_append_cstr(arena, &cleanup, "memops_arena_clear(&rin_region_");
+            string8_append_bytes(arena, &cleanup, target.data, target.length);
+            string8_append_cstr(arena, &cleanup, "); ");
+        }
+        Vec_string8_append(arena, &g_region_alias_names, s->name);
+        Vec_string8_append(arena, &g_region_alias_targets, target);
+        Vec_string8_append(arena, &g_region_cleanups, cleanup);
+        for (i32 i = 0; i < s->while_body.length; i++) {
+            emit_cstr(arena, out, "        ");
+            emit_stmt(arena, out, (Stmt *)s->while_body.data[i], sub, generic_name);
+        }
+        g_region_cleanups.length--;
+        g_region_alias_names.length--;
+        g_region_alias_targets.length--;
+        if (!stmt_list_ends_in_jump(&s->while_body)) {
+            emit_cstr(arena, out, "        ");
+            emit_string8(arena, out, cleanup);
+            emit_cstr(arena, out, "\n");
+        }
+        emit_cstr(arena, out, "    }\n");
+        return;
+    }
     if (s->kind == Stmt_Var) {
         if (s->align.data && s->align.length > 0) {
             emit_cstr(arena, out, "_Alignas(");
@@ -15878,6 +17311,23 @@ static void emit_stmt(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, s
         return;
     }
     if (s->kind == Stmt_Return) {
+        if (g_region_cleanups.length > 0) {
+            /* Leaving every open region block: the value first, since it may
+               be computed from memory the cleanups give back. */
+            emit_cstr(arena, out, "{ ");
+            if (s->expr && g_emit_ret_type) {
+                emit_decl(arena, out, g_emit_ret_type, string8_from_cstr(arena, "rin_ret"), g_emit_ret_sub);
+                emit_cstr(arena, out, " = ");
+                emit_expr_value(arena, out, s->expr, sub, generic_name);
+                emit_cstr(arena, out, "; ");
+            } else if (s->expr) {
+                emit_expr_value(arena, out, s->expr, sub, generic_name);
+                emit_cstr(arena, out, "; ");
+            }
+            emit_region_cleanups_from(arena, out, 0);
+            emit_cstr(arena, out, s->expr && g_emit_ret_type ? "return rin_ret; }\n" : "return; }\n");
+            return;
+        }
         emit_cstr(arena, out, "return");
         if (s->expr) {
             emit_cstr(arena, out, " ");
@@ -15986,10 +17436,24 @@ static void emit_stmt(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, s
         return;
     }
     if (s->kind == Stmt_Break) {
+        i32 height = emit_region_mark_height(false);
+        if (g_region_cleanups.length > height) {
+            emit_cstr(arena, out, "{ ");
+            emit_region_cleanups_from(arena, out, height);
+            emit_cstr(arena, out, "break; }\n");
+            return;
+        }
         emit_cstr(arena, out, "break;\n");
         return;
     }
     if (s->kind == Stmt_Continue) {
+        i32 height = emit_region_mark_height(true);
+        if (g_region_cleanups.length > height) {
+            emit_cstr(arena, out, "{ ");
+            emit_region_cleanups_from(arena, out, height);
+            emit_cstr(arena, out, "continue; }\n");
+            return;
+        }
         emit_cstr(arena, out, "continue;\n");
         return;
     }
@@ -16679,6 +18143,15 @@ static void emit_noalias_check(memops_arena *arena, string8 *out, ProcDecl *decl
 }
 
 static void emit_proc_body(memops_arena *arena, string8 *out, ProcDecl *decl, TypeSub sub, string8 generic_name) {
+    /* Region blocks never span procs, so each body starts with none open. */
+    g_region_cleanups.length = 0;
+    g_region_marks.length = 0;
+    g_region_mark_is_loop.length = 0;
+    g_region_alias_names.length = 0;
+    g_region_alias_targets.length = 0;
+    bool returns_void = !decl->ret_type || (decl->ret_type->kind == Type_Name && string8_equals_cstr(&decl->ret_type->name, "void"));
+    g_emit_ret_type = returns_void ? null : decl->ret_type;
+    g_emit_ret_sub = sub;
     for (i32 i = 0; i < decl->body.length; i++) {
         emit_cstr(arena, out, "    ");
         emit_stmt(arena, out, (Stmt *)decl->body.data[i], sub, generic_name);
@@ -17627,6 +19100,8 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
         }
     }
 
+    g_emit_regions = &prog->regions;
+
     for (i32 i = 0; i < prog->globals.length; i++) {
         Stmt *s = (Stmt *)prog->globals.data[i];
         emit_line_directive_path(arena, out, s->source_path, s->line);
@@ -17665,6 +19140,23 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
     }
 
     emit_cstr(arena, out, "\n");
+
+    if (prog->uses_regions) {
+        /* The regions' storage: one arena each, reserved from the OS on the
+           first entry into its block and cleared at every block end. A block's
+           name emits as the address of its arena; see emit_region_name. After
+           the prototypes, since the opener calls memops_arena_initialize. */
+        emit_cstr(arena, out, "#line 1 \"<generated>\"\n");
+        emit_cstr(arena, out, "RIN_MAYBE_UNUSED static memops_arena rin_region_permanent;\n");
+        for (i32 i = 0; i < prog->regions.length; i++) {
+            emit_cstr(arena, out, "RIN_MAYBE_UNUSED static memops_arena rin_region_");
+            emit_string8(arena, out, prog->regions.data[i]);
+            emit_cstr(arena, out, ";\n");
+        }
+        emit_cstr(arena, out, "RIN_MAYBE_UNUSED static memops_arena *rin_region_open(memops_arena *a) {\n"
+                              "    if (!a->base) memops_arena_initialize(a, max_alloc_size);\n"
+                              "    return a;\n}\n\n");
+    }
 
     // non-generic proc definitions
     for (i32 i = 0; i < prog->procs.length; i++) {
@@ -18248,6 +19740,10 @@ static void program_append_program(memops_arena *arena, Program *dst, Program *s
     for (i32 i = 0; i < src->pending_array_counts.length; i++) {
         ptr_array_append(arena, &dst->pending_array_counts, src->pending_array_counts.data[i]);
     }
+    for (i32 i = 0; i < src->regions.length; i++) {
+        program_append_string_unique(arena, &dst->regions, src->regions.data[i]);
+    }
+    dst->uses_regions = dst->uses_regions || src->uses_regions;
 }
 
 static Program parse_i_file(memops_arena *arena, const char *path) {
@@ -19219,6 +20715,10 @@ i32 main(i32 argc, char *argv[]) {
     /* Guarantees the JSON diagnostic array is closed on every exit path, including
        the I/O failures that return straight out of main. */
     atexit(diag_json_finish);
+    /* RIN_UNSAFE=1 is `--unsafe` for every invocation: for a build tool that
+       drives the compiler itself and a project written before the safety
+       rules. `--safe` on the command line still wins. */
+    if (getenv("RIN_UNSAFE")) g_safety = false;
     double profile_start = profile_now_ms();
     double profile_last = profile_start;
     bool check_only = false;
@@ -19313,6 +20813,14 @@ i32 main(i32 argc, char *argv[]) {
         }
         if (cstr_equals(arg, "--report-derefs")) {
             g_report_derefs = true;
+            continue;
+        }
+        if (cstr_equals(arg, "--unsafe")) {
+            g_safety = false;
+            continue;
+        }
+        if (cstr_equals(arg, "--safe")) {
+            g_safety = true;
             continue;
         }
         if (cstr_equals(arg, "--modules")) {

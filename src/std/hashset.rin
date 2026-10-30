@@ -8,32 +8,32 @@ hashset: struct<K> = {
 }
 
 // Adds key; returns whether it was new.
-hashset<K>add: proc<K>(arena: *memops_arena, s: *hashset<K>, key: K) -> b32 = {
+hashset<K>add: proc[trusted]<K>(arena: *memops_arena, s: *hashset<K>, key: K) -> b32 = {
     before: u64 = s*.map.length;
     hashmap<K, u8>slot(arena, s*.map&, key);
     return s*.map.length != before;
 }
 
-hashset<K>has: proc<K>(s: *hashset<K>, key: K) -> b32 = {
+hashset<K>has: proc[trusted]<K>(s: *hashset<K>, key: K) -> b32 = {
     return hashmap<K, u8>has(s*.map&, key);
 }
 
-hashset<K>remove: proc<K>(s: *hashset<K>, key: K) -> b32 = {
+hashset<K>remove: proc[trusted]<K>(s: *hashset<K>, key: K) -> b32 = {
     return hashmap<K, u8>remove(s*.map&, key);
 }
 
-hashset<K>length: proc<K>(s: *hashset<K>) -> u64 = {
+hashset<K>length: proc[trusted]<K>(s: *hashset<K>) -> u64 = {
     return s*.map.length;
 }
 
-hashset<K>clear: proc<K>(s: *hashset<K>) -> void = {
+hashset<K>clear: proc[trusted]<K>(s: *hashset<K>) -> void = {
     hashmap<K, u8>clear(s*.map&);
 }
 
-hashset<K>first: proc<K>(s: *hashset<K>) -> u64 = {
+hashset<K>first: proc[trusted]<K>(s: *hashset<K>) -> u64 = {
     return hashmap<K, u8>first(s*.map&);
 }
 
-hashset<K>next: proc<K>(s: *hashset<K>, i: u64) -> u64 = {
+hashset<K>next: proc[trusted]<K>(s: *hashset<K>, i: u64) -> u64 = {
     return hashmap<K, u8>next(s*.map&, i);
 }

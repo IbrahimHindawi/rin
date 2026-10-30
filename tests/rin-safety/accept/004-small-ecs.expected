@@ -1,0 +1,6 @@
+frame 0: [0:1 hp 8 x 0.500000] [1:1 hp 2 x 1.500000] [2:1 hp 16 x 2.500000]
+frame 1: [0:1 hp 7 x 1.000000] [1:1 hp 1 x 2.000000] [2:1 hp 12 x 3.000000]
+frame 2: [0:1 hp 6 x 1.500000] [2:1 hp 8 x 3.500000]
+frame 3: [0:1 hp 5 x 2.000000] [2:1 hp 7 x 4.000000]
+a alive b dead c alive
+d reuses index 1 in generation 2; b 1 is dead

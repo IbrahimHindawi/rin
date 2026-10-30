@@ -1,0 +1,4 @@
+// expect: would hold a null in a pointer that may not be null
+e: struct = { hp: i32; }
+h: struct = { p: *e in permanent; }
+main: proc() -> i32 = { x: h = {}; return 0; }

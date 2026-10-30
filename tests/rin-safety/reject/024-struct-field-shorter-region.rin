@@ -1,0 +1,4 @@
+// expect: may end before the memory in region 'level'
+region level > frame;
+a: struct = { p: *i32 in frame; }
+main: proc() -> i32 = { region level { x: *a in level = new<a>(level); } return 0; }

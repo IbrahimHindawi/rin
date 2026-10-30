@@ -7,7 +7,7 @@ queue: struct<T> = {
     length: usize;
 }
 
-queue<T>create: proc<T>(arena: *memops_arena) -> *queue<T> = {
+queue<T>create: proc[trusted]<T>(arena: *memops_arena) -> *queue<T> = {
     queue: *queue<T> = cast(memops_arena_push_zero(arena, sizeof(queue<T>), alignof(queue<T>)), *queue<T>);
     if (queue == null) {
         printf("rin runtime: queue allocation failure\n");
@@ -16,7 +16,7 @@ queue<T>create: proc<T>(arena: *memops_arena) -> *queue<T> = {
     return queue;
 }
 
-queue<T>enqueue: proc<T>(arena: *memops_arena, queue: *queue<T>, data: T) -> void = {
+queue<T>enqueue: proc[trusted]<T>(arena: *memops_arena, queue: *queue<T>, data: T) -> void = {
     node: *node<T> = node<T>create(arena, data);
     if (queue*.head == null) {
         queue*.head = node;
@@ -29,7 +29,7 @@ queue<T>enqueue: proc<T>(arena: *memops_arena, queue: *queue<T>, data: T) -> voi
     queue*.length += 1;
 }
 
-queue<T>dequeue: proc<T>(arena: *memops_arena, queue: *queue<T>) -> *node<T> = {
+queue<T>dequeue: proc[trusted]<T>(arena: *memops_arena, queue: *queue<T>) -> *node<T> = {
     if (queue == null || queue*.head == null) {
         return null;
     }
@@ -43,14 +43,14 @@ queue<T>dequeue: proc<T>(arena: *memops_arena, queue: *queue<T>) -> *node<T> = {
     return node;
 }
 
-queue<T>peek: proc<T>(arena: *memops_arena, queue: *queue<T>) -> *node<T> = {
+queue<T>peek: proc[trusted]<T>(arena: *memops_arena, queue: *queue<T>) -> *node<T> = {
     if (queue == null) {
         return null;
     }
     return queue*.head;
 }
 
-queue<T>destroy: proc<T>(arena: *memops_arena, queue: *queue<T>) -> void = {
+queue<T>destroy: proc[trusted]<T>(arena: *memops_arena, queue: *queue<T>) -> void = {
     if (queue != null) {
         queue*.head = null;
         queue*.tail = null;
@@ -58,6 +58,6 @@ queue<T>destroy: proc<T>(arena: *memops_arena, queue: *queue<T>) -> void = {
     }
 }
 
-queue<T>is_empty: proc<T>(queue: *queue<T>) -> b32 = {
+queue<T>is_empty: proc[trusted]<T>(queue: *queue<T>) -> b32 = {
     return queue == null || queue*.length == 0;
 }

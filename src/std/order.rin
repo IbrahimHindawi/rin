@@ -64,7 +64,7 @@ greater_c8: proc(a: c8, b: c8) -> b32 = {
     return a > b;
 }
 
-swap: proc<T>(a: *T, b: *T) -> void = {
+swap: proc[trusted]<T>(a: *T, b: *T) -> void = {
     t: T = a*;
     a* = b*;
     b* = t;

@@ -1,11 +1,13 @@
 # Regions: compile-time memory safety for arena programs
 
-> **Design, not implemented.** This is the proposal for making rin memory-safe
-> at compile time without a garbage collector and without a borrow checker, by
-> giving the type system the one thing an arena program already has: a small
-> number of named arenas with a known order of lifetimes. It reverses the
-> "parked" verdict in [safety.md](safety.md) for the temporal half of that
-> list. The spatial half (bounds, null, initialisation) is covered by
+> **Implemented on the `regions` branch; see [As implemented](#as-implemented)
+> at the end for what was built, where it differs from this design, and what
+> is left.** This is the proposal for making rin memory-safe at compile time
+> without a garbage collector and without a borrow checker, by giving the type
+> system the one thing an arena program already has: a small number of named
+> arenas with a known order of lifetimes. It reverses the "parked" verdict in
+> [safety.md](safety.md) for the temporal half of that list. The spatial half
+> (bounds, null, initialisation) is covered by
 > [pointers-and-slices.md](pointers-and-slices.md) and the small items at the
 > end of this document.
 >
@@ -351,3 +353,84 @@ regions, and declines the rest rather than fighting them.
   * **The name.** `region` reads well in the block form and the parameter
     form. `arena` is what the thing is. One word for both, or keep `arena` for
     the value and `region` for the type?
+
+## As implemented
+
+The `regions` branch builds all of the above except dynamic regions and the
+debug guard pages, and adds a few things the design left open. Everything
+here is tested by `tests/run_rin_safety.py`: four programs that must check,
+compile and print their `.expected`, and thirty that must be rejected with
+the message in their first line. The same thirty check clean with
+`--unsafe`, except the two about the shape of a region block, which hold
+either way.
+
+**Safe by default, `--unsafe` to turn it off.** Every proc body is checked
+unless its proc is `[trusted]` or `[unsafe]`. `--unsafe` on the command
+line, or `RIN_UNSAFE=1` in the environment, turns the rules off for a
+program written before them; `--safe` turns them back on. The two torture
+suites and all of rin-dod run unchanged that way.
+
+**The unsafe boundary.** In a safe body these are errors: dereferencing or
+indexing a `^T`; a `cast` to or from a pointer; calling an `[unsafe]` proc,
+or a C proc that takes or returns a pointer; `= ?`; and holding a *carrier*
+by value. A carrier is a struct with a raw pointer, or a pointer or slice
+that names no region, anywhere inside it: `vec`, `hashmap`, `memops_arena`,
+`string8`. Safe code uses one only through a pointer into a region,
+`*vec<T> in R`, made by a trusted proc. The arena's raw operations
+(`memops_arena_push`, `_push_zero`, `_pop`, `_set_pos`, `_clear`,
+`_temp_end`, `_realloc_`) are `[unsafe]`; the rest of std that touches raw
+memory is `[trusted]`, 286 procs in all, including every generic one, since
+a generic body is only checked per instance.
+
+**Regions.** `region level > frame > scratch;` once, at top level, longest
+first; `permanent` is implied before them. `region frame { }` opens one,
+`region scratch of frame { }` marks the parent's arena. Pointer and slice
+types take `in R`, binding to the innermost pointer or slice just parsed:
+`[]*node in level in frame` is a frame slice of level pointers. `?*T` may be
+null. A proc takes a region as `r: region R`, a variable bound at each call;
+as `r: region R in level`, a variable that lives no longer than level, so
+the proc may put level pointers in it; or as `r: region level`, the declared
+region itself. `new<T>(r)` zeroes, `new<T>(r, value)` copies a whole value
+in, `new_slice<T>(r, n)` zeroes n of them. A region handle lives only in a
+parameter: not in a field, a local or a return type.
+
+**The rules, as checked.** A pointer kept in memory names its region, and
+points into one that lives at least as long as the memory holding it,
+through struct fields, array elements, generic arguments and pointees; a
+borrowed pointer, the address of a local, cannot be kept or returned, and a
+safe proc's returned pointer names its region. Type compatibility carries
+the rule, with a message that names the two regions. A field whose pointer
+names no region is set only by the struct's trusted procs. A region block
+opens a declared region, not one already open, inside only longer-lived
+ones, with no `goto` or label in it; `return`, `break` and `continue` emit
+its cleanup. A `*T` that is zero would be null, so a zeroed value, a `new`
+without a value, or an initializer that leaves such a field out is an error;
+`?*T` is tested with `if (p)`, `if (p != null)`, `p && ...`, `p ? ... : ...`
+or an `if (!p) { return; }`, which narrows the name, and an assignment to
+the name undoes the narrowing. Null compares with any pointer.
+
+**Two things the design missed, found by trying to break it.** A proc that
+opens `region frame` would clear the arena from under a caller that has
+frame open, so each proc's opened regions are computed over the whole
+program through every by-name call, a call is rejected while one of them is
+open or while a shorter-lived one is, and such a proc cannot be used as a
+proc pointer, since a call through a pointer could not be checked. And a
+`region R` value kept in memory would allocate into a cleared arena, hence
+the rule above.
+
+**What the counts say.** `new` and `new_slice` replace every arena cast in
+safe code. The four safe programs annotate the struct fields that hold
+pointers, which is where the regions have to be written, and nothing else
+beyond `region` blocks and parameters: a 150-line entity world with a slot
+map, columns, a frame of commands and handles with generations has eleven
+`in` annotations, all on fields or returns.
+
+**Not done.** Dynamic regions; guard pages in debug builds; narrowing of a
+field path (`if (a*.next) { a*.next*.v }` needs a local); `stable<T>` and
+`handle<T>` in std; `?*T` on std's find procs, which still return `*T` and
+null, trusted; integer overflow, division and shifts, which are
+[safety.md](safety.md)'s list; data races; and rin-dod itself, which checks
+only with `--unsafe`: its first lesson alone has 63 errors in safe mode, 38
+of them direct `printf` calls, 13 writes to std fields with no region. The
+course was written for C's model and porting it is the real measure of the
+annotation cost; the counts above are from programs written for this one.

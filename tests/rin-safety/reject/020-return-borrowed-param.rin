@@ -1,0 +1,3 @@
+// expect: a returned pointer names its region
+f: proc(x: *i32) -> *i32 = { return x; }
+main: proc() -> i32 = { return 0; }

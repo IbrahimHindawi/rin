@@ -13,7 +13,7 @@ deque: struct<T> = {
     border: u64;
 }
 
-deque<T>grow: proc<T>(arena: *memops_arena, d: *deque<T>) -> void = {
+deque<T>grow: proc[trusted]<T>(arena: *memops_arena, d: *deque<T>) -> void = {
     border: u64 = d*.border == 0 ? 16 : d*.border * 2;
     data: ^T = cast(memops_arena_push(arena, sizeof(T) * border, alignof(T)), ^T);
     if (data == null) {
@@ -28,7 +28,7 @@ deque<T>grow: proc<T>(arena: *memops_arena, d: *deque<T>) -> void = {
     d*.border = border;
 }
 
-deque<T>push_back: proc<T>(arena: *memops_arena, d: *deque<T>, x: T) -> void = {
+deque<T>push_back: proc[trusted]<T>(arena: *memops_arena, d: *deque<T>, x: T) -> void = {
     if (d*.length == d*.border) {
         deque<T>grow(arena, d);
     }
@@ -36,7 +36,7 @@ deque<T>push_back: proc<T>(arena: *memops_arena, d: *deque<T>, x: T) -> void = {
     d*.length += 1;
 }
 
-deque<T>push_front: proc<T>(arena: *memops_arena, d: *deque<T>, x: T) -> void = {
+deque<T>push_front: proc[trusted]<T>(arena: *memops_arena, d: *deque<T>, x: T) -> void = {
     if (d*.length == d*.border) {
         deque<T>grow(arena, d);
     }
@@ -45,7 +45,7 @@ deque<T>push_front: proc<T>(arena: *memops_arena, d: *deque<T>, x: T) -> void = 
     d*.length += 1;
 }
 
-deque<T>at: proc<T>(d: *deque<T>, index: u64) -> *T = {
+deque<T>at: proc[trusted]<T>(d: *deque<T>, index: u64) -> *T = {
     if (index >= d*.length) {
         printf("rin runtime: deque index out of bounds\n");
         exit(1);
@@ -53,11 +53,11 @@ deque<T>at: proc<T>(d: *deque<T>, index: u64) -> *T = {
     return d*.data[(d*.head + index) % d*.border]&;
 }
 
-deque<T>front: proc<T>(d: *deque<T>) -> T = {
+deque<T>front: proc[trusted]<T>(d: *deque<T>) -> T = {
     return deque<T>at(d, 0)*;
 }
 
-deque<T>back: proc<T>(d: *deque<T>) -> T = {
+deque<T>back: proc[trusted]<T>(d: *deque<T>) -> T = {
     if (d*.length == 0) {
         printf("rin runtime: deque back on an empty deque\n");
         exit(1);
@@ -65,24 +65,24 @@ deque<T>back: proc<T>(d: *deque<T>) -> T = {
     return deque<T>at(d, d*.length - 1)*;
 }
 
-deque<T>pop_front: proc<T>(d: *deque<T>) -> T = {
+deque<T>pop_front: proc[trusted]<T>(d: *deque<T>) -> T = {
     x: T = deque<T>front(d);
     d*.head = (d*.head + 1) % d*.border;
     d*.length -= 1;
     return x;
 }
 
-deque<T>pop_back: proc<T>(d: *deque<T>) -> T = {
+deque<T>pop_back: proc[trusted]<T>(d: *deque<T>) -> T = {
     x: T = deque<T>back(d);
     d*.length -= 1;
     return x;
 }
 
-deque<T>is_empty: proc<T>(d: *deque<T>) -> b32 = {
+deque<T>is_empty: proc[trusted]<T>(d: *deque<T>) -> b32 = {
     return d*.length == 0;
 }
 
-deque<T>clear: proc<T>(d: *deque<T>) -> void = {
+deque<T>clear: proc[trusted]<T>(d: *deque<T>) -> void = {
     d*.head = 0;
     d*.length = 0;
 }

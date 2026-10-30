@@ -31,7 +31,7 @@ hashmap: struct<K, V> = {
     capacity: u64;
 }
 
-hashmap<K, V>find: proc<K, V>(m: *hashmap<K, V>, key: K) -> u64 = {
+hashmap<K, V>find: proc[trusted]<K, V>(m: *hashmap<K, V>, key: K) -> u64 = {
     if (m*.capacity == 0) {
         return 0;
     }
@@ -46,7 +46,7 @@ hashmap<K, V>find: proc<K, V>(m: *hashmap<K, V>, key: K) -> u64 = {
     return m*.capacity;
 }
 
-hashmap<K, V>grow: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>) -> void = {
+hashmap<K, V>grow: proc[trusted]<K, V>(arena: *memops_arena, m: *hashmap<K, V>) -> void = {
     old_keys: ^K = m*.keys;
     old_values: ^V = m*.values;
     old_states: ^u8 = m*.states;
@@ -80,7 +80,7 @@ hashmap<K, V>grow: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>) -> void =
 }
 
 // The value slot for key, inserting a zeroed value when it is not there yet.
-hashmap<K, V>slot: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>, key: K) -> *V = {
+hashmap<K, V>slot: proc[trusted]<K, V>(arena: *memops_arena, m: *hashmap<K, V>, key: K) -> *V = {
     found: u64 = hashmap<K, V>find(m, key);
     if (found < m*.capacity) {
         return m*.values[found]&;
@@ -103,13 +103,13 @@ hashmap<K, V>slot: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>, key: K) -
     return m*.values[i]&;
 }
 
-hashmap<K, V>put: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>, key: K, value: V) -> *V = {
+hashmap<K, V>put: proc[trusted]<K, V>(arena: *memops_arena, m: *hashmap<K, V>, key: K, value: V) -> *V = {
     slot: *V = hashmap<K, V>slot(arena, m, key);
     slot* = value;
     return slot;
 }
 
-hashmap<K, V>get: proc<K, V>(m: *hashmap<K, V>, key: K) -> *V = {
+hashmap<K, V>get: proc[trusted]<K, V>(m: *hashmap<K, V>, key: K) -> *V = {
     i: u64 = hashmap<K, V>find(m, key);
     if (i >= m*.capacity) {
         return null;
@@ -117,7 +117,7 @@ hashmap<K, V>get: proc<K, V>(m: *hashmap<K, V>, key: K) -> *V = {
     return m*.values[i]&;
 }
 
-hashmap<K, V>get_or: proc<K, V>(m: *hashmap<K, V>, key: K, fallback: V) -> V = {
+hashmap<K, V>get_or: proc[trusted]<K, V>(m: *hashmap<K, V>, key: K, fallback: V) -> V = {
     i: u64 = hashmap<K, V>find(m, key);
     if (i >= m*.capacity) {
         return fallback;
@@ -125,11 +125,11 @@ hashmap<K, V>get_or: proc<K, V>(m: *hashmap<K, V>, key: K, fallback: V) -> V = {
     return m*.values[i];
 }
 
-hashmap<K, V>has: proc<K, V>(m: *hashmap<K, V>, key: K) -> b32 = {
+hashmap<K, V>has: proc[trusted]<K, V>(m: *hashmap<K, V>, key: K) -> b32 = {
     return hashmap<K, V>find(m, key) < m*.capacity;
 }
 
-hashmap<K, V>remove: proc<K, V>(m: *hashmap<K, V>, key: K) -> b32 = {
+hashmap<K, V>remove: proc[trusted]<K, V>(m: *hashmap<K, V>, key: K) -> b32 = {
     i: u64 = hashmap<K, V>find(m, key);
     if (i >= m*.capacity) {
         return 0;
@@ -140,7 +140,7 @@ hashmap<K, V>remove: proc<K, V>(m: *hashmap<K, V>, key: K) -> b32 = {
     return 1;
 }
 
-hashmap<K, V>clear: proc<K, V>(m: *hashmap<K, V>) -> void = {
+hashmap<K, V>clear: proc[trusted]<K, V>(m: *hashmap<K, V>) -> void = {
     if (m*.capacity > 0) {
         memset(m*.states, 0, m*.capacity);
     }
@@ -149,17 +149,17 @@ hashmap<K, V>clear: proc<K, V>(m: *hashmap<K, V>) -> void = {
 }
 
 // The first occupied slot at or after i, or capacity when there is none.
-hashmap<K, V>scan: proc<K, V>(m: *hashmap<K, V>, i: u64) -> u64 = {
+hashmap<K, V>scan: proc[trusted]<K, V>(m: *hashmap<K, V>, i: u64) -> u64 = {
     while (i < m*.capacity && m*.states[i] != 1) {
         i += 1;
     }
     return i;
 }
 
-hashmap<K, V>first: proc<K, V>(m: *hashmap<K, V>) -> u64 = {
+hashmap<K, V>first: proc[trusted]<K, V>(m: *hashmap<K, V>) -> u64 = {
     return hashmap<K, V>scan(m, 0);
 }
 
-hashmap<K, V>next: proc<K, V>(m: *hashmap<K, V>, i: u64) -> u64 = {
+hashmap<K, V>next: proc[trusted]<K, V>(m: *hashmap<K, V>, i: u64) -> u64 = {
     return hashmap<K, V>scan(m, i + 1);
 }

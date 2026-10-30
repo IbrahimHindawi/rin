@@ -1,0 +1,7 @@
+// expect: a pointer into region 'frame' cannot be kept where region 'level' is promised
+region level > frame;
+first: proc(xs: []i32 in R) -> *i32 in R = { return xs[0]&; }
+main: proc() -> i32 = {
+    out: ?*i32 in level = null;
+    region level { region frame { xs: []i32 in frame = new_slice<i32>(frame, 3); out = first(xs); } }
+    return 0; }

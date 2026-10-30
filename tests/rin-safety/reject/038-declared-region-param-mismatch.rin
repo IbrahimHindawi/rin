@@ -1,0 +1,4 @@
+// expect: is region 'level' itself
+region level > frame;
+f: proc(r: region level) -> *i32 in level = { return new<i32>(r); }
+main: proc() -> i32 = { region level { region frame { x: *i32 in level = f(frame); } } return 0; }

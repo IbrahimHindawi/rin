@@ -1,0 +1,4 @@
+// expect: null cannot go where a '*T' is promised
+e: struct = { hp: i32; }
+f: proc(p: *e) -> i32 = { return p*.hp; }
+main: proc() -> i32 = { q: *e = null; return 0; }

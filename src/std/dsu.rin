@@ -12,7 +12,7 @@ dsu: struct = {
     sets: u64;
 }
 
-dsu_make: proc(arena: *memops_arena, n: u64) -> dsu = {
+dsu_make: proc[trusted](arena: *memops_arena, n: u64) -> dsu = {
     d: dsu = {};
     if (n == 0) {
         return d;
@@ -32,7 +32,7 @@ dsu_make: proc(arena: *memops_arena, n: u64) -> dsu = {
     return d;
 }
 
-dsu_find: proc(d: *dsu, x: u64) -> u64 = {
+dsu_find: proc[trusted](d: *dsu, x: u64) -> u64 = {
     if (x >= d*.count) {
         printf("rin runtime: dsu element out of range\n");
         exit(1);
@@ -45,7 +45,7 @@ dsu_find: proc(d: *dsu, x: u64) -> u64 = {
 }
 
 // Joins the sets holding a and b; returns false when they were already one.
-dsu_unite: proc(d: *dsu, a: u64, b: u64) -> b32 = {
+dsu_unite: proc[trusted](d: *dsu, a: u64, b: u64) -> b32 = {
     ra: u64 = dsu_find(d, a);
     rb: u64 = dsu_find(d, b);
     if (ra == rb) {
@@ -66,6 +66,6 @@ dsu_same: proc(d: *dsu, a: u64, b: u64) -> b32 = {
     return dsu_find(d, a) == dsu_find(d, b);
 }
 
-dsu_set_size: proc(d: *dsu, x: u64) -> u64 = {
+dsu_set_size: proc[trusted](d: *dsu, x: u64) -> u64 = {
     return d*.size[dsu_find(d, x)];
 }

@@ -1,0 +1,3 @@
+// always: a region block has no goto or label inside it
+region frame;
+main: proc() -> i32 = { region frame { x: i32 = 1; goto done; } done: label = { } return 0; }

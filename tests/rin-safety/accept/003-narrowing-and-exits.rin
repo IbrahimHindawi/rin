@@ -1,0 +1,68 @@
+import "std/print.rin"
+
+region level > frame;
+
+node: struct = {
+    v: i32;
+    next: ?*node in level;
+}
+
+// A chain in level, built by a proc handed the level region itself; the
+// frame work below only reads it.
+chain: proc(r: region level, n: i32) -> ?*node in level = {
+    head: ?*node in level = null;
+    for (i: i32 = 0; i < n; i += 1) {
+        x: *node in level = new<node>(r);
+        x*.v = i;
+        x*.next = head;
+        head = x;
+    }
+    return head;
+}
+
+sum: proc(head: ?*node in level) -> i32 = {
+    total: i32 = 0;
+    p: ?*node in level = head;
+    while (p != null) {
+        total += p*.v;
+        p = p*.next;
+    }
+    return total;
+}
+
+second: proc(head: ?*node in level) -> i32 = {
+    if (!head) { return -1; }
+    n: ?*node in level = head*.next;
+    // `n && n*.v` narrows n for the right side and the branch.
+    if (n && n*.v >= 0) {
+        return n*.v;
+    }
+    return head ? head*.v : -2;
+}
+
+// Opens frame itself: fine to call where frame is not open.
+frame_work: proc(head: ?*node in level) -> i32 = {
+    best: i32 = 0;
+    for (round: i32 = 0; round < 4; round += 1) {
+        region frame {
+            scratch: []i32 in frame = new_slice<i32>(frame, 8);
+            if (round == 1) { continue; }        // leaves the frame block: it is cleared first
+            scratch[0] = sum(head) + round;
+            first: *i32 in frame = scratch[0]&;   // an element's address is in frame
+            if (first* > best) { best = first*; }
+            if (round == 2) { break; }
+        }
+    }
+    return best;
+}
+
+main: proc() -> i32 = {
+    result: i32 = 0;
+    region level {
+        head: ?*node in level = chain(level, 4);
+        printfmt("sum {} second {}\n", sum(head), second(head));
+        result = frame_work(head);
+    }
+    printfmt("best {}\n", result);
+    return 0;
+}

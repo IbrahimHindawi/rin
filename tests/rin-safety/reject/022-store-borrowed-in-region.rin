@@ -1,0 +1,6 @@
+// expect: a borrowed pointer cannot be kept in region 'level'
+region level;
+holder: struct = { p: ?*i32 in level; }
+main: proc() -> i32 = {
+    region level { h: *holder in level = new<holder>(level); x: i32 = 1; h*.p = x&; }
+    return 0; }

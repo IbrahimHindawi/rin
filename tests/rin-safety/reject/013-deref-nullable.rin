@@ -1,0 +1,4 @@
+// expect: this pointer may be null
+e: struct = { hp: i32; }
+f: proc(p: ?*e) -> i32 = { return p*.hp; }
+main: proc() -> i32 = { return 0; }
