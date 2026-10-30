@@ -7,6 +7,27 @@ hashset: struct<K> = {
     map: hashmap<K, u8>;
 }
 
+/* A set that lives in a region, for safe code. */
+hashset<K>make: proc[trusted]<K>(r: region R) -> *hashset<K> in R = {
+    s: *hashset<K> in R = cast(memops_arena_push_zero(r, sizeof(hashset<K>), alignof(hashset<K>)), *hashset<K> in R);
+    s*.map.arena = r;
+    return s;
+}
+
+/* add, for a set made by hashset<K>make; returns whether the key was new. */
+hashset<K>insert: proc[trusted]<K>(s: *hashset<K>, key: K) -> b32 = {
+    if (s*.map.arena == null) {
+        printf("rin runtime: hashset insert on a set not made by hashset<K>make\n");
+        exit(1);
+    }
+    return hashset<K>add(s*.map.arena[0]&, s, key);
+}
+
+/* The key in a live slot, for walking a set with first/next. */
+hashset<K>key_at: proc[trusted]<K>(s: *const hashset<K>, i: u64) -> *const K = {
+    return hashmap<K, u8>key_at(s*.map&, i);
+}
+
 // Adds key; returns whether it was new.
 hashset<K>add: proc[trusted]<K>(arena: *memops_arena, s: *hashset<K>, key: K) -> b32 = {
     before: u64 = s*.map.length;

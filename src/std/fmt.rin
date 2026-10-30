@@ -33,6 +33,30 @@ fmt_to: proc[trusted](buf: []c8) -> fmt = {
     return f;
 }
 
+/* A formatter that lives in a region, for safe code: its buffer comes from
+   the region's arena, and the text is always NUL-terminated. */
+fmt_make: proc[trusted](r: region R, capacity: u64) -> *fmt in R = {
+    f: *fmt in R = cast(memops_arena_push_zero(r, sizeof(fmt), alignof(fmt)), *fmt in R);
+    if (capacity == 0) { capacity = 1; }
+    f*.data = cast(memops_arena_push_zero(r, capacity, 1), ^c8);
+    f*.capacity = capacity;
+    return f;
+}
+
+/* Back to empty, keeping the buffer. */
+fmt_reset: proc[trusted](f: *fmt) -> void = {
+    f*.length = 0;
+    f*.truncated = 0;
+    if (f*.data != null && f*.capacity > 0) {
+        f*.data[0] = 0;
+    }
+}
+
+/* The text so far, NUL-terminated; good until the next write. */
+fmt_text: proc[trusted](f: *const fmt) -> ^const c8 = {
+    return f*.data;
+}
+
 fmt_remaining: proc(f: *const fmt) -> u64 = {
     if (f*.data == null || f*.capacity == 0) {
         return 0;
@@ -113,7 +137,7 @@ fmt_cstr_pad: proc(f: *fmt, s: ^const c8, width: u64) -> void = {
 /* Digits come out backwards, so they are staged and reversed rather than
    written straight into the buffer -- a truncated number must not leave its
    most significant digits behind and drop the rest. */
-fmt_u64: proc(f: *fmt, value: u64) -> void = {
+fmt_u64: proc[trusted](f: *fmt, value: u64) -> void = {
     digits: [24]c8 = {};
     n: u64 = 0;
     v: u64 = value;
@@ -143,7 +167,7 @@ fmt_i64: proc(f: *fmt, value: i64) -> void = {
     fmt_u64(f, cast(value, u64));
 }
 
-fmt_hex: proc(f: *fmt, value: u64, min_digits: u64, upper: b32) -> void = {
+fmt_hex: proc[trusted](f: *fmt, value: u64, min_digits: u64, upper: b32) -> void = {
     digits: [24]c8 = {};
     n: u64 = 0;
     v: u64 = value;

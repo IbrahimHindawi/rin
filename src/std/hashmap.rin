@@ -177,6 +177,28 @@ hashmap<K, V>scan: proc[trusted]<K, V>(m: *const hashmap<K, V>, i: u64) -> u64 =
     return i;
 }
 
+/* The key and value in a live slot, for walking a map from safe code:
+
+       for (i: u64 = hashmap<K, V>first(m); i < m*.capacity; i = hashmap<K, V>next(m, i)) {
+           use(hashmap<K, V>key_at(m, i)*, hashmap<K, V>value_at(m, i)*);
+       }
+
+   Both are borrowed from the map: good until the next set or remove. */
+hashmap<K, V>key_at: proc[trusted]<K, V>(m: *const hashmap<K, V>, i: u64) -> *const K = {
+    if (i >= m*.capacity || m*.states[i] != 1) {
+        printf("rin runtime: hashmap slot is not in use\n");
+        exit(1);
+    }
+    return m*.keys[i]&;
+}
+hashmap<K, V>value_at: proc[trusted]<K, V>(m: *const hashmap<K, V>, i: u64) -> *V = {
+    if (i >= m*.capacity || m*.states[i] != 1) {
+        printf("rin runtime: hashmap slot is not in use\n");
+        exit(1);
+    }
+    return m*.values[i]&;
+}
+
 hashmap<K, V>first: proc[trusted]<K, V>(m: *const hashmap<K, V>) -> u64 = {
     return hashmap<K, V>scan(m, 0);
 }
