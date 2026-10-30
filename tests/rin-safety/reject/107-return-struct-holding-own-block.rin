@@ -1,0 +1,10 @@
+// expect: whose block ends with this return
+level: region;
+frame: region in level;
+h: struct = { p: ?*i32 in frame; }
+use: proc() -> h = {
+    frame: region = { x: h = {}; x.p = new<i32>(frame, 1); return x; }
+    y: h = {};
+    return y;
+}
+main: proc() -> i32 = { return 0; }

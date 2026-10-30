@@ -1,0 +1,7 @@
+// expect: indexing a '^T' is unsafe
+peek: proc(p: ^const i32) -> i32 = {
+    a: i32 = 0;
+    unsafe { a = p[0]; }
+    return a + p[1];
+}
+main: proc() -> i32 = { return 0; }

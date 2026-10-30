@@ -1,0 +1,9 @@
+// expect: whose block ends with this return
+level: region;
+frame: region in level;
+g: i32 = 0;
+use: proc() -> *i32 = {
+    frame: region = { return new<i32>(frame, 1); }
+    return g&;
+}
+main: proc() -> i32 = { return 0; }

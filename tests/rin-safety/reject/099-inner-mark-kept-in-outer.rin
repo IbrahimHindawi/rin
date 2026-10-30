@@ -1,0 +1,13 @@
+// expect: cannot be kept where
+level: region;
+use: proc(l: region level) -> i32 = {
+    a: region of l = {
+        q: ?*i32 in a = null;
+        b: region of a = {
+            q = new<i32>(b, 1);
+        }
+        if (q) { return q*; }
+    }
+    return 0;
+}
+main: proc() -> i32 = { return 0; }

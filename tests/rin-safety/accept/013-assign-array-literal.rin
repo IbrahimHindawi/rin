@@ -1,0 +1,11 @@
+import "std/print.rin"
+S: struct = { slots: [4]u32; }
+main: proc() -> i32 = {
+    s: S = { .slots = { 1, 2, 3, 4 } };
+    s.slots = {};
+    printfmt("{} {}\n", s.slots[0], s.slots[3]);
+    xs: [3]i32 = { 7, 8, 9 };
+    xs = { 1, 2 };
+    printfmt("{} {} {}\n", xs[0], xs[1], xs[2]);
+    return 0;
+}

@@ -1,0 +1,4 @@
+// expect: are set only in the file that declares it
+import "../support/sealed.rin"
+poke: proc(s: *sealed) -> void = { s*.length = 100; }
+main: proc() -> i32 = { return 0; }

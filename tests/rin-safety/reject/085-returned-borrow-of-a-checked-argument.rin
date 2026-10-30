@@ -1,0 +1,11 @@
+// expect: may be stale
+H: struct = { v: *H in permanent; }
+first: proc[trusted](ctx: *H) -> *H = { return ctx; }
+touch: proc[trusted](ctx: *H) -> void = { }
+use: proc(ctx: *H) -> i32 = {
+    f: *H = first(ctx);
+    touch(ctx);
+    f = f*.v;
+    return 0;
+}
+main: proc() -> i32 = { return 0; }

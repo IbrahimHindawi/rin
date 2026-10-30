@@ -1,0 +1,8 @@
+// expect: whose block ends with this return
+use: proc(r: region R) -> *i32 = {
+    tmp: region of r = {
+        return new<i32>(tmp, 1);
+    }
+    return new<i32>(r);
+}
+main: proc() -> i32 = { return 0; }

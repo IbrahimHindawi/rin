@@ -1,0 +1,6 @@
+// expect: this pointer may be null
+H: struct = { x: i32; }
+S: struct = { h: ?*H in permanent; n: i32; }
+g: S = {};
+use: proc(r: *S, s: *S) -> i32 = { if (r*.h) { s* = {}; return r*.h*.x; } return 0; }
+main: proc() -> i32 = { return 0; }

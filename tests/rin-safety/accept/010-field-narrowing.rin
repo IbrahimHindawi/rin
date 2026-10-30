@@ -1,0 +1,67 @@
+import "std/print.rin"
+
+H: struct = { x: i32; next: ?*H in permanent; }
+S: struct = { h: ?*H in permanent; n: i32; }
+g: S = {};
+leaf: H = { .x = 7, .next = null };
+
+abs: proc[external](v: i32) -> i32 = {}
+
+through_pointer: proc(s: *S) -> i32 = {
+    if (s*.h) { return s*.h*.x; }
+    return 0;
+}
+negated: proc(s: *S) -> i32 = {
+    if (s*.h == null) { return -1; }
+    return s*.h*.x;
+}
+left_of_and: proc(s: *S) -> i32 = {
+    return s*.h && s*.h*.x > 0 ? s*.h*.x : 0;
+}
+chained: proc(s: *S) -> i32 = {
+    if (s*.h && s*.h*.next) { return s*.h*.next*.x; }
+    return 0;
+}
+/* A write to plain data, to another field, and a C call handed nothing it
+   could reach a rin struct with, all leave it narrowed. */
+survives: proc(s: *S) -> i32 = {
+    if (s*.h) {
+        s*.n = 5;
+        s*.h*.x = 8;
+        return s*.h*.x + abs(-3);
+    }
+    return 0;
+}
+/* The arguments of a call are read before it runs. */
+take: proc(v: i32) -> i32 = { return v + 1; }
+as_argument: proc(s: *S) -> i32 = {
+    if (s*.h) { return take(s*.h*.x); }
+    return 0;
+}
+/* The usual way past a call: a local, which only an assignment changes. */
+past_a_call: proc(s: *S) -> i32 = {
+    if (s*.h) {
+        h: *H = s*.h;
+        a: i32 = take(h*.x);
+        return take(a) + h*.x;
+    }
+    return 0;
+}
+retested: proc(s: *S) -> i32 = {
+    r: i32 = 0;
+    if (s*.h) { r = take(s*.h*.x); }
+    if (s*.h) { r += s*.h*.x; }
+    return r;
+}
+
+main: proc() -> i32 = {
+    empty: S = {};
+    printfmt("{} {}\n", through_pointer(empty&), negated(empty&));
+    full: S = { .h = null, .n = 0 };
+    unsafe { full.h = leaf&; g.h = leaf&; }
+    printfmt("{} {} {}\n", through_pointer(full&), negated(full&), left_of_and(full&));
+    printfmt("{}\n", chained(full&));
+    printfmt("{}\n", survives(full&));
+    printfmt("{} {} {}\n", as_argument(full&), past_a_call(full&), retested(full&));
+    return 0;
+}

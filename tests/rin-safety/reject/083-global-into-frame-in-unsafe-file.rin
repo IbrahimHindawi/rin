@@ -1,0 +1,5 @@
+// expect: may end before the memory in region 'permanent'
+level: region;
+frame: region in level;
+g: ?*i32 in frame = null;
+main: proc() -> i32 = { unsafe { g = null; } return 0; }

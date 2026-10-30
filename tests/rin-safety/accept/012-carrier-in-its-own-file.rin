@@ -1,0 +1,23 @@
+import "std/print.rin"
+
+/* The file that declares a struct with a raw name may set its plain fields. */
+stats: struct = { name: ^const char; hits: i32; }
+level: region;
+bump: proc(s: *stats) -> void = {
+    s*.hits += 1;
+    p: *i32 = s*.hits&;
+    p* += 1;
+}
+main: proc() -> i32 = {
+    level: region = {
+        s: *stats in level = new_stats(level);
+        bump(s);
+        printfmt("{}\n", s*.hits);
+    }
+    return 0;
+}
+new_stats: proc[trusted](r: region R) -> *stats in R = {
+    s: *stats in R = cast(memops_arena_push_zero(r, sizeof(stats), alignof(stats)), *stats in R);
+    s*.name = "x";
+    return s;
+}

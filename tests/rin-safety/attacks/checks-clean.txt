@@ -59,3 +59,4 @@ r3-09-alignment.rin
 r3-10d-print-enum-bad.rin
 r3-13-vec-array-elem-c.rin
 r3-15-vec-push-self-element.rin
+r2-fp7-struct-value-with-region-ptr-declared-inside.rin

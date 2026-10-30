@@ -1,0 +1,82 @@
+import "std/print.rin"
+import "std/vec.rin"
+
+level: region;
+frame: region in level;
+scratch: region in frame;
+
+/* What goes in the parent during a mark outlives the mark. */
+parent_during_mark: proc() -> void = {
+    level: region = { frame: region = {
+        q: ?*i32 in frame = null;
+        scratch: region of frame = {
+            q = new<i32>(frame, 42);
+        }
+        scratch: region of frame = {
+            z: *i32 in scratch = new<i32>(scratch, 99);
+            if (q) { printfmt("{} {}\n", q*, z*); }
+        }
+    } }
+}
+grow_during_mark: proc() -> void = {
+    level: region = { frame: region = {
+        v: *vec<i32> in frame = vec<i32>make(frame, 1);
+        scratch: region of frame = {
+            for (i: i32 = 0; i < 100; i += 1) { _ = vec<i32>push(v, i); }
+        }
+        scratch: region of frame = {
+            z: []i32 in scratch = new_slice<i32>(scratch, 10000);
+            for (i: u64 = 0; i < 10000; i += 1) { z[i] = 7777; }
+            printfmt("{}\n", vec<i32>at(v, 50)*);
+        }
+    } }
+}
+
+/* A proc marks its own parameter, so it may be called with a mark open, the
+   caller's or its own: a proc's regions are its own, however deep. */
+total: proc(r: region R, n: i32) -> i32 = {
+    if (n == 0) { return 0; }
+    tmp: region of r = {
+        here: *i32 in tmp = new<i32>(tmp, n);
+        rest: i32 = total(tmp, n - 1);
+        return here* + rest;
+    }
+    return 0;
+}
+
+/* Result goes in the region given; the working memory in the proc's own. */
+copy_sum: proc(r: region R, n: i32) -> *i32 in R = {
+    out: *i32 in R = new<i32>(r);
+    tmp: region of r = {
+        xs: []i32 in tmp = new_slice<i32>(tmp, 4);
+        xs[0] = n;
+        xs[3] = n;
+        out* = xs[0] + xs[3];
+    }
+    return out;
+}
+
+/* Longer-lived memory may be kept in a mark's memory, and inner marks in outer. */
+holder: struct = { p: *i32 in level; }
+nested: proc(l: region level) -> i32 = {
+    keep: *i32 in level = new<i32>(l, 5);
+    a: region of l = {
+        h: *holder in a = new<holder>(a, { .p = keep });
+        b: region of a = {
+            c: *i32 in b = new<i32>(b, h*.p*);
+            return c* + 1;
+        }
+    }
+    return 0;
+}
+
+main: proc() -> i32 = {
+    parent_during_mark();
+    grow_during_mark();
+    level: region = {
+        printfmt("{}\n", total(level, 300 / 3));
+        printfmt("{}\n", copy_sum(level, 21)*);
+        printfmt("{}\n", nested(level));
+    }
+    return 0;
+}

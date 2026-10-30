@@ -1,4 +1,4 @@
-// expect: are set only by its own procs
+// expect: are set only in the file that declares it
 import "std/print.rin"
 import "std/vec.rin"
 level: region;

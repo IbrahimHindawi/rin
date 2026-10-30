@@ -1,0 +1,9 @@
+// expect: must point into the caller's memory
+level: region;
+frame: region in level;
+g: i32 = 0;
+use: proc() -> *i32 = {
+    frame: region = { p: *i32 = new<i32>(frame, 1); return p; }
+    return g&;
+}
+main: proc() -> i32 = { return 0; }

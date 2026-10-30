@@ -1,0 +1,105 @@
+import "std/print.rin"
+import "std/vec.rin"
+
+level: region;
+frame: region in level;
+
+memset: proc[external](dst: ^void, value: i32, size: usize) -> ^void = {}
+
+/* The one unchecked line is the read; the proc around it is checked. */
+sum_raw: proc(p: ^const i32, n: i32) -> i32 = {
+    total: i32 = 0;
+    for (i: i32 = 0; i < n; i += 1) {
+        unsafe { total += p[i]; }
+    }
+    return total;
+}
+
+/* A C call with pointers, and a value out of it. */
+zeroed: proc() -> i32 = {
+    x: i32 = 7;
+    unsafe { _ = memset(x&, 0, sizeof(i32)); }
+    return x;
+}
+
+/* A block that always leaves ends the branch, for narrowing and for returns. */
+first_or_exit: proc(p: ?*i32) -> i32 = {
+    if (!p) { unsafe { exit(1); } }
+    return p*;
+}
+from_block: proc(c: i32) -> i32 = {
+    if (c > 0) {
+        unsafe { return c + 1; }
+    } else {
+        unsafe { return c - 1; }
+    }
+}
+
+/* A name assigned in a block is the block's word: alive afterwards, though
+   what it replaced was taken from a place since changed. */
+revive: proc(v: *vec<i32>, other: *i32) -> i32 = {
+    p: *i32 = vec<i32>at(v, 0);
+    unsafe {
+        _ = vec<i32>push(v, 5);
+        p = other;
+    }
+    return p*;
+}
+
+/* A read-only block leaves borrows alone. */
+reader: proc(v: *vec<i32>) -> i32 = {
+    p: *i32 = vec<i32>at(v, 0);
+    n: i32 = 0;
+    unsafe { n = p*; }
+    return n + p*;
+}
+
+/* break, a region and a generic inside; a return from inside a region clears it. */
+in_loop: proc() -> i32 = {
+    n: i32 = 0;
+    while (1) {
+        unsafe {
+            n += 1;
+            if (n == 3) { break; }
+        }
+    }
+    return n;
+}
+in_frame: proc() -> i32 = {
+    frame: region = {
+        x: *i32 in frame = new<i32>(frame, 11);
+        unsafe {
+            printfmt("in frame {}\n", x*);
+            return x*;
+        }
+    }
+    return 0;
+}
+
+/* `unsafe` stays an ordinary name anywhere but in front of a block. */
+unsafe_name: proc(unsafe: i32) -> i32 = {
+    unsafe += 1;
+    return unsafe;
+}
+
+main: proc() -> i32 = {
+    xs: [3]i32 = { 1, 2, 3 };
+    a: ^const i32 = null;
+    unsafe { a = xs[0]&; }
+    printfmt("{}\n", sum_raw(a, 3));
+    printfmt("{}\n", zeroed());
+    y: i32 = 4;
+    printfmt("{}\n", first_or_exit(y&));
+    printfmt("{} {}\n", from_block(1), from_block(-1));
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 1);
+        _ = vec<i32>push(v, 9);
+        z: i32 = 6;
+        printfmt("{}\n", revive(v, z&));
+        printfmt("{}\n", reader(v));
+        printfmt("{}\n", in_loop());
+        printfmt("{}\n", in_frame());
+    }
+    printfmt("{}\n", unsafe_name(1));
+    return 0;
+}

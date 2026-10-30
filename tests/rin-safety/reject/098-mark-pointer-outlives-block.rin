@@ -1,0 +1,10 @@
+// expect: may be dangling
+use: proc(r: region R) -> i32 = {
+    y: i32 = 0;
+    q: *i32 = y&;
+    tmp: region of r = {
+        q = new<i32>(tmp, 1);
+    }
+    return q*;
+}
+main: proc() -> i32 = { return 0; }

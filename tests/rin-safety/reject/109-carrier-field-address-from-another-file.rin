@@ -1,0 +1,4 @@
+// expect: so their address is not taken
+import "../support/sealed.rin"
+poke: proc(s: *sealed) -> *u64 = { return s*.length&; }
+main: proc() -> i32 = { return 0; }

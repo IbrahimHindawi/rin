@@ -42,8 +42,10 @@ def accept(source: Path, cc: str, bless: bool) -> str | None:
     translate = run([str(RIN_EXE), "compile", str(source), "-o", str(c_path), "--header", str(h_path)])
     if translate.returncode != 0:
         return f"compile failed:\n{translate.stdout}"
-    compiled = run([cc, "-std=c11", "-g", "-Wall", "-Wextra", "-Werror", "-Wno-unused", str(c_path),
-                    "-I", str(ROOT / "src"), "-I", str(ROOT / "src" / "std"), "-o", str(exe), "-lm"])
+    defines = ["-D_CRT_SECURE_NO_WARNINGS"] if os.name == "nt" else []
+    libs = [] if os.name == "nt" else ["-lm"]
+    compiled = run([cc, "-std=c11", "-g", "-Wall", "-Wextra", "-Werror", "-Wno-unused", *defines, str(c_path),
+                    "-I", str(ROOT / "src"), "-I", str(ROOT / "src" / "std"), "-o", str(exe), *libs])
     if compiled.returncode != 0:
         return f"C compile failed:\n{compiled.stdout}"
     ran = run([str(exe)])

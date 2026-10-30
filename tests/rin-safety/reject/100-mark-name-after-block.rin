@@ -1,0 +1,7 @@
+// expect: unknown region
+use: proc(r: region R) -> i32 = {
+    tmp: region of r = { x: *i32 in tmp = new<i32>(tmp, 1); }
+    z: ?*i32 in tmp = null;
+    return 0;
+}
+main: proc() -> i32 = { return 0; }

@@ -366,9 +366,9 @@ regions, and declines the rest rather than fighting them.
 The `regions` branch builds all of the above except dynamic regions and the
 debug guard pages, and adds a few things the design left open. Everything
 here is tested by `tests/run_rin_safety.py`: seven programs that must check,
-compile and print their `.expected`, and sixty-eight that must be rejected
-with the message in their first line. The same sixty-eight check clean with
-`--unsafe`, except the five about the shape of a region block and its
+compile and print their `.expected`, and the rest must be rejected
+with the message in their first line. Those check clean with
+`--unsafe`, except the ones about the shape of a region block and its
 syntax, which hold either way. The seven programs also run clean under AddressSanitizer and
 UndefinedBehaviorSanitizer with the same output.
 
@@ -376,7 +376,8 @@ UndefinedBehaviorSanitizer with the same output.
 unless its proc is `[trusted]` or `[unsafe]`. `--unsafe` on the command
 line, or `RIN_UNSAFE=1` in the environment, turns the rules off for a
 program written before them; `--safe` turns them back on. The two torture
-suites and all of rin-dod run unchanged that way.
+suites and all of rin-dod run unchanged that way; `region` and `in` are new
+keywords, so a program that names something `region` needs a rename.
 
 **The unsafe boundary.** In a safe body these are errors: dereferencing or
 indexing a `^T`; a `cast` to or from a pointer; calling an `[unsafe]` proc,
@@ -656,8 +657,57 @@ README there says how to add one. `docs/regions-log.md` is the log of how
 the rules came to be, and `docs/handoff-CLAUDE.md` the operational notes for
 whoever continues the work.
 
-**Not done.** Dynamic regions; guard pages in debug builds; narrowing of a
-field path (`if (a*.next) { a*.next*.v }` needs a local); `stable<T>` and
+**What the engine survey asked for.** Running the checker over a 39,000-line
+game engine before porting it (njinn's `docs/rin-safe-port.md`) gave 7,778
+errors, most of them a few rules too blunt, and two holes.
+
+  * *`unsafe { }`.* One C call no longer makes a whole proc `[trusted]`. Inside
+    the block the rules are off; around it they are not. Its calls and writes
+    still kill borrows and undo narrowing, and its moving calls still count in
+    the proc's moves, so what it does to the code around it is seen. A name it
+    assigns is its word: alive afterwards, from nothing the checker knows.
+    `unsafe` is a word only in front of a block and in a proc's attributes.
+  * *A hole: a mark rewound what its parent had been given.* `scratch: region
+    of frame = { q = new<i32>(frame, 42); }` freed `q` at the brace, and the next
+    scratch allocation landed on it; a `vec` growing during a mark did the same,
+    in a safe program with nothing trusted of its own. No type shows that a call
+    allocates in the parent, so `of` no longer rewinds anything: it is a
+    lifetime, and each block has an arena of its own, cleared at its brace.
+  * *Local regions.* `tmp: region of r = { }`, with a name the program did not
+    declare and `r` a region open here or a parameter, is a region of that block
+    alone, shorter-lived than everything around it. Its arena comes from a stack
+    of them, so a proc marks its own parameter, recursively if it likes, and a
+    call with a mark open is fine. Nothing in it can be returned or kept in
+    anything longer-lived, and a declared region cannot open inside one.
+  * *A hole: returning from inside a region's own block.* `frame: region = {
+    return new<i32>(frame); }` passed as a borrow, or as `-> *i32 in frame`, or
+    in a struct, and the block's cleanup ran before the caller looked. What a
+    return hands back may not name a region this proc has open.
+  * *Field paths narrow.* `if (dx*.tex) { dx*.tex*.w }` works, and only without
+    an index in the path, since `a[i].p` and `a[j].p` are different places. A
+    name changes only where it is assigned; a field changes through any pointer
+    to its struct and in any callee, so the narrowing ends at a write to a field
+    of that name through any path, at a write of a whole value holding pointers,
+    at an assignment to the root, and at any call that could reach it, which is
+    every call but a C proc handed nothing it could write through. C leaves the
+    order of `g.h*.x + f()` open, so a call beside the read ends it as well.
+  * *Staleness.* A raw argument is no source for a returned borrow, since safe
+    code never makes a raw pointer from a checked one: `f = fopen(path, "rb")` is
+    not a borrow of `path`. And a callee handed `*T` or `[]T` of plain data, with
+    no pointer in it to reallocate behind, moves nothing; a `T` holding a `vec`
+    still kills. A type parameter, `void` and a C struct with no fields are not
+    plain, since they could be anything.
+  * *Carrier fields belong to the declaring file.* The rule that froze a struct's
+    fields was doing what Rust does with a private field, and now draws the same
+    line: a safe proc in the struct's own file may set them and take their
+    address, as a safe function in a Rust module may break its module's invariant;
+    no other file can. Slices stay closed everywhere. Holding a carrier by value
+    is still refused, since what it points at may be gone. Round three's programs
+    stay rejected: all of them write std's structs from another file.
+  * *Smaller.* `--max-errors=<n>` (0 is no limit); the errors on a global name
+    its file; `xs = {}` and `xs = { 1, 2 }` assign an array.
+
+**Not done.** Dynamic regions; guard pages in debug builds; `stable<T>` and
 `handle<T>` in std; a string type safe code can hold by value, since
 `string8slice` carries a raw pointer and is trusted-only, which leaves safe
 code with `^const char` literals; `+%` and the other explicitly wrapping

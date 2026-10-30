@@ -1,0 +1,40 @@
+import "std/print.rin"
+
+/* A handle from a raw name is no borrow of the name. */
+H: struct = { x: i32; }
+g_h: H = {};
+open: proc[trusted](path: ^const char) -> *H = { return g_h&; }
+wr: proc[trusted](f: *H) -> void = { f*.x += 1; }
+save: proc(path: ^const char) -> i32 = {
+    f: *H = open(path);
+    wr(f);
+    wr(f);
+    return f*.x;
+}
+
+/* A proc handed plain data can overwrite it and can move nothing. */
+T: struct = { a: i32; b: [2]f32; }
+g_arr: [4]T = {};
+set_a: proc[trusted](out: *i32) -> void = { out* = 5; }
+hit: proc[trusted](t: *T) -> void = { t*.a += 1; }
+fill: proc[trusted](xs: []i32) -> void = { xs[0] = 3; }
+elements: proc() -> i32 = {
+    x: *T = g_arr[0]&;
+    y: *T = g_arr[1]&;
+    set_a(y*.a&);
+    hit(x);
+    return x*.a + y*.a;
+}
+slices: proc() -> i32 = {
+    xs: [3]i32 = { 0, 0, 0 };
+    head: []i32 = xs[0..2];
+    fill(xs);
+    return head[0];
+}
+
+main: proc() -> i32 = {
+    printfmt("{}\n", save("a"));
+    printfmt("{}\n", elements());
+    printfmt("{}\n", slices());
+    return 0;
+}

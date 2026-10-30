@@ -1,0 +1,6 @@
+// always: needs a region
+use: proc(r: i32) -> i32 = {
+    tmp: region of r = { x: *i32 in tmp = new<i32>(tmp, 1); return x*; }
+    return 0;
+}
+main: proc() -> i32 = { return 0; }

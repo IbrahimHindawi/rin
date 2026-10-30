@@ -1,0 +1,9 @@
+// always: cannot open inside
+level: region;
+use: proc(r: region R) -> i32 = {
+    tmp: region of r = {
+        level: region = { x: *i32 in level = new<i32>(level, 1); return x*; }
+    }
+    return 0;
+}
+main: proc() -> i32 = { return 0; }

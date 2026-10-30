@@ -1,0 +1,8 @@
+/* A struct with a raw pointer, for the rule that its fields are set only here. */
+sealed: struct = { data: ^i32; length: u64; count: i32; }
+sealed_reset: proc(s: *sealed) -> void = {
+    s*.length = 0;
+    s*.count = 0;
+    p: *i32 = s*.count&;
+    p* = 1;
+}

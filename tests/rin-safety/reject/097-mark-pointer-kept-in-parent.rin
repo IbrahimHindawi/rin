@@ -1,0 +1,9 @@
+// expect: cannot be kept where region 'R' is promised
+keep: proc(r: region R) -> *i32 in R = {
+    tmp: region of r = {
+        x: *i32 in tmp = new<i32>(tmp, 1);
+        return x;
+    }
+    return new<i32>(r);
+}
+main: proc() -> i32 = { return 0; }
