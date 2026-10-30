@@ -14309,6 +14309,8 @@ static bool proc_touches_pointers(Program *prog, ProcDecl *decl) {
    region, never by value, or a copy could outlive the memory it points into.
    `slice<T>` is the one struct with a raw pointer that is checked instead, so
    it is not a carrier. */
+static bool type_is_proc_pointer(Program *prog, TypeExpr *type);
+
 static bool type_is_carrier_depth(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth) {
     if (!type || depth > 8) return false;
     type = resolve_alias_type(prog, type);
@@ -14342,12 +14344,16 @@ static bool type_is_carrier_depth(Program *prog, TypeExpr *type, memops_arena *a
         TypeExpr *r = resolve_alias_type(prog, ft);
         if (!r) continue;
         /* A raw pointer, or a checked pointer that names no region: either
-           way the struct's author, not the checker, knows what it points at. */
+           way the struct's author, not the checker, knows what it points at.
+           A proc pointer points at code and is neither. */
+        if (type_is_proc_pointer(prog, r)) continue;
         if (r->kind == Type_Ptr && (r->is_raw || r->region.length == 0)) return true;
         if (type_slice_elem(r) && r->region.length == 0) return true;
         if (r->kind == Type_Array) {
+            /* An array of raw pointers is as harmless as a raw pointer local:
+               safe code cannot make a raw pointer, only receive one. */
             TypeExpr *elem = resolve_alias_type(prog, r->elem);
-            if (elem && elem->kind == Type_Ptr && (elem->is_raw || elem->region.length == 0)) return true;
+            if (elem && elem->kind == Type_Ptr && !elem->is_raw && elem->region.length == 0 && !type_is_proc_pointer(prog, elem)) return true;
             if (elem && type_slice_elem(elem) && elem->region.length == 0) return true;
         }
         if (type_is_carrier_depth(prog, ft, arena, depth + 1)) return true;
@@ -14426,9 +14432,19 @@ static string8 type_region_of(Program *prog, TypeExpr *type) {
     return (string8){0};
 }
 
+/* A pointer to a proc points at code, which lives for the whole program:
+   it needs no region, cannot dangle, and carries nothing. */
+static bool type_is_proc_pointer(Program *prog, TypeExpr *type) {
+    type = resolve_alias_type(prog, type);
+    if (!type || type->kind != Type_Ptr) return false;
+    TypeExpr *elem = resolve_alias_type(prog, type->elem);
+    return elem && elem->kind == Type_Proc;
+}
+
 static bool type_is_checked_pointer(Program *prog, TypeExpr *type) {
     type = resolve_alias_type(prog, type);
     if (!type) return false;
+    if (type_is_proc_pointer(prog, type)) return false;
     return (type->kind == Type_Ptr && !type->is_raw) || type_slice_elem(type) != null;
 }
 
