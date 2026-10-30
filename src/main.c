@@ -15315,7 +15315,9 @@ static void borrows_prescan_expr(Expr *e, Program *prog, Vec_string8 *out, memop
     if (!e) return;
     if (e->kind == Expr_Call) {
         ProcDecl *decl = e->base ? null : lookup_proc_decl(prog, e->name);
-        for (i32 i = 0; i < e->args.length; i++) {
+        /* printfmt is a builtin that only reads its arguments. */
+        bool read_only_builtin = !e->base && call_name_is_builtin(e->name);
+        for (i32 i = 0; i < e->args.length && !read_only_builtin; i++) {
             bool may_move = true; // a call through a pointer: assume the worst
             if (decl) {
                 bool trusted = decl->is_trusted || decl->is_unsafe || decl->is_external;
@@ -17608,6 +17610,12 @@ static bool stmt_list_ends_in_jump(Vec_voidptr *body) {
     Stmt *last = (Stmt *)body->data[body->length - 1];
     if (last->kind == Stmt_Return || last->kind == Stmt_Break ||
         last->kind == Stmt_Continue || last->kind == Stmt_Goto) {
+        return true;
+    }
+    /* `exit(1);` and `abort();` never come back either, so a branch ending in
+       one leaves, for narrowing: `if (!p) { exit(1); } p*` is fine. */
+    if (last->kind == Stmt_Expr && last->expr && last->expr->kind == Expr_Call && !last->expr->base &&
+        (string8_equals_cstr(&last->expr->name, "exit") || string8_equals_cstr(&last->expr->name, "abort"))) {
         return true;
     }
     if (last->kind == Stmt_If && last->if_else_body.length > 0 && !last->if_else_if) {
