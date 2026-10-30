@@ -100,3 +100,5 @@ The order they would be worth doing in, if we do:
   question: what the type checker declines to check.
 - [`strings.md`](strings.md) -- `*const char` is where several of these meet at
   once.
+- [`regions.md`](regions.md) -- the proposal that unparks the temporal half:
+  compile-time memory safety for arena programs, without a borrow checker.
