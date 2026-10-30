@@ -1,0 +1,3 @@
+// expect: indexing a '^T' is unsafe
+s: str = "abc";
+main: proc() -> i32 = { return cast(s[9], i32); }

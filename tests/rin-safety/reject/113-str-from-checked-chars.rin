@@ -1,0 +1,5 @@
+// expect: only a literal or another
+level: region;
+h: struct = { name: str; }
+use: proc(p: ^const char) -> void = { x: h = {}; x.name = p; }
+main: proc() -> i32 = { return 0; }

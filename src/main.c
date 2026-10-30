@@ -609,6 +609,10 @@ struct TypeExpr {
     /* `?*T`: may be null, and must be tested before it is used. Only a
        Type_Ptr carries it. Erased in C, like the region. */
     bool is_nullable;
+    /* `str`: a raw `const char *` known to last the whole program, a literal or
+       another `str`. Safe code cannot read through it, as with any raw pointer,
+       but nothing can dangle, so it may be kept anywhere. */
+    bool is_str;
     /* A scope entry made by narrowing, `if (p) { ... }`: p as a `*T` for the
        branch. An assignment to p puts its declared type back. */
     bool narrowed;
@@ -775,6 +779,7 @@ struct Stmt {
     bool is_static;
     bool is_uninitialized; // '= ?': deliberately left with indeterminate contents
     bool is_discard;       // '_ = expr;': a Stmt_Expr whose value is thrown away on purpose
+    bool is_array_copy;    // `xs = ys` or `xs: [4]T = ys`: C does not assign arrays
     /* Stmt_Region: `scratch: region of frame = { }` says scratch lives inside
        frame, which must be open. Empty for a plain `frame: region = { }`. Each
        has an arena of its own. The body is in while_body. */
@@ -2558,6 +2563,21 @@ static TypeExpr *parse_type_inner(Parser *p) {
         parser_expect(p, Token_Arrow, "expected '->' after proc type params");
         t->ret_type = parse_type(p);
         return t;
+    }
+
+    if (parser_peek(p)->kind == Token_Identifier && string8slice_equals_cstr(parser_peek(p)->text, "str")) {
+        Token *str_tok = parser_next(p);
+        TypeExpr *elem = type_new(p->arena, Type_Name);
+        elem->name = string8_from_cstr(p->arena, "c8");
+        elem->is_const = true;
+        TypeExpr *ptr = type_new(p->arena, Type_Ptr);
+        ptr->is_raw = true;
+        ptr->is_str = true;
+        ptr->line = str_tok->line;
+        ptr->col = str_tok->col;
+        ptr->decl_path = g_source_path;
+        ptr->elem = elem;
+        return ptr;
     }
 
     if (parser_match(p, Token_Caret)) {
@@ -10054,6 +10074,7 @@ static TypeExpr *clone_type_expr(memops_arena *arena, TypeExpr *src) {
     dst->is_raw = src->is_raw;
     dst->is_noalias = src->is_noalias;
     dst->is_nullable = src->is_nullable;
+    dst->is_str = src->is_str;
     dst->region = src->region;
     dst->region_bound = src->region_bound;
     dst->line = src->line;
@@ -10105,6 +10126,7 @@ static TypeExpr *substitute_type_param(memops_arena *arena, TypeExpr *src, strin
     dst->is_raw = src->is_raw;
     dst->is_noalias = src->is_noalias;
     dst->is_nullable = src->is_nullable;
+    dst->is_str = src->is_str;
     dst->region = src->region;
     dst->region_bound = src->region_bound;
     dst->line = src->line;
@@ -10870,6 +10892,7 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
         TypeExpr *ptr_t = type_new(arena, Type_Ptr);
         ptr_t->elem = char_t;
         ptr_t->is_raw = true;
+        ptr_t->is_str = true;
         return ptr_t;
     }
     if (e->kind == Expr_Char) {
@@ -12589,7 +12612,7 @@ static void type_error_proc_argument(
    and `alignof` used to belong on this list; they are now their own node kind
    and cannot reach the call path. */
 static bool call_name_is_builtin(string8 name) {
-    return string8_equals_cstr(&name, "printfmt");
+    return string8_equals_cstr(&name, "printfmt") || string8_equals_cstr(&name, "fprintfmt");
 }
 
 static void type_error_call_undeclared(
@@ -14376,7 +14399,7 @@ static bool type_is_carrier_depth(Program *prog, TypeExpr *type, memops_arena *a
            way the struct's author, not the checker, knows what it points at.
            A proc pointer points at code and is neither. */
         if (type_is_proc_pointer(prog, r)) continue;
-        if (r->kind == Type_Ptr && (r->is_raw || r->region.length == 0)) return true;
+        if (r->kind == Type_Ptr && !r->is_str && (r->is_raw || r->region.length == 0)) return true;
         if (type_slice_elem(r) && r->region.length == 0) return true;
         if (r->kind == Type_Array) {
             /* An array of raw pointers is as harmless as a raw pointer local:
@@ -14645,6 +14668,11 @@ static bool region_flow_rejects(Program *prog, TypeExpr *dst, TypeExpr *src, i32
     if (g_safe_body && s->kind == Type_Region && d->kind == Type_Ptr) {
         type_error_message("safe code hands a region only to a 'region R' parameter, never to a bare '*memops_arena': "
                            "the callee's result could not say which region it is in", line, col);
+        return true;
+    }
+    if (g_safe_body && d->kind == Type_Ptr && d->is_str && s->kind == Type_Ptr && !s->is_str && !type_is_void_pointer(s)) {
+        type_error_message("a 'str' lasts the whole program, and this C string may not: only a literal or another "
+                           "'str' becomes one, or a trusted proc that vouches for it", line, col);
         return true;
     }
     if (g_safe_body && d->kind == Type_Ptr && d->is_raw && !type_is_void_pointer(s) &&
@@ -16838,6 +16866,11 @@ static void type_check_stmt(
             narrow_end_for_write(s->lhs, scope, prog, arena);
         }
         TypeExpr *expected = infer_expr_type(s->lhs, scope, prog, arena);
+        {
+            TypeExpr *er = resolve_alias_type(prog, expected);
+            s->is_array_copy = er && er->kind == Type_Array && s->assign_op == Token_Equal && s->expr &&
+                               s->expr->kind != Expr_ZeroInit && s->expr->kind != Expr_InitList && s->expr->kind != Expr_CompoundInit;
+        }
         safety_check_carrier_value("an assignment", prog, expected, arena, s->line, s->col);
         if (g_safe_body && s->lhs && s->lhs->kind != Expr_Name) {
             if (type_is_checked_pointer(prog, expected) && type_region_of(prog, expected).length == 0) {
@@ -17547,7 +17580,7 @@ static void printfmt_error_at(const char *path, i32 line, i32 col, const char *m
 }
 
 static bool expr_is_printfmt_call(Expr *e) {
-    return e && e->kind == Expr_Call && string8_equals_cstr(&e->name, "printfmt");
+    return e && e->kind == Expr_Call && (string8_equals_cstr(&e->name, "printfmt") || string8_equals_cstr(&e->name, "fprintfmt"));
 }
 
 /* `{}` or `{:spec}`, with spec a printf width and precision, `{:5.2}`,
@@ -17869,7 +17902,61 @@ static bool printfmt_try_single_call(
     return true;
 }
 
+static void rewrite_printfmt_call_stmt_inner(Stmt *stmt, TypeScope *scope, Program *prog, memops_arena *arena, Vec_voidptr *out);
+
+/* `fprintfmt(f, "...", x)` is printfmt to a `file` from std/file.rin. The same
+   expansion, with each printf and print_cstr it made pointed at the stream. A
+   value that prints through a generic print has no such form. */
 static void rewrite_printfmt_call_stmt(Stmt *stmt, TypeScope *scope, Program *prog, memops_arena *arena, Vec_voidptr *out) {
+    Expr *call = stmt->expr;
+    if (!string8_equals_cstr(&call->name, "fprintfmt")) {
+        rewrite_printfmt_call_stmt_inner(stmt, scope, prog, arena, out);
+        return;
+    }
+    if (call->args.length < 2) {
+        printfmt_error_at(stmt->source_path, call->line, call->col, "fprintfmt expects a file and a string literal format");
+        return;
+    }
+    Expr *file = (Expr *)call->args.data[0];
+    Expr *shifted = expr_new(arena, Expr_Call);
+    *shifted = *call;
+    shifted->name = string8_from_cstr(arena, "printfmt");
+    shifted->args = ptr_array_reserve(arena, call->args.length);
+    for (i32 i = 1; i < call->args.length; i++) ptr_array_append(arena, &shifted->args, call->args.data[i]);
+    Stmt *shifted_stmt = stmt_new(arena, Stmt_Expr);
+    *shifted_stmt = *stmt;
+    shifted_stmt->expr = shifted;
+    i32 mark = out->length;
+    rewrite_printfmt_call_stmt_inner(shifted_stmt, scope, prog, arena, out);
+    for (i32 i = mark; i < out->length; i++) {
+        Stmt *made = (Stmt *)out->data[i];
+        Expr *e = made && made->kind == Stmt_Expr ? made->expr : null;
+        if (!e || e->kind != Expr_Call) continue;
+        bool is_printf = string8_equals_cstr(&e->name, "printf");
+        bool is_text = string8_equals_cstr(&e->name, "print_cstr");
+        if (!is_printf && !is_text) {
+            printfmt_error_at(stmt->source_path, call->line, call->col,
+                              "fprintfmt writes numbers, characters and C strings; this argument prints only through print");
+            continue;
+        }
+        Expr *stream = printfmt_call_expr(arena, "file_stream", file->line, file->col);
+        ptr_array_append(arena, &stream->args, file);
+        Vec_voidptr args = ptr_array_reserve(arena, e->args.length + 2);
+        ptr_array_append(arena, &args, stream);
+        if (is_text) {
+            Expr *percent_s = expr_new(arena, Expr_String);
+            percent_s->line = e->line;
+            percent_s->col = e->col;
+            percent_s->string_lit = string8_from_cstr(arena, "\"%s\"");
+            ptr_array_append(arena, &args, percent_s);
+        }
+        for (i32 j = 0; j < e->args.length; j++) ptr_array_append(arena, &args, e->args.data[j]);
+        e->args = args;
+        e->name = string8_from_cstr(arena, "fprintf");
+    }
+}
+
+static void rewrite_printfmt_call_stmt_inner(Stmt *stmt, TypeScope *scope, Program *prog, memops_arena *arena, Vec_voidptr *out) {
     /* Expanding a printfmt replaces statements and can introduce generic print
        calls, so anything cached about instantiation has to be recomputed. */
     g_program_generation++;
@@ -18918,6 +19005,16 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
         return;
     }
     if (s->kind == Stmt_Assign) {
+        if (s->is_array_copy) {
+            emit_cstr(arena, out, "memcpy(&(");
+            emit_expr(arena, out, s->lhs, sub, generic_name);
+            emit_cstr(arena, out, "), &(");
+            emit_expr(arena, out, s->expr, sub, generic_name);
+            emit_cstr(arena, out, "), sizeof(");
+            emit_expr(arena, out, s->lhs, sub, generic_name);
+            emit_cstr(arena, out, "));\n");
+            return;
+        }
         /* `xs = {}`: C does not assign arrays, so the literal is copied in. */
         if (s->lhs && s->expr && (s->expr->kind == Expr_ZeroInit || s->expr->kind == Expr_InitList) &&
             s->expr->cast_type && s->expr->cast_type->kind == Type_Array) {

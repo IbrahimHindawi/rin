@@ -704,6 +704,16 @@ errors, most of them a few rules too blunt, and two holes.
     no other file can. Slices stay closed everywhere. Holding a carrier by value
     is still refused, since what it points at may be gone. Round three's programs
     stay rejected: all of them write std's structs from another file.
+  * *`str`.* A raw `const char *` known to last the whole program: a literal, or
+    another `str`. Nothing about it can dangle, so a struct holding one is not a
+    carrier and may be a global or a value; safe code still cannot read through
+    it. A `^const char` that came from a buffer does not become one.
+  * *`std/file.rin`.* A `file` is a slot and a generation, plain data. Closing
+    moves the generation on, so every copy stops working, and a use after that is
+    a `rin runtime:` stop, not a read of a freed `FILE`. It is what a `Drop` buys,
+    with a leak in place of a double close. `fprintfmt(f, "...", x)` is printfmt
+    to one. `slice<T>copy` and `slice<T>zero` replace `memcpy` and `memset`, and
+    `xs = ys` assigns an array.
   * *Smaller.* `--max-errors=<n>` (0 is no limit); the errors on a global name
     its file; `xs = {}` and `xs = { 1, 2 }` assign an array.
 

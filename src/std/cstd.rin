@@ -29,6 +29,10 @@ fclose: proc[external](stream: *FILE) -> i32 = {}
 fseek: proc[external](stream: *FILE, offset: long, origin: i32) -> i32 = {}
 ftell: proc[external](stream: *FILE) -> long = {}
 fread: proc[external](buffer: ^void, size: usize, count: usize, stream: *FILE) -> usize = {}
+fwrite: proc[external](buffer: ^const void, size: usize, count: usize, stream: *FILE) -> usize = {}
+fgetc: proc[external](stream: *FILE) -> i32 = {}
+fputs: proc[external](text: ^const char, stream: *FILE) -> i32 = {}
+fflush: proc[external](stream: *FILE) -> i32 = {}
 
 exit: proc[external](status: i32) -> void = {}
 

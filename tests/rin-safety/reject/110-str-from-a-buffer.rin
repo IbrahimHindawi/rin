@@ -1,0 +1,11 @@
+// expect: only a literal or another
+import "std/fmt.rin"
+g: str = "x";
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 16);
+        g = fmt_text(f);
+    }
+    return 0;
+}

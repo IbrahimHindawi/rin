@@ -1,0 +1,7 @@
+// expect: is C's
+import "std/file.rin"
+main: proc() -> i32 = {
+    f: file = file_open("x", "rb");
+    fclose(cast(0, *FILE));
+    return 0;
+}

@@ -1,0 +1,98 @@
+cinclude "stdio.h"
+import "cstd.rin"
+
+/* A file safe code can hold. A `file` is an index and a generation, plain data
+   with nothing to dangle, so it goes anywhere: a local, a field, a global, a
+   copy of a copy. Closing one moves its slot's generation on, so every copy
+   stops working at once, and using one is a checked run-time stop, the way an
+   index out of bounds is, never a read of a freed FILE. This is what a Drop
+   would buy, without one: a file left open is a leak, not a memory error. */
+file: struct = {
+    slot: u32;
+    generation: u32;
+}
+
+file_table_stream: [256]^FILE = {};
+file_table_generation: [256]u32 = {};
+
+/* Whether a file opened: file_open's result is tested with this. */
+file_is_open: proc[trusted](f: file) -> b32 = {
+    return f.generation != 0 && f.slot < 256 && file_table_generation[f.slot] == f.generation &&
+           file_table_stream[f.slot] != null;
+}
+
+/* The FILE behind a file, for fprintfmt and the procs below. */
+file_stream: proc[trusted](f: file) -> ^FILE = {
+    if (!file_is_open(f)) {
+        printf("rin runtime: file used after it closed, or that never opened\n");
+        exit(1);
+    }
+    return file_table_stream[f.slot];
+}
+
+/* The zero `file` when it did not open, which is never open. */
+file_open: proc[trusted](path: ^const char, mode: ^const char) -> file = {
+    result: file = {};
+    if (path == null || mode == null) { return result; }
+    for (i: u32 = 0; i < 256; i += 1) {
+        if (file_table_stream[i] == null) {
+            stream: ^FILE = cast(fopen(path, mode), ^FILE);
+            if (stream == null) { return result; }
+            file_table_stream[i] = stream;
+            file_table_generation[i] += 1;
+            result.slot = i;
+            result.generation = file_table_generation[i];
+            return result;
+        }
+    }
+    printf("rin runtime: more than 256 files open\n");
+    exit(1);
+    return result;
+}
+
+/* Closing what is already closed does nothing. */
+file_close: proc[trusted](f: file) -> void = {
+    if (!file_is_open(f)) { return; }
+    fclose(cast(file_table_stream[f.slot], *FILE));
+    file_table_stream[f.slot] = null;
+    file_table_generation[f.slot] += 1;
+}
+
+/* How many bytes were read, up to out's length. */
+file_read: proc[trusted](f: file, out: []u8) -> u64 = {
+    if (out.length == 0) { return 0; }
+    return cast(fread(out.data, 1, cast(out.length, usize), cast(file_stream(f), *FILE)), u64);
+}
+
+/* How many bytes were written. */
+file_write: proc[trusted](f: file, bytes: []const u8) -> u64 = {
+    if (bytes.length == 0) { return 0; }
+    return cast(fwrite(bytes.data, 1, cast(bytes.length, usize), cast(file_stream(f), *FILE)), u64);
+}
+
+file_write_text: proc[trusted](f: file, text: ^const char) -> void = {
+    if (text == null) { return; }
+    fputs(text, cast(file_stream(f), *FILE));
+}
+
+/* -1 at the end of the file. */
+file_read_byte: proc[trusted](f: file) -> i32 = {
+    return fgetc(cast(file_stream(f), *FILE));
+}
+
+file_flush: proc[trusted](f: file) -> void = {
+    fflush(cast(file_stream(f), *FILE));
+}
+
+file_size: proc[trusted](f: file) -> i64 = {
+    stream: *FILE = cast(file_stream(f), *FILE);
+    at: long = ftell(stream);
+    fseek(stream, 0, 2);
+    size: long = ftell(stream);
+    fseek(stream, at, 0);
+    return cast(size, i64);
+}
+
+file_seek: proc[trusted](f: file, offset: i64) -> b32 = {
+    return fseek(cast(file_stream(f), *FILE), cast(offset, long), 0) == 0;
+}

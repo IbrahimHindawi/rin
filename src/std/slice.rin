@@ -121,6 +121,22 @@ slice<T>copy_to: proc[trusted]<T>(dst: ^T, s: slice<T>) -> void = {
 }
 
 /* The owning copy, when a view has to outlive what it borrowed from. */
+/* memcpy for safe code: both lengths must match, or it stops, as an index out
+   of bounds does. The two may overlap. */
+slice<T>copy: proc[trusted]<T>(dst: []T, src: []const T) -> void = {
+    if (dst.length != src.length) {
+        printf("rin runtime: copy between slices of %llu and %llu\n", cast(dst.length, u64), cast(src.length, u64));
+        exit(1);
+    }
+    if (dst.length > 0) { memmove(dst.data, src.data, sizeof(T) * dst.length); }
+}
+
+/* memset to zero for safe code. Refused for a T with a '*T' in it by what it
+   would hold: zero is not a value of that type. */
+slice<T>zero: proc[trusted]<T>(s: []T) -> void = {
+    if (s.length > 0) { memset(s.data, 0, sizeof(T) * s.length); }
+}
+
 slice<T>to_array: proc[trusted]<T>(arena: *memops_arena, s: slice<T>) -> array<T> = {
     out: array<T> = array<T>reserve(arena, s.length);
     slice<T>copy_to(out.data, s);
