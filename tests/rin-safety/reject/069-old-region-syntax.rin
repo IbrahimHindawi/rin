@@ -1,0 +1,5 @@
+// always: a region block is declared like everything else
+level: region;
+main: proc() -> i32 = {
+    region level { }
+    return 0; }

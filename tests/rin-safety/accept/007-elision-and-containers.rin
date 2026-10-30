@@ -1,0 +1,63 @@
+// A pointer returned with no region points into what the caller passed, as
+// Rust's lifetime elision has it; printfmt takes a width and precision; and
+// list, queue, stack and map live in regions like vec and hashmap do.
+import "std/print.rin"
+import "std/vec.rin"
+import "std/list.rin"
+import "std/queue.rin"
+import "std/stack.rin"
+import "std/map.rin"
+
+level: region;
+
+v2: struct = { x: f32; y: f32; }
+world: struct = { n: u32; ps: [8]v2; alive: [8]b32; }
+
+// Null for a dead entity, otherwise a pointer into w: the caller tests it and
+// may use it until it changes w.
+get: proc(w: *world, i: u32) -> ?*v2 = {
+    if (i >= w*.n || !w*.alive[i]) { return null; }
+    return w*.ps[i]&;
+}
+first_alive: proc(w: *world) -> ?*v2 = {
+    for (i: u32 = 0; i < w*.n; i += 1) { if (w*.alive[i]) { return get(w, i); } }
+    return null;
+}
+pick: proc(a: *v2, b: *v2, first: b32) -> *v2 = { return first ? a : b; }
+head: proc(v: *const vec<i32>) -> ?*i32 = { if (v*.length == 0) { return null; } return vec<i32>at(v, 0); }
+rest: proc(s: []i32) -> []i32 = { return s[1..s.length]; }
+
+main: proc() -> i32 = {
+    w: world = {};
+    w.n = 2; w.alive[1] = 1; w.ps[1].x = 4.5;
+    p: ?*v2 = first_alive(w&);
+    if (p) { printfmt("x {:5.2} n {:3} |{:-4}|\n", p*.x, w.n, w.n); }
+    q: *v2 = pick(w.ps[0]&, w.ps[1]&, 0);
+    printfmt("{:.1}\n", q*.x);
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 4);
+        _ = vec<i32>push(v, 7); _ = vec<i32>push(v, 8);
+        h: ?*i32 = head(v);
+        t: []i32 = rest(vec<i32>items(v));
+        printfmt("{} {}\n", h ? h* : -1, t[0]);
+
+        l: *list<i32> in level = list<i32>make(level);
+        list<i32>push(l, 1); list<i32>push(l, 2); list<i32>push_front(l, 0);
+        n: ?*node<i32> = list<i32>node_at(l, 1);
+        printfmt("list {} len {}\n", n ? n*.data : -1, list<i32>length(l));
+        qu: *queue<i32> in level = queue<i32>make(level);
+        queue<i32>push(qu, 7); queue<i32>push(qu, 8);
+        f: ?*node<i32> = queue<i32>pop(qu);
+        printfmt("queue {} then {}\n", f ? f*.data : -1, queue<i32>length(qu));
+        s: *stack<i32> in level = stack<i32>make(level);
+        stack<i32>put(s, 5); stack<i32>put(s, 6);
+        top: ?*node<i32> = stack<i32>top(s);
+        printfmt("stack top {}\n", top ? top*.data : -1);
+        m: *map<i32> in level = map<i32>make(level);
+        map<i32>put(m, "a", 1); map<i32>put(m, "b", 2); map<i32>put(m, "a", 3);
+        a: ?*i32 = map<i32>find(m, "a");
+        z: ?*i32 = map<i32>find(m, "z");
+        printfmt("map a {} z {} count {}\n", a ? a* : -1, z ? z* : -1, map<i32>count(m));
+    }
+    return 0;
+}

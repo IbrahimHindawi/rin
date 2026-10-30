@@ -1,7 +1,7 @@
 import "std/print.rin"
 import "std/vec.rin"
 
-region level;
+level: region;
 
 world: struct = {
     hp: *vec<i32> in level;
@@ -9,7 +9,7 @@ world: struct = {
 }
 
 main: proc() -> i32 = {
-    region level {
+    level: region = {
         w: *world in level = new<world>(level, { .hp = vec<i32>make(level, 4), .x = vec<i32>make(level, 4) });
         for (i: i32 = 0; i < 4; i += 1) {
             _ = vec<i32>push(w*.hp, 10 * i);

@@ -1,3 +1,4 @@
 // always: is declared to live longer than
-region level > frame;
-main: proc() -> i32 = { region frame { region level { } } return 0; }
+level: region;
+frame: region in level;
+main: proc() -> i32 = { frame: region = { level: region = { } } return 0; }

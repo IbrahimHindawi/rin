@@ -1,4 +1,4 @@
 // expect: called by name, not through a pointer
-region frame;
-work: proc() -> void = { region frame { x: *i32 in frame = new<i32>(frame); x* = 1; } }
+frame: region;
+work: proc() -> void = { frame: region = { x: *i32 in frame = new<i32>(frame); x* = 1; } }
 main: proc() -> i32 = { f: *proc() -> void = work; f(); return 0; }

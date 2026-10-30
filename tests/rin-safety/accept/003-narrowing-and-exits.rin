@@ -1,6 +1,7 @@
 import "std/print.rin"
 
-region level > frame;
+level: region;
+frame: region in level;
 
 node: struct = {
     v: i32;
@@ -44,7 +45,7 @@ second: proc(head: ?*node in level) -> i32 = {
 frame_work: proc(head: ?*node in level) -> i32 = {
     best: i32 = 0;
     for (round: i32 = 0; round < 4; round += 1) {
-        region frame {
+        frame: region = {
             scratch: []i32 in frame = new_slice<i32>(frame, 8);
             if (round == 1) { continue; }        // leaves the frame block: it is cleared first
             scratch[0] = sum(head) + round;
@@ -58,7 +59,7 @@ frame_work: proc(head: ?*node in level) -> i32 = {
 
 main: proc() -> i32 = {
     result: i32 = 0;
-    region level {
+    level: region = {
         head: ?*node in level = chain(level, 4);
         printfmt("sum {} second {}\n", sum(head), second(head));
         result = frame_work(head);

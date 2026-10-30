@@ -3,7 +3,7 @@
 import "std/print.rin"
 import "std/hashmap.rin"
 
-region level;
+level: region;
 
 count_words: proc(r: region R, words: []^const char) -> *hashmap<i64, i32> in R = {
     m: *hashmap<i64, i32> in R = hashmap<i64, i32>make(r);
@@ -16,7 +16,7 @@ count_words: proc(r: region R, words: []^const char) -> *hashmap<i64, i32> in R 
 }
 
 main: proc() -> i32 = {
-    region level {
+    level: region = {
         words: [7]^const char = { "a", "b", "c", "d", "e", "f", "g" };
         m: *hashmap<i64, i32> in level = count_words(level, words[0..7]);
         for (k: i64 = 0; k < 4; k += 1) {

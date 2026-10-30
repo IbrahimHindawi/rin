@@ -1,0 +1,7 @@
+// expect: leaves elements zero
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = { a: *i32 in level = new<i32>(level); xs: [3]*i32 in level = { a }; printfmt("{}\n", xs[2]*); }
+    return 0;
+}

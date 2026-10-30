@@ -1,0 +1,18 @@
+// expect: may be stale
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+inner: struct = { v: *vec<i32> in level; }
+world: struct = { inr: *inner in level; }
+main: proc() -> i32 = {
+    level: region = {
+        w: *world in level = new<world>(level, { .inr = new<inner>(level, { .v = vec<i32>make(level, 1) }) });
+        _ = vec<i32>push(w*.inr*.v, 1);
+        p: *i32 = vec<i32>at(w*.inr*.v, 0);
+        al: *inner in level = w*.inr;
+        for (i: i32 = 0; i < 100; i += 1) { _ = vec<i32>push(al*.v, i); }
+        vec<i32>at(w*.inr*.v, 0)* = 42;
+        printfmt("{}\n", p*);
+    }
+    return 0;
+}

@@ -1,0 +1,10 @@
+// expect: may be dangling
+import "std/print.rin"
+level: region;
+frame: region in level;
+leak: proc(r: region R) -> ?*i32 = { x: *i32 in R = new<i32>(r); return x; }
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    level: region = { frame: region = { q = leak(frame); } if (q) { printfmt("{}\n", q*); } }
+    return 0;
+}

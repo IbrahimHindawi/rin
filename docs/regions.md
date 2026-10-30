@@ -58,14 +58,16 @@ and they are the two that regions make into compile errors for free.
 
 ## Regions are blocks
 
-A region is introduced by a block, and ends with it:
+A region is introduced by a block, and ends with it. It is declared like
+everything else in rin, `name: kind = value`, the way `done: label = { }`
+is:
 
-    region level {
+    level: region = {
         world: *world in level = load(level);
         while (running) {
-            region frame {
+            frame: region = {
                 cmds: []command in frame = gather(frame, world);
-                region scratch of frame {
+                scratch: region of frame = {
                     sorted: []command in scratch = sort(scratch, cmds);
                     apply(world, sorted);
                 }                             // frame rewound to where scratch began
@@ -73,11 +75,11 @@ A region is introduced by a block, and ends with it:
         }
     }                                         // level cleared
 
-  * `region name { }` makes an arena called `name`, usable in the block as a
-    value of type `*memops_arena` wherever an arena is wanted. At the closing
-    brace the arena is cleared. The memory stays reserved, so a `region` in a
+  * `name: region = { }` makes an arena called `name`, usable in the block as
+    a value of type `region name` wherever a region is wanted. At the closing
+    brace the arena is cleared. The memory stays reserved, so a region in a
     loop body is today's `memops_arena_clear` at the end of each iteration.
-  * `region name of parent { }` is a mark on `parent`'s arena: today's
+  * `name: region of parent = { }` is a mark on `parent`'s arena: today's
     `memops_arena_temp_begin` and `_end`, as a block. Pushes inside go to
     `parent`'s memory and are gone at the brace.
   * `permanent` is the region of the whole program. Globals live in it, and so
@@ -356,17 +358,18 @@ regions, and declines the rest rather than fighting them.
     rule is in, see [As implemented](#as-implemented).
   * **The name.** `region` reads well in the block form and the parameter
     form. `arena` is what the thing is. One word for both, or keep `arena` for
-    the value and `region` for the type?
+    the value and `region` for the type? Settled for now: `region` is the
+    kind, as in `frame: region = { }` and `r: region R`.
 
 ## As implemented
 
 The `regions` branch builds all of the above except dynamic regions and the
 debug guard pages, and adds a few things the design left open. Everything
-here is tested by `tests/run_rin_safety.py`: six programs that must check,
-compile and print their `.expected`, and thirty-five that must be rejected
-with the message in their first line. The same thirty-five check clean with
+here is tested by `tests/run_rin_safety.py`: seven programs that must check,
+compile and print their `.expected`, and fifty-nine that must be rejected
+with the message in their first line. The same fifty-nine check clean with
 `--unsafe`, except the two about the shape of a region block, which hold
-either way. The six programs also run clean under AddressSanitizer and
+either way. The seven programs also run clean under AddressSanitizer and
 UndefinedBehaviorSanitizer with the same output.
 
 **Safe by default, `--unsafe` to turn it off.** Every proc body is checked
@@ -387,15 +390,16 @@ that names no region, anywhere inside it: `vec`, `hashmap`, `memops_arena`,
 make a slice or string from a bare pointer and length
 (`slice<T>from_parts`, `string8slice_from_parts`, `string8slice_from_cstr`),
 since the length is a claim about memory the compiler cannot see; the rest of
-std that touches raw memory is `[trusted]`, 287 procs in all, including every
+std that touches raw memory is `[trusted]`, 314 procs in all, including every
 generic one, since a generic body is only checked per instance. A region may
 be handed to a `region R` parameter only: passing it where a trusted proc
 takes a bare `*memops_arena` is an error in safe code, so safe code cannot
 reach the arena's raw operations through a trusted wrapper by accident.
 
-**Regions.** `region level > frame > scratch;` once, at top level, longest
-first; `permanent` is implied before them. `region frame { }` opens one,
-`region scratch of frame { }` marks the parent's arena. Pointer and slice
+**Regions.** Declared at top level, longest-lived first, each inside the one
+before: `level: region;`, `frame: region in level;`, `scratch: region in
+frame;`; `permanent` is implied before them. `frame: region = { }` opens
+one, `scratch: region of frame = { }` marks the parent's arena. Pointer and slice
 types take `in R`, binding to the innermost pointer or slice just parsed:
 `[]*node in level in frame` is a frame slice of level pointers. `?*T` may be
 null. A proc takes a region as `r: region R`, a variable bound at each call;
@@ -408,8 +412,9 @@ parameter: not in a field, a local or a return type.
 **The rules, as checked.** A pointer kept in memory names its region, and
 points into one that lives at least as long as the memory holding it,
 through struct fields, array elements, generic arguments and pointees; a
-borrowed pointer, the address of a local, cannot be kept or returned, and a
-safe proc's returned pointer names its region. Type compatibility carries
+borrowed pointer, the address of a local, cannot be kept, and a safe proc
+returns a pointer with no region only when it points into what the caller
+handed it (below). Type compatibility carries
 the rule, with a message that names the two regions. A field whose pointer
 names no region is set only by the struct's trusted procs. A region block
 opens a declared region, not one already open, inside only longer-lived
@@ -432,7 +437,7 @@ the rule above.
 **What the counts say.** `new` and `new_slice` replace every arena cast in
 safe code. The four safe programs annotate the struct fields that hold
 pointers, which is where the regions have to be written, and nothing else
-beyond `region` blocks and parameters: a 150-line entity world with a slot
+beyond region blocks and parameters: a 150-line entity world with a slot
 map, columns, a frame of commands and handles with generations has eleven
 `in` annotations, all on fields or returns.
 
@@ -483,9 +488,9 @@ and `find_value_by_value`; their callers in std were fixed to test the result.
 `vec` in trusted code could reach. `hashmap<K, V>make(r)` and
 `hashmap<K, V>set(m, key, value)` were added, so a hashmap can be owned by a
 region the way a `vec` is; accept program 006 is a word count in a region.
-The `list`, `map`, `queue` and `stack` containers take an arena directly and
-have no `make(r)`, so safe code cannot build one; they stay trusted-only until
-they are given the same shape as `vec` and `hashmap`.
+`list`, `map`, `queue` and `stack` took an arena directly and had no
+`make(r)`; they now have one, and arena-free `push`, `pop`, `find` and the
+rest beside their old procs, so safe code can own any std container.
 
 **Threads.** There is nothing to check because there is nothing to call: std
 has no thread, atomic or lock API, and a safe body cannot call a C proc that
@@ -494,9 +499,101 @@ takes a pointer, so a safe program is single-threaded by construction. The
 day std gets one; until then a program that needs threads does it in
 `[unsafe]` code and owns the result.
 
+**Returning a borrowed pointer: Rust's elision.** `get_position(w:
+*world, e: entity) -> ?*vec2` returns `w*.ps[i]&` or null, and the rule
+above would have demanded a region on it. Rust lets `fn get(&self) -> &T`
+leave the lifetime off because it can only be the parameter's, and the same
+holds here: a safe proc may return a pointer that names no region if every
+`return` hands back null, a pointer into a region, or a place reached through
+a pointer, slice or array parameter, directly or through a call on such
+parameters; the address of a local or of a by-value parameter is refused
+with "the address of a local is gone when the caller looks". The caller
+already treats such a result as a borrow of every pointer it passed, so it
+cannot keep it past a change to them. This closed the one thing that stopped
+rin-dod's entity lessons from checking (below).
+
+**The second attack.** With the rules above in place, sixty-two programs
+were written to break them, each trying to get a pointer past the checker
+and then faulting under AddressSanitizer. Seventeen did, in six families, and
+each family is now a rule and a reject test (045 to 062):
+
+  * *Locals outlive the region that filled them.* `q: ?*i32 in frame`
+    declared before `frame: region = { q = new<i32>(frame); }` and read after.
+    Now a local whose type names a declared region can only be declared
+    where that region is open: inside its block, or in a proc whose
+    parameters already carry a pointer into it, since such a proc is only
+    ever called while it is open. A borrowed local assigned inside the block
+    from region memory is caught the other way: every borrow remembers the
+    regions whose handles went into making it, and the block's end kills
+    them, "may be dangling: it was made in region 'frame', whose block has
+    ended".
+  * *Locals outlive the block of the value they borrow.* `q = x&` inside an
+    `if`, read after it. A borrow's place path has a root; at the end of any
+    block, the borrows rooted at a *value* declared in it, a struct, array or
+    scalar whose storage is gone, are dead. A pointer local going out of
+    scope kills nothing, since what it points at does not go with it.
+  * *A borrow written into memory through a pointer.* `out* = x&` with `out:
+    *?*i32`. The pointee type names no region, and the stored-type rule only
+    looked at types, not at writes. Now an assignment to any place other than
+    a bare local, whose type is a pointer or slice with no region, is an
+    error: nothing says how long what is written there lives.
+  * *Gaps in the staleness tracking.* Through an alias (`al: *inner in level
+    = w*.inr; push(al*.v, ..)` did not kill what was taken from
+    `w*.inr*.v`), in an array of borrows, through a subslice of a borrow, and
+    through a `break` that left a loop right after the kill. Every pointer
+    local is now tracked for the places it aliases, so a path through one
+    expands to the places behind it; arrays and unions holding borrows are
+    carriers like structs; a subslice inherits its source; and `break`,
+    `continue`, the case ends of a `switch` and the state before a loop all
+    join into the state after it, dead on any path being dead. A name
+    assigned anywhere in a loop body is also unnarrowed before the body, and
+    a name whose address is taken anywhere in the proc is never narrowed.
+  * *A trusted struct's invariant, written from safe code.* `v*.length =
+    1000000`, `keep*.data = tmp*.data`. The fields of a carrier are read-only
+    in a safe body, "set only by its own procs"; `vec<T>pop` and `clear` do
+    what the two lines in accept program 004 did by hand. A generic's type
+    arguments are also checked on their own, so `vec<[]i32>` cannot smuggle a
+    region-less slice into a region.
+  * *Three direct bypasses.* A proc pointer to an `[unsafe]` proc, or to a C
+    proc with pointers in its signature, cannot be taken in a safe body; a
+    positional array initializer shorter than the array is refused when the
+    element holds a non-null pointer; and `printfmt` refuses a pointer
+    argument instead of generating C that does not link.
+
+Also from that pass: a signed left shift is emitted through the unsigned type,
+`(i32)((u32)x << n)`, since shifting into the sign bit is undefined in C even
+with the amount masked; and Debug builds add `float-cast-overflow` to the
+sanitizers. A second pass of sixty-eight programs, aimed at the new rules
+themselves, got six more through, now reject tests 063 to 068: a ternary as
+the source of a borrow (`q = c ? x& : y&` took no places); the address of a
+carrier field (`p = v*.length&; p* = 1000000`), so taking one, or a slice of
+one, is now refused like the write; a kill in a `for` step, which runs after
+the body and so after its re-take; a call through a proc pointer named
+directly, which had no kill hook; and a `*const w` parameter whose struct
+holds a non-const `*vec`, through which a checked callee may push. A trusted
+proc's `*const T` is a promise, so it still kills nothing; a checked proc's
+is shallow, so it kills when T holds a pointer anywhere inside. Ten correct
+programs written to provoke false positives all passed.
+
+**rin-dod, ported.** The real measure. The four entity lessons of the ECS
+course, 736 lines written for C's model with the world a value on the stack
+and procs taking `*kayan_world`, check in safe mode after two changes:
+`printf("%5.2f", x)` became `printfmt("{:5.2}", x)`, since `printfmt` now
+takes a width and precision and `printf` is C's; and `get_position` returns
+`?*vec2`, because it returns null for a dead handle, so its two callers test
+the result, one of them gaining a three-line branch for a case the original
+assumed away. No region block, no `in R`, no `[trusted]`: the returned
+pointer is a borrow of the world by elision. They print their original
+`.expected` files and run clean under both sanitizers; they are in
+`ecs/safe/1.entities` of rin-dod with a README on the cost. The later parts
+of the course, which build tables and archetypes over `vec`, are the next
+measure and will need `make(r)` and region fields; `list`, `map`, `queue`
+and `stack` got their `make(r)` and arena-free procs in this round so that
+every std container can be owned by a region.
+
 **Where this leaves it against Rust.** Rust's safe subset has three things
 this does not: a type system that proves every pointer, every container and
-every thread, where this one trusts 287 std procs and audits them by hand;
+every thread, where this one trusts 314 std procs and audits them by hand;
 narrowing and borrows over field paths, where this one tracks names and the
 paths they were taken from; and ten years of people trying to break it. What
 it has that Rust does not is the price: a region on each field that holds a
@@ -506,11 +603,12 @@ safe programs in the suite.
 
 **Not done.** Dynamic regions; guard pages in debug builds; narrowing of a
 field path (`if (a*.next) { a*.next*.v }` needs a local); `stable<T>` and
-`handle<T>` in std; `make(r)` for `list`, `map`, `queue` and `stack`; `+%`
-and the other explicitly wrapping operators, which are not needed now that
-wrapping is the default; a mechanical check that a `[trusted]` signature is
-honest, which stays a review; and rin-dod itself, which checks only with
-`--unsafe`: its first lesson alone has 63 errors in safe mode, 38 of them
-direct `printf` calls, 13 writes to std fields with no region. The course was
-written for C's model and porting it is the real measure of the annotation
-cost; the counts above are from programs written for this one.
+`handle<T>` in std; a string type safe code can hold by value, since
+`string8slice` carries a raw pointer and is trusted-only, which leaves safe
+code with `^const char` literals; `+%` and the other explicitly wrapping
+operators, which are not needed now that wrapping is the default;
+`INT_MIN / -1`, which traps on x86 and wraps on ARM in release, and a float
+to integer cast out of range, which is undefined in C and only caught in
+Debug; a mechanical check that a `[trusted]` signature is honest, which
+stays a review; and the rest of rin-dod, parts 2 and 3 of the ECS course and
+the dojo, which still check only with `--unsafe`.

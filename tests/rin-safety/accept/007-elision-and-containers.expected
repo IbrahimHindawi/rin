@@ -1,0 +1,7 @@
+x  4.50 n   2 |2   |
+4.5
+7 8
+list 1 len 3
+queue 7 then 1
+stack top 6
+map a 3 z -1 count 2

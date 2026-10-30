@@ -1,0 +1,12 @@
+// expect: so their address is not taken
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+bump: proc(n: *u64) -> void = { n* = 1000000; }
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 1);
+        bump(v*.length&);
+        printfmt("{}\n", vec<i32>at(v, 500000)*);
+    }
+    return 0; }

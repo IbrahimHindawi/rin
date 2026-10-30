@@ -1,4 +1,5 @@
 // expect: opens region 'frame', which is open here
-region level > frame;
-inner: proc() -> i32 = { region frame { x: *i32 in frame = new<i32>(frame); return x*; } return 0; }
-main: proc() -> i32 = { region frame { y: *i32 in frame = new<i32>(frame); return inner() + y*; } return 0; }
+level: region;
+frame: region in level;
+inner: proc() -> i32 = { frame: region = { x: *i32 in frame = new<i32>(frame); return x*; } return 0; }
+main: proc() -> i32 = { frame: region = { y: *i32 in frame = new<i32>(frame); return inner() + y*; } return 0; }

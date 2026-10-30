@@ -1,4 +1,5 @@
 // expect: declared to live longer than a region open here
-region level > frame;
-load: proc() -> void = { region level { x: *i32 in level = new<i32>(level); x* = 1; } }
-main: proc() -> i32 = { region frame { load(); } return 0; }
+level: region;
+frame: region in level;
+load: proc() -> void = { level: region = { x: *i32 in level = new<i32>(level); x* = 1; } }
+main: proc() -> i32 = { frame: region = { load(); } return 0; }

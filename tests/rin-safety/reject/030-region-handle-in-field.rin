@@ -1,4 +1,4 @@
 // expect: a region handle is not kept in memory
-region frame;
+frame: region;
 keeper: struct = { r: region R; }
 main: proc() -> i32 = { return 0; }

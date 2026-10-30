@@ -1,0 +1,5 @@
+// always: each 'in' the one declared just before it
+level: region;
+frame: region in level;
+scratch: region in level;
+main: proc() -> i32 = { return 0; }

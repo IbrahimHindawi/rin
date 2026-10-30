@@ -1,6 +1,8 @@
 import "std/print.rin"
 
-region level > frame > scratch;
+level: region;
+frame: region in level;
+scratch: region in frame;
 
 entity: struct = {
     hp: i32;
@@ -36,16 +38,16 @@ apply: proc(cmds: []command) -> void = {
 
 main: proc() -> i32 = {
     total: i32 = 0;
-    region level {
+    level: region = {
         a: *entity in level = make_entity(level, 10);
         b: *entity in level = make_entity(level, 20);
         a*.target = b;
         frames: i32 = 0;
         while (frames < 3) {
-            region frame {
+            frame: region = {
                 cmds: []command in frame = gather(frame, a, b);
                 apply(cmds);
-                region scratch of frame {
+                scratch: region of frame = {
                     tmp: []i32 in scratch = new_slice<i32>(scratch, 4);
                     tmp[0] = a*.hp;
                     total += tmp[0];

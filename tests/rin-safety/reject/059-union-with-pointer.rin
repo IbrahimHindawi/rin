@@ -1,0 +1,8 @@
+// expect: carries a pointer whose region the checker cannot see
+import "std/print.rin"
+level: region;
+u: union = { x: u64; p: *i32 in level; }
+main: proc() -> i32 = {
+    level: region = { a: *i32 in level = new<i32>(level); v: u = { .p = a }; v.x = 16; printfmt("{}\n", v.p*); }
+    return 0;
+}

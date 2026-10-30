@@ -13,6 +13,8 @@ map: struct<T> = {
     entries: ^map_entry<T>;
     length: usize;
     border: usize;
+    /* Set by map<T>make; see list.rin. */
+    arena: ^memops_arena;
 }
 
 map_iterator: struct<T> = {
@@ -111,6 +113,47 @@ map<T>create: proc[trusted]<T>(arena: *memops_arena) -> *map<T> = {
     }
     return hashmap;
 }
+
+map<T>make: proc[trusted]<T>(r: region R) -> *map<T> in R = {
+    m: *map<T> in R = cast(memops_arena_push_zero(r, sizeof(map<T>), alignof(map<T>)), *map<T> in R);
+    m*.arena = r;
+    m*.border = I_RUNTIME_MAP_INITIAL_CAPACITY;
+    m*.entries = cast(memops_arena_push_zero(r, sizeof(map_entry<T>) * m*.border, alignof(map_entry<T>)), *map_entry<T>);
+    if (m*.entries == null) {
+        printf("rin runtime: map entries allocation failure\n");
+        exit(1);
+    }
+    return m;
+}
+
+map<T>arena_of: proc[trusted]<T>(m: *const map<T>) -> *memops_arena = {
+    if (m*.arena == null) {
+        printf("rin runtime: map used without an arena; make it with map<T>make\n");
+        exit(1);
+    }
+    return m*.arena[0]&;
+}
+
+/* put, find and count: the arena-free forms for a map made by map<T>make. */
+map<T>put: proc[trusted]<T>(m: *map<T>, key: ^const char, val: T) -> void = { _ = map<T>set(map<T>arena_of(m), m, key, val); }
+map<T>find: proc[trusted]<T>(m: *const map<T>, key: ^const char) -> ?*T = {
+    if (m*.entries == null || m*.border == 0) {
+        return null;
+    }
+    hash: u64 = map_hash_key(key);
+    index: usize = cast(hash & cast(m*.border - 1, u64), usize);
+    while (m*.entries[index].key != null) {
+        if (strcmp(key, m*.entries[index].key) == 0) {
+            return m*.entries[index].val&;
+        }
+        index += 1;
+        if (index >= m*.border) {
+            index = 0;
+        }
+    }
+    return null;
+}
+map<T>count: proc[trusted]<T>(m: *const map<T>) -> usize = { return m*.length; }
 
 map<T>destroy: proc[trusted]<T>(arena: *memops_arena, hashmap: *map<T>) -> void = {
     if (hashmap != null) {

@@ -4,7 +4,28 @@ import "node.rin"
 stack: struct<T> = {
     head: *node<T>;
     length: usize;
+    /* Set by stack<T>make; see list.rin. */
+    arena: ^memops_arena;
 }
+
+stack<T>make: proc[trusted]<T>(r: region R) -> *stack<T> in R = {
+    s: *stack<T> in R = cast(memops_arena_push_zero(r, sizeof(stack<T>), alignof(stack<T>)), *stack<T> in R);
+    s*.arena = r;
+    return s;
+}
+
+stack<T>arena_of: proc[trusted]<T>(s: *const stack<T>) -> *memops_arena = {
+    if (s*.arena == null) {
+        printf("rin runtime: stack used without an arena; make it with stack<T>make\n");
+        exit(1);
+    }
+    return s*.arena[0]&;
+}
+
+stack<T>put: proc[trusted]<T>(s: *stack<T>, data: T) -> void = { stack<T>push(stack<T>arena_of(s), s, data); }
+stack<T>take: proc[trusted]<T>(s: *stack<T>) -> ?*node<T> = { return stack<T>pop(stack<T>arena_of(s), s); }
+stack<T>top: proc[trusted]<T>(s: *const stack<T>) -> ?*node<T> = { return s*.head; }
+stack<T>length: proc[trusted]<T>(s: *const stack<T>) -> usize = { return s*.length; }
 
 stack<T>create: proc[trusted]<T>(arena: *memops_arena) -> *stack<T> = {
     stack: *stack<T> = cast(memops_arena_push_zero(arena, sizeof(stack<T>), alignof(stack<T>)), *stack<T>);

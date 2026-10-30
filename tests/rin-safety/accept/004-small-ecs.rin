@@ -6,7 +6,8 @@
 import "std/print.rin"
 import "std/vec.rin"
 
-region level > frame;
+level: region;
+frame: region in level;
 
 handle: struct = { index: u32; generation: u32; }
 
@@ -38,8 +39,7 @@ world_make: proc(r: region level) -> *world in level = {
 spawn: proc(w: *world, hp: i32, x: f32) -> handle = {
     index: u32 = 0;
     if (w*.free*.length > 0) {
-        index = vec<u32>at(w*.free, w*.free*.length - 1)*;
-        w*.free*.length -= 1;
+        index = vec<u32>pop(w*.free);
     } else {
         index = cast(w*.slots*.length, u32);
         _ = vec<slot>push(w*.slots, { .generation = 1, .row = 0, .alive = 0 });
@@ -73,9 +73,9 @@ despawn: proc(w: *world, h: handle) -> b32 = {
         vec<f32>at(w*.x, row)* = vec<f32>at(w*.x, last)*;
         vec<slot>at(w*.slots, moved.index)*.row = row;
     }
-    w*.owners*.length -= 1;
-    w*.hp*.length -= 1;
-    w*.x*.length -= 1;
+    _ = vec<handle>pop(w*.owners);
+    _ = vec<i32>pop(w*.hp);
+    _ = vec<f32>pop(w*.x);
     s*.alive = 0;
     s*.generation += 1;
     _ = vec<u32>push(w*.free, h.index);
@@ -115,13 +115,13 @@ draw: proc(w: *world, frame_no: i32) -> void = {
 }
 
 main: proc() -> i32 = {
-    region level {
+    level: region = {
         w: *world in level = world_make(level);
         a: handle = spawn(w, 12, 0.0);
         b: handle = spawn(w, 3, 1.0);
         c: handle = spawn(w, 20, 2.0);
         for (frame_no: i32 = 0; frame_no < 4; frame_no += 1) {
-            region frame {
+            frame: region = {
                 cmds: *vec<command> in frame = gather(frame, w);
                 apply(w, cmds);
             }

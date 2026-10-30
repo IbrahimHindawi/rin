@@ -1,20 +1,21 @@
 import "std/print.rin"
 import "std/vec.rin"
 
-region level > frame;
+level: region;
+frame: region in level;
 
 entity: struct = { hp: i32; }
 hit: struct = { who: *entity in level; damage: i32; }
 
 main: proc() -> i32 = {
-    region level {
+    level: region = {
         ents: *vec<*entity in level> in level = vec<*entity in level>make(level, 2);
         for (i: i32 = 0; i < 3; i += 1) {
             e: *entity in level = new<entity>(level);
             e*.hp = 10 * (i + 1);
             _ = vec<*entity in level>push(ents, e);
         }
-        region frame {
+        frame: region = {
             hits: *vec<hit> in frame = vec<hit>make(frame, 0);
             for (i: u64 = 0; i < ents*.length; i += 1) {
                 h: hit = { .who = vec<*entity in level>at(ents, i)*, .damage = 7 };

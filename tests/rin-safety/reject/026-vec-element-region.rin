@@ -1,8 +1,9 @@
 // expect: may end before the memory in region 'level'
 import "std/vec.rin"
-region level > frame;
+level: region;
+frame: region in level;
 e: struct = { hp: i32; }
 main: proc() -> i32 = {
-    region level { region frame { x: *e in frame = new<e>(frame);
+    level: region = { frame: region = { x: *e in frame = new<e>(frame);
         v: *vec<*e in frame> in level = vec<*e in frame>make(level, 4); } }
     return 0; }

@@ -1,0 +1,3 @@
+// always: a region is declared like everything else
+region level > frame;
+main: proc() -> i32 = { return 0; }

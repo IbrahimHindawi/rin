@@ -664,7 +664,7 @@ string8_builder_reserve_: proc[trusted](b: *string8_builder, count: u64) -> *u8 
     return p;
 }
 
-string8_builder_append_byte: proc(b: *string8_builder, byte: u8) -> void = {
+string8_builder_append_byte: proc[trusted](b: *string8_builder, byte: u8) -> void = {
     p: *u8 = string8_builder_reserve_(b, 1);
     p* = byte;
     b*.length += 1;

@@ -5,7 +5,28 @@ queue: struct<T> = {
     head: *node<T>;
     tail: *node<T>;
     length: usize;
+    /* Set by queue<T>make; see list.rin. */
+    arena: ^memops_arena;
 }
+
+queue<T>make: proc[trusted]<T>(r: region R) -> *queue<T> in R = {
+    q: *queue<T> in R = cast(memops_arena_push_zero(r, sizeof(queue<T>), alignof(queue<T>)), *queue<T> in R);
+    q*.arena = r;
+    return q;
+}
+
+queue<T>arena_of: proc[trusted]<T>(q: *const queue<T>) -> *memops_arena = {
+    if (q*.arena == null) {
+        printf("rin runtime: queue used without an arena; make it with queue<T>make\n");
+        exit(1);
+    }
+    return q*.arena[0]&;
+}
+
+queue<T>push: proc[trusted]<T>(q: *queue<T>, data: T) -> void = { queue<T>enqueue(queue<T>arena_of(q), q, data); }
+queue<T>pop: proc[trusted]<T>(q: *queue<T>) -> ?*node<T> = { return queue<T>dequeue(queue<T>arena_of(q), q); }
+queue<T>front: proc[trusted]<T>(q: *const queue<T>) -> ?*node<T> = { return q*.head; }
+queue<T>length: proc[trusted]<T>(q: *const queue<T>) -> usize = { return q*.length; }
 
 queue<T>create: proc[trusted]<T>(arena: *memops_arena) -> *queue<T> = {
     queue: *queue<T> = cast(memops_arena_push_zero(arena, sizeof(queue<T>), alignof(queue<T>)), *queue<T>);

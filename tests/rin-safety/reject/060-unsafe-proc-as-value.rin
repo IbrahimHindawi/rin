@@ -1,0 +1,8 @@
+// expect: a call through a pointer would not be checked
+import "std/print.rin"
+raw: proc[unsafe](x: u64) -> u64 = { p: ^u64 = cast(x, ^u64); return p*; }
+main: proc() -> i32 = {
+    f: *proc(x: u64) -> u64 = raw;
+    printfmt("{}\n", f(16));
+    return 0;
+}

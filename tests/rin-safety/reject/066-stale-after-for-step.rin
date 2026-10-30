@@ -1,0 +1,15 @@
+// expect: may be stale
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+grow: proc(v: *vec<i32>) -> void = { for (i: i32 = 0; i < 64; i += 1) { _ = vec<i32>push(v, 42); } }
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 1);
+        _ = vec<i32>push(v, 1);
+        p: *i32 = vec<i32>at(v, 0);
+        for (i: i32 = 0; i < 1; grow(v)) { i += 1; p = vec<i32>at(v, 0); }
+        vec<i32>at(v, 0)* = 42;
+        printfmt("{}\n", p*);
+    }
+    return 0; }

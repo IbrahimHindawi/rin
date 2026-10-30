@@ -1,5 +1,6 @@
 // expect: may end before the memory in region 'permanent'
-region level > frame;
+level: region;
+frame: region in level;
 e: struct = { hp: i32; t: ?*e in level; }
 mk: proc(r: region R in level) -> *e in R = { return new<e>(r); }
 main: proc() -> i32 = { x: *e in permanent = mk(permanent); return 0; }

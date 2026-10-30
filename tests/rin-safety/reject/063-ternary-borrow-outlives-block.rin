@@ -1,0 +1,9 @@
+// expect: may be stale
+import "std/print.rin"
+main: proc(argc: i32, argv: ^^char) -> i32 = {
+    y: i32 = 1;
+    q: ?*i32 = null;
+    if (1) { x: i32 = 3; q = argc > 0 ? x& : y&; }
+    if (1) { z: i64 = 0x4141414141414141; z += 1; }
+    if (q) { printfmt("{}\n", q*); }
+    return 0; }

@@ -5,7 +5,50 @@ import "equal.rin"
 list: struct<T> = {
     head: *node<T>;
     length: usize;
+    /* Set by list<T>make: the arena the nodes come from, so the procs that
+       take no arena can be called from safe code. Null for a list made by
+       list<T>create. */
+    arena: ^memops_arena;
 }
+
+/* A list that lives in a region, for safe code: the header and every node
+   come from the region's arena. */
+list<T>make: proc[trusted]<T>(r: region R) -> *list<T> in R = {
+    l: *list<T> in R = cast(memops_arena_push_zero(r, sizeof(list<T>), alignof(list<T>)), *list<T> in R);
+    l*.arena = r;
+    return l;
+}
+
+list<T>arena_of: proc[trusted]<T>(l: *const list<T>) -> *memops_arena = {
+    if (l*.arena == null) {
+        printf("rin runtime: list used without an arena; make it with list<T>make\n");
+        exit(1);
+    }
+    return l*.arena[0]&;
+}
+
+list<T>push: proc[trusted]<T>(l: *list<T>, item: T) -> void = { list<T>append(list<T>arena_of(l), l, item); }
+list<T>push_front: proc[trusted]<T>(l: *list<T>, item: T) -> void = { list<T>prepend(list<T>arena_of(l), l, item); }
+list<T>insert: proc[trusted]<T>(l: *list<T>, item: T, index: i32) -> void = { list<T>insert_at(list<T>arena_of(l), l, item, index); }
+/* The node at an index, borrowed from the list: null past the end. */
+list<T>node_at: proc[trusted]<T>(l: *const list<T>, index: i32) -> ?*node<T> = {
+    if (index < 0 || cast(index, usize) >= l*.length) {
+        return null;
+    }
+    iter: *node<T> = l*.head;
+    count: i32 = 0;
+    while (iter != null) {
+        if (count == index) {
+            return iter;
+        }
+        iter = iter*.next;
+        count += 1;
+    }
+    return null;
+}
+list<T>take_at: proc[trusted]<T>(l: *list<T>, index: i32) -> ?*node<T> = { return list<T>remove_at(list<T>arena_of(l), l, index); }
+list<T>take: proc[trusted]<T>(l: *list<T>, item: T) -> ?*node<T> = { return list<T>remove(list<T>arena_of(l), l, item); }
+list<T>length: proc[trusted]<T>(l: *const list<T>) -> usize = { return l*.length; }
 
 list<T>create: proc[trusted]<T>(arena: *memops_arena) -> *list<T> = {
     list: *list<T> = cast(memops_arena_push_zero(arena, sizeof(list<T>), alignof(list<T>)), *list<T>);
