@@ -714,6 +714,13 @@ errors, most of them a few rules too blunt, and two holes.
     with a leak in place of a double close. `fprintfmt(f, "...", x)` is printfmt
     to one. `slice<T>copy` and `slice<T>zero` replace `memcpy` and `memset`, and
     `xs = ys` assigns an array.
+  * *`must(p)`.* A `?*T` as a `*T`, keeping its region, and a run-time stop if it
+    is null: Rust's unwrap, for what the code knows and the checker cannot.
+  * *`proc[external, trusted]`.* A C binding whose signature is honest, so safe
+    code may call it: handles, plain data, single objects, nothing with a count
+    the callee takes on faith. A nullable handle passed to one gets a `must`.
+    A C struct with no fields declared counts as plain data for staleness, since
+    nothing can be taken from inside one.
   * *Smaller.* `--max-errors=<n>` (0 is no limit); the errors on a global name
     its file; `xs = {}` and `xs = { 1, 2 }` assign an array.
 

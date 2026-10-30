@@ -1,0 +1,2 @@
+// always: must takes a
+main: proc() -> i32 = { x: i32 = 1; return must(x); }

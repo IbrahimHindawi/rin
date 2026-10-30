@@ -10705,6 +10705,13 @@ static TypeExpr *regions_substitute(memops_arena *arena, TypeExpr *type, RegionB
 static RegionBindings call_region_bindings(Program *prog, ProcDecl *decl, Expr *call, TypeScope *scope, memops_arena *arena, bool report);
 static TypeExpr *new_call_type(Program *prog, Expr *call, TypeScope *scope, memops_arena *arena);
 static bool call_is_new(Expr *call);
+/* `must(p)`: a `?*T` as a `*T`, stopping the program if it is null. Rust's
+   unwrap: for what the code knows and the checker cannot, such as a device made
+   at startup. */
+static bool call_is_must(Expr *call) {
+    return call && call->kind == Expr_Call && !call->base && call->args.length == 1 && string8_equals_cstr(&call->name, "must");
+}
+static bool g_uses_must = false;
 static string8 expr_place_region(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena);
 static bool stmt_list_ends_in_jump(Vec_voidptr *body);
 static void collect_generic_struct_instances(Program *prog, StructDecl *decl, Vec_string8 *out, memops_arena *arena);
@@ -10988,6 +10995,15 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
             return proc_type ? proc_type->ret_type : null;
         }
         if (call_is_new(e)) return new_call_type(prog, e, scope, arena);
+        if (call_is_must(e)) {
+            TypeExpr *inner = resolve_alias_type(prog, infer_expr_type((Expr *)e->args.data[0], scope, prog, arena));
+            if (!inner || inner->kind != Type_Ptr) return inner;
+            TypeExpr *t = clone_type_expr(arena, inner);
+            t->is_nullable = false;
+            t->narrowed = false;
+            t->narrow_from = null;
+            return t;
+        }
         TypeExpr *type_arg = null;
         ProcDecl *decl = lookup_call_proc_decl(prog, e, scope, arena, &type_arg, null);
         if (decl) {
@@ -12612,7 +12628,7 @@ static void type_error_proc_argument(
    and `alignof` used to belong on this list; they are now their own node kind
    and cannot reach the call path. */
 static bool call_name_is_builtin(string8 name) {
-    return string8_equals_cstr(&name, "printfmt") || string8_equals_cstr(&name, "fprintfmt");
+    return string8_equals_cstr(&name, "printfmt") || string8_equals_cstr(&name, "fprintfmt") || string8_equals_cstr(&name, "must");
 }
 
 static void type_error_call_undeclared(
@@ -15212,8 +15228,8 @@ static void compute_proc_opens(Program *prog, memops_arena *arena) {
 
 /* Numbers, enums and arrays and structs of them, as far as can be seen: a
    callee handed a `*T` of one can overwrite it and can move nothing, since
-   there is no pointer in it to reallocate behind. A type parameter, `void`
-   and a C struct with no fields declared could be anything, so they are not. */
+   there is no pointer in it to reallocate behind. A type parameter and `void`
+   could be anything, so they are not. */
 static bool type_is_plain_data(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth) {
     if (!type || depth > 8) return false;
     TypeExpr *r = resolve_alias_type(prog, type);
@@ -15223,7 +15239,10 @@ static bool type_is_plain_data(Program *prog, TypeExpr *type, memops_arena *aren
     if (type_slice_elem(r) || (r->kind != Type_Name && r->kind != Type_Generic)) return false;
     TypeSub sub = {0};
     StructDecl *decl = lookup_aggregate_decl(prog, r, &sub, arena);
-    if (!decl || decl->fields.length == 0) return false;
+    if (!decl) return false;
+    /* A C struct with no fields declared is a handle: nothing can be taken from
+       inside one to go stale. A rin struct with none holds nothing. */
+    if (decl->fields.length == 0) return true;
     for (i32 i = 0; i < decl->fields.length; i++) {
         Field *field = (Field *)decl->fields.data[i];
         if (!field->type) return false; // an anonymous member: not looked into
@@ -16149,6 +16168,18 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
         type_check_new_call(call, scope, prog, arena);
         return;
     }
+    if (call_is_must(call)) {
+        Expr *arg = (Expr *)call->args.data[0];
+        type_check_expr(arg, scope, prog, arena);
+        TypeExpr *t = resolve_alias_type(prog, infer_expr_type(arg, scope, prog, arena));
+        if (!t || t->kind != Type_Ptr || t->is_raw) {
+            type_error_message("must takes a '?*T': it is how one becomes a '*T'", call->line, call->col);
+            return;
+        }
+        call->cast_type = t;
+        g_uses_must = true;
+        return;
+    }
 
     TypeExpr *type_arg = null;
     bool concrete_specialization = false;
@@ -16269,7 +16300,7 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
                      "'%.*s' is an unsafe proc; it may be called only inside 'unsafe { }', or from a proc marked [trusted] or [unsafe]",
                      (int)decl->name.length, decl->name.data);
             type_error_message(message, call->line, call->col);
-        } else if (decl->is_external && proc_touches_pointers(prog, decl)) {
+        } else if (decl->is_external && !decl->is_trusted && proc_touches_pointers(prog, decl)) {
             char message[512];
             snprintf(message, sizeof(message),
                      "'%.*s' is C's, and takes or returns a pointer, so nothing checks what it does with it; "
@@ -16327,6 +16358,26 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
         type_check_initializer_against(arg, expected, scope, prog, arena);
         type_check_expr(arg, scope, prog, arena);
         TypeExpr *actual = infer_expr_type(arg, scope, prog, arena);
+        if (decl->is_external && decl->is_trusted && expected && actual) {
+            /* A handle a C binding may not be given null: a clean stop here,
+               rather than a crash somewhere inside the driver. */
+            TypeExpr *ex = resolve_alias_type(prog, expected);
+            TypeExpr *ac = resolve_alias_type(prog, actual);
+            if (ex && ac && ex->kind == Type_Ptr && ac->kind == Type_Ptr && !ex->is_raw && !ex->is_nullable &&
+                !ac->is_raw && ac->is_nullable && !type_is_void_pointer(ac)) {
+                Expr *wrapped = expr_new(arena, Expr_Call);
+                wrapped->line = arg->line;
+                wrapped->col = arg->col;
+                wrapped->name = string8_from_cstr(arena, "must");
+                wrapped->args = ptr_array_reserve(arena, 1);
+                ptr_array_append(arena, &wrapped->args, arg);
+                wrapped->cast_type = ac;
+                g_uses_must = true;
+                call->args.data[i] = wrapped;
+                arg = wrapped;
+                actual = infer_expr_type(arg, scope, prog, arena);
+            }
+        }
         if (expected && actual && region_flow_rejects(prog, expected, actual, arg ? arg->line : call->line, arg ? arg->col : call->col)) {
             // reported, with the regions named
         } else if (expected && actual && !type_compatible(prog, expected, actual)) {
@@ -16428,7 +16479,7 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         /* A proc used as a value: a call through the pointer could not be
            checked against the regions open at that point. */
         ProcDecl *as_value = lookup_proc_decl(prog, e->name);
-        if (as_value && g_safe_body && (as_value->is_unsafe || (as_value->is_external && proc_touches_pointers(prog, as_value)))) {
+        if (as_value && g_safe_body && (as_value->is_unsafe || (as_value->is_external && !as_value->is_trusted && proc_touches_pointers(prog, as_value)))) {
             region_error("'%.*s' is %.*s, and a call through a pointer would not be checked; it is called by name from "
                          "a [trusted] proc", e->name, as_value->is_unsafe ? string8_from_cstr(arena, "an unsafe proc")
                          : string8_from_cstr(arena, "C's, with pointers in its signature"), e->line, e->col);
@@ -18834,6 +18885,14 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
             emit_new_call(arena, out, e, sub, generic_name);
             return;
         }
+        if (call_is_must(e) && e->cast_type) {
+            emit_cstr(arena, out, "((");
+            emit_type(arena, out, e->cast_type, sub);
+            emit_cstr(arena, out, ")rin_nonnull(");
+            emit_expr(arena, out, (Expr *)e->args.data[0], sub, generic_name);
+            emit_cstr(arena, out, "))");
+            return;
+        }
         if (e->type_args.length > 1) {
             /* Several type arguments join into one suffix, so `first<i32, f32>`
                calls `first_i32_f32` -- the same name the instance was recorded
@@ -20817,6 +20876,15 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
     }
 
     emit_cstr(arena, out, "\n");
+
+    if (g_uses_must) {
+        emit_cstr(arena, out, "RIN_MAYBE_UNUSED static const void *rin_nonnull(const void *p) {\n"
+                              "    if (!p) {\n"
+                              "        printf(\"rin runtime: must on a null pointer\\n\");\n"
+                              "        exit(1);\n"
+                              "    }\n"
+                              "    return p;\n}\n\n");
+    }
 
     if (prog->uses_regions) {
         /* The regions' storage: one arena each, reserved from the OS on the

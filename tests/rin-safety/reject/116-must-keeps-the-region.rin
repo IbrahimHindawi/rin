@@ -1,0 +1,5 @@
+// expect: cannot be kept where region 'level' is promised
+level: region;
+frame: region in level;
+use: proc(p: ?*i32 in frame) -> *i32 in level = { return must(p); }
+main: proc() -> i32 = { return 0; }

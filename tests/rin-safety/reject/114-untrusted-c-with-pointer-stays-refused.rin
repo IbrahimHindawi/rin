@@ -1,0 +1,5 @@
+// expect: is C's
+H: struct[external] = {}
+pick: proc[external](h: *H) -> void = {}
+use: proc(h: *H) -> void = { pick(h); }
+main: proc() -> i32 = { return 0; }
