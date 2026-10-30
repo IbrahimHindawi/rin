@@ -1,0 +1,10 @@
+// expect: which this call may change
+import "std/vec.rin"
+region level;
+grow_and_read: proc(v: *vec<i32>, p: *i32) -> i32 = { _ = vec<i32>push(v, 9); return p*; }
+main: proc() -> i32 = {
+    region level { v: *vec<i32> in level = vec<i32>make(level, 1);
+        _ = vec<i32>push(v, 1);
+        first: *i32 = vec<i32>at(v, 0);
+        return grow_and_read(v, first); }
+    return 0; }

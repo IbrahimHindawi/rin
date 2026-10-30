@@ -79,7 +79,7 @@ dlist<T>get_length: proc[trusted]<T>(arena: *memops_arena, list: *dlist<T>) -> u
     return list*.length;
 }
 
-dlist<T>get_at: proc[trusted]<T>(arena: *memops_arena, list: *dlist<T>, index: i32) -> *binode<T> = {
+dlist<T>get_at: proc[trusted]<T>(arena: *memops_arena, list: *dlist<T>, index: i32) -> ?*binode<T> = {
     if (list == null || index < 0 || cast(index, usize) >= list*.length) {
         return null;
     }
@@ -90,7 +90,7 @@ dlist<T>get_at: proc[trusted]<T>(arena: *memops_arena, list: *dlist<T>, index: i
     return iter;
 }
 
-dlist<T>remove_node: proc[trusted]<T>(arena: *memops_arena, list: *dlist<T>, node: *binode<T>) -> *binode<T> = {
+dlist<T>remove_node: proc[trusted]<T>(arena: *memops_arena, list: *dlist<T>, node: *binode<T>) -> ?*binode<T> = {
     if (list == null || node == null || list*.length == 0) {
         return null;
     }
@@ -117,7 +117,7 @@ dlist<T>remove_at: proc[trusted]<T>(arena: *memops_arena, list: *dlist<T>, index
     return dlist<T>remove_node(arena, list, node);
 }
 
-dlist<T>remove: proc[trusted]<T>(arena: *memops_arena, list: *dlist<T>, item: T) -> *binode<T> = {
+dlist<T>remove: proc[trusted]<T>(arena: *memops_arena, list: *dlist<T>, item: T) -> ?*binode<T> = {
     if (list == null || list*.length == 0) {
         return null;
     }

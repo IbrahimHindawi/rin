@@ -1,0 +1,43 @@
+import "std/print.rin"
+import "std/vec.rin"
+
+region level;
+
+world: struct = {
+    hp: *vec<i32> in level;
+    x: *vec<i32> in level;
+}
+
+main: proc() -> i32 = {
+    region level {
+        w: *world in level = new<world>(level, { .hp = vec<i32>make(level, 4), .x = vec<i32>make(level, 4) });
+        for (i: i32 = 0; i < 4; i += 1) {
+            _ = vec<i32>push(w*.hp, 10 * i);
+            _ = vec<i32>push(w*.x, i);
+        }
+        // Two reads of the same vec may live together: at() takes it as const.
+        a: *i32 = vec<i32>at(w*.hp, 0);
+        b: *i32 = vec<i32>at(w*.hp, 1);
+        a* += b*;
+        // Pushing to a different field leaves hp's borrows alone.
+        _ = vec<i32>push(w*.x, 99);
+        printfmt("a {} b {}\n", a*, b*);
+        // After a push to hp, take it again before using it.
+        _ = vec<i32>push(w*.hp, 7);
+        a = vec<i32>at(w*.hp, 0);
+        printfmt("a {} len {}\n", a*, w*.hp*.length);
+        // In a loop, take at the top of each pass.
+        total: i32 = 0;
+        for (i: u64 = 0; i < w*.hp*.length; i += 1) {
+            p: *i32 = vec<i32>at(w*.hp, i);
+            total += p*;
+        }
+        printfmt("total {}\n", total);
+    }
+    // Shifts by the width or more wrap the amount, as Rust's release build does.
+    one: u32 = 1;
+    byte: u8 = 1;
+    n: u32 = 33;
+    printfmt("{} {} {}\n", one shl n, byte shl 9, cast(1, u64) shl 65);
+    return 0;
+}

@@ -22,7 +22,7 @@ stack<T>push: proc[trusted]<T>(arena: *memops_arena, stack: *stack<T>, data: T) 
     stack*.length += 1;
 }
 
-stack<T>pop: proc[trusted]<T>(arena: *memops_arena, stack: *stack<T>) -> *node<T> = {
+stack<T>pop: proc[trusted]<T>(arena: *memops_arena, stack: *stack<T>) -> ?*node<T> = {
     if (stack == null || stack*.head == null) {
         return null;
     }
@@ -33,7 +33,7 @@ stack<T>pop: proc[trusted]<T>(arena: *memops_arena, stack: *stack<T>) -> *node<T
     return node;
 }
 
-stack<T>peek: proc[trusted]<T>(arena: *memops_arena, stack: *stack<T>) -> *node<T> = {
+stack<T>peek: proc[trusted]<T>(arena: *memops_arena, stack: *stack<T>) -> ?*node<T> = {
     if (stack == null) {
         return null;
     }

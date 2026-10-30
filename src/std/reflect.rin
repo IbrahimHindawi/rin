@@ -177,7 +177,7 @@ reflect_field_at: proc[trusted](type: *const reflect, index: u64) -> *const refl
     return fields[index]&;
 }
 
-reflect_find_field: proc[trusted](type: *const reflect, name: ^const char) -> *const reflect_field = {
+reflect_find_field: proc[trusted](type: *const reflect, name: ^const char) -> ?*const reflect_field = {
     fields: ^const reflect_field = reflect_fields(type);
     if (fields == null || name == null) { return null; }
     for (i: u64 = 0; i < type*.count; i += 1) {
@@ -217,7 +217,7 @@ reflect_value_at: proc[trusted](type: *const reflect, index: u64) -> *const refl
     return values[index]&;
 }
 
-reflect_find_value_by_name: proc[trusted](type: *const reflect, name: ^const char) -> *const reflect_value = {
+reflect_find_value_by_name: proc[trusted](type: *const reflect, name: ^const char) -> ?*const reflect_value = {
     values: ^const reflect_value = reflect_values(type);
     if (values == null || name == null) { return null; }
     for (i: u64 = 0; i < type*.count; i += 1) {
@@ -226,7 +226,7 @@ reflect_find_value_by_name: proc[trusted](type: *const reflect, name: ^const cha
     return null;
 }
 
-reflect_find_value_by_value: proc[trusted](type: *const reflect, value: i32) -> *const reflect_value = {
+reflect_find_value_by_value: proc[trusted](type: *const reflect, value: i32) -> ?*const reflect_value = {
     values: ^const reflect_value = reflect_values(type);
     if (values == null) { return null; }
     for (i: u64 = 0; i < type*.count; i += 1) {
@@ -236,12 +236,12 @@ reflect_find_value_by_value: proc[trusted](type: *const reflect, value: i32) -> 
 }
 
 reflect_name_from_value: proc(type: *const reflect, value: i32) -> ^const char = {
-    found: *const reflect_value = reflect_find_value_by_value(type, value);
+    found: ?*const reflect_value = reflect_find_value_by_value(type, value);
     return found != null ? found*.name : null;
 }
 
 reflect_value_from_name: proc(type: *const reflect, name: ^const char, fallback: i32) -> i32 = {
-    found: *const reflect_value = reflect_find_value_by_name(type, name);
+    found: ?*const reflect_value = reflect_find_value_by_name(type, name);
     return found != null ? found*.value : fallback;
 }
 
@@ -263,7 +263,7 @@ reflect_value_from_name: proc(type: *const reflect, name: ^const char, fallback:
 // A miss is not necessarily a bug: an enum value can arrive from a file or a
 // socket and hold anything that fits in the underlying type.
 reflect_name_from_value_or: proc(type: *const reflect, value: i32, fallback: ^const char) -> ^const char = {
-    found: *const reflect_value = reflect_find_value_by_value(type, value);
+    found: ?*const reflect_value = reflect_find_value_by_value(type, value);
     return found != null ? found*.name : fallback;
 }
 
@@ -297,7 +297,7 @@ reflect_count_fields_with_kind: proc[trusted](type: *const reflect, kind: i32) -
     return count;
 }
 
-reflect_find_field_with_kind: proc[trusted](type: *const reflect, kind: i32) -> *const reflect_field = {
+reflect_find_field_with_kind: proc[trusted](type: *const reflect, kind: i32) -> ?*const reflect_field = {
     fields: ^const reflect_field = reflect_fields(type);
     if (fields == null) { return null; }
     for (i: u64 = 0; i < type*.count; i += 1) {
@@ -308,7 +308,7 @@ reflect_find_field_with_kind: proc[trusted](type: *const reflect, kind: i32) -> 
 
 // `after` walks the matches in order: pass null for the first, then the previous
 // result for each one after it.
-reflect_next_field_with_kind: proc[trusted](type: *const reflect, kind: i32, after: *const reflect_field) -> *const reflect_field = {
+reflect_next_field_with_kind: proc[trusted](type: *const reflect, kind: i32, after: *const reflect_field) -> ?*const reflect_field = {
     fields: ^const reflect_field = reflect_fields(type);
     start: u64 = 0;
     if (fields == null) { return null; }
@@ -341,7 +341,7 @@ reflect_field_end_offset: proc(field: *const reflect_field) -> u64 = {
     return field*.offset + field*.size;
 }
 
-reflect_find_field_by_offset: proc[trusted](type: *const reflect, offset: u64) -> *const reflect_field = {
+reflect_find_field_by_offset: proc[trusted](type: *const reflect, offset: u64) -> ?*const reflect_field = {
     fields: ^const reflect_field = reflect_fields(type);
     if (fields == null) { return null; }
     for (i: u64 = 0; i < type*.count; i += 1) {
@@ -351,7 +351,7 @@ reflect_find_field_by_offset: proc[trusted](type: *const reflect, offset: u64) -
 }
 
 // The field an arbitrary byte falls inside, rather than one that starts there.
-reflect_find_field_containing_offset: proc[trusted](type: *const reflect, offset: u64) -> *const reflect_field = {
+reflect_find_field_containing_offset: proc[trusted](type: *const reflect, offset: u64) -> ?*const reflect_field = {
     fields: ^const reflect_field = reflect_fields(type);
     if (fields == null) { return null; }
     for (i: u64 = 0; i < type*.count; i += 1) {
@@ -392,11 +392,15 @@ reflect_field_zero: proc[trusted](base: ^void, field: *const reflect_field) -> b
 }
 
 reflect_field_copy_by_name: proc(dst_base: ^void, src_base: ^const void, type: *const reflect, name: ^const char) -> b32 = {
-    return reflect_field_copy(dst_base, src_base, reflect_find_field(type, name));
+    field: ?*const reflect_field = reflect_find_field(type, name);
+    if (!field) { return 0; }
+    return reflect_field_copy(dst_base, src_base, field);
 }
 
 reflect_field_zero_by_name: proc(base: ^void, type: *const reflect, name: ^const char) -> b32 = {
-    return reflect_field_zero(base, reflect_find_field(type, name));
+    field: ?*const reflect_field = reflect_find_field(type, name);
+    if (!field) { return 0; }
+    return reflect_field_zero(base, field);
 }
 
 // ---------------------------------------------------------------------------
@@ -449,7 +453,7 @@ reflect_count_fields_with_attr: proc[trusted](type: *const reflect, attr: ^const
     return count;
 }
 
-reflect_find_field_with_attr: proc[trusted](type: *const reflect, attr: ^const char) -> *const reflect_field = {
+reflect_find_field_with_attr: proc[trusted](type: *const reflect, attr: ^const char) -> ?*const reflect_field = {
     fields: ^const reflect_field = reflect_fields(type);
     if (fields == null || attr == null || attr[0] == 0) { return null; }
     for (i: u64 = 0; i < type*.count; i += 1) {
@@ -458,7 +462,7 @@ reflect_find_field_with_attr: proc[trusted](type: *const reflect, attr: ^const c
     return null;
 }
 
-reflect_next_field_with_attr: proc[trusted](type: *const reflect, attr: ^const char, after: *const reflect_field) -> *const reflect_field = {
+reflect_next_field_with_attr: proc[trusted](type: *const reflect, attr: ^const char, after: *const reflect_field) -> ?*const reflect_field = {
     fields: ^const reflect_field = reflect_fields(type);
     start: u64 = 0;
     if (fields == null || attr == null || attr[0] == 0) { return null; }

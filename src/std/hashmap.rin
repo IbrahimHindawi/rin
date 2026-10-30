@@ -29,9 +29,30 @@ hashmap: struct<K, V> = {
     length: u64;
     removed: u64;
     capacity: u64;
+    /* Set by hashmap<K, V>make: the arena the map grows into, so set needs
+       none handed to it. Null for a map made the old way, by value. */
+    arena: ^memops_arena;
 }
 
-hashmap<K, V>find: proc[trusted]<K, V>(m: *hashmap<K, V>, key: K) -> u64 = {
+/* A map that lives in a region, for safe code: the header and everything it
+   grows into come from the region's arena. */
+hashmap<K, V>make: proc[trusted]<K, V>(r: region R) -> *hashmap<K, V> in R = {
+    m: *hashmap<K, V> in R = cast(memops_arena_push_zero(r, sizeof(hashmap<K, V>), alignof(hashmap<K, V>)), *hashmap<K, V> in R);
+    m*.arena = r;
+    return m;
+}
+
+/* put, for a map made by hashmap<K, V>make. The pointer returned is borrowed;
+   it is stale after the next set. */
+hashmap<K, V>set: proc[trusted]<K, V>(m: *hashmap<K, V>, key: K, value: V) -> *V = {
+    if (m*.arena == null) {
+        printf("rin runtime: hashmap set on a map not made by hashmap<K, V>make\n");
+        exit(1);
+    }
+    return hashmap<K, V>put(m*.arena[0]&, m, key, value);
+}
+
+hashmap<K, V>find: proc[trusted]<K, V>(m: *const hashmap<K, V>, key: K) -> u64 = {
     if (m*.capacity == 0) {
         return 0;
     }
@@ -109,7 +130,7 @@ hashmap<K, V>put: proc[trusted]<K, V>(arena: *memops_arena, m: *hashmap<K, V>, k
     return slot;
 }
 
-hashmap<K, V>get: proc[trusted]<K, V>(m: *hashmap<K, V>, key: K) -> *V = {
+hashmap<K, V>get: proc[trusted]<K, V>(m: *const hashmap<K, V>, key: K) -> ?*V = {
     i: u64 = hashmap<K, V>find(m, key);
     if (i >= m*.capacity) {
         return null;
@@ -117,7 +138,7 @@ hashmap<K, V>get: proc[trusted]<K, V>(m: *hashmap<K, V>, key: K) -> *V = {
     return m*.values[i]&;
 }
 
-hashmap<K, V>get_or: proc[trusted]<K, V>(m: *hashmap<K, V>, key: K, fallback: V) -> V = {
+hashmap<K, V>get_or: proc[trusted]<K, V>(m: *const hashmap<K, V>, key: K, fallback: V) -> V = {
     i: u64 = hashmap<K, V>find(m, key);
     if (i >= m*.capacity) {
         return fallback;
@@ -125,7 +146,7 @@ hashmap<K, V>get_or: proc[trusted]<K, V>(m: *hashmap<K, V>, key: K, fallback: V)
     return m*.values[i];
 }
 
-hashmap<K, V>has: proc[trusted]<K, V>(m: *hashmap<K, V>, key: K) -> b32 = {
+hashmap<K, V>has: proc[trusted]<K, V>(m: *const hashmap<K, V>, key: K) -> b32 = {
     return hashmap<K, V>find(m, key) < m*.capacity;
 }
 
@@ -149,17 +170,17 @@ hashmap<K, V>clear: proc[trusted]<K, V>(m: *hashmap<K, V>) -> void = {
 }
 
 // The first occupied slot at or after i, or capacity when there is none.
-hashmap<K, V>scan: proc[trusted]<K, V>(m: *hashmap<K, V>, i: u64) -> u64 = {
+hashmap<K, V>scan: proc[trusted]<K, V>(m: *const hashmap<K, V>, i: u64) -> u64 = {
     while (i < m*.capacity && m*.states[i] != 1) {
         i += 1;
     }
     return i;
 }
 
-hashmap<K, V>first: proc[trusted]<K, V>(m: *hashmap<K, V>) -> u64 = {
+hashmap<K, V>first: proc[trusted]<K, V>(m: *const hashmap<K, V>) -> u64 = {
     return hashmap<K, V>scan(m, 0);
 }
 
-hashmap<K, V>next: proc[trusted]<K, V>(m: *hashmap<K, V>, i: u64) -> u64 = {
+hashmap<K, V>next: proc[trusted]<K, V>(m: *const hashmap<K, V>, i: u64) -> u64 = {
     return hashmap<K, V>scan(m, i + 1);
 }

@@ -120,7 +120,7 @@ map<T>destroy: proc[trusted]<T>(arena: *memops_arena, hashmap: *map<T>) -> void 
     }
 }
 
-map<T>get: proc[trusted]<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const char) -> *T = {
+map<T>get: proc[trusted]<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const char) -> ?*T = {
     if (hashmap == null || hashmap*.entries == null || hashmap*.border == 0) {
         return null;
     }

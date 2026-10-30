@@ -14,7 +14,7 @@ hashset<K>add: proc[trusted]<K>(arena: *memops_arena, s: *hashset<K>, key: K) ->
     return s*.map.length != before;
 }
 
-hashset<K>has: proc[trusted]<K>(s: *hashset<K>, key: K) -> b32 = {
+hashset<K>has: proc[trusted]<K>(s: *const hashset<K>, key: K) -> b32 = {
     return hashmap<K, u8>has(s*.map&, key);
 }
 
@@ -22,7 +22,7 @@ hashset<K>remove: proc[trusted]<K>(s: *hashset<K>, key: K) -> b32 = {
     return hashmap<K, u8>remove(s*.map&, key);
 }
 
-hashset<K>length: proc[trusted]<K>(s: *hashset<K>) -> u64 = {
+hashset<K>length: proc[trusted]<K>(s: *const hashset<K>) -> u64 = {
     return s*.map.length;
 }
 
@@ -30,10 +30,10 @@ hashset<K>clear: proc[trusted]<K>(s: *hashset<K>) -> void = {
     hashmap<K, u8>clear(s*.map&);
 }
 
-hashset<K>first: proc[trusted]<K>(s: *hashset<K>) -> u64 = {
+hashset<K>first: proc[trusted]<K>(s: *const hashset<K>) -> u64 = {
     return hashmap<K, u8>first(s*.map&);
 }
 
-hashset<K>next: proc[trusted]<K>(s: *hashset<K>, i: u64) -> u64 = {
+hashset<K>next: proc[trusted]<K>(s: *const hashset<K>, i: u64) -> u64 = {
     return hashmap<K, u8>next(s*.map&, i);
 }

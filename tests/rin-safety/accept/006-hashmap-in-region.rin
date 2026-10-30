@@ -1,0 +1,29 @@
+// A hashmap owned by a region: make binds the arena it grows into, set
+// inserts or overwrites, get is nullable and must be tested before use.
+import "std/print.rin"
+import "std/hashmap.rin"
+
+region level;
+
+count_words: proc(r: region R, words: []^const char) -> *hashmap<i64, i32> in R = {
+    m: *hashmap<i64, i32> in R = hashmap<i64, i32>make(r);
+    for (i: u64 = 0; i < words.length; i += 1) {
+        key: i64 = cast(i % 3, i64);
+        slot: ?*i32 = hashmap<i64, i32>get(m, key);
+        if (slot) { slot* += 1; } else { _ = hashmap<i64, i32>set(m, key, 1); }
+    }
+    return m;
+}
+
+main: proc() -> i32 = {
+    region level {
+        words: [7]^const char = { "a", "b", "c", "d", "e", "f", "g" };
+        m: *hashmap<i64, i32> in level = count_words(level, words[0..7]);
+        for (k: i64 = 0; k < 4; k += 1) {
+            n: ?*i32 = hashmap<i64, i32>get(m, k);
+            printfmt("{} -> {}\n", k, n ? n* : -1);
+        }
+        printfmt("length {}\n", m*.length);
+    }
+    return 0;
+}

@@ -29,7 +29,7 @@ queue<T>enqueue: proc[trusted]<T>(arena: *memops_arena, queue: *queue<T>, data: 
     queue*.length += 1;
 }
 
-queue<T>dequeue: proc[trusted]<T>(arena: *memops_arena, queue: *queue<T>) -> *node<T> = {
+queue<T>dequeue: proc[trusted]<T>(arena: *memops_arena, queue: *queue<T>) -> ?*node<T> = {
     if (queue == null || queue*.head == null) {
         return null;
     }
@@ -43,7 +43,7 @@ queue<T>dequeue: proc[trusted]<T>(arena: *memops_arena, queue: *queue<T>) -> *no
     return node;
 }
 
-queue<T>peek: proc[trusted]<T>(arena: *memops_arena, queue: *queue<T>) -> *node<T> = {
+queue<T>peek: proc[trusted]<T>(arena: *memops_arena, queue: *queue<T>) -> ?*node<T> = {
     if (queue == null) {
         return null;
     }

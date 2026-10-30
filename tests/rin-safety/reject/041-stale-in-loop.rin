@@ -1,0 +1,13 @@
+// expect: may be stale
+import "std/vec.rin"
+region level;
+main: proc() -> i32 = {
+    total: i32 = 0;
+    region level { v: *vec<i32> in level = vec<i32>make(level, 1);
+        _ = vec<i32>push(v, 1);
+        first: *i32 = vec<i32>at(v, 0);
+        for (i: i32 = 0; i < 3; i += 1) {
+            total += first*;
+            _ = vec<i32>push(v, i);
+        } }
+    return total; }

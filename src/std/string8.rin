@@ -116,14 +116,14 @@ string8_copy_from_slice: proc[trusted](arena: *memops_arena, data: ^const u8, le
     return s;
 }
 
-string8slice_from_parts: proc[trusted](data: ^u8, length: u64) -> string8slice = {
+string8slice_from_parts: proc[unsafe](data: ^u8, length: u64) -> string8slice = {
     s: string8slice = {};
     s.data = data;
     s.length = length;
     return s;
 }
 
-string8slice_from_cstr: proc[trusted](cstr: ^const char) -> string8slice = {
+string8slice_from_cstr: proc[unsafe](cstr: ^const char) -> string8slice = {
     if (cstr == null) {
         return {};
     }

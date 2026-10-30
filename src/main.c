@@ -701,6 +701,10 @@ struct Expr {
        when generic instances disagree. */
     TypeExpr *narrow_type;
     bool narrow_type_varies;
+    /* `a shl b`: the width of a's type, so the emitter masks the amount the way
+       Rust's release build does and C's undefined oversized shift cannot
+       happen. 0 when unknown, 255 when generic instances disagree. */
+    u8 shift_bits;
     /* `s[a..b]`: the end of a subrange, on an Expr_Index whose index_expr is
        the start. */
     Expr *index_end;
@@ -8003,7 +8007,16 @@ static void emit_type(memops_arena *arena, string8 *out, TypeExpr *type, TypeSub
     }
     if (type->kind == Type_Generic) {
         emit_type_qualifiers(arena, out, type);
-        string8 mangle = type_mangle(arena, type, sub);
+        /* The qualifiers were just spelled the C way; the instance's name
+           must not carry them too (`const vec_i32`, not `const const_vec_i32`). */
+        TypeExpr *bare = type;
+        if (type->is_const || type->is_volatile) {
+            bare = memops_arena_push_struct(arena, TypeExpr);
+            *bare = *type;
+            bare->is_const = false;
+            bare->is_volatile = false;
+        }
+        string8 mangle = type_mangle(arena, bare, sub);
         emit_string8(arena, out, mangle);
         return;
     }
@@ -11401,7 +11414,11 @@ static bool type_compatible(Program *prog, TypeExpr *dst, TypeExpr *src) {
        on both sides and would say yes. */
     if (src->kind == Type_Region && dst->kind == Type_Region) return true;
     if (src->kind == Type_Region) {
-        /* A region is its arena where an arena is wanted, borrowed or raw. */
+        /* A region is its arena where an arena is wanted, borrowed or raw: in
+           trusted code only. Safe code hands a region to a `region R`
+           parameter, so the callee's result can carry its name; a bare arena
+           would let a container in one region grow out of another. */
+        if (g_safe_body) return false;
         if (dst->kind != Type_Ptr || dst->region.length > 0 || !dst->elem) return false;
         TypeExpr *de = resolve_alias_type(prog, dst->elem);
         return de && de->kind == Type_Name && string8_equals_cstr(&de->name, "memops_arena");
@@ -14514,6 +14531,11 @@ static bool region_flow_rejects(Program *prog, TypeExpr *dst, TypeExpr *src, i32
     TypeExpr *d = resolve_alias_type(prog, dst);
     TypeExpr *s = resolve_alias_type(prog, src);
     if (!d || !s) return false;
+    if (g_safe_body && s->kind == Type_Region && d->kind == Type_Ptr) {
+        type_error_message("safe code hands a region only to a 'region R' parameter, never to a bare '*memops_arena': "
+                           "the callee's result could not say which region it is in", line, col);
+        return true;
+    }
     if (g_safe_body && d->kind == Type_Ptr && s->kind == Type_Ptr && !d->is_raw && !d->is_nullable && s->is_nullable) {
         type_error_message(type_is_void_pointer(s)
             ? "null cannot go where a '*T' is promised; make the place '?*T'"
@@ -14913,6 +14935,229 @@ static void compute_proc_opens(Program *prog, memops_arena *arena) {
     }
 }
 
+/* ---- Borrowed pointers taken from containers. See docs/regions.md.
+
+   A borrowed `*T` or `[]T` local taken from a container -- `vec<T>at(w*.hp, i)`,
+   `w*.hp[0..n]`, `s*.row&` -- points into memory the container may move. So
+   each such local remembers the paths it was taken from (`w.hp`), and dies
+   when any of them is passed to a proc through a pointer that is not const, or
+   written through. Using a dead one is an error; assigning to it brings it
+   back with new paths. Region pointers never die this way: arena memory does
+   not move. */
+typedef struct Borrow {
+    string8 name;
+    Vec_string8 paths;
+    bool dead;
+} Borrow;
+
+static Vec_voidptr g_borrows; // Borrow*, the current proc's
+
+static Borrow *borrow_find(string8 name) {
+    for (i32 i = g_borrows.length - 1; i >= 0; i--) {
+        Borrow *b = (Borrow *)g_borrows.data[i];
+        if (string8_equals(&b->name, &name)) return b;
+    }
+    return null;
+}
+
+/* `w*.hp[i]`, `w*.hp`, `s*.row&` all name the place `w.hp` or `s`: the
+   variable, then the fields, with indexing and dereferencing dropped. */
+static string8 expr_path(Expr *e, memops_arena *arena) {
+    if (!e) return (string8){0};
+    if (e->kind == Expr_Name) return e->name;
+    if (e->kind == Expr_Field) {
+        string8 base = expr_path(e->base, arena);
+        if (base.length == 0) return base;
+        return concat_name2(arena, base, ".", e->name);
+    }
+    if (e->kind == Expr_Index) return expr_path(e->base, arena);
+    if (e->kind == Expr_Addr || e->kind == Expr_Unary || e->kind == Expr_Cast) return expr_path(e->inner, arena);
+    return (string8){0};
+}
+
+/* `w` and `w.hp` overlap; `w.hp` and `w.slots` do not. */
+static bool path_overlaps(string8 a, string8 b) {
+    string8 s = a.length <= b.length ? a : b;
+    string8 l = a.length <= b.length ? b : a;
+    if (s.length == 0) return false;
+    if (memcmp(s.data, l.data, s.length) != 0) return false;
+    return l.length == s.length || l.data[s.length] == '.';
+}
+
+static void borrow_paths_from_expr(Expr *init, TypeScope *scope, Program *prog, memops_arena *arena, Vec_string8 *out) {
+    if (!init) return;
+    if (init->kind == Expr_Call) {
+        if (call_is_new(init)) return;
+        for (i32 i = 0; i < init->args.length; i++) {
+            Expr *arg = (Expr *)init->args.data[i];
+            TypeExpr *at = resolve_alias_type(prog, infer_expr_type(arg, scope, prog, arena));
+            if (!at || !(type_mentions_pointer(prog, at, 0) || at->kind == Type_Array)) continue;
+            borrow_paths_from_expr(arg, scope, prog, arena, out);
+        }
+        return;
+    }
+    if (init->kind == Expr_Name) {
+        Borrow *b = borrow_find(init->name);
+        if (b) {
+            for (i32 i = 0; i < b->paths.length; i++) {
+                if (!array_string8_contains(out, b->paths.data[i])) Vec_string8_append(arena, out, b->paths.data[i]);
+            }
+            return;
+        }
+    }
+    string8 p = expr_path(init, arena);
+    if (p.length > 0 && !array_string8_contains(out, p)) Vec_string8_append(arena, out, p);
+}
+
+static void borrow_register(string8 name, Expr *init, TypeScope *scope, Program *prog, memops_arena *arena) {
+    Borrow *b = memops_arena_push_struct(arena, Borrow);
+    b->name = name;
+    b->paths = Vec_string8_reserve(arena, 2);
+    b->dead = false;
+    borrow_paths_from_expr(init, scope, prog, arena, &b->paths);
+    ptr_array_append(arena, &g_borrows, b);
+}
+
+static void borrow_kill_path(string8 path) {
+    if (path.length == 0) return;
+    for (i32 i = 0; i < g_borrows.length; i++) {
+        Borrow *b = (Borrow *)g_borrows.data[i];
+        if (b->dead) continue;
+        for (i32 j = 0; j < b->paths.length; j++) {
+            if (path_overlaps(path, b->paths.data[j])) { b->dead = true; break; }
+        }
+    }
+}
+
+/* A parameter through which the callee may change what it points at. */
+static bool param_type_may_move(Program *prog, TypeExpr *pt) {
+    pt = resolve_alias_type(prog, pt);
+    if (!pt) return false;
+    if (pt->kind == Type_Ptr) {
+        TypeExpr *elem = resolve_alias_type(prog, pt->elem);
+        return !(elem && elem->is_const);
+    }
+    TypeExpr *se = type_slice_elem(pt);
+    if (se) {
+        TypeExpr *elem = resolve_alias_type(prog, se);
+        return !(elem && elem->is_const);
+    }
+    return false;
+}
+
+/* After a call: the arguments passed where the callee may move things kill the
+   borrows taken from those places; and a borrow passed in the same call as
+   the place it was taken from may be stale before the callee reads it. */
+static void borrows_after_call(Expr *call, Vec_voidptr *param_types, TypeScope *scope, Program *prog, memops_arena *arena) {
+    if (!g_safe_body) return;
+    Vec_string8 killed = Vec_string8_reserve(arena, 4);
+    for (i32 i = 0; i < call->args.length && i < param_types->length; i++) {
+        if (!param_type_may_move(prog, (TypeExpr *)param_types->data[i])) continue;
+        string8 p = expr_path((Expr *)call->args.data[i], arena);
+        if (p.length > 0) Vec_string8_append(arena, &killed, p);
+    }
+    for (i32 i = 0; i < call->args.length; i++) {
+        Expr *arg = (Expr *)call->args.data[i];
+        if (!arg || arg->kind != Expr_Name) continue;
+        Borrow *b = borrow_find(arg->name);
+        if (!b || b->dead) continue;
+        for (i32 j = 0; j < killed.length; j++) {
+            for (i32 k = 0; k < b->paths.length; k++) {
+                if (!path_overlaps(killed.data[j], b->paths.data[k])) continue;
+                region_error("'%.*s' was taken from '%.*s', which this call may change: the callee could move it "
+                             "and then read it; take it again after the call", arg->name, killed.data[j], arg->line, arg->col);
+                j = killed.length; break;
+            }
+        }
+    }
+    for (i32 i = 0; i < killed.length; i++) borrow_kill_path(killed.data[i]);
+}
+
+/* What a statement will kill when it runs: so a loop can apply its body's
+   kills before the body is checked, for the second time round. */
+static void borrows_prescan_expr(Expr *e, Program *prog, Vec_string8 *out, memops_arena *arena);
+
+static void borrows_prescan_stmt(Stmt *s, Program *prog, Vec_string8 *out, memops_arena *arena) {
+    if (!s) return;
+    if (s->kind == Stmt_Assign && s->lhs && s->lhs->kind != Expr_Name) {
+        string8 p = expr_path(s->lhs, arena);
+        if (p.length > 0 && !array_string8_contains(out, p)) Vec_string8_append(arena, out, p);
+    }
+    borrows_prescan_expr(s->expr, prog, out, arena);
+    borrows_prescan_expr(s->lhs, prog, out, arena);
+    borrows_prescan_expr(s->for_cond, prog, out, arena);
+    borrows_prescan_expr(s->while_cond, prog, out, arena);
+    borrows_prescan_expr(s->if_cond, prog, out, arena);
+    borrows_prescan_expr(s->switch_expr, prog, out, arena);
+    borrows_prescan_stmt(s->for_init, prog, out, arena);
+    borrows_prescan_stmt(s->for_step, prog, out, arena);
+    borrows_prescan_stmt(s->if_else_if, prog, out, arena);
+    Vec_voidptr *bodies[5] = { &s->for_body, &s->while_body, &s->if_then_body, &s->if_else_body, &s->switch_default_body };
+    for (i32 b = 0; b < 5; b++) {
+        for (i32 i = 0; i < bodies[b]->length; i++) borrows_prescan_stmt((Stmt *)bodies[b]->data[i], prog, out, arena);
+    }
+    for (i32 i = 0; i < s->switch_cases.length; i++) {
+        SwitchCase *c = (SwitchCase *)s->switch_cases.data[i];
+        if (!c) continue;
+        borrows_prescan_expr(c->expr, prog, out, arena);
+        for (i32 j = 0; j < c->body.length; j++) borrows_prescan_stmt((Stmt *)c->body.data[j], prog, out, arena);
+    }
+}
+
+static void borrows_prescan_expr(Expr *e, Program *prog, Vec_string8 *out, memops_arena *arena) {
+    if (!e) return;
+    if (e->kind == Expr_Call) {
+        ProcDecl *decl = e->base ? null : lookup_proc_decl(prog, e->name);
+        for (i32 i = 0; i < e->args.length; i++) {
+            bool may_move = true; // a call through a pointer: assume the worst
+            if (decl) may_move = i < decl->params.length && param_type_may_move(prog, ((Param *)decl->params.data[i])->type);
+            if (!may_move) continue;
+            string8 p = expr_path((Expr *)e->args.data[i], arena);
+            if (p.length > 0 && !array_string8_contains(out, p)) Vec_string8_append(arena, out, p);
+        }
+    }
+    borrows_prescan_expr(e->inner, prog, out, arena);
+    borrows_prescan_expr(e->left, prog, out, arena);
+    borrows_prescan_expr(e->right, prog, out, arena);
+    borrows_prescan_expr(e->third, prog, out, arena);
+    borrows_prescan_expr(e->base, prog, out, arena);
+    borrows_prescan_expr(e->index_expr, prog, out, arena);
+    borrows_prescan_expr(e->index_end, prog, out, arena);
+    for (i32 i = 0; i < e->args.length; i++) borrows_prescan_expr((Expr *)e->args.data[i], prog, out, arena);
+}
+
+static void borrows_prekill_body(Vec_voidptr *body, Program *prog, memops_arena *arena) {
+    if (!g_safe_body) return;
+    Vec_string8 paths = Vec_string8_reserve(arena, 4);
+    for (i32 i = 0; i < body->length; i++) borrows_prescan_stmt((Stmt *)body->data[i], prog, &paths, arena);
+    for (i32 i = 0; i < paths.length; i++) borrow_kill_path(paths.data[i]);
+}
+
+/* Branches: what either branch kills stays dead after; what a branch brings
+   back does not. */
+typedef struct BorrowState { i32 length; Vec_i32 dead; } BorrowState;
+
+static BorrowState borrows_save(memops_arena *arena) {
+    BorrowState st = {0};
+    st.length = g_borrows.length;
+    st.dead = Vec_i32_reserve(arena, g_borrows.length + 1);
+    for (i32 i = 0; i < g_borrows.length; i++) Vec_i32_append(arena, &st.dead, ((Borrow *)g_borrows.data[i])->dead ? 1 : 0);
+    return st;
+}
+
+static void borrows_restore(BorrowState *st) {
+    g_borrows.length = st->length;
+    for (i32 i = 0; i < st->length; i++) ((Borrow *)g_borrows.data[i])->dead = st->dead.data[i] != 0;
+}
+
+static void borrows_join(BorrowState *base, BorrowState *a, BorrowState *b) {
+    g_borrows.length = base->length;
+    for (i32 i = 0; i < base->length; i++) {
+        bool dead = base->dead.data[i] || (i < a->length && a->dead.data[i]) || (b && i < b->length && b->dead.data[i]);
+        ((Borrow *)g_borrows.data[i])->dead = dead;
+    }
+}
+
 static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_arena *arena) {
     /* Indirect call through an expression -- a proc pointer in a field, an array
        element, and so on. Argument checking is the same as for a proc-pointer
@@ -14959,6 +15204,7 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
                 type_check_expr((Expr *)call->args.data[i], scope, prog, arena);
             }
         }
+        borrows_after_call(call, &proc_type->args, scope, prog, arena);
         return;
     }
 
@@ -15176,10 +15422,22 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
         }
         if (unbound.length == 0) check_type_regions_wf(prog, ret, call->line, call->col, arena);
     }
+    {
+        Vec_voidptr param_types = ptr_array_reserve(arena, decl->params.length + 1);
+        for (i32 i = 0; i < decl->params.length; i++) ptr_array_append(arena, &param_types, ((Param *)decl->params.data[i])->type);
+        borrows_after_call(call, &param_types, scope, prog, arena);
+    }
 }
 
 static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena) {
     if (!e) return;
+    if (e->kind == Expr_Name && g_safe_body) {
+        Borrow *b = borrow_find(e->name);
+        if (b && b->dead) {
+            region_error("'%.*s' may be stale: '%.*s', which it was taken from, has been changed since; take it again",
+                         e->name, b->paths.length > 0 ? b->paths.data[0] : (string8){0}, e->line, e->col);
+        }
+    }
     if (e->kind == Expr_Call) {
         type_check_call(e, scope, prog, arena);
         return;
@@ -15477,6 +15735,14 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
     } else if (e->op == Token_Keyword_Shl || e->op == Token_Keyword_Shr ||
                e->op == Token_Ampersand || e->op == Token_Caret || e->op == Token_Pipe) {
         ok = integer_or_same_enum;
+        if (e->op == Token_Keyword_Shl || e->op == Token_Keyword_Shr) {
+            i32 bits = 0;
+            bool is_signed = false;
+            u8 width = type_int_info(left, &bits, &is_signed) ? (u8)bits : 0;
+            if (left_kind == Lit_Int && width == 0) width = 32;
+            if (e->shift_bits == 0) e->shift_bits = width;
+            else if (e->shift_bits != width) e->shift_bits = 255;
+        }
     } else if (e->op == Token_LAngle || e->op == Token_RAngle ||
                e->op == Token_LessEqual || e->op == Token_GreaterEqual) {
         ok = numeric_or_same_enum ||
@@ -15587,6 +15853,9 @@ static void type_check_stmt(
         TypeExpr *actual = infer_expr_type(s->expr, scope, prog, arena);
         check_assignment_compatible("initializer", prog, local_type, actual, s->expr, scope, s->line, s->col, arena);
         type_scope_add(arena, scope, s->name, local_type);
+        if (g_safe_body && s->expr && type_is_checked_pointer(prog, local_type) && type_region_of(prog, local_type).length == 0) {
+            borrow_register(s->name, s->expr, scope, prog, arena);
+        }
         g_diag_source_path = prev_diag_source_path;
         g_diag_import_chain = prev_diag_import_chain;
         return;
@@ -15595,8 +15864,16 @@ static void type_check_stmt(
         if (!expr_is_assignment_target(s->lhs)) {
             type_error_assignment_target(s->lhs);
         }
-        type_check_expr(s->lhs, scope, prog, arena);
         type_check_expr(s->expr, scope, prog, arena);
+        if (g_safe_body && s->lhs && s->lhs->kind == Expr_Name && borrow_find(s->lhs->name) && s->assign_op == Token_Equal) {
+            /* Taken again: alive, from the new places. */
+            borrow_register(s->lhs->name, s->expr, scope, prog, arena);
+        }
+        type_check_expr(s->lhs, scope, prog, arena);
+        if (g_safe_body && s->lhs && s->lhs->kind != Expr_Name) {
+            /* A write through a place may move what was taken from it. */
+            borrow_kill_path(expr_path(s->lhs, arena));
+        }
         if (s->lhs && s->lhs->kind == Expr_Name) narrow_undo_on_assign(arena, scope, s->lhs->name);
         TypeExpr *expected = infer_expr_type(s->lhs, scope, prog, arena);
         safety_check_carrier_value("an assignment", prog, expected, arena, s->line, s->col);
@@ -15672,6 +15949,13 @@ static void type_check_stmt(
     if (s->kind == Stmt_For) {
         TypeScope loop_scope = type_scope_copy(arena, scope);
         if (s->for_init) type_check_stmt(s->for_init, &loop_scope, prog, return_type, current_proc, arena);
+        /* The second time round, the body's and the step's kills have happened. */
+        borrows_prekill_body(&s->for_body, prog, arena);
+        if (s->for_step && g_safe_body) {
+            Vec_string8 paths = Vec_string8_reserve(arena, 2);
+            borrows_prescan_stmt(s->for_step, prog, &paths, arena);
+            for (i32 i = 0; i < paths.length; i++) borrow_kill_path(paths.data[i]);
+        }
         type_check_condition("for", s->for_cond, &loop_scope, prog, arena);
         if (s->for_step) type_check_stmt(s->for_step, &loop_scope, prog, return_type, current_proc, arena);
         for (i32 i = 0; i < s->for_body.length; i++) {
@@ -15687,9 +15971,12 @@ static void type_check_stmt(
         TypeScope then_scope = type_scope_copy(arena, scope);
         TypeScope else_scope = type_scope_copy(arena, scope);
         type_check_condition_narrowing(s->if_cond, scope, &then_scope, &else_scope, prog, arena);
+        BorrowState before = borrows_save(arena);
         for (i32 i = 0; i < s->if_then_body.length; i++) {
             type_check_stmt((Stmt *)s->if_then_body.data[i], &then_scope, prog, return_type, current_proc, arena);
         }
+        BorrowState after_then = borrows_save(arena);
+        borrows_restore(&before);
         if (s->if_else_if) {
             type_check_stmt(s->if_else_if, &else_scope, prog, return_type, current_proc, arena);
         } else {
@@ -15700,12 +15987,15 @@ static void type_check_stmt(
                 narrow_copy(arena, &else_scope, scope);
             }
         }
+        BorrowState after_else = borrows_save(arena);
+        borrows_join(&before, &after_then, &after_else);
         g_diag_source_path = prev_diag_source_path;
         g_diag_import_chain = prev_diag_import_chain;
         return;
     }
     if (s->kind == Stmt_While) {
         TypeScope loop_scope = type_scope_copy(arena, scope);
+        borrows_prekill_body(&s->while_body, prog, arena);
         type_check_condition_narrowing(s->while_cond, scope, &loop_scope, null, prog, arena);
         for (i32 i = 0; i < s->while_body.length; i++) {
             type_check_stmt((Stmt *)s->while_body.data[i], &loop_scope, prog, return_type, current_proc, arena);
@@ -15869,6 +16159,7 @@ static void type_check_proc_body(
        tell which region the result is in. */
     g_region_vars.length = 0;
     g_active_regions.length = 0;
+    g_borrows.length = 0;
     Vec_string8 from_params = Vec_string8_reserve(arena, 4);
     for (i32 j = 0; j < p->params.length; j++) {
         collect_region_names(prog, ((Param *)p->params.data[j])->type, &from_params, arena, 0);
@@ -16834,7 +17125,19 @@ static void emit_binary_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub
     if (wrap || narrow) emit_cstr(arena, out, "(");
     emit_expr(arena, out, e->left, sub, generic_name);
     emit_binary_op(arena, out, e->op);
-    emit_expr(arena, out, e->right, sub, generic_name);
+    bool masked_shift = (e->op == Token_Keyword_Shl || e->op == Token_Keyword_Shr) &&
+                        (e->shift_bits == 8 || e->shift_bits == 16 || e->shift_bits == 32 || e->shift_bits == 64);
+    if (masked_shift) {
+        /* `x shl n` shifts by n mod the width of x, as Rust does in release;
+           in C a shift by the width or more is undefined. */
+        emit_cstr(arena, out, "((");
+        emit_expr(arena, out, e->right, sub, generic_name);
+        emit_cstr(arena, out, ") & ");
+        emit_string8(arena, out, string8_from_i64(arena, e->shift_bits - 1));
+        emit_cstr(arena, out, ")");
+    } else {
+        emit_expr(arena, out, e->right, sub, generic_name);
+    }
     if (wrap || narrow) emit_cstr(arena, out, ")");
     if (narrow) emit_cstr(arena, out, ")");
 }
@@ -20616,6 +20919,23 @@ static void build_write_target(FILE *f, BuildConfig *cfg, const char *target,
         build_write_list(f, "    ", &cfg->c_flags);
         fprintf(f, ")\n\n");
     }
+    /* Integer semantics, see docs/regions.md: a Debug build traps on signed
+       overflow, on a shift by the width or more and on a division by zero; any
+       other build wraps, as -fwrapv makes it in gcc and clang. The two cannot
+       be combined: -fwrapv defines overflow, which silences the sanitizer.
+       MSVC wraps in practice and has no such flags; clang-cl takes neither
+       spelling, so it is left out. */
+    fprintf(f, "set(rin_gnu_frontend 0)\n"
+               "if(CMAKE_C_COMPILER_ID MATCHES \"GNU|Clang\" AND NOT CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL \"MSVC\")\n"
+               "    set(rin_gnu_frontend 1)\n"
+               "endif()\n");
+    fprintf(f, "target_compile_options(%s PRIVATE\n"
+               "    \"$<$<AND:$<BOOL:${rin_gnu_frontend}>,$<NOT:$<CONFIG:Debug>>>:-fwrapv>\"\n"
+               "    \"$<$<AND:$<BOOL:${rin_gnu_frontend}>,$<CONFIG:Debug>>:-fsanitize=signed-integer-overflow,shift-exponent,"
+               "integer-divide-by-zero;-fno-sanitize-recover=all>\"\n)\n", target);
+    fprintf(f, "target_link_options(%s PRIVATE\n"
+               "    \"$<$<AND:$<BOOL:${rin_gnu_frontend}>,$<CONFIG:Debug>>:-fsanitize=signed-integer-overflow,shift-exponent,"
+               "integer-divide-by-zero>\"\n)\n\n", target);
     if (cfg->libraries.length > 0) {
         fprintf(f, "target_link_libraries(%s PRIVATE\n", target);
         build_write_list(f, "    ", &cfg->libraries);
@@ -20669,7 +20989,11 @@ static i32 build_run(const char *what, const char *cmd, bool verbose) {
        quoted program path loses them and the path is split on its spaces.
        Wrapping the whole line in another pair is the documented workaround. */
     char wrapped[4200];
+#ifdef _WIN32
     snprintf(wrapped, sizeof(wrapped), "\"%s\"", cmd);
+#else
+    snprintf(wrapped, sizeof(wrapped), "%s", cmd);
+#endif
     i32 rc = system(wrapped);
     if (rc != 0) printf("rin: error: %s failed (exit %d)\n", what, rc);
     return rc;

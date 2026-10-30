@@ -68,7 +68,7 @@ list<T>get_length: proc[trusted]<T>(arena: *memops_arena, list: *list<T>) -> usi
     return list*.length;
 }
 
-list<T>get_at: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, index: i32) -> *node<T> = {
+list<T>get_at: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, index: i32) -> ?*node<T> = {
     if (list == null || index < 0 || cast(index, usize) >= list*.length) {
         return null;
     }
@@ -84,7 +84,7 @@ list<T>get_at: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, index: i32
     return null;
 }
 
-list<T>remove_at: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, index: i32) -> *node<T> = {
+list<T>remove_at: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, index: i32) -> ?*node<T> = {
     if (list == null || index < 0 || cast(index, usize) >= list*.length) {
         return null;
     }
@@ -109,7 +109,7 @@ list<T>remove_at: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, index: 
     return null;
 }
 
-list<T>remove: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, item: T) -> *node<T> = {
+list<T>remove: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, item: T) -> ?*node<T> = {
     if (list == null || list*.length == 0) {
         return null;
     }

@@ -204,7 +204,8 @@ and pointers only into storage that does not move. std gets both:
 If experience says the stale case must be rejected, a local rule does it with
 no lifetimes: a `*T` obtained from a container is dead after any call that
 takes that container as `*vec<T>`. That rule is intra-procedural and can be
-added later without changing anything above.
+added later without changing anything above. *It was added; see
+[As implemented](#as-implemented).*
 
 ## Unsafe
 
@@ -285,7 +286,8 @@ checker is touched.
   * **Logic bugs through indices.** A stale index reads the wrong row. That is
     the model's trade: memory errors become logic errors, which are contained
     and debuggable. `handle<T>` turns the common ones into detected errors.
-  * **`vec` growth under a pointer.** Allowed, as above.
+  * **`vec` growth under a pointer.** Rejected after all, by the local rule
+    above; see [As implemented](#as-implemented).
   * **Data races.** Regions say where memory lives, not who may touch it. A
     `thread` region (pointers from a thread-local arena may not be stored in a
     shared struct) is the same rule one level up and is a later design.
@@ -295,6 +297,8 @@ checker is touched.
   * **Everything in [safety.md](safety.md)'s list that is not memory:**
     integer overflow, division by zero, lossy conversions. Those are separate,
     smaller changes: trap in debug, defined in release, `+%` for wrapping.
+    Overflow, shifts and division are done; see
+    [As implemented](#as-implemented).
 
 ## Why this is not Cyclone again
 
@@ -348,8 +352,8 @@ regions, and declines the rest rather than fighting them.
   * **Callbacks from C.** An `[external]` proc that calls back into rin with a
     pointer: the pointer is `^T`, so the callback is `[unsafe]`. Acceptable,
     or does a `[trusted]` attribute belong on the binding?
-  * **Should `vec` growth under a pointer be rejected?** Leave it as a logic
-    bug (this document's position), or add the local rule.
+  * **Should `vec` growth under a pointer be rejected?** Resolved: the local
+    rule is in, see [As implemented](#as-implemented).
   * **The name.** `region` reads well in the block form and the parameter
     form. `arena` is what the thing is. One word for both, or keep `arena` for
     the value and `region` for the type?
@@ -358,11 +362,12 @@ regions, and declines the rest rather than fighting them.
 
 The `regions` branch builds all of the above except dynamic regions and the
 debug guard pages, and adds a few things the design left open. Everything
-here is tested by `tests/run_rin_safety.py`: four programs that must check,
-compile and print their `.expected`, and thirty that must be rejected with
-the message in their first line. The same thirty check clean with
+here is tested by `tests/run_rin_safety.py`: six programs that must check,
+compile and print their `.expected`, and thirty-five that must be rejected
+with the message in their first line. The same thirty-five check clean with
 `--unsafe`, except the two about the shape of a region block, which hold
-either way.
+either way. The six programs also run clean under AddressSanitizer and
+UndefinedBehaviorSanitizer with the same output.
 
 **Safe by default, `--unsafe` to turn it off.** Every proc body is checked
 unless its proc is `[trusted]` or `[unsafe]`. `--unsafe` on the command
@@ -378,9 +383,15 @@ that names no region, anywhere inside it: `vec`, `hashmap`, `memops_arena`,
 `string8`. Safe code uses one only through a pointer into a region,
 `*vec<T> in R`, made by a trusted proc. The arena's raw operations
 (`memops_arena_push`, `_push_zero`, `_pop`, `_set_pos`, `_clear`,
-`_temp_end`, `_realloc_`) are `[unsafe]`; the rest of std that touches raw
-memory is `[trusted]`, 286 procs in all, including every generic one, since
-a generic body is only checked per instance.
+`_temp_end`, `_realloc_`) are `[unsafe]`, and so are the three procs that
+make a slice or string from a bare pointer and length
+(`slice<T>from_parts`, `string8slice_from_parts`, `string8slice_from_cstr`),
+since the length is a claim about memory the compiler cannot see; the rest of
+std that touches raw memory is `[trusted]`, 287 procs in all, including every
+generic one, since a generic body is only checked per instance. A region may
+be handed to a `region R` parameter only: passing it where a trusted proc
+takes a bare `*memops_arena` is an error in safe code, so safe code cannot
+reach the arena's raw operations through a trusted wrapper by accident.
 
 **Regions.** `region level > frame > scratch;` once, at top level, longest
 first; `permanent` is implied before them. `region frame { }` opens one,
@@ -425,12 +436,81 @@ beyond `region` blocks and parameters: a 150-line entity world with a slot
 map, columns, a frame of commands and handles with generations has eleven
 `in` annotations, all on fields or returns.
 
+**Growth under a pointer, rejected after all.** The design above left a
+pointer into a `vec` valid but stale after a push, as a logic bug. The
+"local rule" it mentioned is in, because it turned out to need no lifetimes
+and to cost nothing to write: every checked pointer or slice that names no
+region, `p: *i32 = vec<i32>at(v, 0)` or `items: []i32 = vec<i32>items(v)`,
+is a *borrow* and remembers the path it was taken from, `v` or `w*.hp`. A
+call that passes an overlapping path where the callee may move things, a
+non-const `*vec<T>` or `[]T`, kills the borrow; so does a write to the path
+or to a field of it. Using a dead borrow is the error `'a' may be stale:
+'w*.hp', which it was taken from, has been changed since; take it again`.
+Passing the borrow and its source in one call is rejected too, since the
+callee could move the storage before it reads the pointer. A pointer taken
+from a borrow inherits its source. The rule is per proc, over names: a
+borrow is dead after any loop body that could kill it, it is joined across
+the two arms of an `if`, and `a = vec<i32>at(...)` brings it back. Readers
+in std (`at`, `last`, `items`, `get`, `has`, `find`, `scan`, `first`,
+`next`, `length`, `is_empty`) now take `*const` so two reads may live
+together and a read kills nothing; `push`, `set`, `slot`, `remove`, `clear`
+and the rest take `*T` and kill. The reject programs 040 to 043 are the push,
+the loop, the passed-together call and the field write; accept program 005
+shows the four idioms that stay legal.
+
+**Integers.** Signed overflow wraps in every build but Debug, where it traps:
+the generated CMake passes `-fwrapv` to gcc and clang outside Debug, and in
+Debug `-fsanitize=signed-integer-overflow,shift-exponent,integer-divide-by-zero`
+with `-fno-sanitize-recover`, which stops at the first one with the rin source
+line. The two cannot be combined, since `-fwrapv` defines the overflow away
+and silences the check. A shift by the width or more is defined: the compiler
+emits the amount masked to the width, `x << (n & 31)` for a 32-bit `x`, so
+the result is what Rust's release build gives rather than C's undefined
+value; the Debug check on the exponent therefore never fires on rin's own
+shifts and only guards trusted C. Division by zero traps in Debug and is
+whatever the machine does otherwise, as in Rust's release build with
+overflow checks off. MSVC gets no flags: it wraps in practice and takes
+neither spelling. Lossy conversions are unchanged: `cast` is explicit
+already.
+
+**The std audit.** Every std proc a safe program can call was read against
+its signature, because a `[trusted]` proc is a promise: a lie in its
+signature is a hole in safe code. Twenty-one procs that returned `*T` and
+null on a miss now return `?*T`: `hashmap get`, `hashset`, `dlist`, `list`,
+`map`, `queue`, `stack`, and `reflect`'s `find_field`, `find_value_by_name`
+and `find_value_by_value`; their callers in std were fixed to test the result.
+`vec<T>push` aborts rather than writing through a null arena, which a zeroed
+`vec` in trusted code could reach. `hashmap<K, V>make(r)` and
+`hashmap<K, V>set(m, key, value)` were added, so a hashmap can be owned by a
+region the way a `vec` is; accept program 006 is a word count in a region.
+The `list`, `map`, `queue` and `stack` containers take an arena directly and
+have no `make(r)`, so safe code cannot build one; they stay trusted-only until
+they are given the same shape as `vec` and `hashmap`.
+
+**Threads.** There is nothing to check because there is nothing to call: std
+has no thread, atomic or lock API, and a safe body cannot call a C proc that
+takes a pointer, so a safe program is single-threaded by construction. The
+`thread` region in [Not covered](#not-covered) is still the design for the
+day std gets one; until then a program that needs threads does it in
+`[unsafe]` code and owns the result.
+
+**Where this leaves it against Rust.** Rust's safe subset has three things
+this does not: a type system that proves every pointer, every container and
+every thread, where this one trusts 287 std procs and audits them by hand;
+narrowing and borrows over field paths, where this one tracks names and the
+paths they were taken from; and ten years of people trying to break it. What
+it has that Rust does not is the price: a region on each field that holds a
+pointer, `?*T` on what may be null, and nothing else, with no lifetimes, no
+ownership and no borrow annotations anywhere in the 370 lines of
+safe programs in the suite.
+
 **Not done.** Dynamic regions; guard pages in debug builds; narrowing of a
 field path (`if (a*.next) { a*.next*.v }` needs a local); `stable<T>` and
-`handle<T>` in std; `?*T` on std's find procs, which still return `*T` and
-null, trusted; integer overflow, division and shifts, which are
-[safety.md](safety.md)'s list; data races; and rin-dod itself, which checks
-only with `--unsafe`: its first lesson alone has 63 errors in safe mode, 38
-of them direct `printf` calls, 13 writes to std fields with no region. The
-course was written for C's model and porting it is the real measure of the
-annotation cost; the counts above are from programs written for this one.
+`handle<T>` in std; `make(r)` for `list`, `map`, `queue` and `stack`; `+%`
+and the other explicitly wrapping operators, which are not needed now that
+wrapping is the default; a mechanical check that a `[trusted]` signature is
+honest, which stays a review; and rin-dod itself, which checks only with
+`--unsafe`: its first lesson alone has 63 errors in safe mode, 38 of them
+direct `printf` calls, 13 writes to std fields with no region. The course was
+written for C's model and porting it is the real measure of the annotation
+cost; the counts above are from programs written for this one.

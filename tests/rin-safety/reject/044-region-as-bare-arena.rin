@@ -1,0 +1,6 @@
+// expect: never to a bare '*memops_arena'
+import "std/memops.rin"
+region level;
+main: proc() -> i32 = {
+    region level { _ = memops_arena_get_pos(level); }
+    return 0; }
