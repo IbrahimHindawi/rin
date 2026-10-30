@@ -1,0 +1,15 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<u8> in level = vec<u8>make(level, 0);
+        for (i: u32 = 0; i < 300; i += 1) { _ = vec<u8>push(v, cast(i, u8)); }
+        w: *vec<[3]u64> in level = vec<[3]u64>make(level, 1);
+        a: [3]u64 = { 1, 2, 3 };
+        _ = vec<[3]u64>push(w, a);
+        _ = vec<[3]u64>push(w, a);
+        printfmt("{} {} {}\n", vec<u8>at(v, 299)*, vec<[3]u64>at(w, 1)*[2], w*.length);
+    }
+    return 0; }

@@ -1,0 +1,6 @@
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = { x: *u64 in level = new<u64>(level); x* = 16; pp: *?*i32 = cast(x, *?*i32); if (pp*) { printfmt("{}\n", pp**); } }
+    return 0;
+}

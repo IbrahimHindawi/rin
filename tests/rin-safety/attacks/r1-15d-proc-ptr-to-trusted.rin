@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "std/memops.rin"
+level: region;
+main: proc() -> i32 = {
+    f: *proc(arena: *memops_arena, alloc_size: u64, align: u64) -> ^void = memops_arena_push;
+    level: region = { x: *i32 in level = new<i32>(level); x* = 5; printfmt("{}\n", x*); }
+    return 0;
+}

@@ -1,0 +1,13 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<[]i32> in level = vec<[]i32>make(level, 1);
+        if (1) { xs: [3]i32 = { 1, 2, 3 }; s: []i32 = xs[0..3]; _ = vec<[]i32>push(v, s); }
+        if (1) { ys: [3]i64 = { -1, -1, -1 }; ys[0] += 1; }
+        e: *[]i32 = vec<[]i32>at(v, 0);
+        printfmt("{}\n", e*[0]);
+    }
+    return 0;
+}

@@ -1,0 +1,6 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    total: i32 = 0;
+    for (i: i32 = 0; i < 3; i += 1) { x: i32 = i; q: *i32 = x&; total += q*; }
+    printfmt("{}\n", total);
+    return 0; }

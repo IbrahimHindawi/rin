@@ -1,0 +1,3 @@
+import "std/print.rin"
+import "std/string8.rin"
+main: proc() -> i32 = { s: string8slice = {}; printfmt("{} {}\n", s.length, string8slice_equals(s, s)); return 0; }

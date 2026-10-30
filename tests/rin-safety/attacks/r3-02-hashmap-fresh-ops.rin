@@ -1,0 +1,14 @@
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region;
+
+main: proc() -> i32 = {
+    level: region = {
+        m: *hashmap<i64, i32> in level = hashmap<i64, i32>make(level);
+        g: ?*i32 = hashmap<i64, i32>get(m, 1);
+        printfmt("{} {} {} {} {} {}\n", g ? 1 : 0, hashmap<i64, i32>has(m, 1), hashmap<i64, i32>get_or(m, 1, -7),
+            hashmap<i64, i32>remove(m, 1), hashmap<i64, i32>first(m), hashmap<i64, i32>find(m, 5));
+        hashmap<i64, i32>clear(m);
+        printfmt("{}\n", hashmap<i64, i32>scan(m, 100));
+    }
+    return 0; }

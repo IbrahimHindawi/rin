@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "std/reflect.rin"
+main: proc() -> i32 = {
+    n: i32 = 5;
+    p: ^i32 = n&;
+    q: ^void = n&;
+    printfmt("{}\n", p != null && q != null ? 1 : 0);
+    return 0; }

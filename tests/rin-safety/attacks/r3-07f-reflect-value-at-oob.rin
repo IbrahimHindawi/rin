@@ -1,0 +1,7 @@
+import "std/print.rin"
+import "std/reflect.rin"
+color: enum = { red, green }
+main: proc() -> i32 = {
+    v: *const reflect_value = reflect_value_at(color<>&, 9);
+    printfmt("{}\n", v*.value);
+    return 0; }

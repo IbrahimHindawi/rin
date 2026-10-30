@@ -1,0 +1,10 @@
+import "std/print.rin"
+color: enum = { red, green }
+main: proc() -> i32 = {
+    z: f32 = 0.0;
+    inf: f32 = 1.0 / z;
+    nan: f32 = inf - inf;
+    b: b32 = 1;
+    c: color = color.green;
+    printfmt("{} {} {:.1} {} {}\n", inf, nan, inf, b, c);
+    return 0; }

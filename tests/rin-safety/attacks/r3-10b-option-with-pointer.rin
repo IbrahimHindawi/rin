@@ -1,0 +1,7 @@
+import "std/print.rin"
+import "std/option.rin"
+main: proc() -> i32 = {
+    x: i32 = 5;
+    o: option<*i32> = option<*i32>some(x&);
+    printfmt("{}\n", option<*i32>unwrap(o)*);
+    return 0; }

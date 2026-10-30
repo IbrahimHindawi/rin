@@ -1,0 +1,10 @@
+import "std/print.rin"
+import "std/hashset.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        s: *hashset<i64> in level = new<hashset<i64>>(level);
+        printfmt("{} {}\n", hashset<i64>has(s, 3), hashset<i64>length(s));
+        printfmt("{}\n", hashset<i64>first(s));
+    }
+    return 0; }

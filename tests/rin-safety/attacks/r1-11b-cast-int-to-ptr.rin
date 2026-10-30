@@ -1,0 +1,2 @@
+import "std/print.rin"
+main: proc() -> i32 = { x: u64 = 16; p: *i32 = cast(x, *i32); printfmt("{}\n", p*); return 0; }

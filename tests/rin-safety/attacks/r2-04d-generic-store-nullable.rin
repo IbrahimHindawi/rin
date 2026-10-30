@@ -1,0 +1,8 @@
+import "std/print.rin"
+store: proc<T>(dst: *T, v: T) -> void = { dst* = v; }
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    if (1) { x: i32 = 3; store<?*i32>(q&, x&); }
+    if (1) { y: i64 = 0x4141414141414141; y += 1; }
+    if (q) { printfmt("{}\n", q*); }
+    return 0; }

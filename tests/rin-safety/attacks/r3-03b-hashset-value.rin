@@ -1,0 +1,6 @@
+import "std/print.rin"
+import "std/hashset.rin"
+main: proc() -> i32 = {
+    s: hashset<i64> = {};
+    printfmt("{}\n", hashset<i64>length(s&));
+    return 0; }

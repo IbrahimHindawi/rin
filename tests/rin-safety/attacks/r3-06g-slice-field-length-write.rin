@@ -1,0 +1,10 @@
+import "std/print.rin"
+level: region;
+holder: struct = { xs: []i32 in level; }
+main: proc() -> i32 = {
+    level: region = {
+        h: *holder in level = new<holder>(level, { .xs = new_slice<i32>(level, 2) });
+        h*.xs.length = 1000000000;
+        printfmt("{}\n", h*.xs[900000000]);
+    }
+    return 0; }

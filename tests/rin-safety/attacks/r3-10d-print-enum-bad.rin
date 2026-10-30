@@ -1,0 +1,7 @@
+import "std/print.rin"
+import "std/reflect.rin"
+color: enum = { red, green }
+main: proc() -> i32 = {
+    print_enum(color<>&, 77);
+    printfmt("\n{}\n", reflect_name_from_value_or(color<>&, 77, "?"));
+    return 0; }

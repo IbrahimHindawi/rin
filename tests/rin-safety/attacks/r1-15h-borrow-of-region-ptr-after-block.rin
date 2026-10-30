@@ -1,0 +1,13 @@
+import "std/print.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        total: i32 = 0;
+        for (i: i32 = 0; i < 2; i += 1) {
+            frame: region = { xs: []i32 in frame = new_slice<i32>(frame, 4); xs[0] = 7 + i; total += xs[0]; }
+        }
+        printfmt("{}\n", total);
+    }
+    return 0;
+}

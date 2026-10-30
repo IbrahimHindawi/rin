@@ -1,0 +1,13 @@
+import "std/print.rin"
+level: region;
+clear: proc(pp: *?*i32) -> void = { pp* = null; }
+main: proc() -> i32 = {
+    level: region = {
+        p: ?*i32 = new<i32>(level);
+        if (p) {
+            clear(p&);
+            printfmt("{}\n", p*);
+        }
+    }
+    return 0;
+}

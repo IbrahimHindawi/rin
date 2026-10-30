@@ -1,0 +1,8 @@
+import "std/print.rin"
+level: region;
+a: struct = { x: u64; }
+b: struct = { p: *i32 in level; }
+main: proc() -> i32 = {
+    level: region = { v: a = { .x = 16 }; w: b = cast(v, b); printfmt("{}\n", w.p*); }
+    return 0;
+}

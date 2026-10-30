@@ -1,0 +1,17 @@
+import "std/print.rin"
+import "std/list.rin"
+import "std/queue.rin"
+import "std/stack.rin"
+import "std/map.rin"
+level: region;
+
+main: proc() -> i32 = {
+    level: region = {
+        m: *map<i32> in level = map<i32>make(level);
+        map<i32>put(m, "a", 1);
+        p: ?*i32 = map<i32>find(m, "a");
+        names: [26]^const char = { "b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z","aa" };
+        for (i: i32 = 0; i < 26; i += 1) { map<i32>put(m, names[i], i); }
+        if (p) { printfmt("{}\n", p*); }
+    }
+    return 0; }

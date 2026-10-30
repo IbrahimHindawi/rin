@@ -1,0 +1,7 @@
+import "std/print.rin"
+import "std/reflect.rin"
+pt: struct = { x: i32; y: i32; }
+main: proc() -> i32 = {
+    f: *const reflect_field = reflect_field_at(pt<>&, 7);
+    printfmt("{}\n", f*.offset);
+    return 0; }

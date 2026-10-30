@@ -1,0 +1,8 @@
+import "std/print.rin"
+level: region;
+inner: struct = { p: *i32 in level; }
+outer: struct = { n: i32; i: inner; }
+main: proc() -> i32 = {
+    level: region = { o: outer = { .n = 1 }; printfmt("{}\n", o.i.p*); }
+    return 0;
+}

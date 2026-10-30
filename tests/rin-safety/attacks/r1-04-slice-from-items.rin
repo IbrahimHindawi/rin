@@ -1,0 +1,14 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+sum: proc(xs: []i32) -> i32 = { t: i32 = 0; for (i: u64 = 0; i < xs.length; i += 1) { t += xs[i]; } return t; }
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 1);
+        _ = vec<i32>push(v, 1);
+        xs: []i32 = vec<i32>items(v);
+        for (i: i32 = 0; i < 100; i += 1) { _ = vec<i32>push(v, i); }
+        printfmt("{} {}\n", xs[0], sum(xs));
+    }
+    return 0;
+}

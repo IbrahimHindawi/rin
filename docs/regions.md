@@ -648,6 +648,14 @@ pointer, `?*T` on what may be null, and nothing else, with no lifetimes, no
 ownership and no borrow annotations anywhere in the 370 lines of
 safe programs in the suite.
 
+**The attack corpus is in the repo.** All 203 programs from the three
+rounds, plus the false-positive probes, are in `tests/rin-safety/attacks`,
+with `tests/run_rin_attacks.py` confirming each is still rejected, or still
+clean if it is on the list of programs that check clean by design. The
+README there says how to add one. `docs/regions-log.md` is the log of how
+the rules came to be, and `docs/handoff-CLAUDE.md` the operational notes for
+whoever continues the work.
+
 **Not done.** Dynamic regions; guard pages in debug builds; narrowing of a
 field path (`if (a*.next) { a*.next*.v }` needs a local); `stable<T>` and
 `handle<T>` in std; a string type safe code can hold by value, since

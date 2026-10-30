@@ -1,0 +1,4 @@
+import "std/print.rin"
+g: i32 = 4;
+f: proc(p: *i32 = g&) -> *i32 = { return p; }
+main: proc() -> i32 = { q: *i32 = f(); printfmt("{}\n", q*); return 0; }

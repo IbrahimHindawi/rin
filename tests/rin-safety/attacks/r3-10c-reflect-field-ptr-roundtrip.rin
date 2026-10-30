@@ -1,0 +1,11 @@
+import "std/print.rin"
+import "std/reflect.rin"
+pt: struct = { x: i32; y: i32; }
+main: proc() -> i32 = {
+    p: pt = { .x = 1, .y = 2 };
+    f: ?*const reflect_field = reflect_find_field(pt<>&, "y");
+    if (f) {
+        q: ^void = reflect_field_ptr(p&, f);
+        printfmt("{}\n", q != null ? 1 : 0);
+    }
+    return 0; }

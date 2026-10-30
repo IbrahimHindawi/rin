@@ -1,0 +1,10 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        q: ?*i32 = null;
+        if (1) { v: *vec<i32> in level = vec<i32>make(level, 1); _ = vec<i32>push(v, 7); q = vec<i32>at(v, 0); }
+        if (q) { printfmt("{}\n", q*); }
+    }
+    return 0; }

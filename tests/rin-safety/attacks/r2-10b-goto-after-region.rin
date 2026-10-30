@@ -1,0 +1,10 @@
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    n: i32 = 0;
+    top: label = {
+        level: region = { x: *i32 in level = new<i32>(level); x* = n; n += 1; }
+        if (n < 2) { goto top; }
+    }
+    printfmt("{}\n", n);
+    return 0; }

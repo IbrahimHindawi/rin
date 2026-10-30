@@ -1,0 +1,16 @@
+import "std/print.rin"
+level: region;
+frame: region in level;
+box: struct = { p: *i32 in frame; }
+main: proc() -> i32 = {
+    level: region = {
+        q: ?*i32 = null;
+        frame: region = {
+            b: *box in frame = new<box>(frame, { .p = new<i32>(frame) });
+            b*.p* = 7;
+            q = b*.p;
+        }
+        frame: region = { z: *i32 in frame = new<i32>(frame); z* = 99; }
+        if (q) { printfmt("{}\n", q*); }
+    }
+    return 0; }

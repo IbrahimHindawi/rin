@@ -1,0 +1,15 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+w: struct = { hp: *vec<i32> in level; x: *vec<i32> in level; }
+pick: proc(a: *vec<i32> in level, b: *vec<i32> in level, c: b32) -> *vec<i32> in level = { return c ? a : b; }
+main: proc(argc: i32, argv: ^^char) -> i32 = {
+    level: region = {
+        ww: *w in level = new<w>(level, { .hp = vec<i32>make(level, 1), .x = vec<i32>make(level, 1) });
+        _ = vec<i32>push(ww*.hp, 1);
+        p: *i32 = vec<i32>at(ww*.hp, 0);
+        al: *vec<i32> in level = pick(ww*.hp, ww*.x, argc > 0);
+        for (i: i32 = 0; i < 64; i += 1) { _ = vec<i32>push(al, 42); }
+        printfmt("{}\n", p*);
+    }
+    return 0; }

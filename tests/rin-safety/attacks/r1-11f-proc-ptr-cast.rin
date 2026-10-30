@@ -1,0 +1,9 @@
+import "std/print.rin"
+f: proc(x: i32) -> i32 = { return x + 1; }
+main: proc() -> i32 = {
+    g: *proc(x: i32) -> i32 = f;
+    h: *proc(p: *i32) -> i32 = cast(g, *proc(p: *i32) -> i32);
+    x: i32 = 5;
+    printfmt("{}\n", h(x&));
+    return 0;
+}

@@ -1,0 +1,6 @@
+import "std/print.rin"
+import "std/reflect.rin"
+main: proc() -> i32 = {
+    x: [3]c8 = { 97, 98, 99 };
+    printfmt("{}\n", reflect_cstr_equal(x[0]&, "abcdefghijklmnopqrstuvwxyz0123456789abcdefghijklmnopqrstuvwxyz0123456789"));
+    return 0; }

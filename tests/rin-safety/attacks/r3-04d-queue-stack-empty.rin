@@ -1,0 +1,20 @@
+import "std/print.rin"
+import "std/list.rin"
+import "std/queue.rin"
+import "std/stack.rin"
+import "std/map.rin"
+level: region;
+
+main: proc() -> i32 = {
+    level: region = {
+        q: *queue<i32> in level = queue<i32>make(level);
+        s: *stack<i32> in level = stack<i32>make(level);
+        a: ?*node<i32> = queue<i32>pop(q);
+        b: ?*node<i32> = queue<i32>front(q);
+        c: ?*node<i32> = stack<i32>take(s);
+        d: ?*node<i32> = stack<i32>top(s);
+        printfmt("{} {} {} {} {} {}\n", a ? 1 : 0, b ? 1 : 0, c ? 1 : 0, d ? 1 : 0, queue<i32>length(q), stack<i32>length(s));
+        t: *node<i32> = q*.tail;
+        printfmt("{}\n", t*.data);
+    }
+    return 0; }

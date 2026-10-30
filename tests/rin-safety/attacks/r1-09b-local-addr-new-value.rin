@@ -1,0 +1,8 @@
+import "std/print.rin"
+level: region;
+h: struct = { p: ?*i32 in level; }
+mk: proc(r: region level) -> *h in level = { x: i32 = 3; return new<h>(r, { .p = x& }); }
+main: proc() -> i32 = {
+    level: region = { k: *h in level = mk(level); if (k*.p) { printfmt("{}\n", k*.p*); } }
+    return 0;
+}

@@ -1,0 +1,12 @@
+import "std/print.rin"
+level: region;
+frame: region in level;
+holder: struct = { p: ?*i32 in frame; }
+main: proc() -> i32 = {
+    level: region = {
+        s: holder = {};
+        frame: region = { s.p = new<i32>(frame); if (s.p) { s.p* = 7; } }
+        frame: region = { z: *i32 in frame = new<i32>(frame); z* = 99; }
+        if (s.p) { printfmt("{}\n", s.p*); }
+    }
+    return 0; }

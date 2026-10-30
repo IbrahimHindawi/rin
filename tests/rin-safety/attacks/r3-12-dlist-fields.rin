@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/dlist.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        d: *dlist<i32> in level = new<dlist<i32>>(level);
+        printfmt("{}\n", d*.head*.data);
+    }
+    return 0; }

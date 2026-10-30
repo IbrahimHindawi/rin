@@ -1,0 +1,6 @@
+import "std/print.rin"
+import "std/string8.rin"
+main: proc() -> i32 = {
+    s: string8slice = string8slice_from_cstr("hello");
+    printfmt("{}\n", s.length);
+    return 0; }

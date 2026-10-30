@@ -1,0 +1,18 @@
+import "std/print.rin"
+import "std/list.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<i32> in level = list<i32>make(level);
+        list<i32>push(l, 1);
+        a: ?*node<i32> = list<i32>node_at(l, -1);
+        printfmt("{}\n", a ? 1 : 0);
+        b: ?*node<i32> = list<i32>take_at(l, 5);
+        printfmt("{}\n", b ? 1 : 0);
+        c: ?*node<i32> = list<i32>take(l, 99);
+        printfmt("{}\n", c ? 1 : 0);
+        list<i32>insert(l, 2, 1);
+        list<i32>insert(l, 3, 99);
+        printfmt("{}\n", list<i32>length(l));
+    }
+    return 0; }

@@ -1,0 +1,11 @@
+import "std/print.rin"
+level: region;
+empty: struct = { }
+main: proc() -> i32 = {
+    level: region = {
+        a: *empty in level = new<empty>(level);
+        b: *empty in level = new<empty>(level);
+        xs: []empty in level = new_slice<empty>(level, 5);
+        printfmt("{} {}\n", xs.length, a == b ? 1 : 0);
+    }
+    return 0; }

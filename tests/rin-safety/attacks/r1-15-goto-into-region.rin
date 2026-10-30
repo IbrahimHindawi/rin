@@ -1,0 +1,8 @@
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    p: ?*i32 in level = null;
+    goto inside;
+    level: region = { p = new<i32>(level); inside: if (p) { p* = 1; printfmt("{}\n", p*); } }
+    return 0;
+}

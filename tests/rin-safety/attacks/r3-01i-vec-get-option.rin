@@ -1,0 +1,14 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+
+import "std/option.rin"
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 0);
+        o: option<i32> = vec<i32>get(v, 3);
+        printfmt("{} {}\n", option<i32>is_some(o), option<i32>unwrap_or(o, -1));
+        x: i32 = option<i32>unwrap(o);
+        printfmt("{}\n", x);
+    }
+    return 0; }

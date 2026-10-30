@@ -1,0 +1,8 @@
+import "std/print.rin"
+swap: proc<T>(a: *T, b: *T) -> void = { t: T = a*; a* = b*; b* = t; }
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    if (1) { x: i32 = 3; r: ?*i32 = x&; swap<?*i32>(q&, r&); }
+    if (1) { y: i64 = 0x4141414141414141; y += 1; }
+    if (q) { printfmt("{}\n", q*); }
+    return 0; }

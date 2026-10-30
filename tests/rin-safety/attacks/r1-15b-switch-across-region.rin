@@ -1,0 +1,10 @@
+import "std/print.rin"
+level: region;
+main: proc(argc: i32, argv: ^^char) -> i32 = {
+    switch (argc) {
+        case 1: level: region = { x: *i32 in level = new<i32>(level); x* = 1; printfmt("{}\n", x*); }
+        case 2: printfmt("two\n"); break;
+        default: break;
+    }
+    return 0;
+}

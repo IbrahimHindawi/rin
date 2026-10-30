@@ -1,0 +1,7 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [3]i32 = { 1, 2, 3 };
+    xs: []i32 = a[0..3];
+    xs.length += 1000;
+    printfmt("{}\n", xs[900]);
+    return 0; }

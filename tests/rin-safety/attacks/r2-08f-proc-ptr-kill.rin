@@ -1,0 +1,15 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+grow: proc(v: *vec<i32>) -> void = { for (i: i32 = 0; i < 64; i += 1) { _ = vec<i32>push(v, 42); } }
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 1);
+        _ = vec<i32>push(v, 1);
+        p: *i32 = vec<i32>at(v, 0);
+        f: *proc(v: *vec<i32>) -> void = grow;
+        f(v);
+        vec<i32>at(v, 0)* = 42;
+        printfmt("{} (42 if fresh)\n", p*);
+    }
+    return 0; }

@@ -1,0 +1,6 @@
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = { xs: []u64 in level = new_slice<u64>(level, 2); xs[0] = 16; ps: []*i32 in level = cast(xs, []*i32 in level); printfmt("{}\n", ps[0]*); }
+    return 0;
+}

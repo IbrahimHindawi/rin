@@ -1,0 +1,15 @@
+import "std/print.rin"
+import "std/map.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        m: *map<i32> in level = map<i32>make(level);
+        z: ?*i32 = map<i32>find(m, "nothing");
+        printfmt("{}\n", z ? 1 : 0);
+        e: ?*i32 = map<i32>find(m, "");
+        printfmt("{}\n", e ? 1 : 0);
+        map<i32>put(m, "", 5);
+        e2: ?*i32 = map<i32>find(m, "");
+        printfmt("{} {}\n", e2 ? e2* : -1, map<i32>count(m));
+    }
+    return 0; }

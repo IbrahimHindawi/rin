@@ -1,0 +1,11 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+set_len: proc<T>(v: *vec<T>, n: u64) -> void = { v*.length = n; }
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 1);
+        set_len<i32>(v, 1000000);
+        printfmt("{}\n", vec<i32>at(v, 500000)*);
+    }
+    return 0; }

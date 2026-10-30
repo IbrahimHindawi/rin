@@ -1,0 +1,14 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+
+big: struct = { a: [7]u64; b: u8; c: f64; }
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<big> in level = vec<big>make(level, 0);
+        for (i: u64 = 0; i < 100; i += 1) { b: big = {}; b.a[6] = i; b.c = 1.5; _ = vec<big>push(v, b); }
+        printfmt("{} {}\n", vec<big>at(v, 99)*.a[6], vec<big>last(v)*.c);
+        p: big = vec<big>pop(v);
+        printfmt("{} {}\n", p.a[6], v*.length);
+    }
+    return 0; }

@@ -1,0 +1,13 @@
+import "std/print.rin"
+level: region;
+frame: region in level;
+w: struct = { keep: ?*i32 in level; }
+stash: proc(r: region R, dst: *w in level) -> void = { p: *i32 in R = new<i32>(r); dst*.keep = p; }
+main: proc() -> i32 = {
+    level: region = {
+        h: *w in level = new<w>(level);
+        frame: region = { stash(frame, h); }
+        frame: region = { z: *i32 in frame = new<i32>(frame); z* = 99; }
+        if (h*.keep) { printfmt("{}\n", h*.keep*); }
+    }
+    return 0; }

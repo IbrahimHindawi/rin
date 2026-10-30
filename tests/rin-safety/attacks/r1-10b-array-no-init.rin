@@ -1,0 +1,7 @@
+import "std/print.rin"
+level: region;
+e: struct = { p: *i32 in level; }
+main: proc() -> i32 = {
+    level: region = { xs: [2]e; printfmt("{}\n", xs[0].p*); }
+    return 0;
+}

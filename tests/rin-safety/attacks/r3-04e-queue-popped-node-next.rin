@@ -1,0 +1,15 @@
+import "std/print.rin"
+import "std/list.rin"
+import "std/queue.rin"
+import "std/stack.rin"
+import "std/map.rin"
+level: region;
+
+main: proc() -> i32 = {
+    level: region = {
+        q: *queue<i32> in level = queue<i32>make(level);
+        queue<i32>push(q, 1); queue<i32>push(q, 2);
+        a: ?*node<i32> = queue<i32>pop(q);
+        if (a) { printfmt("{}\n", a*.next*.data); }
+    }
+    return 0; }

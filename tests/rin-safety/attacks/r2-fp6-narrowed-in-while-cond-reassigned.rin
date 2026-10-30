@@ -1,0 +1,13 @@
+import "std/print.rin"
+level: region;
+node: struct = { v: i32; next: ?*node in level; }
+main: proc() -> i32 = {
+    level: region = {
+        b: *node in level = new<node>(level, { .v = 2, .next = null });
+        a: *node in level = new<node>(level, { .v = 1, .next = b });
+        p: ?*node in level = a;
+        total: i32 = 0;
+        while (p) { total += p*.v; p = p*.next; }
+        printfmt("{}\n", total);
+    }
+    return 0; }

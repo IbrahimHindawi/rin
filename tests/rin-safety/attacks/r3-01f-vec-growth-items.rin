@@ -1,0 +1,14 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 1);
+        for (i: i32 = 0; i < 1000; i += 1) { _ = vec<i32>push(v, i); }
+        xs: []i32 = vec<i32>items(v);
+        s: i64 = 0;
+        for (i: u64 = 0; i < xs.length; i += 1) { s += xs[i]; }
+        printfmt("{} {} {}\n", xs.length, s, vec<i32>last(v)*);
+    }
+    return 0; }

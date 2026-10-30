@@ -1,0 +1,4 @@
+import "std/print.rin"
+world: struct = { arr: [4]i32; }
+f: proc(w: *world) -> *i32 = { tmp: world = w*; return tmp.arr[0]&; }
+main: proc() -> i32 = { w: world = {}; q: *i32 = f(w&); if (1) { y: i64 = 0x4141414141414141; y += 1; } printfmt("{}\n", q*); return 0; }

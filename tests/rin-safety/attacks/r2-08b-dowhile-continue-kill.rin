@@ -1,0 +1,17 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+main: proc(argc: i32, argv: ^^char) -> i32 = {
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 1);
+        _ = vec<i32>push(v, 1);
+        p: *i32 = vec<i32>at(v, 0);
+        n: i32 = 0;
+        do {
+            n += 1;
+            if (n == 1) { for (i: i32 = 0; i < 64; i += 1) { _ = vec<i32>push(v, 42); } continue; }
+            p = vec<i32>at(v, 0);
+        } while (n < 1);
+        printfmt("{}\n", p*);
+    }
+    return 0; }

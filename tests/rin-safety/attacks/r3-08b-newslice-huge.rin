@@ -1,0 +1,10 @@
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        n: u64 = 0; n -= 1; n = n / 2;
+        xs: []i32 in level = new_slice<i32>(level, n);
+        xs[1000000] = 5;
+        printfmt("{}\n", xs[1000000]);
+    }
+    return 0; }

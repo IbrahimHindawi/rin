@@ -1,0 +1,13 @@
+import "std/print.rin"
+level: region;
+frame: region in level;
+f: proc() -> i32 = { frame: region = { x: *i32 in frame = new<i32>(frame); x* = 3; return x*; } return 0; }
+main: proc() -> i32 = {
+    level: region = {
+        p: ?*i32 in frame = null;
+        frame: region = { p = new<i32>(frame); if (p) { p* = 7; } }
+        v: i32 = f();
+        if (p) { printfmt("{} {}\n", v, p*); }
+    }
+    return 0;
+}

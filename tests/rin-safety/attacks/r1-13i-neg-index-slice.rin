@@ -1,0 +1,3 @@
+import "std/print.rin"
+level: region;
+main: proc(argc: i32, argv: ^^char) -> i32 = { level: region = { xs: []i32 in level = new_slice<i32>(level, 3); i: i32 = -argc; printfmt("{}\n", xs[i]); } return 0; }

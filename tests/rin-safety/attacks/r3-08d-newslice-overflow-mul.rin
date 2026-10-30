@@ -1,0 +1,11 @@
+import "std/print.rin"
+level: region;
+wide: struct = { a: [16]u64; }
+main: proc() -> i32 = {
+    level: region = {
+        n: u64 = 0; n -= 1; n = n / 100;
+        xs: []wide in level = new_slice<wide>(level, n);
+        xs[5].a[0] = 7;
+        printfmt("{} {}\n", xs[5].a[0], xs.length);
+    }
+    return 0; }

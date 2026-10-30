@@ -1,0 +1,7 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    for (i: i32 = 0; i < 1; i += 1) { q = i&; }
+    if (1) { y: i64 = 0x4141414141414141; y += 1; }
+    if (q) { printfmt("{}\n", q*); }
+    return 0; }

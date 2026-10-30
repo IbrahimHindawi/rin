@@ -1,0 +1,12 @@
+import "std/print.rin"
+level: region;
+frame: region in level;
+keep: proc<T>(x: T) -> T = { tmp: T = x; return tmp; }
+main: proc() -> i32 = {
+    level: region = {
+        q: ?*i32 = null;
+        frame: region = { z: *i32 in frame = new<i32>(frame); z* = 7; q = keep<*i32 in frame>(z); }
+        frame: region = { z: *i32 in frame = new<i32>(frame); z* = 99; }
+        if (q) { printfmt("{}\n", q*); }
+    }
+    return 0; }

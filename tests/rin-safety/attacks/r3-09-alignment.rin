@@ -1,0 +1,16 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+al32: struct[align(32)] = { x: f64; }
+main: proc() -> i32 = {
+    level: region = {
+        a: *u8 in level = new<u8>(level);
+        b: *al32 in level = new<al32>(level);
+        b*.x = 2.5;
+        v: *vec<al32> in level = vec<al32>make(level, 0);
+        for (i: i32 = 0; i < 9; i += 1) { c: al32 = {}; c.x = 1.0; _ = vec<al32>push(v, c); }
+        xs: []al32 in level = new_slice<al32>(level, 3);
+        xs[2].x = 3.0;
+        printfmt("{} {} {}\n", b*.x, vec<al32>at(v, 8)*.x, xs[2].x);
+    }
+    return 0; }

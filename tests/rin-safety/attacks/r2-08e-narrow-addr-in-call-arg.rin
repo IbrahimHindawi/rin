@@ -1,0 +1,7 @@
+import "std/print.rin"
+clear: proc(pp: *?*i32) -> void = { pp* = null; }
+main: proc() -> i32 = {
+    x: i32 = 5;
+    p: ?*i32 = x&;
+    if (p) { clear(p&); printfmt("{}\n", p*); }
+    return 0; }

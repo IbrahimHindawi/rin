@@ -1,0 +1,8 @@
+import "std/print.rin"
+level: region;
+frame: region in level;
+work: proc<T>(x: T) -> T = { frame: region = { y: *T in frame = new<T>(frame, x); return y*; } return x; }
+main: proc() -> i32 = {
+    frame: region = { y: *i32 in frame = new<i32>(frame); y* = 5; z: i32 = work<i32>(3); printfmt("{} {}\n", y*, z); }
+    return 0;
+}

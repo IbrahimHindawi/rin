@@ -1,0 +1,2 @@
+import "std/print.rin"
+main: proc(argc: i32, argv: ^^char) -> i32 = { xs: [3]i32 = { 1, 2, 3 }; i: i64 = argc * 1000; printfmt("{}\n", xs[i]); j: i64 = -argc; printfmt("{}\n", xs[j]); return 0; }

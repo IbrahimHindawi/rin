@@ -1,0 +1,11 @@
+import "std/print.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        arr: [2]?*i32 in frame = {};
+        frame: region = { arr[0] = new<i32>(frame); if (arr[0]) { arr[0]* = 7; } }
+        frame: region = { z: *i32 in frame = new<i32>(frame); z* = 99; }
+        if (arr[0]) { printfmt("{}\n", arr[0]*); }
+    }
+    return 0; }

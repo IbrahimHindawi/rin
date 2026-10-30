@@ -1,0 +1,11 @@
+import "std/print.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        arr: []?*i32 in level = new_slice<?*i32 in frame>(level, 2);
+        frame: region = { arr[0] = new<i32>(frame); }
+        if (arr[0]) { printfmt("{}\n", arr[0]*); }
+    }
+    return 0;
+}

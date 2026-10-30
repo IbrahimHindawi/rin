@@ -1,0 +1,17 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+in2: struct = { v: *vec<i32> in level; }
+in1: struct = { i: *in2 in level; }
+w: struct = { a: *in1 in level; }
+main: proc() -> i32 = {
+    level: region = {
+        ww: *w in level = new<w>(level, { .a = new<in1>(level, { .i = new<in2>(level, { .v = vec<i32>make(level, 1) }) }) });
+        _ = vec<i32>push(ww*.a*.i*.v, 1);
+        p: *i32 = vec<i32>at(ww*.a*.i*.v, 0);
+        a1: *in1 in level = ww*.a;
+        a2: *in2 in level = a1*.i;
+        for (i: i32 = 0; i < 64; i += 1) { _ = vec<i32>push(a2*.v, 42); }
+        printfmt("{}\n", p*);
+    }
+    return 0; }

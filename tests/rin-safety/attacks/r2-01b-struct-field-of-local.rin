@@ -1,0 +1,9 @@
+import "std/print.rin"
+inner: struct = { v: i32; }
+outer: struct = { a: i32; inr: inner; }
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    if (1) { s: outer = {}; s.inr.v = 5; q = s.inr.v&; }
+    if (1) { y: i64 = 0x4141414141414141; y += 1; }
+    if (q) { printfmt("{}\n", q*); }
+    return 0; }

@@ -1,0 +1,2 @@
+import "std/print.rin"
+main: proc(argc: i32, argv: ^^char) -> i32 = { a: i32 = 7; b: i32 = argc - 1; printfmt("{}\n", a % b); return 0; }

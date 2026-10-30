@@ -1,0 +1,4 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    printfmt("{:999999999}|\n", 1);
+    return 0; }

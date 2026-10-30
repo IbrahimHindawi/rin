@@ -1,0 +1,4 @@
+import "std/print.rin"
+keep: proc(out: *?*i32, p: *i32) -> void = { out* = p; }
+make: proc(out: *?*i32) -> void = { x: i32 = 3; keep(out, x&); }
+main: proc() -> i32 = { q: ?*i32 = null; make(q&); if (q) { printfmt("{}\n", q*); } return 0; }

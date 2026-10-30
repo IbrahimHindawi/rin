@@ -1,0 +1,8 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    s: []i32 = {};
+    if (1) { xs: [3]i32 = { 1, 2, 3 }; s = xs[0..3]; }
+    if (1) { ys: [3]i64 = { -1, -1, -1 }; ys[0] += 1; }
+    printfmt("{}\n", s[0]);
+    return 0;
+}

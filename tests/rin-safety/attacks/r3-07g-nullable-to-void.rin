@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "std/reflect.rin"
+pt: struct = { x: i32; y: i32; }
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    ok: b32 = reflect_field_zero_by_name(q, pt<>&, "y");
+    printfmt("{}\n", ok);
+    return 0; }

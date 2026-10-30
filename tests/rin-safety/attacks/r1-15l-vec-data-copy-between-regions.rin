@@ -1,0 +1,13 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        keep: *vec<i32> in level = vec<i32>make(level, 1);
+        frame: region = { tmp: *vec<i32> in frame = vec<i32>make(frame, 4); _ = vec<i32>push(tmp, 7); keep*.data = tmp*.data; keep*.length = 1; }
+        frame: region = { z: *vec<i32> in frame = vec<i32>make(frame, 4); _ = vec<i32>push(z, 99); }
+        printfmt("{}\n", vec<i32>at(keep, 0)*);
+    }
+    return 0;
+}

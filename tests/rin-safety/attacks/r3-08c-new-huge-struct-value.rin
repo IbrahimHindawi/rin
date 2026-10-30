@@ -1,0 +1,12 @@
+import "std/print.rin"
+level: region;
+chunk: struct = { a: [1073741824]u64; }
+main: proc() -> i32 = {
+    level: region = {
+        for (i: i32 = 0; i < 2000; i += 1) {
+            p: *chunk in level = new<chunk>(level);
+            p*.a[0] = 1;
+        }
+        printfmt("done\n");
+    }
+    return 0; }

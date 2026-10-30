@@ -1,0 +1,12 @@
+import "std/print.rin"
+import "std/string8.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        b: *string8_builder in level = new<string8_builder>(level);
+        string8_builder_append_byte(b, 65);
+        string8_builder_append_cstr(b, "bc");
+        s: string8slice = string8_builder_slice(b);
+        string8slice_print(s);
+    }
+    return 0; }

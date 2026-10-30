@@ -1,0 +1,8 @@
+import "std/print.rin"
+pair: struct<T> = { a: T; b: T; }
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    if (1) { x: i32 = 3; y: i32 = 4; p: pair<*i32> = { .a = x&, .b = y& }; q = p.a; }
+    if (1) { z: i64 = 0x4141414141414141; z += 1; }
+    if (q) { printfmt("{}\n", q*); }
+    return 0; }

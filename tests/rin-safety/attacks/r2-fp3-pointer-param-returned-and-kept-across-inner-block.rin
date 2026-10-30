@@ -1,0 +1,8 @@
+import "std/print.rin"
+first: proc(xs: []i32) -> *i32 = { return xs[0]&; }
+main: proc() -> i32 = {
+    xs: [3]i32 = { 1, 2, 3 };
+    q: ?*i32 = null;
+    if (1) { tmp: i32 = 1; q = first(xs[0..3]); tmp += 1; }
+    if (q) { printfmt("{}\n", q*); }
+    return 0; }

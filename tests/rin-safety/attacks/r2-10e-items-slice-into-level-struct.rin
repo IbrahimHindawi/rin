@@ -1,0 +1,13 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+frame: region in level;
+w: struct = { s: []i32 in level; }
+main: proc() -> i32 = {
+    level: region = {
+        ww: *w in level = new<w>(level);
+        frame: region = { v: *vec<i32> in frame = vec<i32>make(frame, 2); _ = vec<i32>push(v, 7); ww*.s = vec<i32>items(v); }
+        frame: region = { z: *vec<i32> in frame = vec<i32>make(frame, 2); _ = vec<i32>push(z, 99); }
+        printfmt("{}\n", ww*.s[0]);
+    }
+    return 0; }
