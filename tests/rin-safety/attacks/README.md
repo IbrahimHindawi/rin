@@ -27,6 +27,14 @@ a reject test in `../reject`; the full story is in
 or still clean if it is on the list; `--run` also builds and runs the clean
 ones under the sanitizers.
 
+## Run new ones in a VM
+
+These programs exist to do what a program should not, and one has crashed Windows
+itself. A recursion opening a terabyte arena per level ran out of address space
+and took the machine down on process exit, twice (bugcheck 0x1A, subtype 0x3453, in
+`MiDeleteFinalPageTables`), which is why a local region now reserves 4 GiB. `rin
+check` never runs anything; run an unproven program in a VM or Windows Sandbox.
+
 ## Add yours
 
 Write a program that should be unsafe, drop it here, run the script. Three

@@ -17555,6 +17555,11 @@ static void type_check_program(Program *prog, memops_arena *arena) {
     TypeScope globals = type_scope_make(arena, 64);
     type_scope_add_reflection_globals(arena, &globals, prog);
     type_scope_add_function_like_macros(arena, &globals, prog);
+    /* Each reserves a terabyte of address space, of 128 a process has. */
+    if (prog->regions.length > 64) {
+        type_error_message("more than 64 regions are declared: each reserves a terabyte of address space; "
+                           "use a local region, 'tmp: region of r = { }'", 1, 1);
+    }
     g_safe_body = g_safety;
     compute_proc_opens(prog, arena);
     compute_proc_moves(prog, arena);
