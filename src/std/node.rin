@@ -6,7 +6,7 @@ node: struct<T> = {
     data: T;
 }
 
-node<T>create: proc<T>(arena: *memops_arena, data: T) -> *node<T> = { unsafe {
+node<T>create: proc[unsafe]<T>(arena: *memops_arena, data: T) -> *node<T> = {
     node: *node<T> = cast(memops_arena_push_zero(arena, sizeof(node<T>), alignof(node<T>)), *node<T>);
     if (node == null) {
         printf("rin runtime: node allocation failure\n");
@@ -15,13 +15,13 @@ node<T>create: proc<T>(arena: *memops_arena, data: T) -> *node<T> = { unsafe {
     node*.next = null;
     node*.data = data;
     return node;
-} }
+}
 
-node<T>destroy: proc<T>(arena: *memops_arena, node: **node<T>) -> void = {
+node<T>destroy: proc[unsafe]<T>(arena: *memops_arena, node: **node<T>) -> void = {
     unsafe { node* = null; }
 }
 
-node<T>value: proc<T>(node: *node<T>) -> option<T> = {
+node<T>value: proc[unsafe]<T>(node: *node<T>) -> option<T> = {
     if (node == null) {
         return option<T>none();
     }

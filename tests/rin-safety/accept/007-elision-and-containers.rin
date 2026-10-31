@@ -1,6 +1,6 @@
 // A pointer returned with no region points into what the caller passed, as
 // Rust's lifetime elision has it; printfmt takes a width and precision; and
-// list, queue, stack and map live in regions like vec and hashmap do.
+// list, queue, stack and map, outside the safe subset, live in regions like vec does.
 import "std/print.rin"
 import "std/vec.rin"
 import "std/list.rin"
@@ -41,6 +41,7 @@ main: proc() -> i32 = {
         t: []i32 = rest(vec<i32>items(v));
         printfmt("{} {}\n", h ? h* : -1, t[0]);
 
+        unsafe {
         l: *list<i32> in level = list<i32>make(level);
         list<i32>push(l, 1); list<i32>push(l, 2); list<i32>push_front(l, 0);
         n: option<*node<i32>> = list<i32>node_at(l, 1);
@@ -58,6 +59,7 @@ main: proc() -> i32 = {
         a: option<*i32> = map<i32>find(m, "a");
         z: option<*i32> = map<i32>find(m, "z");
         printfmt("map a {} z {} count {}\n", a ? a* : -1, z ? z* : -1, map<i32>count(m));
+        }
     }
     return 0;
 }

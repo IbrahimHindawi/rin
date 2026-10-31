@@ -9,11 +9,11 @@ queue: struct<T> = {
     arena: ^memops_arena;
 }
 
-queue<T>make: proc<T>(r: region R) -> *queue<T> in R = { unsafe {
+queue<T>make: proc[unsafe]<T>(r: region R) -> *queue<T> in R = {
     q: *queue<T> in R = cast(memops_arena_push_zero(r, sizeof(queue<T>), alignof(queue<T>)), *queue<T> in R);
     q*.arena = r;
     return q;
-} }
+}
 
 queue<T>arena_of: proc[unsafe]<T>(q: *const queue<T>) -> *memops_arena = {
     if (q*.arena == null) {
@@ -23,21 +23,21 @@ queue<T>arena_of: proc[unsafe]<T>(q: *const queue<T>) -> *memops_arena = {
     unsafe { return q*.arena[0]&; }
 }
 
-queue<T>push: proc<T>(q: *queue<T>, data: T) -> void = { unsafe { queue<T>enqueue(queue<T>arena_of(q), q, data); } }
-queue<T>pop: proc<T>(q: *queue<T>) -> option<*node<T>> = { unsafe { return queue<T>dequeue(queue<T>arena_of(q), q); } }
-queue<T>front: proc<T>(q: *const queue<T>) -> option<*node<T>> = { unsafe { return q*.head; } }
-queue<T>length: proc<T>(q: *const queue<T>) -> usize = { unsafe { return q*.length; } }
+queue<T>push: proc[unsafe]<T>(q: *queue<T>, data: T) -> void = { queue<T>enqueue(queue<T>arena_of(q), q, data); }
+queue<T>pop: proc[unsafe]<T>(q: *queue<T>) -> option<*node<T>> = { return queue<T>dequeue(queue<T>arena_of(q), q); }
+queue<T>front: proc[unsafe]<T>(q: *const queue<T>) -> option<*node<T>> = { return q*.head; }
+queue<T>length: proc[unsafe]<T>(q: *const queue<T>) -> usize = { return q*.length; }
 
-queue<T>create: proc<T>(arena: *memops_arena) -> *queue<T> = { unsafe {
+queue<T>create: proc[unsafe]<T>(arena: *memops_arena) -> *queue<T> = {
     queue: *queue<T> = cast(memops_arena_push_zero(arena, sizeof(queue<T>), alignof(queue<T>)), *queue<T>);
     if (queue == null) {
         printf("rin runtime: queue allocation failure\n");
         exit(1);
     }
     return queue;
-} }
+}
 
-queue<T>enqueue: proc<T>(arena: *memops_arena, queue: *queue<T>, data: T) -> void = {
+queue<T>enqueue: proc[unsafe]<T>(arena: *memops_arena, queue: *queue<T>, data: T) -> void = {
     node: *node<T> = node<T>create(arena, data);
     if (queue*.head == null) {
         unsafe { queue*.head = node; }
@@ -50,7 +50,7 @@ queue<T>enqueue: proc<T>(arena: *memops_arena, queue: *queue<T>, data: T) -> voi
     queue*.length += 1;
 }
 
-queue<T>dequeue: proc<T>(arena: *memops_arena, queue: *queue<T>) -> option<*node<T>> = {
+queue<T>dequeue: proc[unsafe]<T>(arena: *memops_arena, queue: *queue<T>) -> option<*node<T>> = {
     if (queue == null || queue*.head == null) {
         return null;
     }
@@ -64,14 +64,14 @@ queue<T>dequeue: proc<T>(arena: *memops_arena, queue: *queue<T>) -> option<*node
     unsafe { return node; }
 }
 
-queue<T>peek: proc<T>(arena: *memops_arena, queue: *queue<T>) -> option<*node<T>> = {
+queue<T>peek: proc[unsafe]<T>(arena: *memops_arena, queue: *queue<T>) -> option<*node<T>> = {
     if (queue == null) {
         return null;
     }
     unsafe { return queue*.head; }
 }
 
-queue<T>destroy: proc<T>(arena: *memops_arena, queue: *queue<T>) -> void = {
+queue<T>destroy: proc[unsafe]<T>(arena: *memops_arena, queue: *queue<T>) -> void = {
     if (queue != null) {
         unsafe { queue*.head = null; }
         unsafe { queue*.tail = null; }
@@ -79,6 +79,6 @@ queue<T>destroy: proc<T>(arena: *memops_arena, queue: *queue<T>) -> void = {
     }
 }
 
-queue<T>is_empty: proc<T>(queue: *queue<T>) -> b32 = {
+queue<T>is_empty: proc[unsafe]<T>(queue: *queue<T>) -> b32 = {
     return queue == null || queue*.length == 0;
 }

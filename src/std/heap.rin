@@ -17,13 +17,13 @@ heap: struct<T> = {
     less: *proc(a: T, b: T) -> b32;
 }
 
-heap<T>make: proc<T>(less: *proc(a: T, b: T) -> b32) -> heap<T> = { unsafe {
+heap<T>make: proc[unsafe]<T>(less: *proc(a: T, b: T) -> b32) -> heap<T> = {
     h: heap<T> = {};
     h.less = less;
     return h;
-} }
+}
 
-heap<T>push: proc<T>(arena: *memops_arena, h: *heap<T>, x: T) -> void = { unsafe {
+heap<T>push: proc[unsafe]<T>(arena: *memops_arena, h: *heap<T>, x: T) -> void = {
     if (h*.length == h*.border) {
         old_border: u64 = h*.border;
         h*.border = old_border == 0 ? 16 : old_border * 2;
@@ -44,9 +44,9 @@ heap<T>push: proc<T>(arena: *memops_arena, h: *heap<T>, x: T) -> void = { unsafe
         i = parent;
     }
     h*.data[i] = x;
-} }
+}
 
-heap<T>top: proc<T>(h: *heap<T>) -> T = {
+heap<T>top: proc[unsafe]<T>(h: *heap<T>) -> T = {
     if (h*.length == 0) {
         unsafe { printf("rin runtime: heap top on an empty heap\n"); }
         exit(1);
@@ -54,7 +54,7 @@ heap<T>top: proc<T>(h: *heap<T>) -> T = {
     unsafe { return h*.data[0]; }
 }
 
-heap<T>pop: proc<T>(h: *heap<T>) -> T = { unsafe {
+heap<T>pop: proc[unsafe]<T>(h: *heap<T>) -> T = {
     top: T = heap<T>top(h);
     h*.length -= 1;
     n: u64 = h*.length;
@@ -79,12 +79,12 @@ heap<T>pop: proc<T>(h: *heap<T>) -> T = { unsafe {
     }
     h*.data[i] = x;
     return top;
-} }
+}
 
-heap<T>is_empty: proc<T>(h: *heap<T>) -> b32 = {
+heap<T>is_empty: proc[unsafe]<T>(h: *heap<T>) -> b32 = {
     return h*.length == 0;
 }
 
-heap<T>clear: proc<T>(h: *heap<T>) -> void = {
+heap<T>clear: proc[unsafe]<T>(h: *heap<T>) -> void = {
     h*.length = 0;
 }

@@ -37,9 +37,6 @@ r3-02b-hashmap-growth.rin
 r3-02c-hashmap-remove-reinsert-churn.rin
 r3-02d-hashmap-iterate-indices.rin
 r3-02f-hashmap-ptr-values.rin
-r3-04c-list-oob.rin
-r3-04f-map-ops.rin
-r3-04g-map-growth.rin
 r3-05-print-cstr-null.rin
 r3-05c-printfmt-malformed.rin
 r3-05d-printfmt-malformed2.rin
@@ -86,7 +83,6 @@ r4-321-cstr-append-safe-body.rin
 r4-322-cstr-append-short-unterminated.rin
 r4-324-cstr-ends-with.rin
 r4-330-array-param-zero-then-write.rin
-r4-365-stack-pop-empty.rin
 r4-373-nested-tmps-break-balance.rin
 r4-374-frame-inner-loop-break.rin
 r4-375-continue-switch-region.rin
@@ -112,7 +108,6 @@ r5-e-033-named-const-array-var-index.rin
 r5-e-040-new-slice-field-call-read.rin
 r5-e-041-const-eval-sub-div-u64-oob.rin
 r5-e-042-const-eval-i32-mul-wrap.rin
-r5-s-007-map-find-null-key.rin
 r5-s-015-cstr-of-unseq-clobber.rin
 r5-s-035-vec-append-self-grow.rin
 r5-s-045-cstr-ends-with-short.rin
@@ -179,7 +174,6 @@ r7-b-022-fmt-truncated-number-keeps-high-digits.rin
 r7-b-023-parse-i64-overflow-reports-success.rin
 r7-b-024-file-seek-truncates-to-long.rin
 r7-b-025-file-read-after-write-no-seek.rin
-r7-b-026-list-take-compares-padding.rin
 r7-b-027-slice-equals-padding-and-float.rin
 r7-b-028-memops-helpers-zero-align.rin
 r7-b-029-null-plus-zero.rin

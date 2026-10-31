@@ -21,6 +21,11 @@ The patterns come from a shipped engine, and a feature earns its place by a patt
 | Pointers used briefly | Locals and parameters may not outlive what they point at | `*T` with no region |
 | GPU buffers and files | Tied to a region, and released when it ends; there is no release call to forget or misuse | `memops_arena_on_end`, `file_open_in` |
 
+Std's containers in the safe subset are `vec`, `table` and `hashmap`. `list`, `dlist`, `map`, `hashset`, `deque`,
+`stack`, `queue`, `heap`, `dsu`, `array` and the node types are `proc[unsafe]`: no safe program relies on them, so
+their bodies are not part of what the claim trusts. `python tests/rin_trusted_lines.py` counts what it does trust:
+the lines of `unsafe` that safe code can reach, following calls by name.
+
 What safe rin cannot express, on purpose: lifetimes that overlap without nesting, freeing one object for
 its memory back, data that churns forever in a region that never ends, long-lived data pointing at
 shorter-lived data, threads, closures and coroutines, and type-erased or raw memory. Each of those is an

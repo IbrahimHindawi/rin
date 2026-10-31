@@ -10,69 +10,69 @@ print_cstr: proc(text: ^const char) -> void = {
     unsafe { printf("%s", text); }
 }
 
-print: proc<i8>(x: i8) -> void = { unsafe {
-    printf("%d", x);
-} }
+print: proc<i8>(x: i8) -> void = {
+    unsafe { printf("%d", x); }
+}
 
-print: proc<i16>(x: i16) -> void = { unsafe {
-    printf("%d", x);
-} }
+print: proc<i16>(x: i16) -> void = {
+    unsafe { printf("%d", x); }
+}
 
-print: proc<i32>(x: i32) -> void = { unsafe {
-    printf("%d", x);
-} }
+print: proc<i32>(x: i32) -> void = {
+    unsafe { printf("%d", x); }
+}
 
-print: proc<i64>(x: i64) -> void = { unsafe {
+print: proc<i64>(x: i64) -> void = {
     rin_print_i64(x);
-} }
+}
 
-print: proc<u8>(x: u8) -> void = { unsafe {
-    printf("%u", x);
-} }
+print: proc<u8>(x: u8) -> void = {
+    unsafe { printf("%u", x); }
+}
 
-print: proc<u16>(x: u16) -> void = { unsafe {
-    printf("%u", x);
-} }
+print: proc<u16>(x: u16) -> void = {
+    unsafe { printf("%u", x); }
+}
 
-print: proc<u32>(x: u32) -> void = { unsafe {
-    printf("%u", x);
-} }
+print: proc<u32>(x: u32) -> void = {
+    unsafe { printf("%u", x); }
+}
 
-print: proc<u64>(x: u64) -> void = { unsafe {
+print: proc<u64>(x: u64) -> void = {
     rin_print_u64(x);
-} }
+}
 
-print: proc<usize>(x: usize) -> void = { unsafe {
-    printf("%zu", x);
-} }
+print: proc<usize>(x: usize) -> void = {
+    unsafe { printf("%zu", x); }
+}
 
-print: proc<f32>(x: f32) -> void = { unsafe {
-    printf("%f", cast(x, f64));
-} }
+print: proc<f32>(x: f32) -> void = {
+    unsafe { printf("%f", cast(x, f64)); }
+}
 
-print: proc<f64>(x: f64) -> void = { unsafe {
-    printf("%f", x);
-} }
+print: proc<f64>(x: f64) -> void = {
+    unsafe { printf("%f", x); }
+}
 
-print: proc<char>(x: char) -> void = { unsafe {
-    printf("%c", x);
-} }
+print: proc<char>(x: char) -> void = {
+    unsafe { printf("%c", x); }
+}
 
-print: proc<b32>(x: b32) -> void = { unsafe {
+print: proc<b32>(x: b32) -> void = {
     if (x) {
         print_cstr("true");
     } else {
         print_cstr("false");
     }
-} }
+}
 
-print: proc<^char>(x: ^char) -> void = { unsafe {
+print: proc<^char>(x: ^char) -> void = {
     print_cstr(x);
-} }
+}
 
-print: proc<^const char>(x: ^const char) -> void = { unsafe {
+print: proc<^const char>(x: ^const char) -> void = {
     print_cstr(x);
-} }
+}
 
 // What printfmt prints for an enum with no print<E> of its own: the member's
 // name, or `type(value)` when the value is not a member -- one read from a

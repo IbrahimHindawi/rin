@@ -7,7 +7,7 @@ binode: struct<T> = {
     data: T;
 }
 
-binode<T>create: proc<T>(arena: *memops_arena, data: T) -> *binode<T> = { unsafe {
+binode<T>create: proc[unsafe]<T>(arena: *memops_arena, data: T) -> *binode<T> = {
     node: *binode<T> = cast(memops_arena_push_zero(arena, sizeof(binode<T>), alignof(binode<T>)), *binode<T>);
     if (node == null) {
         printf("rin runtime: binode allocation failure\n");
@@ -17,13 +17,13 @@ binode<T>create: proc<T>(arena: *memops_arena, data: T) -> *binode<T> = { unsafe
     node*.prev = null;
     node*.data = data;
     return node;
-} }
+}
 
-binode<T>destroy: proc<T>(arena: *memops_arena, node: **binode<T>) -> void = {
+binode<T>destroy: proc[unsafe]<T>(arena: *memops_arena, node: **binode<T>) -> void = {
     unsafe { node* = null; }
 }
 
-binode<T>value: proc<T>(node: *binode<T>) -> option<T> = {
+binode<T>value: proc[unsafe]<T>(node: *binode<T>) -> option<T> = {
     if (node == null) {
         return option<T>none();
     }
