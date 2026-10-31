@@ -1,0 +1,11 @@
+// A generic struct is not checked at its declaration, so a field may name a region no one declared.
+import "std/print.rin"
+level: region;
+B: struct<T> = { p: ?*T in Q; }
+mk: proc(r: region Q) -> B<i32> = { return { .p = new<i32>(r, 42) }; }
+main: proc() -> i32 = {
+    s: B<i32> = {};
+    level: region = { s = mk(level); }
+    if (s.p) { printfmt("{}\n", s.p*); }
+    return 0;
+}

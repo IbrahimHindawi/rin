@@ -1,0 +1,12 @@
+// A static local is checked as a local: it survives the region it was filled in.
+import "std/print.rin"
+level: region;
+peek: proc() -> i32 = {
+    level: region = {
+        q: static ?*i32 in level = null;
+        if (q) { printfmt("{}\n", q*); }
+        q = new<i32>(level, 42);
+    }
+    return 0;
+}
+main: proc() -> i32 = { _ = peek(); _ = peek(); return 0; }

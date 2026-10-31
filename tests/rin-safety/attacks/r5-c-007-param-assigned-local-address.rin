@@ -1,0 +1,11 @@
+// H12: name_is_param says a parameter's name is the caller's memory, whatever was assigned to it.
+import "std/print.rin"
+smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
+leak: proc(p: *i32) -> *i32 = { x: i32 = 42; p = x&; return p; }
+main: proc() -> i32 = {
+    a: i32 = 1;
+    r: *i32 = leak(a&);
+    smash();
+    printfmt("{}\n", r*);
+    return 0;
+}

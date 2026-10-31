@@ -1,0 +1,13 @@
+// The same with && used as a value.
+import "std/print.rin"
+H: struct = { x: i32; }
+S: struct = { h: ?*H in permanent; }
+g: S = {};
+clr: proc() -> i32 = { g.h = null; return 1; }
+add: proc(a: i32, b: i32) -> i32 = { return a + b; }
+main: proc() -> i32 = {
+    g.h = new<H>(permanent, { .x = 7 });
+    v: b32 = g.h && add(g.h*.x, clr()) > 0;
+    printfmt("{}\n", v);
+    return 0;
+}

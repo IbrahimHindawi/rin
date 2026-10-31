@@ -1,0 +1,7 @@
+// Mutual recursion between two noalias-contained procs touching a global.
+import "std/print.rin"
+g: i32 = 0;
+a2: proc(a: noalias *i32) -> i32;
+a1: proc(a: noalias *i32) -> i32 = { a* = 1; return a2(a); }
+a2: proc(a: noalias *i32) -> i32 = { g = 2; return a1(a); }
+main: proc() -> i32 = { printfmt("{}\n", a1(g&)); return 0; }

@@ -1,0 +1,14 @@
+// H4 for a stack local: q = x& in the then arm, q = null in the else arm, x's block ends.
+import "std/print.rin"
+smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    c: i32 = 1;
+    if (c == 1) {
+        x: i32 = 42;
+        if (c == 1) { q = x&; } else { q = null; }
+    }
+    smash();
+    if (q) { printfmt("{}\n", q*); }
+    return 0;
+}

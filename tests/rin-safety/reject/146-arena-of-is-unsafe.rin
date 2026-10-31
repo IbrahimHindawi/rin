@@ -1,0 +1,10 @@
+// expect: unsafe proc
+import "std/list.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<i32> in level = list<i32>make(level);
+        a: *memops_arena = list<i32>arena_of(l);
+    }
+    return 0;
+}

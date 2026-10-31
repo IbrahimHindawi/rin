@@ -1,0 +1,12 @@
+// A local proc pointer named like a contained proc: lookup_proc_decl finds the contained one.
+import "std/print.rin"
+g: i32 = 0;
+touch: proc() -> void = { g = 2; }
+pure: proc() -> void = { }
+f: proc(a: noalias *i32) -> i32 = {
+    pure: *proc() -> void = touch;
+    a* = 1;
+    pure();
+    return a*;
+}
+main: proc() -> i32 = { printfmt("{}\n", f(g&)); return 0; }

@@ -1,0 +1,10 @@
+// A '*void' takes any '*T', and a '*T' takes a '*void'?
+import "std/print.rin"
+main: proc() -> i32 = {
+    x: i8 = 1;
+    v: *void = x&;
+    w: *i64 = v;
+    w* = 0x4141414141414141;
+    printfmt("{}\n", w*);
+    return 0;
+}

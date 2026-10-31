@@ -1,0 +1,12 @@
+// The ?*T instance returns null legally; the *T instance reuses it and returns null into a *T.
+import "std/print.rin"
+first: proc<T>(xs: []T) -> T = { return xs[0]; }
+main: proc() -> i32 = {
+    na: []?*i32 in permanent = new_slice<?*i32 in permanent>(permanent, 1);
+    a: ?*i32 in permanent = first<?*i32 in permanent>(na);
+    nb: []*i32 in permanent = new_slice<*i32 in permanent>(permanent, 1);
+    nb[0] = new<i32>(permanent, 5);
+    b: *i32 in permanent = first<*i32 in permanent>(nb);
+    printfmt("{}\n", b*);
+    return 0;
+}

@@ -1,0 +1,7 @@
+// expect: would hold a null
+A: struct = { p: *i32 in permanent; }
+B: struct = { a: A; } C: struct = { a: B; } D: struct = { a: C; } E: struct = { a: D; } F: struct = { a: E; }
+G: struct = { a: F; } H: struct = { a: G; } I: struct = { a: H; } J: struct = { a: I; } K: struct = { a: J; }
+L: struct = { a: K; } M: struct = { a: L; } N: struct = { a: M; } O: struct = { a: N; } Q: struct = { a: O; }
+R: struct = { a: Q; } S: struct = { a: R; } T: struct = { a: S; } U: struct = { a: T; }
+main: proc() -> i32 = { x: *U in permanent = new<U>(permanent); return 0; }

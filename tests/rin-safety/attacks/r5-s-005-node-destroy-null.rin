@@ -1,0 +1,14 @@
+// node<T>destroy writes null into a *node<T> the caller holds as non-null.
+import "std/print.rin"
+import "std/list.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<i32> in level = list<i32>make(level);
+        list<i32>push(l, 3);
+        n: *node<i32> = must(list<i32>node_at(l, 0));
+        node<i32>destroy(list<i32>arena_of(l), n&);
+        printfmt("{}\n", n*.data);
+    }
+    return 0;
+}

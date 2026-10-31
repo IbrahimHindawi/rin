@@ -1,0 +1,16 @@
+// A param pointer assigned a shorter-region pointer, then that is read after the region ends.
+import "std/print.rin"
+level: region;
+frame: region in level;
+S: struct = { p: ?*i32 in level; }
+f: proc(s: *S in level) -> void = {
+    frame: region = { s*.p = new<i32>(frame, 42); }
+}
+main: proc() -> i32 = {
+    level: region = {
+        s: *S in level = new<S>(level, { .p = null });
+        f(s);
+        if (s*.p) { printfmt("{}\n", s*.p*); }
+    }
+    return 0;
+}

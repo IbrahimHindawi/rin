@@ -1,0 +1,6 @@
+// A callee's default argument is the address of a global, and it is not in the walk.
+import "std/print.rin"
+g: i32 = 0;
+d: proc(x: *i32 = g&) -> void = { x* = 2; }
+f: proc(a: noalias *i32) -> i32 = { a* = 1; d(); return a*; }
+main: proc() -> i32 = { printfmt("{}\n", f(g&)); return 0; }

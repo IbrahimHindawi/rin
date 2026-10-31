@@ -1,0 +1,8 @@
+import "std/print.rin"
+// rin const_eval: (0-3)/3 = -1 -> <0 would be caught; use /4: -1 ... land >=0? -3/4=0. index 0 no check.
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    xs[(0'u64 - 3'u64) / 4] = 7;
+    printfmt("{}\n", xs[0]);
+    return 0;
+}

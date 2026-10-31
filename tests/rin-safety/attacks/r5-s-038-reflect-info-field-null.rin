@@ -1,0 +1,13 @@
+// reflect_field.info is typed *const reflect (non-null) but is null for a
+// builtin field, so reading it as non-null dereferences null.
+import "std/print.rin"
+import "std/reflect.rin"
+P: struct = { x: i32; }
+main: proc() -> i32 = {
+    f: ?*const reflect_field = reflect_find_field(P<>&, "x");
+    if (f) {
+        info: *const reflect = f*.info;
+        printfmt("{}\n", info*.size);
+    }
+    return 0;
+}

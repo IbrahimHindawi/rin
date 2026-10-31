@@ -1,0 +1,13 @@
+// H29, no local: the region's only mention is a struct result used as an argument.
+import "std/print.rin"
+level: region;
+S: struct = { p: *i32 in level; }
+mk: proc(r: region level) -> S = { return { .p = new<i32>(r, 42) }; }
+pick: proc(s: S) -> *i32 = { return s.p; }
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    level: region = { q = pick(mk(level)); }
+    printfmt("{}\n", q*);
+    return 0;
+}

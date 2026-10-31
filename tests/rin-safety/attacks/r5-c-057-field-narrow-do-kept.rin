@@ -1,0 +1,15 @@
+// Field narrowed before a do-while whose body calls a clearing proc; read after.
+import "std/print.rin"
+H: struct = { x: i32; }
+S: struct = { h: ?*H in permanent; }
+g: S = {};
+clr: proc() -> i32 = { g.h = null; return 0; }
+main: proc() -> i32 = {
+    g.h = new<H>(permanent, { .x = 7 });
+    i: i32 = 0;
+    if (g.h) {
+        do { _ = clr(); i += 1; } while (i < 1);
+        printfmt("{}\n", g.h*.x);
+    }
+    return 0;
+}

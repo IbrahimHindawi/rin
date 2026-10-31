@@ -1,0 +1,7 @@
+// expect: could overwrite the terminator
+import "std/cstr.rin"
+g: [4]char = { 97, 0, 0, 0 };
+clobber: proc() -> i64 = { g[1] = 98; g[2] = 98; g[3] = 98; return 0; }
+main: proc() -> i32 = {
+    return cast(cstr_equals_n(cstr_of(g), "a", cast(clobber(), u64)), i32);
+}

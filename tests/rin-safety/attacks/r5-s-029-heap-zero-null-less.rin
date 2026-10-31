@@ -1,0 +1,15 @@
+// A zeroed heap has a null comparator.
+import "std/print.rin"
+import "std/heap.rin"
+import "std/list.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<i32> in level = list<i32>make(level);
+        h: *heap<i32> in level = new<heap<i32>>(level);
+        heap<i32>push(list<i32>arena_of(l), h, 1);
+        heap<i32>push(list<i32>arena_of(l), h, 2);
+        printfmt("{}\n", heap<i32>top(h));
+    }
+    return 0;
+}

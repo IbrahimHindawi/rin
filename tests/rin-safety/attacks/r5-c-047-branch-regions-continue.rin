@@ -1,0 +1,16 @@
+// A region pointer assigned then 'continue' before the null assignment: the continue state keeps
+// 'dead' but the record's regions are cleared by the later null, so the region end does not kill it.
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    level: region = {
+        for (i: i32 = 0; i < 1; i += 1) {
+            q = new<i32>(level, 42);
+            if (i == 0) { continue; }
+            q = null;
+        }
+    }
+    if (q) { printfmt("{}\n", q*); }
+    return 0;
+}

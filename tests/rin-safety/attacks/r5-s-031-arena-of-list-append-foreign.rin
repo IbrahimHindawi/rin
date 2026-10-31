@@ -1,0 +1,17 @@
+// A level list gets a node allocated from a frame arena via arena_of.
+import "std/print.rin"
+import "std/list.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        keep: *list<i32> in level = list<i32>make(level);
+        frame: region = {
+            scratch: *list<i32> in frame = list<i32>make(frame);
+            list<i32>append(list<i32>arena_of(scratch), keep, 7);
+        }
+        n: ?*node<i32> = list<i32>node_at(keep, 0);
+        printfmt("{}\n", n ? n*.data : -1); // node is in the ended frame
+    }
+    return 0;
+}

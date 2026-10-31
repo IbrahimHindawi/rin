@@ -1,0 +1,17 @@
+import "std/print.rin"
+import "std/hashmap.rin"
+import "std/list.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        m: *hashmap<i64, i32> in level = hashmap<i64, i32>make(level);
+        frame: region = {
+            l: *list<i32> in frame = list<i32>make(frame);
+            _ = hashmap<i64, i32>put(list<i32>arena_of(l), m, 1, 99);
+        }
+        v: ?*i32 = hashmap<i64, i32>get(m, 1); // tables are in ended frame
+        printfmt("{}\n", v ? v* : -1);
+    }
+    return 0;
+}

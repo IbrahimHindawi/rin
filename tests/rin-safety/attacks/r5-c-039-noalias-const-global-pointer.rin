@@ -1,0 +1,6 @@
+// A const global holding a writable pointer counts as not writable.
+import "std/print.rin"
+x: i32 = 0;
+g: const *i32 in permanent = x&;
+f: proc(a: noalias *i32) -> i32 = { a* = 1; g* = 2; return a*; }
+main: proc() -> i32 = { printfmt("{}\n", f(x&)); return 0; }

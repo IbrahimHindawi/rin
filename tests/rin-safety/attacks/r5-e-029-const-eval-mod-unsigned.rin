@@ -1,0 +1,10 @@
+import "std/print.rin"
+// const_eval signed: (2-5) % 100 = -3 -> none? no: -3, <0 caught. Use (5-2)%... land safe. Instead width:
+// (0-1) as u16 index. const_eval -1; C u16 65535.
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    n: u16 = 0'u16 - 1'u16;
+    xs[n] = 7;
+    printfmt("{}\n", xs[0]);
+    return 0;
+}

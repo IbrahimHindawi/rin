@@ -1,0 +1,8 @@
+// expect: may be null
+import "std/print.rin"
+P: struct = { x: i32; }
+main: proc() -> i32 = {
+    f: *const reflect_field = must(reflect_find_field(P<>&, "x"));
+    q: *const reflect = f*.info;
+    return 0;
+}

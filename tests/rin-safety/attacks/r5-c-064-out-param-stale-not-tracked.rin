@@ -1,0 +1,16 @@
+// Writing a frame pointer through an out-param of a level slot inside a shorter region.
+import "std/print.rin"
+level: region;
+frame: region in level;
+store: proc(dst: *?*i32 in level, src: ?*i32 in level) -> void = { dst* = src; }
+main: proc() -> i32 = {
+    level: region = {
+        o: ?*i32 in level = null;
+        frame: region = {
+            y: ?*i32 in frame = new<i32>(frame, 42);
+            store(o&, y);
+        }
+        if (o) { printfmt("{}\n", o*); }
+    }
+    return 0;
+}

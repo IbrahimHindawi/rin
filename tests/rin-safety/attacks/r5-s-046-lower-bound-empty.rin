@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/sort.rin"
+import "std/order.rin"
+main: proc() -> i32 = {
+    xs: [1]i32 = {};
+    e: []i32 = xs[0..0];
+    printfmt("{}\n", lower_bound<i32>(e, 5, less_i32));
+    return 0;
+}

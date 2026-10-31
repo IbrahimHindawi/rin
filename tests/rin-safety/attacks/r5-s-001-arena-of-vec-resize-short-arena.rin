@@ -1,0 +1,19 @@
+// list<T>arena_of hands safe code a raw *memops_arena; vec<T>resize takes any
+// arena. Grow a level vec into a frame arena, then read after frame ends.
+import "std/print.rin"
+import "std/vec.rin"
+import "std/list.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 1);
+        _ = vec<i32>push(v, 7);
+        frame: region = {
+            l: *list<i32> in frame = list<i32>make(frame);
+            _ = vec<i32>resize(list<i32>arena_of(l), v);
+        }
+        printfmt("{}\n", vec<i32>at(v, 0)*); // storage is in the ended frame
+    }
+    return 0;
+}

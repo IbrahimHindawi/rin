@@ -1,0 +1,10 @@
+import "std/print.rin"
+Box: struct<A> = { v: A; }
+get: proc<A>(b: *Box<A>, i: u64) -> i32 = { return b*.v[i]; }
+main: proc() -> i32 = {
+    big: Box<[400]i32> = {};
+    small: Box<[4]i32> = {};
+    printfmt("{}\n", get<[400]i32>(big&, 300));
+    printfmt("{}\n", get<[4]i32>(small&, 300));
+    return 0;
+}

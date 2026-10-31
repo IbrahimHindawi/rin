@@ -1,0 +1,18 @@
+// slice<vec<i32>>copy copies a vec header from frame memory to level memory.
+import "std/print.rin"
+import "std/vec.rin"
+import "std/slice.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        keep: []vec<i32> in level = new_slice<vec<i32>>(level, 1);
+        frame: region = {
+            tmp: []vec<i32> in frame = new_slice<vec<i32>>(frame, 1);
+            tmp[0] = vec<i32>make(frame, 1)*;
+            slice<vec<i32>>copy(keep, tmp);
+        }
+        _ = vec<i32>push(keep[0]&, 1);
+    }
+    return 0;
+}

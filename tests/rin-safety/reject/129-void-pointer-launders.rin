@@ -1,0 +1,11 @@
+// expect: expected 'ptr_u64', got
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        b: *u8 in level = new<u8>(level);
+        v: *void = b;
+        w: *u64 = v;
+        w* = 1;
+    }
+    return 0;
+}

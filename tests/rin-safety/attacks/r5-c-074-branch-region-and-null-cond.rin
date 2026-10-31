@@ -1,0 +1,12 @@
+// Dangling in the then, null in the else, under a condition that is true at runtime.
+import "std/print.rin"
+level: region;
+decide: proc() -> b32 = { return 1; }
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    level: region = {
+        if (decide()) { q = new<i32>(level, 42); } else { q = null; }
+    }
+    if (q) { printfmt("{}\n", q*); }
+    return 0;
+}

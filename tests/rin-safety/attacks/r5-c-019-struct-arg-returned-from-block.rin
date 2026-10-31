@@ -1,0 +1,13 @@
+// H29 through the return check: the result names no region and its source is a struct.
+import "std/print.rin"
+level: region;
+S: struct = { p: *i32 in level; }
+pick: proc(s: S) -> *i32 = { return s.p; }
+leak: proc() -> *i32 = {
+    level: region = {
+        s: S = { .p = new<i32>(level, 42) };
+        return pick(s);
+    }
+    exit(1);
+}
+main: proc() -> i32 = { printfmt("{}\n", leak()*); return 0; }

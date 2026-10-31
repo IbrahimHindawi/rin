@@ -1,0 +1,15 @@
+// vec<T>push(v, vec<T>at(v,0)*) : the element is read from storage that the push
+// may reallocate. append does data[length]=elem after a possible resize; elem was
+// evaluated from old storage first, so this is value-stable. Try passing by alias.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<i64> in level = vec<i64>make(level, 1);
+        _ = vec<i64>push(v, 111);
+        for (i: i64 = 0; i < 200; i += 1) { _ = vec<i64>push(v, vec<i64>at(v, 0)*); }
+        printfmt("{}\n", vec<i64>at(v, 199)*);
+    }
+    return 0;
+}

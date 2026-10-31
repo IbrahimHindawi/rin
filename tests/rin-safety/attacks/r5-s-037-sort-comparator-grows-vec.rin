@@ -1,0 +1,25 @@
+// sort takes []T; the comparator is user code. It can mutate the container the
+// slice views (take a borrow of the vec, pass its items to sort, and the
+// comparator pushes to the vec, reallocating the storage sort is sorting).
+import "std/print.rin"
+import "std/vec.rin"
+import "std/sort.rin"
+level: region;
+S: struct = { v: ?*vec<i32> in permanent; armed: b32; }
+g: S = {};
+cmp: proc(a: i32, b: i32) -> b32 = {
+    if (g.armed && g.v) {
+        g.armed = 0;
+        for (i: i32 = 0; i < 1000; i += 1) { _ = vec<i32>push(must(g.v), 0); }
+    }
+    return a < b;
+}
+main: proc() -> i32 = {
+    v: *vec<i32> in permanent = vec<i32>make(permanent, 32);
+    for (i: i32 = 0; i < 32; i += 1) { _ = vec<i32>push(v, 32 - i); }
+    g.v = v; g.armed = 1;
+    xs: []i32 = vec<i32>items(v);
+    sort<i32>(xs, cmp);
+    printfmt("{}\n", xs[0]);
+    return 0;
+}

@@ -1,0 +1,36 @@
+import "std/print.rin"
+
+/* What the newer rules leave alone: a name that only looks like a generated type, a
+   parameter stepped through itself, a pointer reassigned first thing each time round. */
+level: region;
+entity: struct = { hp: i32; }
+sum: proc(xs: []i32) -> i32 = {
+    t: i32 = 0;
+    while (xs.length > 0) {
+        t += xs[0];
+        xs = xs[1..xs.length];
+    }
+    return t;
+}
+main: proc() -> i32 = {
+    out_entity: i32 = 7;
+    level: region = {
+        q: ?*i32 in level = null;
+        for (i: i32 = 0; i < 2; i += 1) {
+            q = new<i32>(level, i);
+            printfmt("{}\n", must(q)*);
+        }
+        xs: []i32 in level = new_slice<i32>(level, 3);
+        xs[1] = out_entity;
+        printfmt("{}\n", sum(xs));
+    }
+    x: i32 = 1;
+    p: *i32 = x&;
+    for (i: i32 = 0; i < 2; i += 1) {
+        y: i32 = i + 5;
+        p = y&;
+        printfmt("{}\n", p*);
+        p = x&;
+    }
+    return 0;
+}

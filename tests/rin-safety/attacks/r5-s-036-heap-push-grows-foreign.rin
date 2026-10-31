@@ -1,0 +1,18 @@
+import "std/print.rin"
+import "std/heap.rin"
+import "std/order.rin"
+import "std/list.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        h: *heap<i32> in level = new<heap<i32>>(level, { .less = less_i32 });
+        frame: region = {
+            l: *list<i32> in frame = list<i32>make(frame);
+            heap<i32>push(list<i32>arena_of(l), h, 5);
+            heap<i32>push(list<i32>arena_of(l), h, 3);
+        }
+        printfmt("{}\n", heap<i32>top(h)); // data is in ended frame
+    }
+    return 0;
+}

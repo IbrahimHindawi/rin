@@ -1,0 +1,7 @@
+// expect: holding a '*T'
+import "std/result.rin"
+S: struct = { p: *i32 in permanent; }
+main: proc() -> i32 = {
+    r: result<S> = result<S>err(1);
+    return r.value.p*;
+}

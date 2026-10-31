@@ -1,0 +1,11 @@
+import "std/print.rin"
+import "std/result.rin"
+level: region;
+S: struct = { p: *i32 in level; }
+main: proc() -> i32 = {
+    level: region = {
+        r: result<S> = result<S>err(1);
+        printfmt("{}\n", r.value.p*);
+    }
+    return 0;
+}

@@ -1,0 +1,11 @@
+import "std/print.rin"
+read: proc(xs: []i32, i: u64) -> i32 = {
+#undef RIN_INDEX
+#define RIN_INDEX(i, n) (i)
+    return xs[i];
+}
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    printfmt("{}\n", read(xs[0..4], 1000000));
+    return 0;
+}

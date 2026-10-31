@@ -1,0 +1,9 @@
+// Instances are keyed by the mangle, and '?*i32' and '*i32' mangle the same: the nullable instance vouches for the other.
+import "std/print.rin"
+zero: proc<T>() -> T = { x: T = {}; return x; }
+main: proc() -> i32 = {
+    a: ?*i32 = zero<?*i32>();
+    b: *i32 = zero<*i32>();
+    printfmt("{}\n", b*);
+    return 0;
+}

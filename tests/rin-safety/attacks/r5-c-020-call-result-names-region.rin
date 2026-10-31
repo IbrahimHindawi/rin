@@ -1,0 +1,15 @@
+// A call's own result type naming a region is not read for the borrow's regions.
+import "std/print.rin"
+level: region;
+S: struct = { p: *i32 in level; }
+pick: proc(s: S) -> *i32 in level = { return s.p; }
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    level: region = {
+        s: S = { .p = new<i32>(level, 42) };
+        q = pick(s);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

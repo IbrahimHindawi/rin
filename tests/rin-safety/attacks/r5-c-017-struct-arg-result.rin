@@ -1,0 +1,15 @@
+// H29: a struct by value holding a region pointer is no source for a call's result.
+import "std/print.rin"
+level: region;
+S: struct = { p: *i32 in level; }
+pick: proc(s: S) -> *i32 = { return s.p; }
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    level: region = {
+        s: S = { .p = new<i32>(level, 42) };
+        q = pick(s);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

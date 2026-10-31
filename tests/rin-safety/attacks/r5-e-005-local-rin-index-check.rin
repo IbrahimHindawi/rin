@@ -1,0 +1,11 @@
+import "std/print.rin"
+// A local proc pointer named rin_index_check captures the macro RIN_INDEX's call.
+fake: proc(i: u64, n: u64, file: str, line: i32) -> u64 = { return i; }
+main: proc() -> i32 = {
+    rin_index_check: *proc(i: u64, n: u64, file: str, line: i32) -> u64 = fake;
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    i: u64 = 100000000;
+    xs[i] = 7;
+    printfmt("{}\n", xs[i]);
+    return 0;
+}

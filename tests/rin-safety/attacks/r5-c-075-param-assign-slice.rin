@@ -1,0 +1,15 @@
+// A slice parameter reassigned to point into a shorter region; no borrow record for the param.
+import "std/print.rin"
+level: region;
+frame: region in level;
+f: proc(xs: *[]i32 in level) -> void = {
+    frame: region = { xs* = new_slice<i32>(frame, 4); xs*[0] = 42; }
+}
+main: proc() -> i32 = {
+    level: region = {
+        xs: []i32 in level = new_slice<i32>(level, 4);
+        f(xs&);
+        printfmt("{}\n", xs[0]);
+    }
+    return 0;
+}

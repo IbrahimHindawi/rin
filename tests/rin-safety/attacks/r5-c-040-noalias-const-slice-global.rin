@@ -1,0 +1,6 @@
+// A const-qualified slice global over writable memory.
+import "std/print.rin"
+xs: [4]i32 = {};
+g: const []i32 in permanent = xs;
+f: proc(a: noalias *i32) -> i32 = { a* = 1; g[0] = 2; return a*; }
+main: proc() -> i32 = { printfmt("{}\n", f(xs[0]&)); return 0; }

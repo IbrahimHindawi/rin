@@ -1,0 +1,16 @@
+// A proc returning *void from a region pointer argument: the region is laundered off.
+import "std/print.rin"
+level: region;
+frame: region in level;
+erase: proc(p: *i32 in frame) -> *void = { return p; }
+main: proc() -> i32 = {
+    keep: *void = new<i32>(permanent, 0);
+    level: region = {
+        frame: region = {
+            keep = erase(new<i32>(frame, 42));
+        }
+        w: *i32 = keep;
+        printfmt("{}\n", w*);
+    }
+    return 0;
+}

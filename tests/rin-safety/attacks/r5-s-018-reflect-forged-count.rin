@@ -1,0 +1,14 @@
+// A reflect record made by safe code with a count larger than its table.
+import "std/print.rin"
+import "std/reflect.rin"
+level: region;
+P: struct = { x: i32; }
+main: proc() -> i32 = {
+    level: region = {
+        one: *const reflect_field = must(reflect_find_field(P<>&, "x"));
+        r: *reflect in level = new<reflect>(level, { .name = "x", .kind = 0, .count = 100000, .variant = { .fields = one } });
+        f: ?*const reflect_field = reflect_field_at(r, 99999);
+        if (f) { printfmt("{}\n", f*.offset); }
+    }
+    return 0;
+}

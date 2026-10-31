@@ -1,0 +1,10 @@
+// Nullable-blind mangle: a struct field *i32 filled by the ?*i32 instance of a generic.
+import "std/print.rin"
+box: struct<T> = { v: T; }
+zero: proc<T>() -> box<T> = { x: box<T> = {}; return x; }
+main: proc() -> i32 = {
+    a: box<?*i32> = zero<?*i32>();
+    b: box<*i32> = zero<*i32>();
+    printfmt("{}\n", b.v*);
+    return 0;
+}

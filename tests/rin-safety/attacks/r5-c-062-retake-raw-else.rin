@@ -1,0 +1,16 @@
+// The branch clobber for a tracked raw pointer: paths from the else arm win, source change not seen.
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    buf: [8]c8 = {};
+    buf[0] = 'h'; buf[1] = 'i'; buf[2] = 0;
+    other: [8]c8 = {};
+    other[0] = 'y'; other[1] = 'o'; other[2] = 0;
+    p: ^const c8 = cstr_of(buf);
+    c: i32 = 1;
+    if (c == 1) { p = cstr_of(buf); } else { p = cstr_of(other); }
+    buf[0] = 'X';
+    print_cstr(p);
+    printfmt("\n");
+    return 0;
+}

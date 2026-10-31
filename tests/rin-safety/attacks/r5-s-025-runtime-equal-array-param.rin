@@ -1,0 +1,9 @@
+// runtime_equal<[N]T>: an array parameter is a pointer in C; memcmp(a&, b&, sizeof(T)) reads the stack.
+import "std/print.rin"
+import "std/equal.rin"
+main: proc() -> i32 = {
+    a: [4096]i32 = {};
+    b: [4096]i32 = {};
+    printfmt("{}\n", runtime_equal<[4096]i32>(a, b));
+    return 0;
+}

@@ -1,0 +1,11 @@
+import "std/print.rin"
+// coerce_set keeps the first coerce_count when both have the same destination.
+at: proc(s: []i32, i: u64) -> i32 = { return s[i]; }
+get: proc<A>(a: A, i: u64) -> i32 = { return at(a, i); }
+main: proc() -> i32 = {
+    big: [400]i32 = {};
+    small: [4]i32 = {};
+    printfmt("{}\n", get<[400]i32>(big, 300));
+    printfmt("{}\n", get<[4]i32>(small, 300));
+    return 0;
+}

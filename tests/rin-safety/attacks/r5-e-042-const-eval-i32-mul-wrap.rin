@@ -1,0 +1,11 @@
+import "std/print.rin"
+// rin const_eval i64: 65536*65536 = 4294967296, /2147483648 = 2 -> in bounds [4], no check.
+// C: i32 65536*65536 overflows to 0; 0/2147483648 = 0. Here both small; make them differ:
+// 46341*46341 = 2147488281 (i64) ; as i32 wraps to 2147488281-4294967296 = -2147479015 (negative).
+// /1000000000 -> i64: 2 ; C i32: -2. index -2 unchecked.
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    xs[(46341 * 46341) / 1000000000] = 7;
+    printfmt("{}\n", xs[0]);
+    return 0;
+}

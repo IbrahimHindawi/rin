@@ -19,7 +19,7 @@ list<T>make: proc<T>(r: region R) -> *list<T> in R = { unsafe {
     return l;
 } }
 
-list<T>arena_of: proc<T>(l: *const list<T>) -> *memops_arena = {
+list<T>arena_of: proc[unsafe]<T>(l: *const list<T>) -> *memops_arena = {
     if (l*.arena == null) {
         unsafe { printf("rin runtime: list used without an arena; make it with list<T>make\n"); }
         exit(1);

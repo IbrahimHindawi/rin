@@ -1,0 +1,16 @@
+// H1 through the return check: borrow_find finds the shadow that has gone out of scope.
+import "std/print.rin"
+smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
+leak: proc(r: region R, p: *i32) -> *i32 = {
+    x: i32 = 42;
+    q: *i32 = x&;
+    t: region of r = { q: *i32 = p; printfmt("{}\n", q*); }
+    return q;
+}
+main: proc() -> i32 = {
+    a: i32 = 1;
+    z: *i32 = leak(permanent, a&);
+    smash();
+    printfmt("{}\n", z*);
+    return 0;
+}

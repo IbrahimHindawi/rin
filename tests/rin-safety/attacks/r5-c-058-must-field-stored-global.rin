@@ -1,0 +1,10 @@
+// must() on a tmp pointer stored into a permanent global field.
+import "std/print.rin"
+S: struct = { p: ?*i32 in permanent; }
+g: S = {};
+leak: proc(r: region R) -> void = { g.p = must(new<i32>(r, 42)); }
+main: proc() -> i32 = {
+    level: region = { leak(level); }
+    if (g.p) { printfmt("{}\n", g.p*); }
+    return 0;
+}

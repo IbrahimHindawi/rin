@@ -1,0 +1,12 @@
+// Returning from inside a for-loop in a region block: the loop makes the active-region check miss it?
+import "std/print.rin"
+level: region;
+leak: proc() -> *i32 = {
+    level: region = {
+        for (i: i32 = 0; i < 1; i += 1) {
+            return new<i32>(level, 42);
+        }
+    }
+    return must(null);
+}
+main: proc() -> i32 = { printfmt("{}\n", leak()*); return 0; }

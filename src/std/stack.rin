@@ -14,7 +14,7 @@ stack<T>make: proc<T>(r: region R) -> *stack<T> in R = { unsafe {
     return s;
 } }
 
-stack<T>arena_of: proc<T>(s: *const stack<T>) -> *memops_arena = {
+stack<T>arena_of: proc[unsafe]<T>(s: *const stack<T>) -> *memops_arena = {
     if (s*.arena == null) {
         unsafe { printf("rin runtime: stack used without an arena; make it with stack<T>make\n"); }
         exit(1);

@@ -1,0 +1,5 @@
+// expect: preprocessor line
+main: proc() -> i32 = {
+#undef RIN_INDEX
+    return 0;
+}

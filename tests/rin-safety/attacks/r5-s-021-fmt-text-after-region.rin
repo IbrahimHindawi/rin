@@ -1,0 +1,17 @@
+// fmt_text gives a raw pointer into the region; keep it past the region's end.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        k: ^const c8 = "x";
+        frame: region = {
+            f: *fmt in frame = fmt_make(frame, 16);
+            fmt_cstr(f, "hello");
+            k = fmt_text(f);
+        }
+        print_cstr(k);
+    }
+    return 0;
+}

@@ -1,0 +1,11 @@
+// An array of *void, each element laundering a different-sized pointer.
+import "std/print.rin"
+main: proc() -> i32 = {
+    small: *u8 in permanent = new<u8>(permanent, 1);
+    guard: *u8 in permanent = new<u8>(permanent, 9);
+    a: [1]*void in permanent = { small };
+    w: *u64 = a[0];
+    w* = 0x4242424242424242;
+    printfmt("{}\n", guard*);
+    return 0;
+}

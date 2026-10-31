@@ -1,0 +1,12 @@
+import "std/print.rin"
+// A local proc pointer named rin_range_check shadows the helper: no bounds check on a subrange.
+passthru: proc(a: u64, b: u64, n: u64, file: str, line: i32) -> u64 = { return a; }
+main: proc() -> i32 = {
+    rin_range_check: *proc(a: u64, b: u64, n: u64, file: str, line: i32) -> u64 = passthru;
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    lo: u64 = 1000000;
+    hi: u64 = 2000000;
+    s: []i32 = xs[lo..hi];
+    printfmt("{}\n", s[500000]);
+    return 0;
+}

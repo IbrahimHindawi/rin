@@ -1,0 +1,17 @@
+// A static borrowed pointer keeps a caller's local; a later call reads it after the frame is gone.
+import "std/print.rin"
+stash: proc(p: ?*i32) -> i32 = {
+    q: static ?*i32 = null;
+    r: i32 = 0;
+    if (q) { r = q*; }
+    q = p;
+    return r;
+}
+fill: proc() -> void = { x: i32 = 42; _ = stash(x&); }
+clobber: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } }
+main: proc() -> i32 = {
+    fill();
+    clobber();
+    printfmt("{}\n", stash(null));
+    return 0;
+}

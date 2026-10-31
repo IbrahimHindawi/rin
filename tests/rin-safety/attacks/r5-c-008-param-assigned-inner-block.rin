@@ -1,0 +1,9 @@
+// H12: parameter assigned the address of an inner block's local, read after the block.
+import "std/print.rin"
+smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
+f: proc(p: *i32) -> i32 = {
+    if (1) { x: i32 = 42; p = x&; }
+    smash();
+    return p*;
+}
+main: proc() -> i32 = { a: i32 = 1; printfmt("{}\n", f(a&)); return 0; }

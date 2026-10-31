@@ -1,0 +1,21 @@
+import "std/print.rin"
+lv: region;
+// new_slice's count may be a field; a field's base may be a call, evaluated twice.
+S: struct = { n: u64; }
+calls: i32 = 0;
+mk: proc() -> S = {
+    calls += 1;
+    if (calls == 1) { return { .n = 1 }; }
+    return { .n = 1000000 };
+}
+fill: proc<R>(r: region R) -> i32 = {
+    s: []i32 = new_slice<i32>(r, mk().n);
+    s[999999] = 7;
+    return s[999999];
+}
+main: proc() -> i32 = {
+    lv: region = {
+        printfmt("{}\n", fill<i32>(lv));
+    }
+    return 0;
+}

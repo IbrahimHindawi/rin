@@ -1,0 +1,11 @@
+import "std/print.rin"
+N: const i32 = 4;
+S: struct = { xs: [N]i32; }
+f: proc(s: *S, N: u64, i: u64) -> i32 = {
+    return s*.xs[i];
+}
+main: proc() -> i32 = {
+    s: S = {};
+    printfmt("{}\n", f(s&, 200000000, 100000000));
+    return 0;
+}

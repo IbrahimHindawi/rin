@@ -1,0 +1,14 @@
+import "std/print.rin"
+// A slice reached through a pointer is not index_stable, so the index goes through rin_slice_at.
+S: struct = { xs: []i32; }
+read: proc(s: *S, i: u64) -> i32 = {
+#undef rin_slice_at
+#define rin_slice_at(sl, i, sz, f, l) ((void*)(((rin_slice_raw*)(sl))->data + (i) * (sz)))
+    return s*.xs[i];
+}
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    s: S = { .xs = xs[0..4] };
+    printfmt("{}\n", read(s&, 1000000));
+    return 0;
+}

@@ -1,0 +1,14 @@
+// expect: different things about a pointer
+import "std/slice.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        d: []?*i32 in level = new_slice<?*i32 in level>(level, 1);
+        frame: region = {
+            s: []?*i32 in frame = new_slice<?*i32 in frame>(frame, 1);
+            slice<?*i32>copy(d, s);
+        }
+    }
+    return 0;
+}

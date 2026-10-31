@@ -1,0 +1,12 @@
+// cstr_of checks the terminator, then a sibling argument overwrites it.
+import "std/print.rin"
+import "std/cstr.rin"
+g: [8]c8 = {};
+clobber: proc() -> ^const c8 = {
+    for (i: u64 = 0; i < 8; i += 1) { g[i] = cast(65, c8); }
+    return "zz";
+}
+main: proc() -> i32 = {
+    printfmt("{}\n", cstr_find(cstr_of(g), clobber()));
+    return 0;
+}

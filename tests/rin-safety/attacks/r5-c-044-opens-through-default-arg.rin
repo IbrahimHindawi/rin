@@ -1,0 +1,11 @@
+// A default argument that opens a region, through a chain: opens are computed before defaults are appended.
+import "std/print.rin"
+level: region;
+open: proc() -> i32 = { level: region = { y: *i32 in level = new<i32>(level); return y*; } return 0; }
+wrap: proc() -> i32 = { return open(); }
+f: proc(a: i32 = wrap()) -> i32 = { return a; }
+g: proc() -> i32 = { return f(); }
+main: proc() -> i32 = {
+    level: region = { y: *i32 in level = new<i32>(level, 5); z: i32 = g(); printfmt("{} {}\n", y*, z); }
+    return 0;
+}

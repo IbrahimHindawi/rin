@@ -1,0 +1,14 @@
+// map<T>destroy leaves border 0; put expands to capacity 0; set_entry masks with
+// border-1 = all ones, so the raw hash indexes entries.
+import "std/print.rin"
+import "std/map.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        m: *map<i32> in level = map<i32>make(level);
+        map<i32>destroy(map<i32>arena_of(m), m);
+        map<i32>put(m, "key", 1);
+        printfmt("{}\n", map<i32>count(m));
+    }
+    return 0;
+}

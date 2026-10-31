@@ -1,0 +1,13 @@
+// H1: a region block does not truncate g_borrows, so an inner 'q' stays and hides the outer record.
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    y: i32 = 1;
+    q: ?*i32 = null;
+    level: region = {
+        q = new<i32>(level, 42);
+        t: region of level = { q: *i32 = y&; printfmt("{}\n", q*); }
+    }
+    if (q) { printfmt("{}\n", q*); }
+    return 0;
+}

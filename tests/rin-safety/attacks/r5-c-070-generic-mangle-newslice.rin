@@ -1,0 +1,9 @@
+// new_slice<?*i32> zeroes legally; new_slice<*i32> should be rejected, but shares the instance.
+import "std/print.rin"
+mk: proc<T>(r: region R, n: u64) -> []T in R = { return new_slice<T>(r, n); }
+main: proc() -> i32 = {
+    a: []?*i32 in permanent = mk<?*i32>(permanent, 2);
+    b: []*i32 in permanent = mk<*i32>(permanent, 2);
+    printfmt("{}\n", b[0]*);
+    return 0;
+}

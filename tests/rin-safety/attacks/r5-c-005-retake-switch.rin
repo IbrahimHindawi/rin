@@ -1,0 +1,16 @@
+// H4 with a switch: each case retakes, the last one's regions win.
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    n: i32 = 1;
+    level: region = {
+        switch (n) {
+            case 1: { q = new<i32>(level, 42); break; }
+            case 2: { q = null; break; }
+            default: { q = null; }
+        }
+    }
+    if (q) { printfmt("{}\n", q*); }
+    return 0;
+}

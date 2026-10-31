@@ -1,0 +1,12 @@
+// A region handle held in a generic struct by value: only the top of the type is looked at.
+import "std/print.rin"
+level: region;
+B: struct<T> = { v: T; }
+keep: proc(r: region level) -> B<region level> = { return { .v = r }; }
+main: proc() -> i32 = {
+    s: B<region level> = {};
+    level: region = { s = keep(level); }
+    p: *i32 = new<i32>(s.v, 42);
+    printfmt("{}\n", p*);
+    return 0;
+}

@@ -1,0 +1,17 @@
+import "std/print.rin"
+a: region;
+// `return rin_ret` inside a region: { i32 *rin_ret = rin_ret; ...; return rin_ret; } reads itself.
+f: proc<R>(r: region R) -> *i32 in R = {
+    rin_ret: *i32 in R = new<i32>(r, 5);
+    tmp: region of r = {
+        return rin_ret;
+    }
+}
+main: proc() -> i32 = {
+    a: region = {
+        p: *i32 in a = f(a);
+        p* = 12345;
+        printfmt("{}\n", p*);
+    }
+    return 0;
+}

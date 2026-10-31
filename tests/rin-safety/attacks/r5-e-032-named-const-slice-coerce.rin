@@ -1,0 +1,9 @@
+import "std/print.rin"
+N: const i32 = 4;
+S: struct = { a: [N]i32; }
+sum: proc(s: []i32, i: u64) -> i32 = { return s[i]; }
+main: proc() -> i32 = {
+    s: S = {};
+    printfmt("{}\n", sum(s.a, 100000000));
+    return 0;
+}

@@ -1,0 +1,14 @@
+// A callback wraps the opener: as_value's opens covers wrappers through the fixpoint?
+import "std/print.rin"
+level: region;
+op: proc() -> void = { level: region = { x: *i32 in level = new<i32>(level, 9); } }
+wrap: proc(cb: *proc() -> void) -> void = { cb(); }
+call_it: proc() -> void = { op(); }
+main: proc() -> i32 = {
+    level: region = {
+        p: *i32 in level = new<i32>(level, 42);
+        wrap(call_it);
+        printfmt("{}\n", p*);
+    }
+    return 0;
+}

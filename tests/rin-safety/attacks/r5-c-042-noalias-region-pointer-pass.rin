@@ -1,0 +1,15 @@
+// A contained proc taking a region: a slice into the same arena is noalias beside the handle.
+import "std/print.rin"
+level: region;
+f: proc(a: noalias []i32, r: region level) -> i32 = {
+    b: []i32 in level = new_slice<i32>(r, 4);
+    a[0] = 1; b[0] = 2;
+    return a[0];
+}
+main: proc() -> i32 = {
+    level: region = {
+        z: []i32 in level = new_slice<i32>(level, 4);
+        printfmt("{}\n", f(z, level));
+    }
+    return 0;
+}

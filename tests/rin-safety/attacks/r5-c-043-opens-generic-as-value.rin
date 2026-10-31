@@ -1,0 +1,13 @@
+// A generic opener used as a proc pointer: as_value finds no proc by the instance's name?
+import "std/print.rin"
+level: region;
+op: proc<T>() -> void = { level: region = { x: *i32 in level = new<i32>(level, 9); } }
+main: proc() -> i32 = {
+    fp: *proc() -> void = op<i32>;
+    level: region = {
+        p: *i32 in level = new<i32>(level, 42);
+        fp();
+        printfmt("{}\n", p*);
+    }
+    return 0;
+}

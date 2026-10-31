@@ -1,0 +1,15 @@
+// vec<c8>resize returns ^c8, a writable raw pointer in safe code.
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/vec.rin"
+import "std/list.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<i32> in level = list<i32>make(level);
+        v: *vec<c8> in level = vec<c8>make(level, 1);
+        c: u64 = 100000000;
+        print_cstr(cstr_token(vec<c8>resize(list<i32>arena_of(l), v), c&, ","));
+    }
+    return 0;
+}

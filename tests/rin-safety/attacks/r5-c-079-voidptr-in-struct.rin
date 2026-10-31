@@ -1,0 +1,12 @@
+// A *void field holds any pointer; read back as *U.
+import "std/print.rin"
+Box: struct = { v: *void in permanent; }
+main: proc() -> i32 = {
+    small: *u8 in permanent = new<u8>(permanent, 1);
+    guard: *u8 in permanent = new<u8>(permanent, 7);
+    b: Box = { .v = small };
+    w: *u64 = b.v;
+    w* = 0x4141414141414141;
+    printfmt("{}\n", guard*);
+    return 0;
+}

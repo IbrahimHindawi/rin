@@ -1,0 +1,15 @@
+// option<S>unwrap on a some built from a get miss? get returns none, unwrap aborts.
+// Instead: slice<S>get out of range returns none; unwrap aborts (checked) -- control.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+S: struct = { p: *i32 in level; }
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<S> in level = vec<S>make(level, 1);
+        o: option<S> = vec<S>get(v, 5);
+        s: S = option<S>unwrap_or(o, { .p = new<i32>(level, 9) });
+        printfmt("{}\n", s.p*);
+    }
+    return 0;
+}

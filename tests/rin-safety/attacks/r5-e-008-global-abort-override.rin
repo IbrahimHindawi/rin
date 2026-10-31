@@ -1,0 +1,10 @@
+import "std/print.rin"
+// A rin proc named abort replaces libc's: rin_index_check's abort() returns, and it hands back i.
+abort: proc() -> void = { }
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    i: u64 = 100000000;
+    xs[i] = 7;
+    printfmt("{}\n", xs[i]);
+    return 0;
+}

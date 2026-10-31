@@ -1,0 +1,16 @@
+// H39: vec<?*i32> with no region takes a vec<?*i32 in level>: a pointer naming no region matches anything.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<?*i32 in level> in level = vec<?*i32 in level>make(level, 2);
+        frame: region = {
+            _ = vec<?*i32>push(v, new<i32>(frame, 42));
+        }
+        frame: region = { x: []i32 in frame = new_slice<i32>(frame, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } }
+        printfmt("{}\n", must(vec<?*i32 in level>at(v, 0)*)*);
+    }
+    return 0;
+}

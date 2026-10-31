@@ -1,0 +1,10 @@
+// expect: may be dangling
+level: region;
+main: proc(argc: i32, argv: ^^char) -> i32 = {
+    q: ?*i32 = null;
+    level: region = {
+        if (argc > 0) { q = new<i32>(level, 42); } else { q = null; }
+    }
+    if (q) { return q*; }
+    return 0;
+}

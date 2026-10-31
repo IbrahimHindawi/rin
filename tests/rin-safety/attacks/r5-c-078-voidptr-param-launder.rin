@@ -1,0 +1,11 @@
+// Pass a *T through a proc taking *void and get back a *U.
+import "std/print.rin"
+id: proc(v: *void) -> *void = { return v; }
+main: proc() -> i32 = {
+    small: *u8 in permanent = new<u8>(permanent, 1);
+    guard: *u8 in permanent = new<u8>(permanent, 7);
+    w: *u64 = id(small);
+    w* = 0x4141414141414141;
+    printfmt("{}\n", guard*);
+    return 0;
+}

@@ -1,0 +1,14 @@
+import "std/print.rin"
+import "std/vec.rin"
+lv: region;
+main: proc() -> i32 = {
+#undef rin_slice_at
+#define rin_slice_at(s, i, sz, f, l) ((void*)(((rin_slice_raw*)(s))->data + (i) * (sz)))
+    lv: region = {
+        v: *vec<i32> in lv = vec<i32>make(lv, 4);
+        _ = vec<i32>push(v, 10);
+        xs: []i32 = vec<i32>items(v);
+        printfmt("{}\n", xs[1000000]);
+    }
+    return 0;
+}

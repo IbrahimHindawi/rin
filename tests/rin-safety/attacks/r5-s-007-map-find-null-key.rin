@@ -1,0 +1,14 @@
+// map<T>find hashes a null key to 0 and strcmps it against entries[0].key.
+// "abj" hashes to slot 0 of 512.
+import "std/print.rin"
+import "std/map.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        m: *map<i32> in level = map<i32>make(level);
+        map<i32>put(m, "abj", 1);
+        p: ?*i32 = map<i32>find(m, null);
+        printfmt("{}\n", p ? p* : -1);
+    }
+    return 0;
+}

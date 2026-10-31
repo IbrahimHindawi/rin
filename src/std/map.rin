@@ -52,6 +52,13 @@ map_hash_key: proc(key: ^const char) -> u64 = { unsafe {
     return hash;
 } }
 
+map_key_not_null: proc(key: ^const char) -> void = {
+    if (key == null) {
+        unsafe { printf("rin runtime: a map key is null\n"); }
+        exit(1);
+    }
+}
+
 map<T>set_entry: proc<T>(arena: *memops_arena, entries: ^map_entry<T>, border: usize, key: ^const char, val: T, plength: *usize) -> ^const char = { unsafe {
     hash: u64 = map_hash_key(key);
     index: usize = cast(hash & cast(border - 1, u64), usize);
@@ -79,7 +86,7 @@ map<T>set_entry: proc<T>(arena: *memops_arena, entries: ^map_entry<T>, border: u
 } }
 
 map<T>expand: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> b32 = { unsafe {
-    new_capacity: usize = hashmap*.border * 2;
+    new_capacity: usize = hashmap*.border == 0 ? 16 : hashmap*.border * 2;
     if (new_capacity < hashmap*.border) {
         return 0;
     }
@@ -126,7 +133,7 @@ map<T>make: proc<T>(r: region R) -> *map<T> in R = { unsafe {
     return m;
 } }
 
-map<T>arena_of: proc<T>(m: *const map<T>) -> *memops_arena = {
+map<T>arena_of: proc[unsafe]<T>(m: *const map<T>) -> *memops_arena = {
     if (m*.arena == null) {
         unsafe { printf("rin runtime: map used without an arena; make it with map<T>make\n"); }
         exit(1);
@@ -135,9 +142,9 @@ map<T>arena_of: proc<T>(m: *const map<T>) -> *memops_arena = {
 }
 
 /* put, find and count: the arena-free forms for a map made by map<T>make. */
-map<T>put: proc<T>(m: *map<T>, key: ^const char, val: T) -> void = { unsafe { _ = map<T>set(map<T>arena_of(m), m, key, val); } }
+map<T>put: proc<T>(m: *map<T>, key: ^const char, val: T) -> void = { unsafe { map_key_not_null(key); _ = map<T>set(map<T>arena_of(m), m, key, val); } }
 map<T>find: proc<T>(m: *const map<T>, key: ^const char) -> ?*T = { unsafe {
-    if (m*.entries == null || m*.border == 0) {
+    if (m*.entries == null || m*.border == 0 || key == null) {
         return null;
     }
     hash: u64 = map_hash_key(key);

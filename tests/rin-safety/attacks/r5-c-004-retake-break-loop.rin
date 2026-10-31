@@ -1,0 +1,15 @@
+// H4 with a break: the state at the break keeps dead flags only, not the record's regions.
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    level: region = {
+        for (i: i32 = 0; i < 2; i += 1) {
+            q = new<i32>(level, 42);
+            if (i == 0) { break; }
+            q = null;
+        }
+    }
+    if (q) { printfmt("{}\n", q*); }
+    return 0;
+}

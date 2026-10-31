@@ -1,0 +1,16 @@
+import "std/print.rin"
+import "std/deque.rin"
+import "std/list.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        d: *deque<i32> in level = new<deque<i32>>(level);
+        frame: region = {
+            l: *list<i32> in frame = list<i32>make(frame);
+            deque<i32>push_back(list<i32>arena_of(l), d, 7);
+        }
+        printfmt("{}\n", deque<i32>front(d)); // ring buffer is in ended frame
+    }
+    return 0;
+}

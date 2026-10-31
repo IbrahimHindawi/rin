@@ -1,0 +1,8 @@
+import "std/print.rin"
+// const_eval: (1-2)/100 = 0. C: 4294967295/100 = 42949672.
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    xs[(1'u32 - 2'u32) / 100] = 7;
+    printfmt("{}\n", xs[0]);
+    return 0;
+}

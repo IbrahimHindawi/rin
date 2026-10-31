@@ -1,0 +1,13 @@
+import "std/print.rin"
+// A local proc pointer named abort: the checker thinks the branch never comes back.
+noop: proc() -> void = { }
+S: struct = { x: i32; }
+get: proc(p: ?*S) -> i32 = {
+    abort: *proc() -> void = noop;
+    if (!p) { abort(); }
+    return p*.x;
+}
+main: proc() -> i32 = {
+    printfmt("{}\n", get(null));
+    return 0;
+}

@@ -1,0 +1,12 @@
+import "std/print.rin"
+// A local proc pointer named rin_f2i_i32 shadows the saturating cast helper.
+raw: proc(x: f64) -> i32 = { return 0; }
+main: proc() -> i32 = {
+    rin_f2i_i32: *proc(x: f64) -> i32 = raw;
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    f: f64 = 1.0e18;
+    i: i32 = cast(f, i32);
+    xs[cast(i, u64)] = 7;
+    printfmt("{}\n", xs[0]);
+    return 0;
+}

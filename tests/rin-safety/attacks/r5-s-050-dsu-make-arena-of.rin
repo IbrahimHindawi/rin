@@ -1,0 +1,13 @@
+// dsu_make takes *memops_arena; dsu_find guards range. Control: out-of-range is checked.
+import "std/print.rin"
+import "std/dsu.rin"
+import "std/list.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<i32> in level = list<i32>make(level);
+        d: dsu = dsu_make(list<i32>arena_of(l), 4);
+        printfmt("{}\n", dsu_find(d&, 10));
+        return 0;
+    }
+}

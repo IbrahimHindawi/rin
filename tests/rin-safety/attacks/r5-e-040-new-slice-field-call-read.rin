@@ -1,0 +1,14 @@
+import "std/print.rin"
+lv: region;
+S: struct = { n: u64; }
+seq: u64 = 0;
+step: proc() -> S = { seq += 999999; return { .n = seq }; }
+fill: proc<T>(r: region T) -> i32 = {
+    s: []i32 = new_slice<i32>(r, step().n);
+    s[1500000] = 7;
+    return s[1500000];
+}
+main: proc() -> i32 = {
+    lv: region = { printfmt("{}\n", fill<i32>(lv)); }
+    return 0;
+}

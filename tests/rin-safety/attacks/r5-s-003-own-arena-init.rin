@@ -1,0 +1,14 @@
+import "std/print.rin"
+import "std/memops.rin"
+import "std/deque.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        a: *memops_arena in level = new<memops_arena>(level);
+        memops_arena_initialize(a, 1048576);
+        d: *deque<i32> in level = new<deque<i32>>(level);
+        deque<i32>push_back(a, d, 1);
+        printfmt("{}\n", deque<i32>front(d));
+    }
+    return 0;
+}

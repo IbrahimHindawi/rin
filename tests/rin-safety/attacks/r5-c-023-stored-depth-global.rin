@@ -1,0 +1,25 @@
+// check_type_stored gives up past depth 12: a global holds a level pointer.
+import "std/print.rin"
+level: region;
+A0: struct = { p: ?*i32 in level; }
+A1: struct = { a: A0; }
+A2: struct = { a: A1; }
+A3: struct = { a: A2; }
+A4: struct = { a: A3; }
+A5: struct = { a: A4; }
+A6: struct = { a: A5; }
+A7: struct = { a: A6; }
+A8: struct = { a: A7; }
+A9: struct = { a: A8; }
+A10: struct = { a: A9; }
+A11: struct = { a: A10; }
+A12: struct = { a: A11; }
+A13: struct = { a: A12; }
+A14: struct = { a: A13; }
+g: A14 = {};
+fill: proc() -> void = { level: region = { g.a.a.a.a.a.a.a.a.a.a.a.a.a.a.p = new<i32>(level, 42); } }
+main: proc() -> i32 = {
+    fill();
+    if (g.a.a.a.a.a.a.a.a.a.a.a.a.a.a.p) { printfmt("{}\n", g.a.a.a.a.a.a.a.a.a.a.a.a.a.a.p*); }
+    return 0;
+}

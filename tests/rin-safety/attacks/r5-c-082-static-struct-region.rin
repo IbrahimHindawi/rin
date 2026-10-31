@@ -1,0 +1,14 @@
+// A static struct whose field names level, filled in the block, read at the top of the next call.
+import "std/print.rin"
+level: region;
+S: struct = { p: ?*i32 in level; }
+step: proc() -> i32 = {
+    r: i32 = 0;
+    level: region = {
+        s: static S = {};
+        if (s.p) { r = s.p*; }
+        s.p = new<i32>(level, 42);
+    }
+    return r;
+}
+main: proc() -> i32 = { _ = step(); printfmt("{}\n", step()); return 0; }

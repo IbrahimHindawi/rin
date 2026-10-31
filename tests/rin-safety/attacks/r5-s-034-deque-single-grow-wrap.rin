@@ -1,0 +1,17 @@
+// deque: push_front then push_back repeatedly to force head wraparound, then
+// at() indexes (head+i)%border. If border is right this is fine; test index past.
+import "std/print.rin"
+import "std/deque.rin"
+import "std/list.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<i32> in level = list<i32>make(level);
+        a: *memops_arena = list<i32>arena_of(l);
+        d: *deque<i32> in level = new<deque<i32>>(level);
+        for (i: i32 = 0; i < 5; i += 1) { deque<i32>push_front(a, d, i); }
+        for (i: i32 = 0; i < 5; i += 1) { deque<i32>push_back(a, d, i); }
+        printfmt("{}\n", deque<i32>front(d));
+    }
+    return 0;
+}

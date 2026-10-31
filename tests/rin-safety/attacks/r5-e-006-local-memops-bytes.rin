@@ -1,0 +1,18 @@
+import "std/print.rin"
+import "std/memops.rin"
+a: region;
+// A local named memops_bytes captures new_slice's size computation: 1 byte, huge length.
+one: proc(a: u64, b: u64) -> u64 = { return 1; }
+f: proc<R>(r: region R) -> i32 = {
+    memops_bytes: *proc(a: u64, b: u64) -> u64 = one;
+    n: u64 = 100000000;
+    s: []i32 = new_slice<i32>(r, n);
+    s[n - 1] = 7;
+    return s[n - 1];
+}
+main: proc() -> i32 = {
+    a: region = {
+        printfmt("{}\n", f(a));
+    }
+    return 0;
+}

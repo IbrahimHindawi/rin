@@ -1,0 +1,13 @@
+// hashmap slot zeroes the value: V a non-null pointer reads as null.
+import "std/print.rin"
+import "std/hashmap.rin"
+import "std/list.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<i32> in level = list<i32>make(level);
+        m: *hashmap<i64, *i32 in level> in level = hashmap<i64, *i32 in level>make(level);
+        printfmt("{}\n", hashmap<i64, *i32 in level>slot(list<i32>arena_of(l), m, 1)**);
+    }
+    return 0;
+}

@@ -1,0 +1,16 @@
+// H4 through the return check: paths come from the last arm, so a local's address returns.
+import "std/print.rin"
+smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
+leak: proc(p: *i32, c: i32) -> *i32 = {
+    x: i32 = 42;
+    q: *i32 = p;
+    if (c == 1) { q = x&; } else { q = p; }
+    return q;
+}
+main: proc() -> i32 = {
+    a: i32 = 1;
+    r: *i32 = leak(a&, 1);
+    smash();
+    printfmt("{}\n", r*);
+    return 0;
+}

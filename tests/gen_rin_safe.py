@@ -170,7 +170,7 @@ class Gen:
             return [f"{s}[{self.index(env, s)}] = {self.int_expr(env, 'i32', 1)};"]
         if c < 0.73 and env["slices"]:
             s = r.choice(env["slices"])
-            a, b = self.name("a"), self.name("b")
+            a, b = self.name("lo"), self.name("hi")
             sub = self.name("s")
             lines = [
                 f"{a}: u64 = {self.int_expr(env, 'u64', 3)} % ({s}.length + 1);",

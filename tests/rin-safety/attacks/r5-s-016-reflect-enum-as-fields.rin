@@ -1,0 +1,14 @@
+// variant is a union: fields read over an enum's value table is a type confusion
+// and runs past the table.
+import "std/print.rin"
+import "std/reflect.rin"
+Color: enum = { red, green }
+read: proc(t: *const reflect) -> void = {
+    f: *const reflect_field = t*.variant.fields;
+    printfmt("{}\n", f*.offset);
+    print_cstr(f*.attrs);
+}
+main: proc() -> i32 = {
+    read(Color<>&);
+    return 0;
+}

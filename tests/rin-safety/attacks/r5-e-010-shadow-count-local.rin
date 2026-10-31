@@ -1,0 +1,11 @@
+import "std/print.rin"
+// RIN_INDEX(i, N) reads the local N in C.
+N: const i32 = 4;
+main: proc() -> i32 = {
+    xs: [N]i32 = { 1, 2, 3, 4 };
+    N: u64 = 200000000;
+    i: u64 = 100000000;
+    xs[i] = 7;
+    printfmt("{}\n", xs[i]);
+    return 0;
+}

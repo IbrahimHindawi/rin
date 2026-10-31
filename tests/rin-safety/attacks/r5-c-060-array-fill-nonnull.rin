@@ -1,0 +1,8 @@
+// An array fill expression (xs = {}) over an element holding a non-null pointer through a generic.
+import "std/print.rin"
+box: struct<T> = { v: T; }
+main: proc() -> i32 = {
+    xs: [4]box<*i32> = {};
+    printfmt("{}\n", xs[0].v*);
+    return 0;
+}

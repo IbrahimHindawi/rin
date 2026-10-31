@@ -1,0 +1,20 @@
+// A static raw pointer from a buffer survives the call it was taken in.
+import "std/print.rin"
+import "std/cstr.rin"
+keep: proc(s: ^const c8) -> ^const c8 = {
+    p: static ^const c8 = "";
+    old: ^const c8 = p;
+    p = s;
+    return old;
+}
+main: proc() -> i32 = {
+    buf: [8]c8 = {};
+    buf[0] = 'h'; buf[1] = 'i'; buf[2] = 0;
+    _ = keep(cstr_of(buf));
+    smash: [64]i64 = {};
+    for (i: i32 = 0; i < 64; i += 1) { smash[i] = 0x4141414141414141; }
+    q: ^const c8 = keep("");
+    print_cstr(q);
+    printfmt("\n");
+    return 0;
+}

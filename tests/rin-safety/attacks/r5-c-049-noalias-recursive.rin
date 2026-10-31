@@ -1,0 +1,11 @@
+// A noalias proc that recurses: in the fixpoint it starts contained; does the recursion keep it so
+// while it also writes a global?
+import "std/print.rin"
+g: i32 = 0;
+f: proc(a: noalias *i32, n: i32) -> i32 = {
+    a* = 1;
+    g = 2;
+    if (n > 0) { return f(a, n - 1); }
+    return a*;
+}
+main: proc() -> i32 = { printfmt("{}\n", f(g&, 3)); return 0; }

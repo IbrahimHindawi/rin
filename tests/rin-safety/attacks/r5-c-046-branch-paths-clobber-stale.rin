@@ -1,0 +1,19 @@
+// Branch save/restore keeps only 'dead'. borrow_retake overwrites paths; the else arm's paths win,
+// so a later write to the then arm's source is not seen as staling the borrow.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        a: *vec<i32> in level = vec<i32>make(level, 2);
+        b: *vec<i32> in level = vec<i32>make(level, 2);
+        _ = vec<i32>push(a, 10);
+        _ = vec<i32>push(b, 20);
+        p: *i32 = vec<i32>at(a, 0);
+        c: i32 = 1;
+        if (c == 1) { p = vec<i32>at(a, 0); } else { p = vec<i32>at(b, 0); }
+        for (i: i32 = 0; i < 1000; i += 1) { _ = vec<i32>push(a, i); }
+        printfmt("{}\n", p*);
+    }
+    return 0;
+}

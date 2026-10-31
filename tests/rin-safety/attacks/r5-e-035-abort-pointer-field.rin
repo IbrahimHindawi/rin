@@ -1,0 +1,9 @@
+import "std/print.rin"
+// abort override: a failed null test (must) still proceeds. Combine with bad index to show the fall-through on OOB.
+abort: proc() -> void = { }
+sum: proc(xs: []i32, i: u64) -> i32 = { return xs[i]; }
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    printfmt("{}\n", sum(xs[0..4], 1000000));
+    return 0;
+}

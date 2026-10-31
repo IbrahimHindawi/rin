@@ -1,0 +1,16 @@
+// map<T>set returns the stored key, raw, in the arena handed in.
+import "std/print.rin"
+import "std/map.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        k: ^const char = "x";
+        frame: region = {
+            m: *map<i32> in frame = map<i32>make(frame);
+            k = map<i32>set(map<i32>arena_of(m), m, "hello", 1);
+        }
+        print_cstr(k);
+    }
+    return 0;
+}

@@ -1,0 +1,9 @@
+import "std/print.rin"
+P: struct = { x: i32; }
+main: proc() -> i32 = {
+    xs: [4]P = {};
+    P: [100000]u8 = {};
+    xs = {};
+    printfmt("{}\n", xs[0].x);
+    return 0;
+}

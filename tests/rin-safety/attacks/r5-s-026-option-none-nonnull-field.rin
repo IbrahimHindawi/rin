@@ -1,0 +1,13 @@
+// option<S>none zeroes a struct holding a non-null pointer.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+S: struct = { p: *i32 in level; }
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<S> in level = vec<S>make(level, 1);
+        o: option<S> = vec<S>get(v, 99);
+        printfmt("{}\n", o.value.p*);
+    }
+    return 0;
+}

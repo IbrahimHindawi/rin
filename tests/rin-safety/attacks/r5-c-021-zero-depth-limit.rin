@@ -1,0 +1,18 @@
+// type_has_nonnull_pointer gives up past depth 8: a zeroed struct holds a null '*T'.
+import "std/print.rin"
+A0: struct = { p: *i32 in permanent; }
+A1: struct = { a: A0; }
+A2: struct = { a: A1; }
+A3: struct = { a: A2; }
+A4: struct = { a: A3; }
+A5: struct = { a: A4; }
+A6: struct = { a: A5; }
+A7: struct = { a: A6; }
+A8: struct = { a: A7; }
+A9: struct = { a: A8; }
+A10: struct = { a: A9; }
+main: proc() -> i32 = {
+    z: A10 = {};
+    printfmt("{}\n", z.a.a.a.a.a.a.a.a.a.a.p*);
+    return 0;
+}

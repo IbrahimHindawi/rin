@@ -1,0 +1,14 @@
+// The branch clobber, deeper: dangling in an inner then, benign in the else-if chain.
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    q: ?*i32 = null;
+    n: i32 = 0;
+    level: region = {
+        if (n == 0) { q = new<i32>(level, 42); }
+        else if (n == 1) { q = null; }
+        else { q = null; }
+    }
+    if (q) { printfmt("{}\n", q*); }
+    return 0;
+}

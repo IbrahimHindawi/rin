@@ -1,0 +1,6 @@
+// A contained callee returns a pointer to a global; the caller writes through it beside noalias a.
+import "std/print.rin"
+g: i32 = 0;
+gp: proc() -> *i32 in permanent = { return g&; }
+f: proc(a: noalias *i32) -> i32 = { a* = 1; q: *i32 = gp(); q* = 2; return a*; }
+main: proc() -> i32 = { printfmt("{}\n", f(g&)); return 0; }

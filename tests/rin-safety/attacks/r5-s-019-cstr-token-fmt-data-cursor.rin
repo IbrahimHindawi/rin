@@ -1,0 +1,13 @@
+// cstr_token takes ^c8 and an unbounded cursor. fmt's data field is a ^c8.
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/fmt.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 8);
+        c: u64 = 100000000;
+        print_cstr(cstr_token(f*.data, c&, ","));
+    }
+    return 0;
+}

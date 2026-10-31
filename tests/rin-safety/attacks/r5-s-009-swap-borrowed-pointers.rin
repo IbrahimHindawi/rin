@@ -1,0 +1,14 @@
+// swap<*i32> moves the address of an inner local into an outer borrow.
+import "std/print.rin"
+import "std/order.rin"
+main: proc() -> i32 = {
+    x: i32 = 1;
+    q: *i32 = x&;
+    if (x == 1) {
+        y: i32 = 2;
+        r: *i32 = y&;
+        swap<*i32>(q&, r&);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

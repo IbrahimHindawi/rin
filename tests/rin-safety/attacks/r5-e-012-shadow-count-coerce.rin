@@ -1,0 +1,13 @@
+import "std/print.rin"
+// Array to slice: { xs, N } reads the local N, so the slice's length is a lie.
+N: const i32 = 4;
+S: struct = { a: [N]i32; }
+sum: proc(s: []i32) -> i32 = { return s[100000000]; }
+f: proc(xs: *S, N: u64) -> i32 = {
+    return sum(xs*.a);
+}
+main: proc() -> i32 = {
+    s: S = {};
+    printfmt("{}\n", f(s&, 200000000));
+    return 0;
+}

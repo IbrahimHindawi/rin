@@ -1,0 +1,14 @@
+// dlist<T>remove_at claims *binode<T> but returns null for a bad index.
+import "std/print.rin"
+import "std/list.rin"
+import "std/dlist.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<i32> in level = list<i32>make(level);
+        d: *dlist<i32> in level = new<dlist<i32>>(level);
+        n: *binode<i32> = dlist<i32>remove_at(list<i32>arena_of(l), d, 5);
+        printfmt("{}\n", n*.data);
+    }
+    return 0;
+}

@@ -1,0 +1,12 @@
+// Ternary arm, a plain + with the read on the left: narrowing is undone only after the read was checked.
+import "std/print.rin"
+H: struct = { x: i32; }
+S: struct = { h: ?*H in permanent; }
+g: S = {};
+clr: proc() -> i32 = { g.h = null; return 1; }
+main: proc() -> i32 = {
+    g.h = new<H>(permanent, { .x = 7 });
+    v: i32 = g.h ? g.h*.x + clr() : 0;
+    printfmt("{}\n", v);
+    return 0;
+}

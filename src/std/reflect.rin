@@ -58,7 +58,7 @@ reflect_field: struct[external] = {
     is_const: u64;
     // The record for this field's own type, so a walk can recurse. Null when the
     // field's type has no table: a builtin, an external type, a proc.
-    info: *const reflect;
+    info: ?*const reflect;
 }
 
 reflect_value: struct[external] = {

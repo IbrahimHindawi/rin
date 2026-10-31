@@ -1,0 +1,11 @@
+// *void launders a small heap object to a wide pointer: an 8-byte write into a 1-byte allocation.
+import "std/print.rin"
+main: proc() -> i32 = {
+    small: *u8 in permanent = new<u8>(permanent, 1);
+    guard: *u8 in permanent = new<u8>(permanent, 7);
+    v: *void = small;
+    w: *u64 = v;
+    w* = 0x4141414141414141;
+    printfmt("{}\n", guard*);
+    return 0;
+}

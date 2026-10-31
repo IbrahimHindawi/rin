@@ -1,0 +1,9 @@
+import "std/print.rin"
+// count is a name, so parse_nonnegative_i64 gives -1: no compile-time error and index_checked=false.
+N: const i32 = 4;
+main: proc() -> i32 = {
+    xs: [N]i32 = { 1, 2, 3, 4 };
+    xs[100000000] = 7;
+    printfmt("{}\n", xs[100000000]);
+    return 0;
+}

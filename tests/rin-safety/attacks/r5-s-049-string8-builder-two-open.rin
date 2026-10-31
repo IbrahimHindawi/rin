@@ -1,0 +1,20 @@
+// string8_builder: two open builders on one arena. The second's push moves the
+// head; appending to the first then spans foreign bytes -- guarded by a check.
+import "std/print.rin"
+import "std/string8.rin"
+import "std/list.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<i32> in level = list<i32>make(level);
+        a: *memops_arena = list<i32>arena_of(l);
+        b1: string8_builder = string8_builder_begin(a);
+        string8_builder_append_cstr(b1&, "aaa");
+        b2: string8_builder = string8_builder_begin(a);
+        string8_builder_append_cstr(b2&, "bbb");
+        string8_builder_append_cstr(b1&, "ccc"); // head moved, should abort
+        s: string8slice = string8_builder_slice(b1&);
+        string8slice_print(s);
+        return 0;
+    }
+}

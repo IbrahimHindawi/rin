@@ -1,0 +1,10 @@
+// type_flow_same waves through a void pointer inside a pointer: a slot of *i64 written as *void from a *i8.
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: *i64 in permanent = new<i64>(permanent, 7);
+    b: *i8 in permanent = new<i8>(permanent, 7);
+    pa: **void in permanent = a&;
+    pa* = b;
+    printfmt("{}\n", a*);
+    return 0;
+}

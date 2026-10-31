@@ -1,0 +1,16 @@
+import "std/print.rin"
+import "std/string8.rin"
+import "std/list.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        s: *string8 in level = new<string8>(level);
+        frame: region = {
+            l: *list<i32> in frame = list<i32>make(frame);
+            string8_append_cstr(list<i32>arena_of(l), s, "hello");
+        }
+        string8_print(s); // dangling
+    }
+    return 0;
+}

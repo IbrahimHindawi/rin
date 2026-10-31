@@ -15,7 +15,7 @@ queue<T>make: proc<T>(r: region R) -> *queue<T> in R = { unsafe {
     return q;
 } }
 
-queue<T>arena_of: proc<T>(q: *const queue<T>) -> *memops_arena = {
+queue<T>arena_of: proc[unsafe]<T>(q: *const queue<T>) -> *memops_arena = {
     if (q*.arena == null) {
         unsafe { printf("rin runtime: queue used without an arena; make it with queue<T>make\n"); }
         exit(1);

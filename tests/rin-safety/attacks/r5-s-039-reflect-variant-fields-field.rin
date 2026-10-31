@@ -1,0 +1,13 @@
+// reflect.variant.fields is *const reflect_field, non-null. For an enum there is
+// no fields arm; reading it reinterprets the values pointer and then runs count.
+import "std/print.rin"
+import "std/reflect.rin"
+Color: enum = { red, green, blue }
+main: proc() -> i32 = {
+    t: *const reflect = Color<>&;
+    fields: *const reflect_field = t*.variant.fields;
+    for (i: u64 = 0; i < t*.count; i += 1) {
+        print_cstr(fields[i].name); print_cstr("\n");
+    }
+    return 0;
+}

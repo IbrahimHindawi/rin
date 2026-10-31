@@ -1,0 +1,16 @@
+// A slice of slices: outer in level, inner naming frame, laundered through assignment.
+import "std/print.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        outer: [][]?*i32 in level = new_slice<[]?*i32 in level>(level, 1);
+        frame: region = {
+            inner: []?*i32 in frame = new_slice<?*i32 in frame>(frame, 1);
+            inner[0] = new<i32>(frame, 42);
+            outer[0] = inner;
+        }
+        if (outer[0][0]) { printfmt("{}\n", outer[0][0]*); }
+    }
+    return 0;
+}

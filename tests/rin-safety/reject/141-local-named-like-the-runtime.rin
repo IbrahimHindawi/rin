@@ -1,0 +1,6 @@
+// expect: belongs to rin's runtime
+tiny: proc(size: u64, count: u64) -> u64 = { return 4; }
+main: proc() -> i32 = {
+    memops_bytes: *proc(size: u64, count: u64) -> u64 = tiny;
+    return 0;
+}

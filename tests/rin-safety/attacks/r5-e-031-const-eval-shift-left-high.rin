@@ -1,0 +1,8 @@
+import "std/print.rin"
+// const_eval: 1 shl 2 = 4 -> >=count(4) would be caught. Use (2 shl 30) shr 30 in i32.
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    xs[(2 shl 30) shr 30] = 7;
+    printfmt("{}\n", xs[0]);
+    return 0;
+}

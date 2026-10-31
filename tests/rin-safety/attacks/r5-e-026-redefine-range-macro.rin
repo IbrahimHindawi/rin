@@ -1,0 +1,11 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+#undef RIN_RANGE
+#define RIN_RANGE(a, b, n) (a)
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    lo: u64 = 1000000;
+    hi: u64 = 2000000;
+    s: []i32 = xs[lo..hi];
+    printfmt("{}\n", s[500000]);
+    return 0;
+}

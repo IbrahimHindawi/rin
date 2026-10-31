@@ -1,0 +1,9 @@
+import "std/print.rin"
+// A literal index on an array sized by a named const: no runtime check and no compile check.
+SZ: const i32 = 8;
+main: proc() -> i32 = {
+    xs: [SZ]i32 = {};
+    xs[500000000] = 7;
+    printfmt("{}\n", xs[500000000]);
+    return 0;
+}

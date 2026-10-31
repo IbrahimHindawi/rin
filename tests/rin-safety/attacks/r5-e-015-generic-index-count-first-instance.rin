@@ -1,0 +1,10 @@
+import "std/print.rin"
+// index_set keeps the count of the first instance: [400] then [4] checks the small one against 400.
+get: proc<A>(a: A, i: u64) -> i32 = { return a[i]; }
+main: proc() -> i32 = {
+    big: [400]i32 = {};
+    small: [4]i32 = {};
+    printfmt("{}\n", get<[400]i32>(big, 300));
+    printfmt("{}\n", get<[4]i32>(small, 300));
+    return 0;
+}

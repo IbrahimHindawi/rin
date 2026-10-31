@@ -1,0 +1,8 @@
+import "std/print.rin"
+// const_eval works in i64: 1. C computes the product in int. No run-time check is emitted.
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    xs[(100000 * 100000) - 9999999999] = 7;
+    printfmt("{}\n", xs[0]);
+    return 0;
+}

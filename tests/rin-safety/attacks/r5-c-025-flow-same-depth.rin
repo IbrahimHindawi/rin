@@ -1,0 +1,16 @@
+// type_flow_same says yes past depth 8: nested generics launder a region through a pointer.
+import "std/print.rin"
+level: region;
+frame: region in level;
+B: struct<T> = { v: T; }
+main: proc() -> i32 = {
+    level: region = {
+        o: B<B<B<B<B<B<B<B<B<B<?*i32 in level>>>>>>>>>> = {};
+        frame: region = {
+            w: *B<B<B<B<B<B<B<B<B<B<?*i32 in frame>>>>>>>>>> = o&;
+            w*.v.v.v.v.v.v.v.v.v.v = new<i32>(frame, 42);
+        }
+        if (o.v.v.v.v.v.v.v.v.v.v) { printfmt("{}\n", o.v.v.v.v.v.v.v.v.v.v*); }
+    }
+    return 0;
+}

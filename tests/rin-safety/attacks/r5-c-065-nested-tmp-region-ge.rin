@@ -1,0 +1,18 @@
+// region_ge over local regions: a tmp of a tmp, pointer from the inner tmp kept in the outer tmp's memory.
+import "std/print.rin"
+level: region;
+fill: proc(r: region R) -> void = {
+    outer: region of r = {
+        slot: *?*i32 in level = must(null);
+        inner: region of outer = {
+            box: *?*i32 in level = new<?*i32 in level>(outer, null);
+            box* = new<i32>(inner, 42);
+            slot = box;
+        }
+        if (slot*) { printfmt("{}\n", slot**); }
+    }
+}
+main: proc() -> i32 = {
+    level: region = { fill(level); }
+    return 0;
+}

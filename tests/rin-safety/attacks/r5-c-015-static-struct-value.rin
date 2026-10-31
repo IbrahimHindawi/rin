@@ -1,0 +1,14 @@
+// A static struct local whose field names a region: value survives the block.
+import "std/print.rin"
+level: region;
+S: struct = { p: ?*i32 in level; }
+peek: proc() -> i32 = {
+    r: i32 = 0;
+    level: region = {
+        s: static S = {};
+        if (s.p) { r = s.p*; }
+        s.p = new<i32>(level, 42);
+    }
+    return r;
+}
+main: proc() -> i32 = { _ = peek(); printfmt("{}\n", peek()); return 0; }

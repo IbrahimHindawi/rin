@@ -1,0 +1,14 @@
+// cstr_ends_with: fn_ = length(suffix). If s shorter it returns 0. Boundary ok.
+// Try suffix equal length but s not terminated via cstr built in region buffer.
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/fmt.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 4);
+        fmt_cstr(f, "abc");
+        printfmt("{}\n", cstr_ends_with(fmt_text(f), "abc"));
+    }
+    return 0;
+}

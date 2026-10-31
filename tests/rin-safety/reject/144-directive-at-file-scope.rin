@@ -1,0 +1,3 @@
+// expect: preprocessor line
+#define length data
+main: proc() -> i32 = { return 0; }
