@@ -1,0 +1,10 @@
+// C-STOPPED everywhere (read-only variable). p*.a.b = 2 through *const O passes rin check; expr_const_lvalue_source_type looks one field down.
+import "std/print.rin"
+I: struct = { b: i32; }
+O: struct = { a: I; }
+G: const O = { { 1 } };
+main: proc() -> i32 = {
+    p: *const O = G&;
+    p*.a.b = 2;
+    return 0;
+}

@@ -1,0 +1,5 @@
+// always: const
+I: struct = { b: i32; }
+O: struct = { a: I; }
+set: proc(p: *const O) -> void = { p*.a.b = 2; }
+main: proc() -> i32 = { o: O = {}; set(o&); return o.a.b; }

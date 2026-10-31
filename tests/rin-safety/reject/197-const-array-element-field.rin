@@ -1,0 +1,8 @@
+// expect: this memory is const
+S: struct = { x: i32; }
+K: [2]const S = {};
+main: proc() -> i32 = {
+    q: *i32 = K[0].x&;
+    q* = 2;
+    return 0;
+}

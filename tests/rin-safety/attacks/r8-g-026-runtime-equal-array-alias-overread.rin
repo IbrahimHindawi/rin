@@ -1,0 +1,10 @@
+// r5-s-025 again through an alias: a is a pointer in C, so memcmp(&a, &b, sizeof(a64)) reads 256 bytes from an 8-byte parameter slot.
+import "std/print.rin"
+import "std/equal.rin"
+a64: alias = [64]i32;
+main: proc() -> i32 = {
+    x: a64 = {};
+    y: a64 = {};
+    printfmt("{}\n", runtime_equal<a64>(x, y));
+    return 0;
+}

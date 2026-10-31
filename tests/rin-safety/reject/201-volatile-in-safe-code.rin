@@ -1,0 +1,2 @@
+// expect: 'volatile' is for
+main: proc() -> i32 = { v: volatile i32 = 1; return v; }

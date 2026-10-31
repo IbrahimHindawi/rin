@@ -1,0 +1,11 @@
+// K.v& of box<const myint> gives *const myint, which becomes *myint; a const-qualified member is written, then read (may fold to 1).
+import "std/print.rin"
+box: struct<T> = { v: T; }
+myint: alias = i32;
+K: box<const myint> = { 1 };
+main: proc() -> i32 = {
+    p: *myint = K.v&;
+    p* = 2;
+    printfmt("{}\n", K.v);
+    return 0;
+}

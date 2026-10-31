@@ -1,0 +1,11 @@
+// [4]const myint converts directly to []myint, so a const global array is written.
+import "std/print.rin"
+
+myint: alias = i32;
+g: [4]const myint = { 1, 2, 3, 4 };
+main: proc() -> i32 = {
+    s: []myint = g;
+    s[0] = 2;
+    printfmt("{}\n", g[0]);
+    return 0;
+}

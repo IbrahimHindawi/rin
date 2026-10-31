@@ -1,0 +1,9 @@
+// id<volatile i32> returns *volatile i32, which converts to *i32.
+import "std/print.rin"
+V: volatile i32 = 1;
+id: proc<T>(p: *T) -> *T = { return p; }
+main: proc() -> i32 = {
+    q: *i32 = id<volatile i32>(V&);
+    q* = 2;
+    return 0;
+}

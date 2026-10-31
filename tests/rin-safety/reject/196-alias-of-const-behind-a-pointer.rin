@@ -1,0 +1,9 @@
+// expect: say different things
+ci: alias = const i32;
+main: proc() -> i32 = {
+    i: i32 = 0;
+    a: [1]*i32 in permanent = {};
+    s: []*i32 in permanent = a;
+    t: []*ci in permanent = s;
+    return 0;
+}

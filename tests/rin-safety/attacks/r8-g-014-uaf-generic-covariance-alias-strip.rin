@@ -1,0 +1,19 @@
+// ro<pf> takes *const T covariantly and hands back *T: a frame pointer lands in level memory, read after frame ends.
+import "std/print.rin"
+level: region;
+frame: region in level;
+pf: alias = *i32 in frame;
+H: struct = { p: *i32 in level; }
+ro: proc<T>(x: *const T) -> *T = { return x; }
+main: proc() -> i32 = {
+    level: region = {
+        a: *i32 in level = new<i32>(level);
+        h: *H in level = new<H>(level, { a });
+        frame: region = {
+            b: *i32 in frame = new<i32>(frame);
+            ro<pf>(h*.p&)* = b;
+        }
+        printfmt("{}\n", h*.p*);
+    }
+    return 0;
+}

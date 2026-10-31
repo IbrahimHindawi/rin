@@ -1,0 +1,7 @@
+// *i32 takes the address of a volatile i32: a volatile object through a non-volatile lvalue is UB in C (6.7.3); nothing checks volatile at all.
+V: volatile i32 = 1;
+main: proc() -> i32 = {
+    p: *i32 = V&;
+    p* = 2;
+    return 0;
+}

@@ -1,0 +1,12 @@
+// []const myint converts to []myint: same alias strip, and the write lands in a const global array.
+import "std/print.rin"
+
+myint: alias = i32;
+g: [4]const myint = { 1, 2, 3, 4 };
+main: proc() -> i32 = {
+    c: []const myint = g;
+    s: []myint = c;
+    s[0] = 2;
+    printfmt("{}\n", g[0]);
+    return 0;
+}

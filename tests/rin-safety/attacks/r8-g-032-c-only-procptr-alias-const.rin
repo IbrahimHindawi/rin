@@ -1,0 +1,11 @@
+// C-STOPPED on clang. *proc(*const myint) holds a proc taking *myint: the alias strip in the signature compare, and the callee writes a const global.
+import "std/print.rin"
+
+myint: alias = i32;
+G: const myint = 1;
+w2: proc(p: *myint) -> void = { p* = 7; }
+main: proc() -> i32 = {
+    fp: *proc(*const myint) -> void = w2;
+    fp(G&);
+    return 0;
+}

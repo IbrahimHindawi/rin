@@ -1,0 +1,8 @@
+// [2]volatile i32 converts to []i32.
+import "std/print.rin"
+V: [2]volatile i32 = { 1, 2 };
+main: proc() -> i32 = {
+    s: []i32 = V;
+    s[0] = 2;
+    return 0;
+}

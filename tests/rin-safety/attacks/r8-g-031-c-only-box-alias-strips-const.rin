@@ -1,0 +1,13 @@
+// C-STOPPED on clang 22, gcc 14; older gcc builds it. *box<const myint> converts to *box<myint> through the alias strip.
+import "std/print.rin"
+
+myint: alias = i32;
+box: struct<T> = { v: T; }
+G: box<const myint> = { 1 };
+main: proc() -> i32 = {
+    p: *box<const myint> = G&;
+    q: *box<myint> = p;
+    q*.v = 2;
+    printfmt("{}\n", G.v);
+    return 0;
+}

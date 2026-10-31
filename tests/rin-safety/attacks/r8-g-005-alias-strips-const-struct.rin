@@ -1,0 +1,16 @@
+// *const SA (SA an alias of a struct) converts to *SA, so a field of a const global is written.
+import "std/vec.rin"
+import "std/slice.rin"
+import "std/option.rin"
+import "std/print.rin"
+level: region;
+
+S: struct = { x: i32; }
+SA: alias = S;
+G: const SA = { 1 };
+main: proc() -> i32 = {
+    p: *const SA = G&;
+    q: *SA = p;
+    q*.x = 2;
+    return 0;
+}

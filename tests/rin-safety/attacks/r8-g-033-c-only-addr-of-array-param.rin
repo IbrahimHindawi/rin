@@ -1,0 +1,9 @@
+// C-STOPPED on clang 22, gcc 14; older gcc builds it. x& of an array parameter is a pointer to a pointer in C, and p*[63] reads far off the slot.
+import "std/print.rin"
+a64: alias = [64]i32;
+f: proc(x: a64) -> i32 = { p: *a64 = x&; return p*[63]; }
+main: proc() -> i32 = {
+    x: a64 = {};
+    printfmt("{}\n", f(x));
+    return 0;
+}

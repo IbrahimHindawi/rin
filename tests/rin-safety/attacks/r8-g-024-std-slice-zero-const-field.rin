@@ -1,0 +1,14 @@
+// slice<P>zero memsets structs with a const field: writing an object through a non-const lvalue is UB in C, and the read after may fold to the old value.
+import "std/vec.rin"
+import "std/slice.rin"
+import "std/option.rin"
+import "std/print.rin"
+level: region;
+
+P: struct = { a: const i32; b: i32; }
+main: proc() -> i32 = {
+    x: [2]P = { {1, 2}, {3, 4} };
+    slice<P>zero(x);
+    printfmt("{}\n", x[0].a);
+    return 0;
+}

@@ -1,0 +1,16 @@
+// []const pl is covariant, []pl strips const: a global *i32 in permanent is left holding a level pointer, read after level ends.
+import "std/print.rin"
+level: region;
+pl: alias = *i32 in level;
+X: i32 = 1;
+A: [1]*i32 in permanent = { X& };
+main: proc() -> i32 = {
+    level: region = {
+        b: *i32 in level = new<i32>(level, 5);
+        c: []const pl = A;
+        d: []pl = c;
+        d[0] = b;
+    }
+    printfmt("{}\n", A[0]*);
+    return 0;
+}

@@ -1,0 +1,12 @@
+// K.inner.x& with inner: const S gives *i32; a const-qualified member is written, then read.
+import "std/print.rin"
+
+S: struct = { x: i32; }
+O: struct = { inner: const S; }
+K: O = { { 1 } };
+main: proc() -> i32 = {
+    q: *i32 = K.inner.x&;
+    q* = 2;
+    printfmt("{}\n", K.inner.x);
+    return 0;
+}

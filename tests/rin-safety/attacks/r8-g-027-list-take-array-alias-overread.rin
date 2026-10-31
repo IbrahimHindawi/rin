@@ -1,0 +1,15 @@
+// list<a64>take calls runtime_equal<a64>: the same stack over-read from std's list.
+import "std/print.rin"
+import "std/list.rin"
+level: region;
+a64: alias = [64]i32;
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<a64> in level = list<a64>make(level);
+        x: a64 = {};
+        list<a64>push(l, x);
+        n: ?*node<a64> = list<a64>take(l, x);
+        printfmt("{}\n", n ? 1 : 0);
+    }
+    return 0;
+}

@@ -1,0 +1,10 @@
+// id<myint> turns []const T into []T, so a const global array comes back writable.
+import "std/print.rin"
+myint: alias = i32;
+G: [2]const myint = { 1, 2 };
+id: proc<T>(x: []const T) -> []T = { return x; }
+main: proc() -> i32 = {
+    s: []myint = id<myint>(G);
+    s[0] = 3;
+    return 0;
+}

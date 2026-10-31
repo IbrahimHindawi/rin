@@ -592,6 +592,7 @@ typedef enum TypeKind {
 } TypeKind;
 
 struct TypeExpr {
+    TypeExpr *resolved_qualified; // resolve_alias_type's answer, when the alias's use adds a qualifier
     TypeKind kind;
     string8 name;
     string8 array_count;
@@ -2307,6 +2308,7 @@ static TypeExpr *type_new(memops_arena *arena, TypeKind kind) {
 }
 
 static TypeExpr *parse_type(Parser *p);
+static bool g_safety;
 static Expr *parse_expr(Parser *p);
 static string8 concat_name2(memops_arena *arena, string8 a, const char *sep, string8 b);
 
@@ -2531,6 +2533,10 @@ static TypeExpr *parse_type_inner(Parser *p) {
             parser_error_token(p, qualifier,
                                "'volatile' cannot qualify an array; C qualifies the element type "
                                "rather than the array, so write '[N]volatile T'");
+        }
+        if (g_safety) {
+            parser_error_token(p, parser_peek(p), "'volatile' is for what C shares with something outside the program, "
+                                                  "and safe code has no such thing");
         }
         inner->is_volatile = true;
         return inner;
@@ -11475,19 +11481,39 @@ static bool type_is_c_opaque_proc_pointer_name(string8 name) {
 static TypeExpr *resolve_alias_type(Program *prog, TypeExpr *type) {
     if (!prog || !type || type->kind != Type_Name) return type;
     TypeExpr *current = type;
+    bool is_const = type->is_const;
+    bool is_volatile = type->is_volatile;
     for (i32 depth = 0; depth < 32 && current && current->kind == Type_Name; depth++) {
         bool changed = false;
         for (i32 i = 0; i < prog->aliases.length; i++) {
             AliasDecl *decl = (AliasDecl *)prog->aliases.data[i];
             if (string8_equals(&decl->name, &current->name)) {
                 current = decl->type;
+                if (current) {
+                    is_const = is_const || current->is_const;
+                    is_volatile = is_volatile || current->is_volatile;
+                }
                 changed = true;
                 break;
             }
         }
         if (!changed) break;
     }
-    return current ? current : type;
+    if (!current) return type;
+    /* `const myint` is a const i32: the qualifier written on the use is part of the
+       type, or `*const myint` converts to `*myint` and a const global is written. */
+    if (current != type && ((is_const && !current->is_const) || (is_volatile && !current->is_volatile))) {
+        if (!type->resolved_qualified) {
+            TypeExpr *q = (TypeExpr *)malloc(sizeof(TypeExpr));
+            *q = *current;
+            q->resolved_qualified = null;
+            q->is_const = is_const;
+            q->is_volatile = is_volatile;
+            type->resolved_qualified = q;
+        }
+        return type->resolved_qualified;
+    }
+    return current;
 }
 
 /* A `*T` and a `^T` are one C pointer, so at the top level they convert. As a
@@ -12187,13 +12213,14 @@ static TypeExpr *expr_const_lvalue_source_type(Expr *lhs, TypeScope *scope, Prog
         TypeExpr *base = infer_expr_type(lhs->base, scope, prog, arena);
         TypeExpr *resolved = resolve_alias_type(prog, base);
         if (resolved && resolved->kind == Type_Array && resolved->is_const) return base;
+        if (resolved && resolved->kind == Type_Array) return expr_const_lvalue_source_type(lhs->base, scope, prog, arena);
         return null;
     }
 
     if (lhs->kind == Expr_Field) {
         TypeExpr *base = infer_expr_type(lhs->base, scope, prog, arena);
         if (type_is_const_lvalue_type(prog, base)) return base;
-        return null;
+        return expr_const_lvalue_source_type(lhs->base, scope, prog, arena);
     }
 
     return null;
@@ -14896,14 +14923,16 @@ static bool type_flow_same(Program *prog, TypeExpr *a, TypeExpr *b, i32 depth) {
         if (depth > 0 && !a->is_raw && a->region.length == 0 && b->region.length > 0) return false;
         if (!a->is_raw && a->region.length > 0 && !string8_equals(&a->region, &b->region) &&
             (region_rank(prog, a->region) >= 0 || array_string8_contains(&g_region_vars, a->region))) return false;
-        if (depth > 0 && a->elem && b->elem && a->elem->is_const != b->elem->is_const) return false;
+        if (depth > 0 && a->elem && b->elem &&
+            resolve_alias_type(prog, a->elem)->is_const != resolve_alias_type(prog, b->elem)->is_const) return false;
         return type_flow_same(prog, a->elem, b->elem, depth + 1);
     }
     if (type_slice_elem(a) && type_slice_elem(b)) {
         if (depth > 0 && a->region.length == 0 && b->region.length > 0) return false;
         if (a->region.length > 0 && !string8_equals(&a->region, &b->region) &&
             (region_rank(prog, a->region) >= 0 || array_string8_contains(&g_region_vars, a->region))) return false;
-        if (depth > 0 && type_slice_elem(a)->is_const != type_slice_elem(b)->is_const) return false;
+        if (depth > 0 && resolve_alias_type(prog, type_slice_elem(a))->is_const !=
+                         resolve_alias_type(prog, type_slice_elem(b))->is_const) return false;
         return type_flow_same(prog, type_slice_elem(a), type_slice_elem(b), depth + 1);
     }
     if (a->kind == Type_Array && b->kind == Type_Array) return type_flow_same(prog, a->elem, b->elem, depth + 1);
@@ -15830,7 +15859,22 @@ static void c_refuses_visit_stmt(Stmt *s, void *ctx, memops_arena *arena) {
     if (s->kind == Stmt_Var) array_counts_check((Program *)ctx, s->type, false, s->line, s->col, 0);
 }
 
+static ProcDecl *g_c_refuses_proc;
+
 static void c_refuses_visit_expr(Expr *e, void *ctx, memops_arena *arena) {
+    if (e->kind == Expr_Addr && e->inner && e->inner->kind == Expr_Name && g_c_refuses_proc) {
+        /* C passes an array by its address, so this would be the address of that pointer. */
+        Program *prog = (Program *)ctx;
+        for (i32 i = 0; i < g_c_refuses_proc->params.length; i++) {
+            Param *param = (Param *)g_c_refuses_proc->params.data[i];
+            TypeExpr *pt = resolve_alias_type(prog, param->type);
+            if (string8_equals(&param->name, &e->inner->name) && pt && pt->kind == Type_Array) {
+                type_error_message("an array parameter has no address of its own in C: take a slice of it, or its "
+                                   "first element's address", e->line, e->col);
+            }
+        }
+        return;
+    }
     if (e->kind != Expr_Ternary) return;
     Expr *branches[2] = { e->right, e->third };
     for (i32 i = 0; i < 2; i++) {
@@ -15866,6 +15910,7 @@ static void safety_check_what_c_refuses(Program *prog, memops_arena *arena) {
         ProcDecl *p = (ProcDecl *)prog->procs.data[i];
         if (path_is_std(p->source_path) || p->is_external) continue;
         g_diag_source_path = p->source_path;
+        g_c_refuses_proc = p;
         TypeExpr *ret = resolve_alias_type(prog, p->ret_type);
         if (ret && ret->kind == Type_Array) {
             type_error_message("C cannot return an array: put it in a struct, or pass a '[]T' to fill", p->line, p->col);
@@ -17378,15 +17423,24 @@ static bool expr_place_is_const(Expr *e, TypeScope *scope, Program *prog, memops
         TypeExpr *t = type_scope_lookup(scope, e->name);
         return t && t->is_const;
     }
-    if (e->kind == Expr_Field) return expr_place_is_const(e->base, scope, prog, arena, depth + 1);
+    if (e->kind == Expr_Field) {
+        /* `K.inner.x` with `inner: const S`; `K[0].x` of an array of const structs. */
+        TypeExpr *here = resolve_alias_type(prog, infer_expr_type(e, scope, prog, arena));
+        if (here && here->is_const) return true;
+        TypeExpr *bt = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
+        if (bt && bt->kind == Type_Ptr) return bt->elem && resolve_alias_type(prog, bt->elem)->is_const;
+        if (bt && bt->is_const) return true;
+        return expr_place_is_const(e->base, scope, prog, arena, depth + 1);
+    }
     if (e->kind == Expr_Ternary) {
         return expr_place_is_const(e->right, scope, prog, arena, depth + 1) ||
                expr_place_is_const(e->third, scope, prog, arena, depth + 1);
     }
     if (e->kind == Expr_Index) {
         TypeExpr *bt = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
-        if (bt && bt->kind == Type_Ptr) return bt->elem && bt->elem->is_const;
-        if (bt && type_slice_elem(bt)) return type_slice_elem(bt)->is_const;
+        if (bt && bt->kind == Type_Ptr) return bt->elem && resolve_alias_type(prog, bt->elem)->is_const;
+        if (bt && type_slice_elem(bt)) return resolve_alias_type(prog, type_slice_elem(bt))->is_const;
+        if (bt && bt->kind == Type_Array && bt->elem && resolve_alias_type(prog, bt->elem)->is_const) return true;
         return expr_place_is_const(e->base, scope, prog, arena, depth + 1);
     }
     return false;
@@ -19279,6 +19333,46 @@ static void region_instance_note(Program *prog, ProcDecl *decl, TypeSub sub, mem
     ptr_array_append(arena, &g_region_instances, inst);
 }
 
+/* A const member anywhere in a value, which C would not let be assigned. */
+static bool type_has_const_member(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth) {
+    TypeExpr *t = resolve_alias_type(prog, type);
+    if (!t || depth > 16) return false;
+    if (t->is_const && depth > 0) return true;
+    if (t->kind == Type_Array) return type_has_const_member(prog, t->elem, arena, depth + 1);
+    if (t->kind != Type_Name && t->kind != Type_Generic) return false;
+    TypeSub sub = {0};
+    StructDecl *decl = lookup_aggregate_decl(prog, t, &sub, arena);
+    if (!decl) return false;
+    for (i32 i = 0; i < decl->fields.length; i++) {
+        Field *f = (Field *)decl->fields.data[i];
+        if (f->type && type_has_const_member(prog, substitute_type_sub(arena, f->type, sub), arena, depth + 1)) return true;
+    }
+    return false;
+}
+
+/* A trusted generic body sees its T as bytes, and what it knows of them comes from C's
+   sizeof: it writes past a const member, and takes an array parameter's size to be the array's. */
+static void safety_check_trusted_instance(Program *prog, ProcDecl *p, TypeSub sub, memops_arena *arena) {
+    if (!g_safety || !p->answers_for_signature) return;
+    for (i32 k = 0; k < sub.args.length; k++) {
+        TypeExpr *given = (TypeExpr *)sub.args.data[k];
+        g_diag_source_path = p->source_path;
+        if (type_has_const_member(prog, given, arena, 0)) {
+            type_error_message("this generic's trusted body writes its T as bytes, and T has a const member", p->line, p->col);
+        }
+        TypeExpr *resolved = resolve_alias_type(prog, given);
+        if (!resolved || resolved->kind != Type_Array) continue;
+        for (i32 j = 0; j < p->params.length; j++) {
+            TypeExpr *pt = ((Param *)p->params.data[j])->type;
+            if (pt && pt->kind == Type_Name && k < p->type_params.length && string8_equals(&pt->name, &p->type_params.data[k])) {
+                type_error_message("an array goes to a proc by its address, and this generic's trusted body takes T's "
+                                   "size to be what it was given: put the array in a struct", p->line, p->col);
+                break;
+            }
+        }
+    }
+}
+
 static void type_check_generic_proc_instances(
     Program *prog,
     TypeScope *globals,
@@ -19308,6 +19402,7 @@ static void type_check_generic_proc_instances(
                     type_error_message(message, p->line, p->col);
                 }
             }
+            safety_check_trusted_instance(prog, p, sub, arena);
             type_check_proc_body(prog, p, globals, sub, arena);
         }
     }

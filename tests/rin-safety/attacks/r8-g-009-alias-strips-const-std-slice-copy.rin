@@ -1,0 +1,11 @@
+// slice<myint>copy takes a const global as its dst through the alias strip; memmove writes rodata.
+import "std/print.rin"
+import "std/slice.rin"
+myint: alias = i32;
+G: [2]const myint = { 1, 2 };
+H: [2]myint = { 3, 4 };
+main: proc() -> i32 = {
+    slice<myint>copy(G, H);
+    printfmt("{}\n", G[0]);
+    return 0;
+}

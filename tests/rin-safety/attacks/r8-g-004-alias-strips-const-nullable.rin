@@ -1,0 +1,15 @@
+// ?*const myint converts to ?*myint, so the narrowed pointer writes a const global.
+import "std/vec.rin"
+import "std/slice.rin"
+import "std/option.rin"
+import "std/print.rin"
+level: region;
+
+myint: alias = i32;
+G: const myint = 1;
+main: proc() -> i32 = {
+    p: ?*const myint = G&;
+    q: ?*myint = p;
+    if (q) { q* = 2; }
+    return 0;
+}

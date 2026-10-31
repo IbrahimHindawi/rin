@@ -1,0 +1,8 @@
+// expect: goes to a proc by its address
+import "std/equal.rin"
+a64: alias = [64]i32;
+main: proc() -> i32 = {
+    x: a64 = {};
+    y: a64 = {};
+    return runtime_equal<a64>(x, y);
+}

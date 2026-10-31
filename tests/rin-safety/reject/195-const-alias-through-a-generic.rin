@@ -1,0 +1,8 @@
+// always: expected
+myint: alias = i32;
+G: const i32 = 1;
+id: proc<T>(x: *const T) -> *T = { return x; }
+main: proc() -> i32 = {
+    id<myint>(G&)* = 2;
+    return 0;
+}

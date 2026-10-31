@@ -1,0 +1,12 @@
+// K.v.x& of box<const S> gives *i32: const T in a generic struct is not seen by the place check.
+import "std/print.rin"
+
+S: struct = { x: i32; }
+box: struct<T> = { v: T; }
+K: box<const S> = { { 1 } };
+main: proc() -> i32 = {
+    q: *i32 = K.v.x&;
+    q* = 2;
+    printfmt("{}\n", K.v.x);
+    return 0;
+}

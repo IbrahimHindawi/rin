@@ -1,0 +1,10 @@
+// K[0].xs of [2]const I goes to a [4]i32 parameter, which is a pointer in C; the callee writes rodata.
+import "std/print.rin"
+I: struct = { xs: [4]i32; }
+K: [2]const I = { {{1,2,3,4}}, {{1,2,3,4}} };
+poke: proc(a: [4]i32) -> void = { a[0] = 2; }
+main: proc() -> i32 = {
+    poke(K[0].xs);
+    printfmt("{}\n", K[0].xs[0]);
+    return 0;
+}

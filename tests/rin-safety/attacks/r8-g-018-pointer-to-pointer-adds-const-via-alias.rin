@@ -1,0 +1,14 @@
+// The same past ad55857: **i32 converts to *pc, pc = *ci in permanent, so a *i32 global is pointed at a const global and written.
+import "std/print.rin"
+ci: alias = const i32;
+pc: alias = *ci in permanent;
+G: const i32 = 1;
+X: i32 = 0;
+Q: *i32 in permanent = X&;
+main: proc() -> i32 = {
+    h: *pc = Q&;
+    h* = G&;
+    Q* = 2;
+    printfmt("{}\n", G);
+    return 0;
+}

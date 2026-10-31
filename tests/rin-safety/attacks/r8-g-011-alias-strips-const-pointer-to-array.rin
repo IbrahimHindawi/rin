@@ -1,0 +1,12 @@
+// *[4]const myint converts to *[4]myint through two aliases, so a const global array is written through p*[0].
+import "std/print.rin"
+myint: alias = i32;
+c4: alias = [4]const myint;
+a4: alias = [4]myint;
+G: c4 = { 1, 2, 3, 4 };
+main: proc() -> i32 = {
+    p: *a4 = G&;
+    p*[0] = 9;
+    printfmt("{}\n", G[0]);
+    return 0;
+}

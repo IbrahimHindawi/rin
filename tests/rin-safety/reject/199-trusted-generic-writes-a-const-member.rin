@@ -1,0 +1,8 @@
+// expect: const member
+import "std/slice.rin"
+P: struct = { x: const i32; }
+main: proc() -> i32 = {
+    a: [2]P = {};
+    slice<P>zero(a);
+    return 0;
+}

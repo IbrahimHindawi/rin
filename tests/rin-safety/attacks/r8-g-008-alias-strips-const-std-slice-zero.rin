@@ -1,0 +1,12 @@
+// slice<myint>zero takes a []const myint through the alias strip; memset writes a const global array, then it is read.
+import "std/print.rin"
+
+import "std/slice.rin"
+myint: alias = i32;
+g: [4]const myint = { 1, 2, 3, 4 };
+main: proc() -> i32 = {
+    c: []const myint = g;
+    slice<myint>zero(c);
+    printfmt("{}\n", g[0]);
+    return 0;
+}

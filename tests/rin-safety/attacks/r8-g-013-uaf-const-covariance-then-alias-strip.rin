@@ -1,0 +1,20 @@
+// *const pf is covariant in its region, and the alias strip then makes it writable: a frame pointer is stored in level memory and read after frame ends.
+import "std/print.rin"
+level: region;
+frame: region in level;
+pf: alias = *i32 in frame;
+H: struct = { p: *i32 in level; }
+main: proc() -> i32 = {
+    level: region = {
+        a: *i32 in level = new<i32>(level);
+        h: *H in level = new<H>(level, { a });
+        frame: region = {
+            b: *i32 in frame = new<i32>(frame);
+            c: *const pf = h*.p&;
+            d: *pf = c;
+            d* = b;
+        }
+        printfmt("{}\n", h*.p*);
+    }
+    return 0;
+}

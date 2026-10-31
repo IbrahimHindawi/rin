@@ -1,0 +1,10 @@
+// must(?*const myint) converts to *myint, so a const global is written.
+import "std/print.rin"
+myint: alias = i32;
+G: const myint = 1;
+main: proc() -> i32 = {
+    n: ?*const myint = G&;
+    p: *myint = must(n);
+    p* = 2;
+    return 0;
+}

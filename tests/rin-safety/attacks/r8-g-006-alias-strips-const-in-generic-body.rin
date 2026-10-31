@@ -1,0 +1,14 @@
+// In id<myint>, *const T returned as *T passes because T is an alias; the const fix keeps const on T, the alias strip drops it again.
+import "std/vec.rin"
+import "std/slice.rin"
+import "std/option.rin"
+import "std/print.rin"
+level: region;
+
+myint: alias = i32;
+G: const myint = 1;
+id: proc<T>(x: *const T) -> *T = { return x; }
+main: proc() -> i32 = {
+    id<myint>(G&)* = 2;
+    return 0;
+}

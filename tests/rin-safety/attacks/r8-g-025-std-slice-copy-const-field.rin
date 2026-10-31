@@ -1,0 +1,12 @@
+// slice<P>copy memmoves over a struct with a const field; rin refuses the assignment only in C, this route does not reach C's check.
+import "std/print.rin"
+
+import "std/slice.rin"
+P: struct = { a: const i32; b: i32; }
+x: [1]P = { { 1, 2 } };
+y: [1]P = { { 3, 4 } };
+main: proc() -> i32 = {
+    slice<P>copy(x, y);
+    printfmt("{}\n", x[0].a);
+    return 0;
+}

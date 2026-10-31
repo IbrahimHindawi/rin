@@ -1,0 +1,9 @@
+// *const myint converts to *myint: resolve_alias_type drops the const on the alias use, so this writes a const global (faults on rodata).
+myint: alias = i32;
+G: const myint = 1;
+main: proc() -> i32 = {
+    p: *const myint = G&;
+    q: *myint = p;
+    q* = 2;
+    return 0;
+}

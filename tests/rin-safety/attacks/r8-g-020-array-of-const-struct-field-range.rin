@@ -1,0 +1,11 @@
+// K[1].ys[0..4] of [2]const S gives a writable []i32 over rodata.
+import "std/print.rin"
+
+S: struct = { x: i32; ys: [4]i32; }
+K: [2]const S = { { 1 }, { 2 } };
+main: proc() -> i32 = {
+    q: []i32 = K[1].ys[0..4];
+    q[0] = 2;
+    printfmt("{}\n", K[1].ys[0]);
+    return 0;
+}

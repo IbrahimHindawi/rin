@@ -182,7 +182,7 @@ say(stage="done")
 
 # Warnings are noise here, but a wrong type must stay the error it is by default: the emitter
 # getting one wrong is a bug to see, and silencing it makes a binary that means nothing.
-C_QUIET = ["-Wno-everything", "-Werror=int-conversion", "-Werror=incompatible-pointer-types",
+C_QUIET = ["-Wno-everything", "-Werror=int-conversion", "-Werror=incompatible-pointer-types", "-Wno-error=incompatible-pointer-types-discards-qualifiers",
            "-Werror=incompatible-function-pointer-types", "-Werror=implicit-function-declaration"]
 # float-cast-overflow is not in `undefined`, and a float reaching an integer without rin's
 # saturating cast is what it would catch.

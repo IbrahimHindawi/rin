@@ -1,0 +1,13 @@
+// ad55857's rule that const must match behind a pointer reads a->elem->is_const unresolved: []*i32 converts to []*ci, ci = const i32, so a const global's address lands in a *i32 slot and is written.
+import "std/print.rin"
+ci: alias = const i32;
+G: const i32 = 1;
+X: i32 = 0;
+A: [1]*i32 in permanent = { X& };
+main: proc() -> i32 = {
+    c: []*ci in permanent = A;
+    c[0] = G&;
+    A[0]* = 2;
+    printfmt("{}\n", G);
+    return 0;
+}
