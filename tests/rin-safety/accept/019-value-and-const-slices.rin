@@ -1,0 +1,24 @@
+import "std/print.rin"
+
+/* `p && p*.x` as a value narrows as it does in an if, and through a longer chain. */
+H: struct = { x: i32; }
+pick: proc(p: ?*H, flag: b32) -> b32 = {
+    yes: b32 = p != null && flag != 0 && p*.x > 0;
+    no: b32 = !p || p*.x == 0;
+    return yes && !no;
+}
+
+/* A const on an element that is an alias of an array still converts. */
+pair: alias = [2]f32;
+S: struct = { two: [2]pair; }
+view: proc(s: *S) -> []const pair = { return s*.two[0..2]; }
+
+main: proc() -> i32 = {
+    h: H = { .x = 3 };
+    printfmt("{}\n", pick(h&, 1));
+    s: S = {};
+    s.two[1][0] = 2.5;
+    v: []const pair = view(s&);
+    printfmt("{:.1}\n", v[1][0]);
+    return 0;
+}

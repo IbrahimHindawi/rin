@@ -13901,7 +13901,10 @@ static void slice_coerce(Program *prog, TypeExpr *dst, TypeExpr *src, Expr *src_
         coerce_set(prog, src_expr, d, s, s->array_count);
         return;
     }
-    if (type_slice_elem(s) && !type_expr_equal_resolved(prog, d, s)) {
+    /* A const on an element that is an alias of an array is gone once resolved,
+       and the two are still different structs in C. */
+    bool const_differs = type_slice_elem(s) && type_slice_elem(d)->is_const != type_slice_elem(s)->is_const;
+    if (type_slice_elem(s) && (const_differs || !type_expr_equal_resolved(prog, d, s))) {
         if (!src_expr->index_end && !expr_is_pure(src_expr) && !slice_widens_to_const(prog, d, s)) {
             type_error_message("this slice is read twice to convert it; store it in a local first",
                                src_expr->line, src_expr->col);
@@ -16447,6 +16450,16 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
     }
     if (e->kind == Expr_Call) {
         type_check_call(e, scope, prog, arena);
+        return;
+    }
+    if (e->kind == Expr_Binary && (e->op == Token_AmpAmp || e->op == Token_PipePipe)) {
+        /* `p && p*.x` as a value narrows as it does in an `if`: the right side
+           runs only when the left decided nothing. */
+        bool and_op = e->op == Token_AmpAmp;
+        TypeScope mid = type_scope_copy(arena, scope);
+        type_check_condition_narrowing(e->left, scope, and_op ? &mid : null, and_op ? null : &mid, prog, arena);
+        type_check_expr(e->right, &mid, prog, arena);
+        type_check_binary_op(e, scope, prog, arena);
         return;
     }
     if (e->kind == Expr_Binary) {
