@@ -843,7 +843,7 @@ struct Field {
 struct Param {
     string8 name;
     TypeExpr *type;
-    /* `reserve: u64 = max_alloc_size`. A call that leaves the trailing
+    /* `reserve: u64 = 0x10000000000`. A call that leaves the trailing
        arguments off gets these appended by the checker, so the emitter and C
        never see a default. Null when the parameter has none. */
     Expr *default_value;
@@ -6377,33 +6377,6 @@ static void semantic_check_proc_returns(ProcDecl *proc) {
                              proc->name, proc->source_path, proc->line, proc->col);
 }
 
-/* The text of `#define NAME 42`, when it is one plain number. */
-static bool program_macro_number(Program *prog, string8 name, memops_arena *arena, string8 *out) {
-    for (i32 i = 0; i < prog->preprocessor_lines.length; i++) {
-        string8 line = prog->preprocessor_lines.data[i];
-        if (preprocessor_define_is_function_like(line)) continue;
-        string8 defined = preprocessor_define_name(arena, line);
-        if (!defined.data || !string8_equals(&defined, &name)) continue;
-        u64 k = 0;
-        while (k < line.length && line.data[k] != '#') k++;
-        u64 found = 0;
-        for (; k + name.length <= line.length; k++) {
-            if (memcmp(line.data + k, name.data, name.length) == 0) { found = k + name.length; break; }
-        }
-        if (found == 0) return false;
-        k = found;
-        while (k < line.length && (line.data[k] == ' ' || line.data[k] == '\t' || line.data[k] == '(')) k++;
-        if (k >= line.length || line.data[k] < '0' || line.data[k] > '9') return false;
-        u64 start = k;
-        while (k < line.length && line.data[k] != ' ' && line.data[k] != '\t' && line.data[k] != ')' &&
-               line.data[k] != '\r' && line.data[k] != '/') k++;
-        out->data = line.data + start;
-        out->length = k - start;
-        return true;
-    }
-    return false;
-}
-
 static bool program_defines_object_macro(Program *prog, string8 name, memops_arena *arena) {
     for (i32 i = 0; i < prog->preprocessor_lines.length; i++) {
         string8 line = prog->preprocessor_lines.data[i];
@@ -10700,6 +10673,14 @@ static string8 enum_item_c_name(memops_arena *arena, EnumDecl *decl, EnumItem *i
 /* Rewrites `[Enum.Member]` array counts to the member's C name, now that every
    import has been merged and all enums are visible. A bare identifier is left
    alone: it names a C constant or macro the generated code refers to directly. */
+typedef struct ConstVal {
+    bool ok;
+    bool is_float;
+    bool big;
+    i64 value;
+} ConstVal;
+static ConstVal const_eval(Expr *e);
+
 static void resolve_array_count_constants(memops_arena *arena, Program *prog) {
     for (i32 i = 0; i < prog->pending_array_counts.length; i++) {
         TypeExpr *type = (TypeExpr *)prog->pending_array_counts.data[i];
@@ -10709,7 +10690,23 @@ static void resolve_array_count_constants(memops_arena *arena, Program *prog) {
         for (i32 c = 0; c < type->array_count.length; c++) {
             if (type->array_count.data[c] == '.') { dot = c; break; }
         }
-        if (dot < 0) continue;
+        if (dot < 0) {
+            /* `N: const i32 = 4`, and `[N]T` is a `[4]T`: C needs a constant there, and a C
+               const is a variable. Written as a number, the checker knows the length too. */
+            for (i32 g = 0; g < prog->globals.length; g++) {
+                Stmt *global = (Stmt *)prog->globals.data[g];
+                if (!string8_equals(&global->name, &type->array_count)) continue;
+                if (!global->type || !global->type->is_const || !global->expr || global->expr->kind != Expr_Number) break;
+                if (number_is_float_form(number_digits(global->expr->number))) break;
+                ConstVal length = const_eval(global->expr);
+                if (!length.ok || length.big || length.value < 0) break;
+                char count_buf[32];
+                snprintf(count_buf, sizeof(count_buf), "%lld", (long long)length.value);
+                type->array_count = string8_from_cstr(arena, count_buf);
+                break;
+            }
+            continue;
+        }
 
         /* `Enum<>.count` is known once the enum is parsed, so it becomes a
            literal here rather than a reflection lookup the C array size could
@@ -10895,9 +10892,6 @@ static bool expr_may_be_null_literal(Expr *e);
 static bool safety_check_proc_null(Program *prog, TypeExpr *dst, Expr *value);
 static TypeExpr *type_proc_from_callable_type(Program *prog, TypeExpr *type);
 static bool g_checking_std;
-static bool const_number_fits_i32(string8 text);
-static Program *g_const_prog;
-static memops_arena *g_const_arena;
 static string8 narrow_path(Expr *e, memops_arena *arena);
 static i32 g_field_narrows; // the current proc's narrowed field paths, so most procs pay nothing
 static bool g_raw_field_read_ok = false; // the left of `x.data == null`
@@ -11021,20 +11015,7 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
         if (scope_type) return type_scope_apply_sub(scope, arena, scope_type);
         EnumDecl *enum_decl = lookup_enum_constant_decl(arena, prog, e->name);
         if (enum_decl) return type_name_expr_from_string(arena, enum_decl->name);
-        ProcDecl *named_proc = lookup_proc_decl(prog, e->name);
-        if (named_proc) return proc_decl_pointer_type(arena, named_proc);
-        /* `#define N 42` is a number to C, so it is one here: with no type at all, every
-           rule that asks what an operand is would pass it by. */
-        string8 macro_number = {0};
-        if (g_safety && program_macro_number(prog, e->name, arena, &macro_number)) {
-            if (number_is_float_form(number_digits(macro_number))) {
-                *kind = Lit_Float;
-                return type_name_expr(arena, "f64");
-            }
-            *kind = Lit_Int;
-            return type_name_expr(arena, const_number_fits_i32(macro_number) ? "i32" : "i64");
-        }
-        return null;
+        return proc_decl_pointer_type(arena, lookup_proc_decl(prog, e->name));
     }
     if (e->kind == Expr_Number) {
         string8 suffix = number_suffix_type(e->number);
@@ -13827,20 +13808,6 @@ static void lit_annotate(Program *prog, Expr *e, TypeExpr *type, bool in_const_a
 
 /* The value of a constant integer expression, when it can be worked out exactly.
    `big` is a literal above i64's range, which only u64 can hold. */
-typedef struct ConstVal {
-    bool ok;
-    bool is_float;
-    bool big;
-    i64 value;
-} ConstVal;
-
-static ConstVal const_eval(Expr *e);
-
-static bool const_number_fits_i32(string8 text) {
-    Expr number = { .kind = Expr_Number, .number = text };
-    ConstVal c = const_eval(&number);
-    return c.ok && !c.big && c.value <= 2147483647;
-}
 
 /* What const_eval folds is `i64`, so a literal that says its own type could wrap in C where
    the fold does not: `128'u8 + 128'u8` is 0 there. */
@@ -13853,12 +13820,6 @@ static bool expr_has_typed_literal(Expr *e) {
 static ConstVal const_eval(Expr *e) {
     ConstVal none = {0};
     if (!e) return none;
-    if (e->kind == Expr_Name && g_const_prog) {
-        string8 macro_number = {0};
-        if (!program_macro_number(g_const_prog, e->name, g_const_arena, &macro_number)) return none;
-        Expr number = { .kind = Expr_Number, .number = macro_number };
-        return const_eval(&number);
-    }
     if (e->kind == Expr_Number) {
         string8 digits = number_digits(e->number);
         ConstVal c = { .ok = true };
@@ -13965,7 +13926,6 @@ static bool expr_is_compile_constant(Expr *e, bool *has_size) {
     if (!e) return false;
     if (e->kind == Expr_Number || e->kind == Expr_Char) return true;
     if (e->kind == Expr_SizeofType || e->kind == Expr_AlignofType) { *has_size = true; return true; }
-    if (e->kind == Expr_Name) return g_const_prog && const_eval(e).ok;
     if (e->kind == Expr_Unary) return expr_is_compile_constant(e->inner, has_size);
     if (e->kind == Expr_Binary) return expr_is_compile_constant(e->left, has_size) && expr_is_compile_constant(e->right, has_size);
     return false;
@@ -16273,30 +16233,6 @@ static bool name_is_generated_type(Program *prog, string8 name, memops_arena *ar
 }
 
 /* `#define NAME 8`, `#define NAME (-1.5)`: nothing but a number, whose name is free to take. */
-static bool preprocessor_line_defines_a_number(Program *prog, memops_arena *arena, string8 line) {
-    string8 name = preprocessor_define_name(arena, line);
-    if (!name.data || preprocessor_define_is_function_like(line)) return false;
-    if (name_is_runtime(name) || ident_is_c_reserved(name) || name_is_type(prog, name, arena)) return false;
-    u64 k = 0;
-    while (k < line.length && line.data[k] != '#') k++;
-    u64 found = 0;
-    for (; k + name.length <= line.length; k++) {
-        if (memcmp(line.data + k, name.data, name.length) == 0) { found = k + name.length; break; }
-    }
-    if (found == 0) return false;
-    k = found;
-    while (k < line.length && (line.data[k] == ' ' || line.data[k] == '\t' || line.data[k] == '(' || line.data[k] == '-' || line.data[k] == '+')) k++;
-    /* It must begin as a number does: `u8` is a name. */
-    if (k >= line.length || line.data[k] < '0' || line.data[k] > '9') return false;
-    for (; k < line.length; k++) {
-        u8 c = line.data[k];
-        bool ok = (c >= '0' && c <= '9') || c == ' ' || c == '\t' || c == ')' || c == '.' || c == '\r' ||
-                  (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == 'x' || c == 'X' || c == 'u' || c == 'U' || c == 'l' || c == 'L';
-        if (!ok) return false;
-    }
-    return true;
-}
-
 static void safety_check_directive_lines(Program *prog, Vec_string8 *lines, const char *path, i32 line_no, i32 col, memops_arena *arena) {
     for (i32 i = 0; i < lines->length; i++) {
         string8 line = lines->data[i];
@@ -16304,11 +16240,11 @@ static void safety_check_directive_lines(Program *prog, Vec_string8 *lines, cons
         for (u64 k = 0; k + 9 <= line.length; k++) {
             if (memcmp(line.data + k, "// unsafe", 9) == 0) marked = true;
         }
-        if (marked || preprocessor_line_defines_a_number(prog, arena, line)) continue;
+        if (marked) continue;
         if (path) g_diag_source_path = path;
         char message[420];
         snprintf(message, sizeof(message), "a preprocessor line can change what any other line means, so the checker cannot vouch "
-                 "for it; end it with '// unsafe: why', or give the constant a plain number: %.*s",
+                 "for it; a constant is 'N: const i32 = 4', and anything else ends with '// unsafe: why': %.*s",
                  (int)(line.length > 120 ? 120 : line.length), line.data);
         type_error_message(message, line_no, col);
     }
@@ -19757,8 +19693,6 @@ static void type_scope_add_function_like_macros(memops_arena *arena, TypeScope *
 }
 
 static void type_check_program(Program *prog, memops_arena *arena) {
-    g_const_prog = prog;
-    g_const_arena = arena;
     g_region_instances = ptr_array_reserve(arena, 8);
     g_region_instance_keys = Vec_string8_reserve(arena, 8);
     TypeScope globals = type_scope_make(arena, 64);
@@ -23639,7 +23573,7 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
                               "    memcpy(out, &s, sizeof(s));\n"
                               "    return out;\n}\n");
         emit_cstr(arena, out, "RIN_MAYBE_UNUSED static memops_arena *rin_region_open(memops_arena *a) {\n"
-                              "    if (!a->base) memops_arena_initialize(a, max_alloc_size);\n"
+                              "    if (!a->base) memops_arena_initialize(a, 0x10000000000ULL);\n"
                               "    return a;\n}\n"
                               /* Each declared region reserves a terabyte, and there are few. These
                                  can all be open at once, and 256 terabytes is twice what a process

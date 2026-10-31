@@ -1,0 +1,17 @@
+import "std/print.rin"
+
+/* A constant is a const: it has a type, a scope, and sizes an array anywhere. */
+N: const u32 = 4;
+S: struct = { a: [N]i32; }
+g: [N]i32 = {};
+
+main: proc() -> i32 = {
+    s: S = {};
+    l: [N]i32 = {};
+    s.a[3] = 5;
+    g[3] = 6;
+    l[3] = 7;
+    for (i: u32 = 0; i < N; i += 1) { s.a[i] += 1; }
+    printfmt("{} {} {} {}\n", s.a[3], g[3], l[3], N);
+    return 0;
+}

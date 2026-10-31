@@ -102,7 +102,6 @@ r4-418-str-zero-global-print.rin
 r5-c-042-noalias-region-pointer-pass.rin
 r5-c-048-must-of-tmp-returned-struct.rin
 r5-c-080-generic-mangle-region-ptr.rin
-r5-e-009-named-count-const-index.rin
 r5-e-019-const-eval-int-overflow-index.rin
 r5-e-020-const-eval-u64-wrap-index.rin
 r5-e-021-const-eval-u32-wrap-index.rin
@@ -116,7 +115,6 @@ r5-e-033-named-const-array-var-index.rin
 r5-e-040-new-slice-field-call-read.rin
 r5-e-041-const-eval-sub-div-u64-oob.rin
 r5-e-042-const-eval-i32-mul-wrap.rin
-r5-e-043-named-const-literal-oob.rin
 r5-s-007-map-find-null-key.rin
 r5-s-015-cstr-of-unseq-clobber.rin
 r5-s-035-vec-append-self-grow.rin
@@ -129,10 +127,8 @@ r6-c-017-cstr-of-outer-sibling.rin
 r6-c-024-and-right-unsequenced-field.rin
 r6-c-026-nested-loop-inner-retake.rin
 r6-e-005-octal-array-length.rin
-r6-e-007-define-null-is-one.rin
 r6-e-010-octal-len-slice.rin
 r6-e-011-hex-array-length.rin
-r6-e-013-define-length-is-data.rin
 r6-e-022-long-overflow.rin
 r6-e-023-long-mul-index.rin
 r6-e-024-octal-zero-prefix-index.rin
@@ -156,8 +152,6 @@ r7-a-061-alias-array-of-array-order.rin
 r7-a-091-enum-count-bare-shadow.rin
 r7-a-092-procparam-count.rin
 r7-a-107-str-zero-field.rin
-r7-a-114-define-null-macro.rin
-r7-a-116-define-c-limit.rin
 r7-a-120-align-small-attr.rin
 r7-a-121-print-char-precision.rin
 r7-a-122-print-huge-width.rin
@@ -165,7 +159,6 @@ r7-a-123-print-precision-float.rin
 r7-a-126-print-percent-in-format.rin
 r7-a-128-print-str-null-nested.rin
 r7-a-163-procptr-variadic-type.rin
-r7-a-171-macro-number-array-length.rin
 r7-a-189-reflect-stub-bad-name-field.rin
 r7-a-192-enum-oob-table-and-switch.rin
 r7-a-195-switch-no-default-nonnull-init.rin
@@ -200,12 +193,6 @@ r7-b-028-memops-helpers-zero-align.rin
 r7-b-029-null-plus-zero.rin
 r7-b-031-sort-bad-less-hangs.rin
 r7-b-034-printfmt-b32-depends-on-sibling-arg.rin
-r8-s-021-generic-index-count-first-instance-alias.rin
-r8-s-022-generic-range-count-first-instance-alias.rin
-r8-s-023-generic-struct-array-field-count-first-instance.rin
-r8-s-024-generic-write-count-first-instance.rin
-r8-s-025-generic-literal-index-varies-unchecked.rin
-r8-s-026-generic-literal-range-varies-unchecked.rin
 r8-s-027-generic-cstr-of-copy-count-last-instance.rin
 r8-s-028-generic-narrow-cast-applied-to-float-instance.rin
 r8-r-001-printfmt-instance-array-oob-write.rin
@@ -213,9 +200,6 @@ r8-r-002-printfmt-instance-float-cast-overflow.rin
 r8-r-003-printfmt-instance-signed-overflow.rin
 r8-r-004-printfmt-instance-global-array-oob.rin
 r8-r-005-printfmt-instance-transitive-generic-oob.rin
-r9-f-013-macro-signed-overflow.rin
-r9-f-014-macro-division-by-zero.rin
-r9-f-016-macro-float-cast-does-not-saturate.rin
 r9-f-018-literal-kind-division-by-zero-at-run-time.rin
 r9-f-019-literal-kind-signed-overflow-add.rin
 r9-f-020-literal-kind-negate-int-min.rin
@@ -225,5 +209,5 @@ r9-f-023-literal-overflow-past-const-eval.rin
 r9-f-024-const-eval-divisor-wraps-to-zero.rin
 r9-f-025-const-eval-divisor-wraps-to-minus-one.rin
 r9-f-037-static-slice-counted-as-stable.rin
-r9-t-055-float-macro-cast.rin
 r9-t-060-cstr-ends-with-null.rin
+r5-e-032-named-const-slice-coerce.rin

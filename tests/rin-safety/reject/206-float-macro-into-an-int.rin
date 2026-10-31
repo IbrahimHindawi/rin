@@ -1,3 +1,3 @@
-// expect: float literal
-#define BIG 1e300
+// always: drops the fraction
+BIG: const f64 = 1e300;
 main: proc() -> i32 = { y: i32 = BIG; return y; }

@@ -1,5 +1,5 @@
 // expect: leaves elements zero
-#define N 3
+N: const i32 = 3;
 H: struct = { p: *i32 in permanent; }
 main: proc() -> i32 = {
     q: *i32 in permanent = new<i32>(permanent);

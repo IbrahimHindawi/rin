@@ -1,4 +1,4 @@
-// expect: expected
+// expect: a preprocessor line
 #define Z 0
 g: i32 = 1;
 main: proc() -> i32 = { p: *i32 = g&; p = Z; return p*; }

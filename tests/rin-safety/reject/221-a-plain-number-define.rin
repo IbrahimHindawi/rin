@@ -1,0 +1,3 @@
+// expect: a preprocessor line
+#define N 4
+main: proc() -> i32 = { return N; }

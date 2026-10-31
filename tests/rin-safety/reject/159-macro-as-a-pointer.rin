@@ -1,4 +1,4 @@
-// expect: expected 'ptr_i32'
+// expect: a preprocessor line
 #define P 16
 main: proc() -> i32 = {
     p: *i32 = P;

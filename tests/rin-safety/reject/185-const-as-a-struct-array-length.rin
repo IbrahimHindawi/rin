@@ -1,4 +1,5 @@
-// expect: a struct's array length
-N: const i32 = 4;
+// always: constant
+M: i32 = 4;
+N: const i32 = M;
 S: struct = { a: [N]i32; }
 main: proc() -> i32 = { s: S = {}; return s.a[0]; }
