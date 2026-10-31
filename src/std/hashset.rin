@@ -15,46 +15,46 @@ hashset<K>make: proc<K>(r: region R) -> *hashset<K> in R = { unsafe {
 } }
 
 /* add, for a set made by hashset<K>make; returns whether the key was new. */
-hashset<K>insert: proc<K>(s: *hashset<K>, key: K) -> b32 = { unsafe {
+hashset<K>insert: proc<K>(s: *hashset<K>, key: K) -> b32 = {
     if (s*.map.arena == null) {
-        printf("rin runtime: hashset insert on a set not made by hashset<K>make\n");
+        unsafe { printf("rin runtime: hashset insert on a set not made by hashset<K>make\n"); }
         exit(1);
     }
-    return hashset<K>add(s*.map.arena[0]&, s, key);
-} }
+    unsafe { return hashset<K>add(s*.map.arena[0]&, s, key); }
+}
 
 /* The key in a live slot, for walking a set with first/next. */
-hashset<K>key_at: proc<K>(s: *const hashset<K>, i: u64) -> *const K = { unsafe {
+hashset<K>key_at: proc<K>(s: *const hashset<K>, i: u64) -> *const K = {
     return hashmap<K, u8>key_at(s*.map&, i);
-} }
+}
 
 // Adds key; returns whether it was new.
-hashset<K>add: proc<K>(arena: *memops_arena, s: *hashset<K>, key: K) -> b32 = { unsafe {
+hashset<K>add: proc<K>(arena: *memops_arena, s: *hashset<K>, key: K) -> b32 = {
     before: u64 = s*.map.length;
     hashmap<K, u8>slot(arena, s*.map&, key);
     return s*.map.length != before;
-} }
+}
 
-hashset<K>has: proc<K>(s: *const hashset<K>, key: K) -> b32 = { unsafe {
+hashset<K>has: proc<K>(s: *const hashset<K>, key: K) -> b32 = {
     return hashmap<K, u8>has(s*.map&, key);
-} }
+}
 
-hashset<K>remove: proc<K>(s: *hashset<K>, key: K) -> b32 = { unsafe {
+hashset<K>remove: proc<K>(s: *hashset<K>, key: K) -> b32 = {
     return hashmap<K, u8>remove(s*.map&, key);
-} }
+}
 
-hashset<K>length: proc<K>(s: *const hashset<K>) -> u64 = { unsafe {
+hashset<K>length: proc<K>(s: *const hashset<K>) -> u64 = {
     return s*.map.length;
-} }
+}
 
-hashset<K>clear: proc<K>(s: *hashset<K>) -> void = { unsafe {
+hashset<K>clear: proc<K>(s: *hashset<K>) -> void = {
     hashmap<K, u8>clear(s*.map&);
-} }
+}
 
-hashset<K>first: proc<K>(s: *const hashset<K>) -> u64 = { unsafe {
+hashset<K>first: proc<K>(s: *const hashset<K>) -> u64 = {
     return hashmap<K, u8>first(s*.map&);
-} }
+}
 
-hashset<K>next: proc<K>(s: *const hashset<K>, i: u64) -> u64 = { unsafe {
+hashset<K>next: proc<K>(s: *const hashset<K>, i: u64) -> u64 = {
     return hashmap<K, u8>next(s*.map&, i);
-} }
+}

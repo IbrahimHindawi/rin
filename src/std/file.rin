@@ -51,38 +51,38 @@ file_open: proc(path: ^const char, mode: ^const char) -> file = { unsafe {
 } }
 
 /* Closing what is already closed does nothing. */
-file_close: proc(f: file) -> void = { unsafe {
+file_close: proc(f: file) -> void = {
     if (!file_is_open(f)) { return; }
-    fclose(cast(file_table_stream[f.slot], *FILE));
+    unsafe { fclose(cast(file_table_stream[f.slot], *FILE)); }
     file_table_stream[f.slot] = null;
     file_table_generation[f.slot] += 1;
-} }
+}
 
 /* How many bytes were read, up to out's length. */
-file_read: proc(f: file, out: []u8) -> u64 = { unsafe {
+file_read: proc(f: file, out: []u8) -> u64 = {
     if (out.length == 0) { return 0; }
-    return cast(fread(out.data, 1, cast(out.length, usize), cast(file_stream(f), *FILE)), u64);
-} }
+    unsafe { return cast(fread(out.data, 1, cast(out.length, usize), cast(file_stream(f), *FILE)), u64); }
+}
 
 /* How many bytes were written. */
-file_write: proc(f: file, bytes: []const u8) -> u64 = { unsafe {
+file_write: proc(f: file, bytes: []const u8) -> u64 = {
     if (bytes.length == 0) { return 0; }
-    return cast(fwrite(bytes.data, 1, cast(bytes.length, usize), cast(file_stream(f), *FILE)), u64);
-} }
+    unsafe { return cast(fwrite(bytes.data, 1, cast(bytes.length, usize), cast(file_stream(f), *FILE)), u64); }
+}
 
-file_write_text: proc(f: file, text: ^const char) -> void = { unsafe {
+file_write_text: proc(f: file, text: ^const char) -> void = {
     if (text == null) { return; }
-    fputs(text, cast(file_stream(f), *FILE));
-} }
+    unsafe { fputs(text, cast(file_stream(f), *FILE)); }
+}
 
 /* -1 at the end of the file. */
-file_read_byte: proc(f: file) -> i32 = { unsafe {
-    return fgetc(cast(file_stream(f), *FILE));
-} }
+file_read_byte: proc(f: file) -> i32 = {
+    unsafe { return fgetc(cast(file_stream(f), *FILE)); }
+}
 
-file_flush: proc(f: file) -> void = { unsafe {
-    fflush(cast(file_stream(f), *FILE));
-} }
+file_flush: proc(f: file) -> void = {
+    unsafe { fflush(cast(file_stream(f), *FILE)); }
+}
 
 file_size: proc(f: file) -> i64 = { unsafe {
     stream: *FILE = cast(file_stream(f), *FILE);
@@ -93,6 +93,6 @@ file_size: proc(f: file) -> i64 = { unsafe {
     return cast(size, i64);
 } }
 
-file_seek: proc(f: file, offset: i64) -> b32 = { unsafe {
-    return fseek(cast(file_stream(f), *FILE), cast(offset, long), 0) == 0;
-} }
+file_seek: proc(f: file, offset: i64) -> b32 = {
+    unsafe { return fseek(cast(file_stream(f), *FILE), cast(offset, long), 0) == 0; }
+}

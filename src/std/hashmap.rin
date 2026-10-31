@@ -44,13 +44,13 @@ hashmap<K, V>make: proc<K, V>(r: region R) -> *hashmap<K, V> in R = { unsafe {
 
 /* put, for a map made by hashmap<K, V>make. The pointer returned is borrowed;
    it is stale after the next set. */
-hashmap<K, V>set: proc<K, V>(m: *hashmap<K, V>, key: K, value: V) -> *V = { unsafe {
+hashmap<K, V>set: proc<K, V>(m: *hashmap<K, V>, key: K, value: V) -> *V = {
     if (m*.arena == null) {
-        printf("rin runtime: hashmap set on a map not made by hashmap<K, V>make\n");
+        unsafe { printf("rin runtime: hashmap set on a map not made by hashmap<K, V>make\n"); }
         exit(1);
     }
-    return hashmap<K, V>put(m*.arena[0]&, m, key, value);
-} }
+    unsafe { return hashmap<K, V>put(m*.arena[0]&, m, key, value); }
+}
 
 hashmap<K, V>find: proc<K, V>(m: *const hashmap<K, V>, key: K) -> u64 = { unsafe {
     if (m*.capacity == 0) {
@@ -124,50 +124,50 @@ hashmap<K, V>slot: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>, key: K) -
     return m*.values[i]&;
 } }
 
-hashmap<K, V>put: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>, key: K, value: V) -> *V = { unsafe {
+hashmap<K, V>put: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>, key: K, value: V) -> *V = {
     slot: *V = hashmap<K, V>slot(arena, m, key);
     slot* = value;
     return slot;
-} }
+}
 
-hashmap<K, V>get: proc<K, V>(m: *const hashmap<K, V>, key: K) -> ?*V = { unsafe {
+hashmap<K, V>get: proc<K, V>(m: *const hashmap<K, V>, key: K) -> ?*V = {
     i: u64 = hashmap<K, V>find(m, key);
     if (i >= m*.capacity) {
         return null;
     }
-    return m*.values[i]&;
-} }
+    unsafe { return m*.values[i]&; }
+}
 
-hashmap<K, V>get_or: proc<K, V>(m: *const hashmap<K, V>, key: K, fallback: V) -> V = { unsafe {
+hashmap<K, V>get_or: proc<K, V>(m: *const hashmap<K, V>, key: K, fallback: V) -> V = {
     i: u64 = hashmap<K, V>find(m, key);
     if (i >= m*.capacity) {
         return fallback;
     }
-    return m*.values[i];
-} }
+    unsafe { return m*.values[i]; }
+}
 
-hashmap<K, V>has: proc<K, V>(m: *const hashmap<K, V>, key: K) -> b32 = { unsafe {
+hashmap<K, V>has: proc<K, V>(m: *const hashmap<K, V>, key: K) -> b32 = {
     return hashmap<K, V>find(m, key) < m*.capacity;
-} }
+}
 
-hashmap<K, V>remove: proc<K, V>(m: *hashmap<K, V>, key: K) -> b32 = { unsafe {
+hashmap<K, V>remove: proc<K, V>(m: *hashmap<K, V>, key: K) -> b32 = {
     i: u64 = hashmap<K, V>find(m, key);
     if (i >= m*.capacity) {
         return 0;
     }
-    m*.states[i] = 2;
+    unsafe { m*.states[i] = 2; }
     m*.length -= 1;
     m*.removed += 1;
     return 1;
-} }
+}
 
-hashmap<K, V>clear: proc<K, V>(m: *hashmap<K, V>) -> void = { unsafe {
+hashmap<K, V>clear: proc<K, V>(m: *hashmap<K, V>) -> void = {
     if (m*.capacity > 0) {
-        memset(m*.states, 0, m*.capacity);
+        unsafe { memset(m*.states, 0, m*.capacity); }
     }
     m*.length = 0;
     m*.removed = 0;
-} }
+}
 
 // The first occupied slot at or after i, or capacity when there is none.
 hashmap<K, V>scan: proc<K, V>(m: *const hashmap<K, V>, i: u64) -> u64 = { unsafe {
@@ -199,10 +199,10 @@ hashmap<K, V>value_at: proc<K, V>(m: *const hashmap<K, V>, i: u64) -> *V = { uns
     return m*.values[i]&;
 } }
 
-hashmap<K, V>first: proc<K, V>(m: *const hashmap<K, V>) -> u64 = { unsafe {
+hashmap<K, V>first: proc<K, V>(m: *const hashmap<K, V>) -> u64 = {
     return hashmap<K, V>scan(m, 0);
-} }
+}
 
-hashmap<K, V>next: proc<K, V>(m: *const hashmap<K, V>, i: u64) -> u64 = { unsafe {
+hashmap<K, V>next: proc<K, V>(m: *const hashmap<K, V>, i: u64) -> u64 = {
     return hashmap<K, V>scan(m, i + 1);
-} }
+}

@@ -40,9 +40,9 @@ cstr_of: proc(chars: []const c8) -> ^const c8 = { unsafe {
     return null;
 } }
 
-cstr_is_empty: proc(s: ^const c8) -> b32 = { unsafe {
-    return s == null || s[0] == 0;
-} }
+cstr_is_empty: proc(s: ^const c8) -> b32 = {
+    unsafe { return s == null || s[0] == 0; }
+}
 
 cstr_equals: proc(a: ^const c8, b: ^const c8) -> b32 = { unsafe {
     if (a == null || b == null) {
@@ -165,14 +165,14 @@ cstr_starts_with: proc(s: ^const c8, prefix: ^const c8) -> b32 = {
     return cstr_equals_n(s, prefix, cstr_length(prefix));
 }
 
-cstr_ends_with: proc(s: ^const c8, suffix: ^const c8) -> b32 = { unsafe {
+cstr_ends_with: proc(s: ^const c8, suffix: ^const c8) -> b32 = {
     sn: u64 = cstr_length(s);
     fn_: u64 = cstr_length(suffix);
     if (fn_ > sn) {
         return 0;
     }
-    return cstr_equals(s[sn - fn_]&, suffix);
-} }
+    unsafe { return cstr_equals(s[sn - fn_]&, suffix); }
+}
 
 cstr_slice: proc[unsafe](s: ^const c8) -> string8slice = {
     out: string8slice = {};

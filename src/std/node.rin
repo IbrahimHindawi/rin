@@ -17,13 +17,13 @@ node<T>create: proc<T>(arena: *memops_arena, data: T) -> *node<T> = { unsafe {
     return node;
 } }
 
-node<T>destroy: proc<T>(arena: *memops_arena, node: **node<T>) -> void = { unsafe {
-    node* = null;
-} }
+node<T>destroy: proc<T>(arena: *memops_arena, node: **node<T>) -> void = {
+    unsafe { node* = null; }
+}
 
-node<T>value: proc<T>(node: *node<T>) -> option<T> = { unsafe {
+node<T>value: proc<T>(node: *node<T>) -> option<T> = {
     if (node == null) {
         return option<T>none();
     }
     return option<T>some(node*.data);
-} }
+}

@@ -2,13 +2,13 @@ cinclude "stdio.h"
 import "cstd.rin"
 import "reflect.rin"
 
-print_cstr: proc(text: ^const char) -> void = { unsafe {
+print_cstr: proc(text: ^const char) -> void = {
     if (text == null) {
-        printf("(null)");
+        unsafe { printf("(null)"); }
         return;
     }
-    printf("%s", text);
-} }
+    unsafe { printf("%s", text); }
+}
 
 print: proc<i8>(x: i8) -> void = { unsafe {
     printf("%d", x);

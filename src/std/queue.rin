@@ -15,13 +15,13 @@ queue<T>make: proc<T>(r: region R) -> *queue<T> in R = { unsafe {
     return q;
 } }
 
-queue<T>arena_of: proc<T>(q: *const queue<T>) -> *memops_arena = { unsafe {
+queue<T>arena_of: proc<T>(q: *const queue<T>) -> *memops_arena = {
     if (q*.arena == null) {
-        printf("rin runtime: queue used without an arena; make it with queue<T>make\n");
+        unsafe { printf("rin runtime: queue used without an arena; make it with queue<T>make\n"); }
         exit(1);
     }
-    return q*.arena[0]&;
-} }
+    unsafe { return q*.arena[0]&; }
+}
 
 queue<T>push: proc<T>(q: *queue<T>, data: T) -> void = { unsafe { queue<T>enqueue(queue<T>arena_of(q), q, data); } }
 queue<T>pop: proc<T>(q: *queue<T>) -> ?*node<T> = { unsafe { return queue<T>dequeue(queue<T>arena_of(q), q); } }
@@ -37,48 +37,48 @@ queue<T>create: proc<T>(arena: *memops_arena) -> *queue<T> = { unsafe {
     return queue;
 } }
 
-queue<T>enqueue: proc<T>(arena: *memops_arena, queue: *queue<T>, data: T) -> void = { unsafe {
+queue<T>enqueue: proc<T>(arena: *memops_arena, queue: *queue<T>, data: T) -> void = {
     node: *node<T> = node<T>create(arena, data);
     if (queue*.head == null) {
-        queue*.head = node;
-        queue*.tail = node;
+        unsafe { queue*.head = node; }
+        unsafe { queue*.tail = node; }
         queue*.length = 1;
         return;
     }
-    queue*.tail*.next = node;
-    queue*.tail = node;
+    unsafe { queue*.tail*.next = node; }
+    unsafe { queue*.tail = node; }
     queue*.length += 1;
-} }
+}
 
-queue<T>dequeue: proc<T>(arena: *memops_arena, queue: *queue<T>) -> ?*node<T> = { unsafe {
+queue<T>dequeue: proc<T>(arena: *memops_arena, queue: *queue<T>) -> ?*node<T> = {
     if (queue == null || queue*.head == null) {
         return null;
     }
     node: *node<T> = queue*.head;
-    queue*.head = node*.next;
-    node*.next = null;
+    unsafe { queue*.head = node*.next; }
+    unsafe { node*.next = null; }
     queue*.length -= 1;
     if (queue*.length == 0) {
-        queue*.tail = null;
+        unsafe { queue*.tail = null; }
     }
-    return node;
-} }
+    unsafe { return node; }
+}
 
-queue<T>peek: proc<T>(arena: *memops_arena, queue: *queue<T>) -> ?*node<T> = { unsafe {
+queue<T>peek: proc<T>(arena: *memops_arena, queue: *queue<T>) -> ?*node<T> = {
     if (queue == null) {
         return null;
     }
-    return queue*.head;
-} }
+    unsafe { return queue*.head; }
+}
 
-queue<T>destroy: proc<T>(arena: *memops_arena, queue: *queue<T>) -> void = { unsafe {
+queue<T>destroy: proc<T>(arena: *memops_arena, queue: *queue<T>) -> void = {
     if (queue != null) {
-        queue*.head = null;
-        queue*.tail = null;
+        unsafe { queue*.head = null; }
+        unsafe { queue*.tail = null; }
         queue*.length = 0;
     }
-} }
+}
 
-queue<T>is_empty: proc<T>(queue: *queue<T>) -> b32 = { unsafe {
+queue<T>is_empty: proc<T>(queue: *queue<T>) -> b32 = {
     return queue == null || queue*.length == 0;
-} }
+}

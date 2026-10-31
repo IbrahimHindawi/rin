@@ -66,18 +66,18 @@ memops_align_forward: proc(ptr: usize, align: usize) -> usize = {
    judge that caps address space refuses a reservation that size even though
    none of it is used, so a refusal halves the request until one fits, down to
    a megabyte. `reserved` says what was granted. */
-memops_arena_initialize: proc(arena: *memops_arena, reserve: u64 = max_alloc_size) -> void = { unsafe {
+memops_arena_initialize: proc(arena: *memops_arena, reserve: u64 = max_alloc_size) -> void = {
     arena*.pagesize = memops_os_page_size();
     size: u64 = memops_align_forward(cast(reserve, usize), cast(arena*.pagesize, usize));
-    arena*.base = memops_os_reserve(size);
+    unsafe { arena*.base = memops_os_reserve(size); }
     while (arena*.base == null && size > 0x100000) {
         size = memops_align_forward(cast(size / 2, usize), cast(arena*.pagesize, usize));
-        arena*.base = memops_os_reserve(size);
+        unsafe { arena*.base = memops_os_reserve(size); }
     }
     if (arena*.base == null) {
-        printf("memops_arena could not reserve ");
+        unsafe { printf("memops_arena could not reserve "); }
         rin_print_u64(reserve);
-        printf(" bytes!\n");
+        unsafe { printf(" bytes!\n"); }
         exit(1);
     }
     arena*.reserved = size;
@@ -85,7 +85,7 @@ memops_arena_initialize: proc(arena: *memops_arena, reserve: u64 = max_alloc_siz
     arena*.previous = arena*.base;
     arena*.used = 0;
     arena*.npages = 0;
-} }
+}
 
 /* `gap` bytes are left poisoned in front of the allocation. */
 memops_arena_carve_: proc[unsafe](arena: *memops_arena, alloc_size: u64, align: u64, gap: u64) -> ^void = {
@@ -151,9 +151,9 @@ memops_arena_push_zero: proc[unsafe](arena: *memops_arena, alloc_size: u64, alig
     return p;
 }
 
-memops_arena_get_pos: proc(arena: *memops_arena) -> ^void = { unsafe {
-    return arena*.base + arena*.used;
-} }
+memops_arena_get_pos: proc(arena: *memops_arena) -> ^void = {
+    unsafe { return arena*.base + arena*.used; }
+}
 
 memops_arena_set_pos: proc[unsafe](arena: *memops_arena, pos: ^void) -> ^void = {
     old_used: u64 = arena*.used;

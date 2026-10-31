@@ -44,13 +44,13 @@ fmt_make: proc(r: region R, capacity: u64) -> *fmt in R = { unsafe {
 } }
 
 /* Back to empty, keeping the buffer. */
-fmt_reset: proc(f: *fmt) -> void = { unsafe {
+fmt_reset: proc(f: *fmt) -> void = {
     f*.length = 0;
     f*.truncated = 0;
     if (f*.data != null && f*.capacity > 0) {
-        f*.data[0] = 0;
+        unsafe { f*.data[0] = 0; }
     }
-} }
+}
 
 /* The text so far, NUL-terminated; good until the next write. */
 fmt_text: proc(f: *const fmt) -> ^const c8 = {
@@ -68,15 +68,15 @@ fmt_remaining: proc(f: *const fmt) -> u64 = {
     return f*.capacity - f*.length - 1;
 }
 
-fmt_char: proc(f: *fmt, c: c8) -> void = { unsafe {
+fmt_char: proc(f: *fmt, c: c8) -> void = {
     if (fmt_remaining(f) == 0) {
         f*.truncated = 1;
         return;
     }
-    f*.data[f*.length] = c;
+    unsafe { f*.data[f*.length] = c; }
     f*.length += 1;
-    f*.data[f*.length] = 0;
-} }
+    unsafe { f*.data[f*.length] = 0; }
+}
 
 fmt_bytes: proc[unsafe](f: *fmt, src: ^const c8, count: u64) -> void = {
     if (src == null || count == 0) {

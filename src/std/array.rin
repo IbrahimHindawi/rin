@@ -21,26 +21,26 @@ array<T>reserve: proc<T>(arena: *memops_arena, length: u64) -> array<T> = { unsa
     return arr;
 } }
 
-array<T>destroy: proc<T>(arena: *memops_arena, array: *array<T>) -> void = { unsafe {
+array<T>destroy: proc<T>(arena: *memops_arena, array: *array<T>) -> void = {
     array*.data = null;
     array*.length = 0;
-} }
+}
 
-array<T>at: proc<T>(array: *const array<T>, index: u64) -> *T = { unsafe {
+array<T>at: proc<T>(array: *const array<T>, index: u64) -> *T = {
     if (array == null || index >= array*.length) {
-        printf("rin runtime: array index out of bounds\n");
+        unsafe { printf("rin runtime: array index out of bounds\n"); }
         exit(1);
     }
-    return array*.data[index]&;
-} }
+    unsafe { return array*.data[index]&; }
+}
 
-array<T>get: proc<T>(array: *const array<T>, index: u64) -> option<T> = { unsafe {
+array<T>get: proc<T>(array: *const array<T>, index: u64) -> option<T> = {
     if (array == null || index >= array*.length) {
         return option<T>none();
     }
-    return option<T>some(array*.data[index]);
-} }
+    unsafe { return option<T>some(array*.data[index]); }
+}
 
-array<T>is_empty: proc<T>(array: *const array<T>) -> b32 = { unsafe {
+array<T>is_empty: proc<T>(array: *const array<T>) -> b32 = {
     return array == null || array*.length == 0;
-} }
+}

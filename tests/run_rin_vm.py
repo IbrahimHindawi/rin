@@ -186,7 +186,10 @@ def main() -> int:
     parser.add_argument("--controls-only", action="store_true")
     parser.add_argument("--timeout", type=int, default=30, help="seconds per program")
     parser.add_argument("--compare", action="store_true", help="also build named programs at -O2 and compare")
+    parser.add_argument("--dir", type=Path, help="every .rin in this folder counts as named on the command line")
     args = parser.parse_args()
+    if args.dir:
+        args.programs += sorted(args.dir.glob("*.rin"))
     if not SANDBOX_EXE.exists():
         print("rin-vm: Windows Sandbox is not enabled")
         return 1

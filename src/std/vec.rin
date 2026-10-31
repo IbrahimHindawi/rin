@@ -39,36 +39,36 @@ vec<T>make: proc<T>(r: region R, reserve: u64) -> *vec<T> in R = { unsafe {
 } }
 /* Push onto a vec made by vec<T>make: it grows into the arena it was made
    from. The pointer returned is borrowed; it is stale after the next push. */
-vec<T>push: proc<T>(array: *vec<T>, elem: T) -> *T = { unsafe {
+vec<T>push: proc<T>(array: *vec<T>, elem: T) -> *T = {
     if (array*.arena == null) {
-        printf("rin runtime: vec push on a vec not made by vec<T>make\n");
+        unsafe { printf("rin runtime: vec push on a vec not made by vec<T>make\n"); }
         exit(1);
     }
-    return vec<T>append(array*.arena[0]&, array, elem);
-} }
-vec<T>destroy: proc<T>(arena: *memops_arena, array: *vec<T>) -> void = { unsafe {
+    unsafe { return vec<T>append(array*.arena[0]&, array, elem); }
+}
+vec<T>destroy: proc<T>(arena: *memops_arena, array: *vec<T>) -> void = {
     array*.data = null;
     array*.length = 0;
     array*.border = 0;
-} }
+}
 
-vec<T>resize: proc<T>(arena: *memops_arena, array: *vec<T>) -> ^T = { unsafe {
+vec<T>resize: proc<T>(arena: *memops_arena, array: *vec<T>) -> ^T = {
     old_border: u64 = array*.border;
     if (array*.border == 0) {
         array*.border = 1;
     } else {
         array*.border *= 2;
     }
-    array*.data = cast(memops_arena_realloc_(arena, memops_bytes(sizeof(T), array*.border), array*.data, sizeof(T) * old_border, alignof(T)), *T);
+    unsafe { array*.data = cast(memops_arena_realloc_(arena, memops_bytes(sizeof(T), array*.border), array*.data, sizeof(T) * old_border, alignof(T)), *T); }
     if (array*.data == null) {
-        printf("rin runtime: vec resize allocation failure\n");
+        unsafe { printf("rin runtime: vec resize allocation failure\n"); }
         exit(1);
     }
     if (array*.border > old_border) {
-        memset(cast(array*.data, ^u8) + sizeof(T) * old_border, 0, sizeof(T) * (array*.border - old_border));
+        unsafe { memset(cast(array*.data, ^u8) + sizeof(T) * old_border, 0, sizeof(T) * (array*.border - old_border)); }
     }
     return array*.data;
-} }
+}
 
 vec<T>append: proc[unsafe]<T>(arena: *memops_arena, array: *vec<T>, elem: T) -> *T = {
     if (array*.data == null) {
@@ -84,46 +84,46 @@ vec<T>append: proc[unsafe]<T>(arena: *memops_arena, array: *vec<T>, elem: T) -> 
     return result;
 }
 
-vec<T>at: proc<T>(array: *const vec<T>, index: u64) -> *T = { unsafe {
+vec<T>at: proc<T>(array: *const vec<T>, index: u64) -> *T = {
     if (array == null || index >= array*.length) {
-        printf("rin runtime: vec index out of bounds\n");
+        unsafe { printf("rin runtime: vec index out of bounds\n"); }
         exit(1);
     }
-    return array*.data[index]&;
-} }
+    unsafe { return array*.data[index]&; }
+}
 
-vec<T>get: proc<T>(array: *const vec<T>, index: u64) -> option<T> = { unsafe {
+vec<T>get: proc<T>(array: *const vec<T>, index: u64) -> option<T> = {
     if (array == null || index >= array*.length) {
         return option<T>none();
     }
-    return option<T>some(array*.data[index]);
-} }
+    unsafe { return option<T>some(array*.data[index]); }
+}
 
-vec<T>last: proc<T>(array: *const vec<T>) -> *T = { unsafe {
+vec<T>last: proc<T>(array: *const vec<T>) -> *T = {
     if (array == null || array*.length == 0) {
-        printf("rin runtime: vec last on an empty vec\n");
+        unsafe { printf("rin runtime: vec last on an empty vec\n"); }
         exit(1);
     }
-    return array*.data[array*.length - 1]&;
-} }
+    unsafe { return array*.data[array*.length - 1]&; }
+}
 
-vec<T>pop: proc<T>(array: *vec<T>) -> T = { unsafe {
+vec<T>pop: proc<T>(array: *vec<T>) -> T = {
     x: T = vec<T>last(array)*;
     array*.length -= 1;
     return x;
-} }
+}
 
 // The elements as a slice, valid until the next append moves them.
-vec<T>items: proc<T>(array: *const vec<T>) -> []T = { unsafe {
-    return array*.data[0..array*.length];
-} }
+vec<T>items: proc<T>(array: *const vec<T>) -> []T = {
+    unsafe { return array*.data[0..array*.length]; }
+}
 
-vec<T>clear: proc<T>(array: *vec<T>) -> void = { unsafe {
+vec<T>clear: proc<T>(array: *vec<T>) -> void = {
     if (array != null) {
         array*.length = 0;
     }
-} }
+}
 
-vec<T>is_empty: proc<T>(array: *const vec<T>) -> b32 = { unsafe {
+vec<T>is_empty: proc<T>(array: *const vec<T>) -> b32 = {
     return array == null || array*.length == 0;
-} }
+}

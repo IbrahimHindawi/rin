@@ -46,16 +46,16 @@ string8_reserve: proc[unsafe](arena: *memops_arena, capacity: u64) -> string8 = 
     return s;
 }
 
-string8_grow: proc(arena: *memops_arena, s: *string8, min_capacity: u64) -> void = { unsafe {
+string8_grow: proc(arena: *memops_arena, s: *string8, min_capacity: u64) -> void = {
     if (arena == null || s == null) {
-        printf("rin runtime: string8 grow invalid argument\n");
+        unsafe { printf("rin runtime: string8 grow invalid argument\n"); }
         exit(1);
     }
     if (s*.capacity >= min_capacity) {
         if (s*.data == null) {
-            s*.data = cast(memops_arena_push_zero(arena, memops_bytes_plus_one(s*.capacity), alignof(u8)), *u8);
+            unsafe { s*.data = cast(memops_arena_push_zero(arena, memops_bytes_plus_one(s*.capacity), alignof(u8)), *u8); }
             if (s*.data == null) {
-                printf("rin runtime: string8 grow allocation failure\n");
+                unsafe { printf("rin runtime: string8 grow allocation failure\n"); }
                 exit(1);
             }
         }
@@ -73,19 +73,19 @@ string8_grow: proc(arena: *memops_arena, s: *string8, min_capacity: u64) -> void
     old_capacity: u64 = s*.capacity;
     old_data: ^u8 = s*.data;
     if (old_data == null) {
-        s*.data = cast(memops_arena_push_zero(arena, memops_bytes_plus_one(new_capacity), alignof(u8)), *u8);
+        unsafe { s*.data = cast(memops_arena_push_zero(arena, memops_bytes_plus_one(new_capacity), alignof(u8)), *u8); }
     } else {
-        s*.data = cast(memops_arena_realloc_(arena, memops_bytes_plus_one(new_capacity), old_data, old_capacity + 1, alignof(u8)), *u8);
+        unsafe { s*.data = cast(memops_arena_realloc_(arena, memops_bytes_plus_one(new_capacity), old_data, old_capacity + 1, alignof(u8)), *u8); }
     }
     if (s*.data == null) {
-        printf("rin runtime: string8 grow allocation failure\n");
+        unsafe { printf("rin runtime: string8 grow allocation failure\n"); }
         exit(1);
     }
     if (new_capacity + 1 > old_capacity + 1) {
-        memset(s*.data + old_capacity + 1, 0, new_capacity - old_capacity);
+        unsafe { memset(s*.data + old_capacity + 1, 0, new_capacity - old_capacity); }
     }
     s*.capacity = new_capacity;
-} }
+}
 
 string8_from_cstr: proc[unsafe](arena: *memops_arena, cstr: ^const char) -> string8 = {
     if (cstr == null) {
@@ -172,12 +172,12 @@ path_to_cstr_temp: proc[unsafe](arena: *memops_arena, s: string8slice) -> ^char 
     return string8slice_to_cstr_temp(arena, s);
 }
 
-string8_append_byte: proc(arena: *memops_arena, s: *string8, byte: u8) -> void = { unsafe {
+string8_append_byte: proc(arena: *memops_arena, s: *string8, byte: u8) -> void = {
     string8_grow(arena, s, s*.length + 1);
-    s*.data[s*.length] = byte;
+    unsafe { s*.data[s*.length] = byte; }
     s*.length += 1;
-    s*.data[s*.length] = 0;
-} }
+    unsafe { s*.data[s*.length] = 0; }
+}
 
 string8_append_bytes: proc[unsafe](arena: *memops_arena, s: *string8, src: ^const u8, count: u64) -> void = {
     if (count == 0) {
@@ -205,15 +205,15 @@ string8_append_cstr: proc(arena: *memops_arena, s: *string8, cstr: ^const char) 
     string8_append_bytes(arena, s, cast(cstr, *const u8), count);
 } }
 
-string8_clear: proc(s: *string8) -> void = { unsafe {
+string8_clear: proc(s: *string8) -> void = {
     if (s == null) {
         return;
     }
     s*.length = 0;
     if (s*.data != null) {
-        s*.data[0] = 0;
+        unsafe { s*.data[0] = 0; }
     }
-} }
+}
 
 string8_read_file: proc[unsafe](arena: *memops_arena, filename: ^const char) -> string8 = {
     file: *FILE = fopen(filename, "rb");
@@ -237,7 +237,7 @@ string8_read_file: proc[unsafe](arena: *memops_arena, filename: ^const char) -> 
     return s;
 }
 
-string8_equals: proc(a: *const string8, b: *const string8) -> b32 = { unsafe {
+string8_equals: proc(a: *const string8, b: *const string8) -> b32 = {
     if (a == null || b == null) {
         return a == b;
     }
@@ -247,8 +247,8 @@ string8_equals: proc(a: *const string8, b: *const string8) -> b32 = { unsafe {
     if (a*.length == 0) {
         return 1;
     }
-    return memcmp(a*.data, b*.data, a*.length) == 0;
-} }
+    unsafe { return memcmp(a*.data, b*.data, a*.length) == 0; }
+}
 
 string8_equals_cstr: proc(a: *const string8, cstr: ^const char) -> b32 = { unsafe {
     if (a == null || cstr == null) {
@@ -264,12 +264,12 @@ string8_equals_cstr: proc(a: *const string8, cstr: ^const char) -> b32 = { unsaf
     return memcmp(a*.data, cstr, length) == 0;
 } }
 
-string8_print: proc(s: *const string8) -> void = { unsafe {
+string8_print: proc(s: *const string8) -> void = {
     if (s == null || s*.data == null) {
         return;
     }
-    printf("%.*s", cast(s*.length, i32), cast(s*.data, ^const char));
-} }
+    unsafe { printf("%.*s", cast(s*.length, i32), cast(s*.data, ^const char)); }
+}
 
 string8slice_sub: proc[unsafe](s: string8slice, start: u64, count: u64) -> string8slice = {
     if (s.data == null) {
@@ -687,12 +687,12 @@ string8_builder_append_string8: proc[unsafe](b: *string8_builder, src: string8) 
     string8_builder_append_bytes(b, src.data, src.length);
 }
 
-string8_builder_append_cstr: proc(b: *string8_builder, cstr: ^const char) -> void = { unsafe {
+string8_builder_append_cstr: proc(b: *string8_builder, cstr: ^const char) -> void = {
     if (cstr == null) {
         return;
     }
-    string8_builder_append_bytes(b, cast(cstr, *const u8), cast(strlen(cstr), u64));
-} }
+    unsafe { string8_builder_append_bytes(b, cast(cstr, *const u8), cast(strlen(cstr), u64)); }
+}
 
 /* A view of what has been built. Valid until the arena is reset, and not
    NUL-terminated -- use string8_builder_finish when C has to read it. */

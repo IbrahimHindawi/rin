@@ -198,14 +198,14 @@ reflect_find_field_index: proc(type: *const reflect, name: ^const char, fallback
 // The record for a field's own type, so a walk can recurse instead of stopping
 // at the type-name string. Null when the field's type has no table: a builtin,
 // an external type, a proc.
-reflect_field_info: proc(field: *const reflect_field) -> ?*const reflect = { unsafe {
+reflect_field_info: proc(field: *const reflect_field) -> ?*const reflect = {
     if (field == null) { return null; }
-    return field*.info;
-} }
+    unsafe { return field*.info; }
+}
 
-reflect_find_field_info: proc(type: *const reflect, name: ^const char) -> ?*const reflect = { unsafe {
-    return reflect_field_info(reflect_find_field(type, name));
-} }
+reflect_find_field_info: proc(type: *const reflect, name: ^const char) -> ?*const reflect = {
+    unsafe { return reflect_field_info(reflect_find_field(type, name)); }
+}
 
 // ---------------------------------------------------------------------------
 // Enum values
@@ -281,11 +281,11 @@ reflect_field_is_array: proc(field: *const reflect_field) -> b32 = {
     return field*.kind == reflect_field_kind_array || field*.array_count > 0;
 }
 
-reflect_field_is_generic: proc(field: *const reflect_field) -> b32 = { unsafe {
+reflect_field_is_generic: proc(field: *const reflect_field) -> b32 = {
     if (field == null) { return 0; }
     if (field*.kind == reflect_field_kind_generic) { return 1; }
-    return field*.generic_arg_type != null && field*.generic_arg_type[0] != 0;
-} }
+    unsafe { return field*.generic_arg_type != null && field*.generic_arg_type[0] != 0; }
+}
 
 reflect_count_fields_with_kind: proc(type: *const reflect, kind: i32) -> u64 = { unsafe {
     fields: ^const reflect_field = reflect_fields(type);

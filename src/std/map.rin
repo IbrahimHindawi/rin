@@ -126,13 +126,13 @@ map<T>make: proc<T>(r: region R) -> *map<T> in R = { unsafe {
     return m;
 } }
 
-map<T>arena_of: proc<T>(m: *const map<T>) -> *memops_arena = { unsafe {
+map<T>arena_of: proc<T>(m: *const map<T>) -> *memops_arena = {
     if (m*.arena == null) {
-        printf("rin runtime: map used without an arena; make it with map<T>make\n");
+        unsafe { printf("rin runtime: map used without an arena; make it with map<T>make\n"); }
         exit(1);
     }
-    return m*.arena[0]&;
-} }
+    unsafe { return m*.arena[0]&; }
+}
 
 /* put, find and count: the arena-free forms for a map made by map<T>make. */
 map<T>put: proc<T>(m: *map<T>, key: ^const char, val: T) -> void = { unsafe { _ = map<T>set(map<T>arena_of(m), m, key, val); } }
@@ -155,13 +155,13 @@ map<T>find: proc<T>(m: *const map<T>, key: ^const char) -> ?*T = { unsafe {
 } }
 map<T>count: proc<T>(m: *const map<T>) -> usize = { unsafe { return m*.length; } }
 
-map<T>destroy: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> void = { unsafe {
+map<T>destroy: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> void = {
     if (hashmap != null) {
         hashmap*.entries = null;
         hashmap*.length = 0;
         hashmap*.border = 0;
     }
-} }
+}
 
 map<T>get: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const char) -> ?*T = { unsafe {
     if (hashmap == null || hashmap*.entries == null || hashmap*.border == 0) {
@@ -181,14 +181,14 @@ map<T>get: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const char) -> 
     return null;
 } }
 
-map<T>set: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const char, val: T) -> ^const char = { unsafe {
+map<T>set: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const char, val: T) -> ^const char = {
     if (hashmap*.length >= hashmap*.border / 2) {
         if (!map<T>expand(arena, hashmap)) {
             return null;
         }
     }
-    return map<T>set_entry(arena, hashmap*.entries, hashmap*.border, key, val, hashmap*.length&);
-} }
+    unsafe { return map<T>set_entry(arena, hashmap*.entries, hashmap*.border, key, val, hashmap*.length&); }
+}
 
 map<T>try_emplace: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const char, val: T) -> *T = { unsafe {
     result: *T = map<T>get(arena, hashmap, key);
@@ -199,12 +199,12 @@ map<T>try_emplace: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const c
     return result;
 } }
 
-map<T>length: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> usize = { unsafe {
+map<T>length: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> usize = {
     if (hashmap == null) {
         return 0;
     }
     return hashmap*.length;
-} }
+}
 
 map_iterator<T>create: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> map_iterator<T> = { unsafe {
     it: map_iterator<T> = {};

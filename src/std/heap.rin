@@ -46,13 +46,13 @@ heap<T>push: proc<T>(arena: *memops_arena, h: *heap<T>, x: T) -> void = { unsafe
     h*.data[i] = x;
 } }
 
-heap<T>top: proc<T>(h: *heap<T>) -> T = { unsafe {
+heap<T>top: proc<T>(h: *heap<T>) -> T = {
     if (h*.length == 0) {
-        printf("rin runtime: heap top on an empty heap\n");
+        unsafe { printf("rin runtime: heap top on an empty heap\n"); }
         exit(1);
     }
-    return h*.data[0];
-} }
+    unsafe { return h*.data[0]; }
+}
 
 heap<T>pop: proc<T>(h: *heap<T>) -> T = { unsafe {
     top: T = heap<T>top(h);
@@ -81,10 +81,10 @@ heap<T>pop: proc<T>(h: *heap<T>) -> T = { unsafe {
     return top;
 } }
 
-heap<T>is_empty: proc<T>(h: *heap<T>) -> b32 = { unsafe {
+heap<T>is_empty: proc<T>(h: *heap<T>) -> b32 = {
     return h*.length == 0;
-} }
+}
 
-heap<T>clear: proc<T>(h: *heap<T>) -> void = { unsafe {
+heap<T>clear: proc<T>(h: *heap<T>) -> void = {
     h*.length = 0;
-} }
+}
