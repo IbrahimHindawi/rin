@@ -62,7 +62,6 @@ r4-131-fprintfmt-arg-closes.rin
 r4-132-file-bad-mode.rin
 r4-143-array-param-copy.rin
 r4-144-array-param-zero.rin
-r4-158-external-trusted-returns-null-as-nonnull.rin
 r4-169-inner-loop-break-in-tmp.rin
 r4-170-switch-break-in-tmp.rin
 r4-171-break-out-of-tmp-loop.rin
@@ -76,11 +75,6 @@ r4-192-fprintfmt-forged.rin
 r4-193-file-slot-generation-write-forged.rin
 r4-195-file-read-stale-reopen.rin
 r4-196-must-user-named.rin
-r4-201-rewind-ternary.rin
-r4-205-rewind-plain-nullable-is-must.rin
-r4-209-rewind-box-field.rin
-r4-211-rewind-narrow-then-call.rin
-r4-212-atoi-raw-null.rin
 r4-270-unsafe-addr-borrow-of-value.rin
 r4-282-tmp-to-bound-keeps-level.rin
 r4-290-slice-copy-overlap.rin

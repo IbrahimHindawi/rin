@@ -1,8 +1,7 @@
 import "std/print.rin"
 
-/* A C binding marked safe has an honest signature, so safe code calls it,
-   and the type still says a handle may not be null. */
-abs: proc[external, safe](v: i32) -> i32 = {}
+/* A C proc that touches no pointers is called like any other. */
+abs: proc[external](v: i32) -> i32 = {}
 
 /* A handle never stales what was taken from anything: there is nothing inside
    it to take. */
