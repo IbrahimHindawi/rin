@@ -1,7 +1,7 @@
 import "std/print.rin"
 H: struct = { x: i32; }
 a: H = { .x = 1 };
-nul: proc(s: []?*H in permanent) -> void = { s[0] = null; }
+nul: proc(s: []option<*H in permanent>) -> void = { s[0] = null; }
 main: proc() -> i32 = {
     xs: [1]*H in permanent = { a& };
     nul(xs);

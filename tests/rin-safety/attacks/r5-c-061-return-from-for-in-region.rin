@@ -7,6 +7,6 @@ leak: proc() -> *i32 = {
             return new<i32>(level, 42);
         }
     }
-    return must(null);
+    return unwrap(null);
 }
 main: proc() -> i32 = { printfmt("{}\n", leak()*); return 0; }

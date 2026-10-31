@@ -81,7 +81,7 @@ ports mirror the original tree under a `safe` folder with the original
 `.expected` copied beside them, unchanged; `printf` becomes `printfmt` with
 `{:5.2}` widths; a world lives in `level: region;` and is made whole by a
 `world_make(r: region level)`; fields are `*vec<T> in level`; lookups that
-can miss return `?*T`; the frame arena is `frame: region in level;` opened
+can miss return `option<*T>`; the frame arena is `frame: region in level;` opened
 once per frame; the type-erased byte column is the one legitimate
 `unsafe { }` core, kept small with honest signatures; every other proc is
 unannotated and checked. Report every remaining `unsafe { }` and why.
@@ -89,7 +89,7 @@ unannotated and checked. Report every remaining `unsafe { }` and why.
 ## State of play
 
 Done: the safe compiler, including `unsafe { }` in place of `[trusted]`, local regions
-(`tmp: region of r = { }`), field-path narrowing, `str`, `must(p)`, `std/file.rin`,
+(`tmp: region of r = { }`), field-path narrowing, `str`, `unwrap(p)`, `std/file.rin`,
 invariance through pointers, and four attack rounds; the whole course ported; the
 engine ported on its `regions` branch (see njinn's `docs/rin-safe-port.md` for where
 that stands).

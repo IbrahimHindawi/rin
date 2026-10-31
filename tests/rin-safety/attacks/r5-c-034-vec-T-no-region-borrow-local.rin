@@ -1,15 +1,15 @@
-// H39 with a stack address: push a local's address into a level vec through vec<?*i32>.
+// H39 with a stack address: push a local's address into a level vec through vec<option<*i32>>.
 import "std/print.rin"
 import "std/vec.rin"
 level: region;
 smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
-put: proc(v: *vec<?*i32 in level>) -> void = { x: i32 = 42; _ = vec<?*i32>push(v, x&); }
+put: proc(v: *vec<option<*i32 in level>>) -> void = { x: i32 = 42; _ = vec<option<*i32>>push(v, x&); }
 main: proc() -> i32 = {
     level: region = {
-        v: *vec<?*i32 in level> in level = vec<?*i32 in level>make(level, 2);
+        v: *vec<option<*i32 in level>> in level = vec<option<*i32 in level>>make(level, 2);
         put(v);
         smash();
-        printfmt("{}\n", must(vec<?*i32 in level>at(v, 0)*)*);
+        printfmt("{}\n", unwrap(vec<option<*i32 in level>>at(v, 0)*)*);
     }
     return 0;
 }

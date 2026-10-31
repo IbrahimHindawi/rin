@@ -3,7 +3,7 @@ import "std/print.rin"
 import "std/fmt.rin"
 level: region;
 frame: region in level;
-gf: ?*fmt in level = null;
+gf: option<*fmt in level> = null;
 get: proc() -> ^const c8 = {
     if (gf) { return fmt_text(gf); }
     return "";
@@ -12,7 +12,7 @@ main: proc() -> i32 = {
     k: ^const c8 = "x";
     level: region = {
         gf = fmt_make(level, 4096);
-        fmt_cstr(must(gf), "hello");
+        fmt_cstr(unwrap(gf), "hello");
         k = get();
         gf = null;
     }

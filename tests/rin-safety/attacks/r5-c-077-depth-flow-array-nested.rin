@@ -4,9 +4,9 @@ level: region;
 frame: region in level;
 main: proc() -> i32 = {
     level: region = {
-        o: [1][1][1][1][1][1][1][1][1][1]?*i32 in level = {};
+        o: [1][1][1][1][1][1][1][1][1][1]option<*i32 in level> = {};
         frame: region = {
-            w: *[1][1][1][1][1][1][1][1][1][1]?*i32 in frame = o&;
+            w: *[1][1][1][1][1][1][1][1][1][1]option<*i32 in frame> = o&;
             w[0][0][0][0][0][0][0][0][0][0] = new<i32>(frame, 42);
         }
         if (o[0][0][0][0][0][0][0][0][0][0]) { printfmt("{}\n", o[0][0][0][0][0][0][0][0][0][0]*); }

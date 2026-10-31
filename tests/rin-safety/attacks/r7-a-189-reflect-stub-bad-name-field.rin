@@ -8,7 +8,7 @@ main: proc() -> i32 = {
     t: *const reflect = pick(0);
     if (reflect_field_count(t) == 0) {
         f: ^const reflect_field = t*.variant.fields;
-        r: *const reflect_field = must(reflect_find_field(P<>&, "x"));
+        r: *const reflect_field = unwrap(reflect_find_field(P<>&, "x"));
         printfmt("{}\n", r*.size);
     }
     return 0;

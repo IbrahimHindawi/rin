@@ -8,7 +8,7 @@ scratch: region in frame;
 /* What goes in the parent during a mark outlives the mark. */
 parent_during_mark: proc() -> void = {
     level: region = { frame: region = {
-        q: ?*i32 in frame = null;
+        q: option<*i32 in frame> = null;
         scratch: region of frame = {
             q = new<i32>(frame, 42);
         }

@@ -2,7 +2,7 @@
 level: region;
 f: proc() -> i32 = {
     level: region = {
-        q: static ?*i32 in level = null;
+        q: static option<*i32 in level> = null;
         if (q) { return q*; }
         q = new<i32>(level, 42);
     }

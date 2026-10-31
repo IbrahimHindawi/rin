@@ -5,13 +5,13 @@ level: region;
 frame: region in level;
 H: struct = { x: i32; }
 clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_slice<i32>(t, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } } }
-Hold: struct = { p: ?*i32 in level; }
+Hold: struct = { p: option<*i32 in level>; }
 f: proc(r: region R in level, p: *i32 in level) -> *Hold in R = { return new<Hold>(r, { .p = p }); }
 main: proc() -> i32 = {
     level: region = {
         tmp: region of level = {
             h: *Hold in tmp = f(tmp, new<i32>(level, 42));
-            printfmt("{}\n", must(h*.p)*);
+            printfmt("{}\n", unwrap(h*.p)*);
         }
     }
     return 0;

@@ -3,7 +3,7 @@ import "std/print.rin"
 #define NULL 1
 #define null 1
 main: proc() -> i32 = {
-    p: ?*i32 = null;
+    p: option<*i32> = null;
     if (p) { p* = 1; printfmt("{}\n", p*); }
     return 0;
 }

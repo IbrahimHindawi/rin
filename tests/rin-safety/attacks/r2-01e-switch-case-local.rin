@@ -1,6 +1,6 @@
 import "std/print.rin"
 main: proc(argc: i32, argv: ^^char) -> i32 = {
-    q: ?*i32 = null;
+    q: option<*i32> = null;
     switch (argc) {
         case 1: { x: i32 = 9; q = x&; }
         default: { }

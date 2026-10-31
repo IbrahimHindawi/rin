@@ -1,7 +1,7 @@
 // expect: this pointer may be null
 H: struct = { x: i32; }
-S: struct = { h: ?*H in permanent; n: i32; }
+S: struct = { h: option<*H in permanent>; n: i32; }
 g: S = {};
-U: union = { h: ?*H in permanent; n: u64; }
+U: union = { h: option<*H in permanent>; n: u64; }
 use: proc(u: *U) -> i32 = { if (u*.h) { u*.n = 1; return u*.h*.x; } return 0; }
 main: proc() -> i32 = { return 0; }

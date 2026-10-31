@@ -1,6 +1,6 @@
 import "std/print.rin"
-H: struct = { x: i32; next: ?*H in permanent; }
-S: struct = { h: ?*H in permanent; n: i32; }
+H: struct = { x: i32; next: option<*H in permanent>; }
+S: struct = { h: option<*H in permanent>; n: i32; }
 g: S = {};
 clr: proc() -> i32 = { g.h = null; return 1; }
 clr0: proc() -> i32 = { g.h = null; return 0; }

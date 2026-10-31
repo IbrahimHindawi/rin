@@ -5,8 +5,8 @@ frame: region in level;
 H: struct = { x: i32; }
 clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_slice<i32>(t, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } } }
 f: proc(p: []i32 in level) -> i32 = {
-    q: ?*i32 in level = null;
+    q: option<*i32 in level> = null;
     level: region = { q = new<i32>(level, 42); }
-    return must(q)*;
+    return unwrap(q)*;
 }
 main: proc() -> i32 = { e: []i32 in level = {}; return 0; }

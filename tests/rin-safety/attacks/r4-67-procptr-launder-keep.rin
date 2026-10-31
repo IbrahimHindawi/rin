@@ -1,5 +1,5 @@
 import "std/print.rin"
-gk: ?*i32 in permanent = null;
+gk: option<*i32 in permanent> = null;
 keep: proc(p: *i32 in permanent) -> void = { gk = p; }
 go: proc() -> void = {
     fp: *proc(p: *i32) -> void = keep;
@@ -10,6 +10,6 @@ smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[
 main: proc() -> i32 = {
     go();
     smash();
-    printfmt("{}\n", must(gk)*);
+    printfmt("{}\n", unwrap(gk)*);
     return 0;
 }

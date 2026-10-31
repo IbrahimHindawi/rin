@@ -17,7 +17,7 @@ memops_os_redzone: proc[external]() -> u64 = {}
    it belongs to, and there is no release call to forget or to make too soon. */
 memops_arena_end: struct = {
     next: ^memops_arena_end;
-    call: ?*proc(arg: ^void) -> void;
+    call: option<*proc(arg: ^void) -> void>;
     arg: ^void;
 }
 

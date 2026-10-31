@@ -1,6 +1,6 @@
 hi: proc(g: *proc() -> void) -> void = { g(); }
 main: proc() -> i32 = {
-    n: ?*proc() -> void = null;
+    n: option<*proc() -> void> = null;
     hi(n);
     return 0;
 }

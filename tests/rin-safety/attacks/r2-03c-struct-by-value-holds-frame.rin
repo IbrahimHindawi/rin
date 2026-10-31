@@ -1,7 +1,7 @@
 import "std/print.rin"
 level: region;
 frame: region in level;
-holder: struct = { p: ?*i32 in frame; }
+holder: struct = { p: option<*i32 in frame>; }
 main: proc() -> i32 = {
     level: region = {
         s: holder = {};

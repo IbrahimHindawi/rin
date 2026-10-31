@@ -44,7 +44,7 @@ Every memory error in a program that uses only arenas, and where each lands:
 | error | today | with regions |
 |---|---|---|
 | index out of bounds | checked at run time on `[]T` and arrays | same |
-| null dereference | silent | compile error: `?*T` must be tested first |
+| null dereference | silent | compile error: `option<*T>` must be tested first |
 | read of uninitialised memory | silent, unless `push_zero` | compile error: every push zeroes unless `[uninit]` |
 | wrong type through a cast | silent | compile error outside `[unsafe]` |
 | pointer stored in something longer-lived than its arena | silent | **compile error: the rule** |
@@ -120,7 +120,7 @@ A pointer into a known region converts to borrowed freely, `*T in R` → `*T`,
 the way `*T` converts to `^T` today. The other direction needs a region, and
 there is no cast for it outside `[unsafe]`.
 
-`[]T in R` is a slice whose elements live in R, with the same rules. `?*T` is a
+`[]T in R` is a slice whose elements live in R, with the same rules. `option<*T>` is a
 pointer that may be null and must be tested before use; it takes a region the
 same way.
 
@@ -330,7 +330,7 @@ regions, and declines the rest rather than fighting them.
 2. **Typed allocation and `[unsafe]`.** `new`, `new_slice`, the attribute, and
    `^T`/casts rejected outside it. No regions yet. Removes every cast in
    rin-dod and finds the unsafe surface of std.
-3. **`?*T`.** Null as a type. Small.
+3. **`option<*T>`.** Null as a type. Small.
 4. **Regions.** `region` blocks, `in R` on pointer types, `[in R]` on structs,
    `region R` parameters, the rule in the checker. Port rin-dod; it must
    compile with only the annotations counted in step 1.
@@ -402,7 +402,7 @@ before: `level: region;`, `frame: region in level;`, `scratch: region in
 frame;`; `permanent` is implied before them. `frame: region = { }` opens
 one, `scratch: region of frame = { }` marks the parent's arena. Pointer and slice
 types take `in R`, binding to the innermost pointer or slice just parsed:
-`[]*node in level in frame` is a frame slice of level pointers. `?*T` may be
+`[]*node in level in frame` is a frame slice of level pointers. `option<*T>` may be
 null. A proc takes a region as `r: region R`, a variable bound at each call;
 as `r: region R in level`, a variable that lives no longer than level, so
 the proc may put level pointers in it; or as `r: region level`, the declared
@@ -422,7 +422,7 @@ opens a declared region, not one already open, inside only longer-lived
 ones, with no `goto` or label in it; `return`, `break` and `continue` emit
 its cleanup. A `*T` that is zero would be null, so a zeroed value, a `new`
 without a value, or an initializer that leaves such a field out is an error;
-`?*T` is tested with `if (p)`, `if (p != null)`, `p && ...`, `p ? ... : ...`
+`option<*T>` is tested with `if (p)`, `if (p != null)`, `p && ...`, `p ? ... : ...`
 or an `if (!p) { return; }`, which narrows the name, and an assignment to
 the name undoes the narrowing. Null compares with any pointer.
 
@@ -482,7 +482,7 @@ already.
 **The std audit.** Every std proc a safe program can call was read against
 its signature, because a `[trusted]` proc is a promise: a lie in its
 signature is a hole in safe code. Twenty-one procs that returned `*T` and
-null on a miss now return `?*T`: `hashmap get`, `hashset`, `dlist`, `list`,
+null on a miss now return `option<*T>`: `hashmap get`, `hashset`, `dlist`, `list`,
 `map`, `queue`, `stack`, and `reflect`'s `find_field`, `find_value_by_name`
 and `find_value_by_value`; their callers in std were fixed to test the result.
 `vec<T>push` aborts rather than writing through a null arena, which a zeroed
@@ -501,7 +501,7 @@ day std gets one; until then a program that needs threads does it in
 `[unsafe]` code and owns the result.
 
 **Returning a borrowed pointer: Rust's elision.** `get_position(w:
-*world, e: entity) -> ?*vec2` returns `w*.ps[i]&` or null, and the rule
+*world, e: entity) -> option<*vec2>` returns `w*.ps[i]&` or null, and the rule
 above would have demanded a region on it. Rust lets `fn get(&self) -> &T`
 leave the lifetime off because it can only be the parameter's, and the same
 holds here: a safe proc may return a pointer that names no region if every
@@ -518,7 +518,7 @@ were written to break them, each trying to get a pointer past the checker
 and then faulting under AddressSanitizer. Seventeen did, in six families, and
 each family is now a rule and a reject test (045 to 062):
 
-  * *Locals outlive the region that filled them.* `q: ?*i32 in frame`
+  * *Locals outlive the region that filled them.* `q: option<*i32 in frame>`
     declared before `frame: region = { q = new<i32>(frame); }` and read after.
     Now a local whose type names a declared region can only be declared
     where that region is open: inside its block, or in a proc whose
@@ -534,7 +534,7 @@ each family is now a rule and a reject test (045 to 062):
     scalar whose storage is gone, are dead. A pointer local going out of
     scope kills nothing, since what it points at does not go with it.
   * *A borrow written into memory through a pointer.* `out* = x&` with `out:
-    *?*i32`. The pointee type names no region, and the stored-type rule only
+    *option<*i32>`. The pointee type names no region, and the stored-type rule only
     looked at types, not at writes. Now an assignment to any place other than
     a bare local, whose type is a pointer or slice with no region, is an
     error: nothing says how long what is written there lives.
@@ -586,7 +586,7 @@ and every one was a signature that lied, in five shapes, now reject tests
 
   * `node.next`, `list.head`, `queue.head` and `.tail`, `stack.head` and
     dlist's links were `*node<T>` and null at the tail or when empty; safe
-    code read them as borrows and dereferenced. They are `?*node<T>` now,
+    code read them as borrows and dereferenced. They are `option<*node<T>>` now,
     and the checker demands the test.
   * A slice's `length` and `data` were plain fields, so `xs.length =
     100000000` forged the bounds check. They are read-only in a safe body,
@@ -598,7 +598,7 @@ and every one was a signature that lied, in five shapes, now reject tests
     pointers there come from literals or trusted procs.
   * `reflect_field_at`, `reflect_value_at`, `reflect_field_info` and
     `reflect_find_field_info` returned `*const` and null out of range. They
-    return `?*const` now, like the `find` procs before them.
+    return `option<*const>` now, like the `find` procs before them.
 
 Still trusted-only after this pass, and said so rather than fixed: `hashset`
 and `dlist` have no `make(r)`; `string8`, `string8slice` and the builder are
@@ -645,7 +645,7 @@ every thread, where this one trusts 314 std procs and audits them by hand;
 narrowing and borrows over field paths, where this one tracks names and the
 paths they were taken from; and ten years of people trying to break it. What
 it has that Rust does not is the price: a region on each field that holds a
-pointer, `?*T` on what may be null, and nothing else, with no lifetimes, no
+pointer, `option<*T>` on what may be null, and nothing else, with no lifetimes, no
 ownership and no borrow annotations anywhere in the 370 lines of
 safe programs in the suite.
 
@@ -714,7 +714,7 @@ errors, most of them a few rules too blunt, and two holes.
     with a leak in place of a double close. `fprintfmt(f, "...", x)` is printfmt
     to one. `slice<T>copy` and `slice<T>zero` replace `memcpy` and `memset`, and
     `xs = ys` assigns an array.
-  * *`must(p)`.* A `?*T` as a `*T`, keeping its region, and a run-time stop if it
+  * *`unwrap(p)`.* A `option<*T>` as a `*T`, keeping its region, and a run-time stop if it
     is null: Rust's unwrap, for what the code knows and the checker cannot.
   * *`proc[external, trusted]`.* A C binding whose signature is honest, so safe
     code may call it: handles, plain data, single objects, nothing with a count
@@ -730,8 +730,8 @@ checker, more than the first three rounds together, many through rules older tha
 this round. The causes, now rules, each with its programs in `attacks/r4-*`:
 
   * *What is inside a type.* Type compatibility compared regions and nulls at the top
-    of a type only, so `*?*T in frame` took a `*?*T in level`, a `[1]?*T in frame` was
-    assigned to a `[1]?*T in level`, and `Box<?*T>` became `Box<*T>`. A place reached
+    of a type only, so `*option<*T in frame>` took a `*option<*T in level>`, a `[1]option<*T in frame>` was
+    assigned to a `[1]option<*T in level>`, and `Box<option<*T>>` became `Box<*T>`. A place reached
     through a pointer is now invariant, the rule Rust applies to `&mut`: both types
     must say the same about every pointer inside. Through `*const` it may narrow.
     Array lengths must match.
@@ -754,7 +754,7 @@ this round. The causes, now rules, each with its programs in `attacks/r4-*`:
     only in its file. In std, what takes a raw pointer and a count is `[unsafe]`.
   * *Zero.* A `{}` nested in an initializer, an argument or a return now answers to the
     non-null rule, as does `slice<T>zero`; `option<*T>` is refused, since its none is a
-    null, and `?*T` is an option already.
+    null, and `option<*T>` is an option already.
   * *Moves behind a global.* A callee that moves through a global, or that nothing is
     known of, kills what could move, in its callers too. A pointer into a fixed array or
     a slice naming a region is not such a thing. A proc with an unsafe block answers for

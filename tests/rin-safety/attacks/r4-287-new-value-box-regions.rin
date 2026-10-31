@@ -8,13 +8,13 @@ clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_sl
 Box: struct<T> = { v: T; }
 main: proc() -> i32 = {
     level: region = {
-        d: *Box<?*i32 in level> in level = new<Box<?*i32 in level>>(level);
+        d: *Box<option<*i32 in level>> in level = new<Box<option<*i32 in level>>>(level);
         frame: region = {
-            s: Box<?*i32 in frame> = { .v = new<i32>(frame, 42) };
+            s: Box<option<*i32 in frame>> = { .v = new<i32>(frame, 42) };
             d* = s;
         }
         frame: region = { x: []i32 in frame = new_slice<i32>(frame, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } }
-        printfmt("{}\n", must(d*.v)*);
+        printfmt("{}\n", unwrap(d*.v)*);
     }
     return 0;
 }

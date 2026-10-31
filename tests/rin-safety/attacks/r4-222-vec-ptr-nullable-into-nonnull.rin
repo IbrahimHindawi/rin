@@ -4,8 +4,8 @@ a: H = { .x = 1 };
 Box: struct<T> = { v: T; }
 import "std/vec.rin"
 main: proc() -> i32 = {
-    n: *vec<?*H in permanent> in permanent = vec<?*H in permanent>make(permanent, 1);
-    _ = vec<?*H in permanent>push(n, null);
+    n: *vec<option<*H in permanent>> in permanent = vec<option<*H in permanent>>make(permanent, 1);
+    _ = vec<option<*H in permanent>>push(n, null);
     v: *vec<*H in permanent> in permanent = n;
     printfmt("{}\n", vec<*H in permanent>at(v, 0)**.x);
     return 0;

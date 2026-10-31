@@ -1,7 +1,7 @@
 // A static struct whose field names level, filled in the block, read at the top of the next call.
 import "std/print.rin"
 level: region;
-S: struct = { p: ?*i32 in level; }
+S: struct = { p: option<*i32 in level>; }
 step: proc() -> i32 = {
     r: i32 = 0;
     level: region = {

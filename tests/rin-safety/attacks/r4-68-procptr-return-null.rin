@@ -1,6 +1,6 @@
 import "std/print.rin"
 H: struct = { x: i32; }
-rn: proc() -> ?*H in permanent = { return null; }
+rn: proc() -> option<*H in permanent> = { return null; }
 main: proc() -> i32 = {
     fp: *proc() -> *H in permanent = rn;
     printfmt("{}\n", fp()*.x);

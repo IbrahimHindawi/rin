@@ -610,7 +610,7 @@ struct TypeExpr {
        the same C pointer, so they are equal as types and only the operations
        allowed on them differ. */
     bool is_raw;
-    /* `?*T`: may be null, and must be tested before it is used. Only a
+    /* `option<*T>`: may be null, and must be tested before it is used. Only a
        Type_Ptr carries it. Erased in C, like the region. */
     bool is_nullable;
     /* `str`: a raw `const char *` known to last the whole program, a literal or
@@ -2735,16 +2735,8 @@ static TypeExpr *parse_type_inner(Parser *p) {
     }
 
     if (parser_match(p, Token_Question)) {
-        /* `?*T`: a pointer that may be null, and must be tested before use. */
-        Token *q = parser_prev(p);
-        TypeExpr *inner = parse_type(p);
-        if (!inner || inner->kind != Type_Ptr || inner->is_raw) {
-            parser_error_token(p, q, "'?' marks a '*T' that may be null; a slice, an array or a '^T' takes no '?'");
-        } else if (inner->is_nullable) {
-            parser_error_token(p, q, "'?' is already given");
-        }
-        if (inner) inner->is_nullable = true;
-        return inner;
+        parser_error_token(p, parser_prev(p), "a pointer that may be null is written 'option<*T>'");
+        return parse_type(p);
     }
 
     if (parser_match(p, Token_Keyword_Region)) {
@@ -2789,6 +2781,15 @@ static TypeExpr *parse_type_inner(Parser *p) {
             ptr_array_append(p->arena, &args, arg);
         } while (parser_match(p, Token_Comma));
         parser_expect_generic_close(p);
+        /* `option<*T>` is a pointer that may be null: a null is what none is, with no flag beside it. */
+        if (string8_equals_cstr(&name, "option") && args.length == 1) {
+            TypeExpr *held = (TypeExpr *)args.data[0];
+            if (held->kind == Type_Ptr && !held->is_raw) {
+                if (held->is_nullable) parser_error_token(p, name_tok, "this is already an option");
+                held->is_nullable = true;
+                return held;
+            }
+        }
         for (i32 i = 0; i < args.length; i++) {
             if (((TypeExpr *)args.data[i])->kind == Type_Array) {
                 parser_error_token(p, name_tok, "an array cannot be a generic's type yet: C would get the wrong type for it, so put it in a struct");
@@ -11026,11 +11027,11 @@ static TypeExpr *regions_substitute(memops_arena *arena, TypeExpr *type, RegionB
 static RegionBindings call_region_bindings(Program *prog, ProcDecl *decl, Expr *call, TypeScope *scope, memops_arena *arena, bool report);
 static TypeExpr *new_call_type(Program *prog, Expr *call, TypeScope *scope, memops_arena *arena);
 static bool call_is_new(Expr *call);
-/* `must(p)`: a `?*T` as a `*T`, stopping the program if it is null. Rust's
+/* `must(p)`: a `option<*T>` as a `*T`, stopping the program if it is null. Rust's
    unwrap: for what the code knows and the checker cannot, such as a device made
    at startup. */
 static bool call_is_must(Expr *call) {
-    return call && call->kind == Expr_Call && !call->base && call->args.length == 1 && string8_equals_cstr(&call->name, "must");
+    return call && call->kind == Expr_Call && !call->base && call->args.length == 1 && string8_equals_cstr(&call->name, "unwrap");
 }
 static bool g_uses_must = false;
 static string8 expr_place_region(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena);
@@ -11158,7 +11159,7 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
             TypeExpr *void_t = type_name_expr(arena, "void");
             TypeExpr *ptr_t = type_new(arena, Type_Ptr);
             ptr_t->elem = void_t;
-            ptr_t->is_nullable = true; // so it may not become a `*T`, only a `?*T` or a `^T`
+            ptr_t->is_nullable = true; // so it may not become a `*T`, only a `option<*T>` or a `^T`
             TypeExpr *null_type = ptr_t;
             if (null_type) null_type->is_null_literal = true;
             return null_type;
@@ -13009,7 +13010,7 @@ static void type_error_proc_argument(
    and `alignof` used to belong on this list; they are now their own node kind
    and cannot reach the call path. */
 static bool call_name_is_builtin(string8 name) {
-    return string8_equals_cstr(&name, "rin_file_printf") || string8_equals_cstr(&name, "printfmt") || string8_equals_cstr(&name, "fprintfmt") || string8_equals_cstr(&name, "must");
+    return string8_equals_cstr(&name, "rin_file_printf") || string8_equals_cstr(&name, "printfmt") || string8_equals_cstr(&name, "fprintfmt") || string8_equals_cstr(&name, "unwrap");
 }
 
 static void type_error_call_undeclared(
@@ -14736,7 +14737,7 @@ static void type_check_initializer_list(
         if (g_safe_body && (array_count < 0 || initialized_indices.length < array_count) &&
             type_has_nonnull_pointer(prog, expected->elem, arena, 0)) {
             type_error_message("this initializer leaves elements zero, and the element holds a pointer that may not be null; "
-                               "give every element a value, or make the pointer '?*T'", init->line, init->col);
+                               "give every element a value, or make the pointer 'option<*T>'", init->line, init->col);
         }
         return;
     }
@@ -14821,7 +14822,7 @@ static void type_check_initializer_list(
             if (!type_has_nonnull_pointer(prog, ft, arena, 0)) continue;
             char message[512];
             snprintf(message, sizeof(message),
-                     "field '%.*s' is left zero, and it holds a pointer that may not be null; set it here, or make it '?*T'",
+                     "field '%.*s' is left zero, and it holds a pointer that may not be null; set it here, or make it 'option<*T>'",
                      (int)field->name.length, field->name.data);
             type_error_message(message, init->line, init->col);
         }
@@ -15130,7 +15131,7 @@ static void check_type_stored(Program *prog, TypeExpr *type, string8 outer, bool
         if (g_storing_global && region_rank(prog, region) >= 0 && !string8_equals_cstr(&region, "permanent")) {
             if (r->kind == Type_Ptr && !r->is_nullable) {
                 region_error("a global outlives region '%.*s', whose end empties what points into it, so this must be "
-                             "able to be empty: make it '?*T in %.*s'", region, region, line, col);
+                             "able to be empty: make it 'option<*T in %.*s>'", region, region, line, col);
                 return;
             }
             bool was_global = g_storing_global;
@@ -15206,7 +15207,7 @@ static void check_type_regions_wf(Program *prog, TypeExpr *type, i32 line, i32 c
 static bool safety_check_proc_null(Program *prog, TypeExpr *dst, Expr *value) {
     if (!g_safe_body || !dst || !value || !type_proc_from_callable_type(prog, dst)) return false;
     if (resolve_alias_type(prog, dst)->is_nullable || !expr_may_be_null_literal(value)) return false;
-    type_error_message("this proc pointer may not be null: make it '?*proc', or give it a proc", value->line, value->col);
+    type_error_message("this proc pointer may not be null: make it 'option<*proc>', or give it a proc", value->line, value->col);
     return true;
 }
 
@@ -15245,7 +15246,7 @@ static void safety_check_zeroed(const char *what, Program *prog, TypeExpr *type,
     char message[512];
     snprintf(message, sizeof(message),
              "%s of type '%.*s' would hold a null in a pointer that may not be null; give every pointer a value, "
-             "or make the pointer '?*T'", what, (int)shown.length, shown.data);
+             "or make the pointer 'option<*T>'", what, (int)shown.length, shown.data);
     type_error_message(message, line, col);
 }
 
@@ -15401,8 +15402,8 @@ static bool region_flow_rejects(Program *prog, TypeExpr *dst, TypeExpr *src, i32
     }
     if (g_safe_body && d->kind == Type_Ptr && s->kind == Type_Ptr && !d->is_raw && !d->is_nullable && s->is_nullable) {
         type_error_message(type_is_void_pointer(s)
-            ? "null cannot go where a '*T' is promised; make the place '?*T'"
-            : "this pointer may be null, and the place it goes promises never to be; test it first, or make the place '?*T'",
+            ? "null cannot go where a '*T' is promised; make the place 'option<*T>'"
+            : "this pointer may be null, and the place it goes promises never to be; test it first, or make the place 'option<*T>'",
             line, col);
         return true;
     }
@@ -15640,7 +15641,7 @@ static string8 expr_place_region(Expr *e, TypeScope *scope, Program *prog, memop
     return (string8){0};
 }
 
-/* ---- Narrowing for `?*T`: inside `if (p)`, `if (p != null)`, the left of
+/* ---- Narrowing for `option<*T>`: inside `if (p)`, `if (p != null)`, the left of
    `p && ...`, and after `if (!p) { return; }`, p is a `*T`. */
 /* Names whose address the proc takes somewhere: `clear(p&)` could null p
    behind a narrowing, so such a name is tested at each use instead. */
@@ -17081,7 +17082,7 @@ static void safety_check_option(Program *prog, TypeExpr *type, memops_arena *are
     if (!string8_equals_cstr(&t->name, "option") && !string8_equals_cstr(&t->name, "result")) return;
     if (type_has_nonnull_pointer(prog, (TypeExpr *)t->args.data[0], arena, 0)) {
         type_error_message("an option or result of something holding a '*T' has a null in it when it holds no value; "
-                           "use '?*T'", line, col);
+                           "use 'option<*T>'", line, col);
     }
 }
 
@@ -18226,7 +18227,7 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
         type_check_expr(arg, scope, prog, arena);
         TypeExpr *t = resolve_alias_type(prog, infer_expr_type(arg, scope, prog, arena));
         if (!t || t->kind != Type_Ptr || t->is_raw) {
-            type_error_message("must takes a '?*T': it is how one becomes a '*T'", call->line, call->col);
+            type_error_message("must takes a 'option<*T>': it is how one becomes a '*T'", call->line, call->col);
             return;
         }
         call->cast_type = t;
@@ -19022,7 +19023,7 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
         ok = numeric_or_same_enum ||
              type_pointer_compare_compatible(prog, left, right);
     } else if (e->op == Token_EqualEqual || e->op == Token_BangEqual) {
-        /* `p == null` is how a `?*T` is tested, whatever p's constness or
+        /* `p == null` is how a `option<*T>` is tested, whatever p's constness or
            nullability, so null compares with any pointer. */
         bool left_null = e->left && e->left->kind == Expr_Name && string8_equals_cstr(&e->left->name, "null");
         bool right_null = e->right && e->right->kind == Expr_Name && string8_equals_cstr(&e->right->name, "null");
@@ -24264,7 +24265,7 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
     if (g_uses_must) {
         emit_cstr(arena, out, "RIN_MAYBE_UNUSED static const void *rin_nonnull(const void *p) {\n"
                               "    if (!p) {\n"
-                              "        printf(\"rin runtime: must on a null pointer\\n\");\n"
+                              "        printf(\"rin runtime: unwrap on a null pointer\\n\");\n"
                               "        exit(1);\n"
                               "    }\n"
                               "    return p;\n}\n\n");

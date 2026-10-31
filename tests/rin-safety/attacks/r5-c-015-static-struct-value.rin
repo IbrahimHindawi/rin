@@ -1,7 +1,7 @@
 // A static struct local whose field names a region: value survives the block.
 import "std/print.rin"
 level: region;
-S: struct = { p: ?*i32 in level; }
+S: struct = { p: option<*i32 in level>; }
 peek: proc() -> i32 = {
     r: i32 = 0;
     level: region = {

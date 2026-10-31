@@ -10,7 +10,7 @@ main: proc() -> i32 = {
             scratch: *list<i32> in frame = list<i32>make(frame);
             list<i32>append(list<i32>arena_of(scratch), keep, 7);
         }
-        n: ?*node<i32> = list<i32>node_at(keep, 0);
+        n: option<*node<i32>> = list<i32>node_at(keep, 0);
         printfmt("{}\n", n ? n*.data : -1); // node is in the ended frame
     }
     return 0;

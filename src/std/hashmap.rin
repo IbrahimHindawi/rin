@@ -130,7 +130,7 @@ hashmap<K, V>put: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>, key: K, va
     return slot;
 }
 
-hashmap<K, V>get: proc<K, V>(m: *const hashmap<K, V>, key: K) -> ?*V = {
+hashmap<K, V>get: proc<K, V>(m: *const hashmap<K, V>, key: K) -> option<*V> = {
     i: u64 = hashmap<K, V>find(m, key);
     if (i >= m*.capacity) {
         return null;

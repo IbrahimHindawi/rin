@@ -2,7 +2,7 @@ import "memops.rin"
 import "node.rin"
 
 stack: struct<T> = {
-    head: ?*node<T>;
+    head: option<*node<T>>;
     length: usize;
     /* Set by stack<T>make; see list.rin. */
     arena: ^memops_arena;
@@ -23,8 +23,8 @@ stack<T>arena_of: proc[unsafe]<T>(s: *const stack<T>) -> *memops_arena = {
 }
 
 stack<T>put: proc<T>(s: *stack<T>, data: T) -> void = { unsafe { stack<T>push(stack<T>arena_of(s), s, data); } }
-stack<T>take: proc<T>(s: *stack<T>) -> ?*node<T> = { unsafe { return stack<T>pop(stack<T>arena_of(s), s); } }
-stack<T>top: proc<T>(s: *const stack<T>) -> ?*node<T> = { unsafe { return s*.head; } }
+stack<T>take: proc<T>(s: *stack<T>) -> option<*node<T>> = { unsafe { return stack<T>pop(stack<T>arena_of(s), s); } }
+stack<T>top: proc<T>(s: *const stack<T>) -> option<*node<T>> = { unsafe { return s*.head; } }
 stack<T>length: proc<T>(s: *const stack<T>) -> usize = { unsafe { return s*.length; } }
 
 stack<T>create: proc<T>(arena: *memops_arena) -> *stack<T> = { unsafe {
@@ -43,7 +43,7 @@ stack<T>push: proc<T>(arena: *memops_arena, stack: *stack<T>, data: T) -> void =
     stack*.length += 1;
 }
 
-stack<T>pop: proc<T>(arena: *memops_arena, stack: *stack<T>) -> ?*node<T> = {
+stack<T>pop: proc<T>(arena: *memops_arena, stack: *stack<T>) -> option<*node<T>> = {
     if (stack == null || stack*.head == null) {
         return null;
     }
@@ -54,7 +54,7 @@ stack<T>pop: proc<T>(arena: *memops_arena, stack: *stack<T>) -> ?*node<T> = {
     unsafe { return node; }
 }
 
-stack<T>peek: proc<T>(arena: *memops_arena, stack: *stack<T>) -> ?*node<T> = {
+stack<T>peek: proc<T>(arena: *memops_arena, stack: *stack<T>) -> option<*node<T>> = {
     if (stack == null) {
         return null;
     }

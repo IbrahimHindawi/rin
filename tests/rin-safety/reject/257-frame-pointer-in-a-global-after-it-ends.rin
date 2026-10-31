@@ -4,5 +4,5 @@ frame: region in level;
 enemy: struct = { hp: i32; }
 ents: []enemy in level = {};
 load: proc() -> void = { reset level; ents = new_slice<enemy>(level, 4); }
-kept: ?*i32 in level = null;
+kept: option<*i32 in level> = null;
 main: proc() -> i32 = { frame: region = { p: *i32 in frame = new<i32>(frame); kept = p; } return 0; }

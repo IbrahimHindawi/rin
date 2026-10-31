@@ -2,7 +2,7 @@ import "std/print.rin"
 main: proc() -> i32 = {
     i: i32 = 0;
     unsafe { unsafe { i = 1; } i = 2; }
-    q: ?*i32 = null;
+    q: option<*i32> = null;
     printfmt("{}\n", q*);
     return 0;
 }

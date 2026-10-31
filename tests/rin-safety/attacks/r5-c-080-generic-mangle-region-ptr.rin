@@ -1,9 +1,9 @@
-// ?*i32 in permanent and *i32 in permanent mangle alike; the nullable instance vouches for the non-null one.
+// option<*i32 in permanent> and *i32 in permanent mangle alike; the nullable instance vouches for the non-null one.
 import "std/print.rin"
 pass: proc<T>(x: T) -> T = { y: T = x; return y; }
 main: proc() -> i32 = {
-    n: ?*i32 in permanent = null;
-    a: ?*i32 in permanent = pass<?*i32 in permanent>(n);
+    n: option<*i32 in permanent> = null;
+    a: option<*i32 in permanent> = pass<option<*i32 in permanent>>(n);
     b: *i32 in permanent = pass<*i32 in permanent>(new<i32>(permanent, 7));
     printfmt("{}\n", b*);
     return 0;

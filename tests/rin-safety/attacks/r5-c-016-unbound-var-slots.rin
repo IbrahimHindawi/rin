@@ -2,15 +2,15 @@
 import "std/print.rin"
 level: region;
 frame: region in level;
-assign: proc(a: *?*i32 in A, b: *?*i32 in A) -> void = { a* = b*; }
+assign: proc(a: *option<*i32 in A>, b: *option<*i32 in A>) -> void = { a* = b*; }
 main: proc() -> i32 = {
     level: region = {
-        o: ?*i32 in level = null;
+        o: option<*i32 in level> = null;
         frame: region = {
-            y: ?*i32 in frame = new<i32>(frame, 42);
+            y: option<*i32 in frame> = new<i32>(frame, 42);
             assign(o&, y&);
         }
-        printfmt("{}\n", must(o)*);
+        printfmt("{}\n", unwrap(o)*);
     }
     return 0;
 }

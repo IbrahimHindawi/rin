@@ -9,7 +9,7 @@ enemy: struct = { hp: i32; }
 
 game: struct = {
     enemies: []enemy in level;
-    boss: ?*enemy in level;
+    boss: option<*enemy in level>;
 }
 
 g: game = {};

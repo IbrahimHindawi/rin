@@ -2,7 +2,7 @@
 import "std/print.rin"
 level: region;
 frame: region in level;
-S: struct = { p: ?*i32 in level; }
+S: struct = { p: option<*i32 in level>; }
 f: proc(s: *S in level) -> void = {
     frame: region = { s*.p = new<i32>(frame, 42); }
 }

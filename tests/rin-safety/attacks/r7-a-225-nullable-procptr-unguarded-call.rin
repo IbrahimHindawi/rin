@@ -1,7 +1,7 @@
-// A ?*proc local, never tested, called.
-f: ?*proc() -> void = null;
+// A option<*proc> local, never tested, called.
+f: option<*proc() -> void> = null;
 main: proc() -> i32 = {
-    g: ?*proc() -> void = f;
+    g: option<*proc() -> void> = f;
     g();
     return 0;
 }

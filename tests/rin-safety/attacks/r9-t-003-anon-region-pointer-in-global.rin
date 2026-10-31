@@ -1,13 +1,13 @@
 // check_type_stored skips anonymous members, so a global holds a pointer into `level`; read after level's block: use-after-poison.
 import "std/print.rin"
 level: region;
-S: struct = { struct = { p: ?*i32 in level; } }
+S: struct = { struct = { p: option<*i32 in level>; } }
 g: S = {};
 fill: proc() -> void = {
     level: region = { g.p = new<i32>(level, 1); }
 }
 main: proc() -> i32 = {
     fill();
-    printfmt("{}\n", must(g.p)*);
+    printfmt("{}\n", unwrap(g.p)*);
     return 0;
 }

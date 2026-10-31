@@ -62,14 +62,14 @@ table<T>has: proc[no_move]<T>(t: *const table<T>, i: index<T>) -> b32 = { unsafe
     return t*.generations[i.slot] == i.generation;
 } }
 
-table<T>get: proc[no_move]<T>(t: *table<T>, i: index<T>) -> ?*T = { unsafe {
+table<T>get: proc[no_move]<T>(t: *table<T>, i: index<T>) -> option<*T> = { unsafe {
     if (!table<T>has(t, i)) {
         return null;
     }
     return t*.data[i.slot]&;
 } }
 
-table<T>get_const: proc[no_move]<T>(t: *const table<T>, i: index<T>) -> ?*const T = { unsafe {
+table<T>get_const: proc[no_move]<T>(t: *const table<T>, i: index<T>) -> option<*const T> = { unsafe {
     if (!table<T>has(t, i)) {
         return null;
     }

@@ -6,19 +6,19 @@ frame: region in level;
 H: struct = { x: i32; }
 clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_slice<i32>(t, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } } }
 Box: struct<T> = { v: T; }
-f: proc(r: region R) -> Box<?*i32 in R> = {
+f: proc(r: region R) -> Box<option<*i32 in R>> = {
     tmp: region of r = {
-        b: Box<?*i32 in tmp> = { .v = new<i32>(tmp, 42) };
+        b: Box<option<*i32 in tmp>> = { .v = new<i32>(tmp, 42) };
         return b;
     }
-    d: Box<?*i32 in R> = { .v = null };
+    d: Box<option<*i32 in R>> = { .v = null };
     return d;
 }
 main: proc() -> i32 = {
     level: region = {
-        b: Box<?*i32 in level> = f(level);
+        b: Box<option<*i32 in level>> = f(level);
         clobber(level);
-        printfmt("{}\n", must(b.v)*);
+        printfmt("{}\n", unwrap(b.v)*);
     }
     return 0;
 }

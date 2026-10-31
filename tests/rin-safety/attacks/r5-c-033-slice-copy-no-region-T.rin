@@ -1,18 +1,18 @@
-// H39: slice<?*i32>copy, T naming no region, between a level slice and a frame slice.
+// H39: slice<option<*i32>>copy, T naming no region, between a level slice and a frame slice.
 import "std/print.rin"
 import "std/slice.rin"
 level: region;
 frame: region in level;
 main: proc() -> i32 = {
     level: region = {
-        d: []?*i32 in level = new_slice<?*i32 in level>(level, 1);
+        d: []option<*i32 in level> = new_slice<option<*i32 in level>>(level, 1);
         frame: region = {
-            s: []?*i32 in frame = new_slice<?*i32 in frame>(frame, 1);
+            s: []option<*i32 in frame> = new_slice<option<*i32 in frame>>(frame, 1);
             s[0] = new<i32>(frame, 42);
-            slice<?*i32>copy(d, s);
+            slice<option<*i32>>copy(d, s);
         }
         frame: region = { x: []i32 in frame = new_slice<i32>(frame, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } }
-        printfmt("{}\n", must(d[0])*);
+        printfmt("{}\n", unwrap(d[0])*);
     }
     return 0;
 }

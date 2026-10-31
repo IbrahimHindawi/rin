@@ -3,6 +3,6 @@ level: region;
 frame: region in level;
 first: proc(xs: []i32 in R) -> *i32 in R = { return xs[0]&; }
 main: proc() -> i32 = {
-    out: ?*i32 in level = null;
+    out: option<*i32 in level> = null;
     level: region = { frame: region = { xs: []i32 in frame = new_slice<i32>(frame, 3); out = first(xs); } }
     return 0; }

@@ -1,6 +1,6 @@
 import "std/print.rin"
 level: region;
-m: struct = { p: ?*i32 in level; }
+m: struct = { p: option<*i32 in level>; }
 f: proc(x: *m) -> void = { x*.p = null; }
 main: proc() -> i32 = {
     level: region = {

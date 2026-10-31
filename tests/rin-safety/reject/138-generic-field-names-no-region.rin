@@ -1,4 +1,4 @@
 // expect: unknown region
 level: region;
-B: struct<T> = { p: ?*T in Q; }
+B: struct<T> = { p: option<*T in Q>; }
 main: proc() -> i32 = { return 0; }

@@ -7,7 +7,7 @@ main: proc() -> i32 = {
     level: region = {
         m: *map<i32> in level = map<i32>make(level);
         map<i32>put(m, "abj", 1);
-        p: ?*i32 = map<i32>find(m, null);
+        p: option<*i32> = map<i32>find(m, null);
         printfmt("{}\n", p ? p* : -1);
     }
     return 0;

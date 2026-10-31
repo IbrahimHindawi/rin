@@ -1,2 +1,2 @@
-// `{ n }` hides that n is ?*i32 from the null rule: same unchecked scalar init list, so an untested null reaches a *T. UBSan: load of null pointer / SEGV.
-main: proc() -> i32 = { n: ?*i32 = null; p: *i32 = { n }; return p*; }
+// `{ n }` hides that n is option<*i32> from the null rule: same unchecked scalar init list, so an untested null reaches a *T. UBSan: load of null pointer / SEGV.
+main: proc() -> i32 = { n: option<*i32> = null; p: *i32 = { n }; return p*; }

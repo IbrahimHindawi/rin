@@ -1,7 +1,7 @@
 import "std/print.rin"
 level: region;
 frame: region in level;
-fp: alias = ?*i32 in frame;
+fp: alias = option<*i32 in frame>;
 main: proc() -> i32 = {
     level: region = {
         q: fp = null;

@@ -64,7 +64,7 @@ cover the program.
 The rules below keep these true. The argument is an induction over execution: each is true when
 `main` starts, and no safe operation, and no call to a correct std proc, makes one false.
 
-1. **Pointers.** A `*T in R` points at a live `T`, in `R` or something that outlives `R`. A `?*T`
+1. **Pointers.** A `*T in R` points at a live `T`, in `R` or something that outlives `R`. A `option<*T>`
    is that or null. A pointer with no region named is a parameter or local that cannot outlive
    what it was made from.
 2. **Slices.** A `[]T` has `length` live `T`s at `data`, or a length of 0. A slice's fields cannot be written, or stated in a literal: only an array, a subrange or `new_slice` makes one.
@@ -84,7 +84,7 @@ The rules below keep these true. The argument is an induction over execution: ea
 | Region re-entered while open | The checker tracks what each proc opens | `opens_collect_*` | Calls through pointers are refused a region | `reject/`, attack probes |
 | Local's address escapes | The stack is the innermost region | Region rules, `borrow_*` | Locals do not outlive the frame | `reject/` |
 | Stale pointer after a move | Borrow tracking kills it; the old buffer also stays valid until the region ends | `borrow_*`, `compute_proc_moves` | Arenas never free one object | `reject/`, `attacks/r3-*` |
-| Null dereference | `?*T` must be tested; narrowing ends at anything that could change it | `narrow_*` | A field changes in any callee and through any path | `reject/`, `accept/010` |
+| Null dereference | `option<*T>` must be tested; narrowing ends at anything that could change it | `narrow_*` | A field changes in any callee and through any path | `reject/`, `accept/010` |
 | A zero in a non-null pointer | `{}`, `new` and `new_slice` refuse a type holding a `*T` | `safety_check_zeroed` | Reflection and generics see through to the field | `reject/`, attack probes |
 | Out of bounds | `[]T` and arrays are checked in every build; a slice that can change is read whole | `RIN_INDEX`, `rin_slice_at`, `rin_slice_range` | Slices are `{ data, length }`; `length` is not written by safe code | `poison/008`, `poison/012`, `accept/026` |
 | Size wraps an allocation | Counts go through `memops_bytes`; the arena subtracts to compare | `memops_arena_carve_` | Every counted allocation in std uses it | `poison/005` to `007` |

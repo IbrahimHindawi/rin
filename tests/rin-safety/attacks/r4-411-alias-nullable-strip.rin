@@ -1,4 +1,4 @@
 import "std/print.rin"
 H: struct = { x: i32; }
-nH: alias = ?*H in permanent;
+nH: alias = option<*H in permanent>;
 main: proc() -> i32 = { p: nH = null; printfmt("{}\n", p*.x); return 0; }

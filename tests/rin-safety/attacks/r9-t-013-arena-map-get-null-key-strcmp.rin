@@ -7,7 +7,7 @@ main: proc() -> i32 = {
     memops_arena_initialize(h*.a&, 1048576);
     m: *map<i32> in permanent = map<i32>make(permanent);
     map<i32>put(m, "k367", 1);
-    q: ?*i32 = map<i32>get(h*.a&, m, null);
+    q: option<*i32> = map<i32>get(h*.a&, m, null);
     printfmt("{}\n", q ? q* : 0);
     return 0;
 }

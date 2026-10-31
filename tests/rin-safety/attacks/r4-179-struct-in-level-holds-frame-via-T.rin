@@ -7,7 +7,7 @@ clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_sl
 Box: struct<T> = { v: T; }
 main: proc() -> i32 = {
     level: region = {
-        b: *Box<?*i32 in frame> in level = new<Box<?*i32 in frame>>(level);
+        b: *Box<option<*i32 in frame>> in level = new<Box<option<*i32 in frame>>>(level);
         return 0;
     }
     return 0;

@@ -1,7 +1,7 @@
 // A field narrowed by a ternary, read in an argument beside a call that clears it (right-to-left C order).
 import "std/print.rin"
 H: struct = { x: i32; }
-S: struct = { h: ?*H in permanent; }
+S: struct = { h: option<*H in permanent>; }
 g: S = {};
 clr: proc() -> i32 = { g.h = null; return 1; }
 add: proc(a: i32, b: i32) -> i32 = { return a + b; }

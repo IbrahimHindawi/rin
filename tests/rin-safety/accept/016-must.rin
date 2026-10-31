@@ -1,14 +1,14 @@
 import "std/print.rin"
 
 H: struct = { x: i32; }
-S: struct = { h: ?*H in permanent; }
+S: struct = { h: option<*H in permanent>; }
 g: S = {};
 leaf: H = { .x = 3 };
 
 /* What the code knows and the checker cannot. */
 read: proc(s: *S) -> i32 = {
-    h: *H in permanent = must(s*.h);
-    return h*.x + must(s*.h)*.x;
+    h: *H in permanent = unwrap(s*.h);
+    return h*.x + unwrap(s*.h)*.x;
 }
 
 /* A C binding's handle argument gets the same check. */

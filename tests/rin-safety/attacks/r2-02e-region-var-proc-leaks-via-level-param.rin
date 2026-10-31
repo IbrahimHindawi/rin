@@ -1,7 +1,7 @@
 import "std/print.rin"
 level: region;
 frame: region in level;
-w: struct = { keep: ?*i32 in level; }
+w: struct = { keep: option<*i32 in level>; }
 stash: proc(r: region R, dst: *w in level) -> void = { p: *i32 in R = new<i32>(r); dst*.keep = p; }
 main: proc() -> i32 = {
     level: region = {

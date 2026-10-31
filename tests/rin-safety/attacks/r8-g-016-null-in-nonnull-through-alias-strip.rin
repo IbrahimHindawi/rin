@@ -1,6 +1,6 @@
-// *const n (n = ?*i32) takes the address of a *i32 by covariance, the alias strip makes it writable: null is written into a non-null global, then dereferenced.
+// *const n (n = option<*i32>) takes the address of a *i32 by covariance, the alias strip makes it writable: null is written into a non-null global, then dereferenced.
 import "std/print.rin"
-n: alias = ?*i32 in permanent;
+n: alias = option<*i32 in permanent>;
 X: i32 = 1;
 H: *i32 in permanent = X&;
 main: proc() -> i32 = {

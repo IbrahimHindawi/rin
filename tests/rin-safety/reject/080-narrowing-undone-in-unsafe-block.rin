@@ -1,7 +1,7 @@
 // expect: this pointer may be null
 level: region;
-use: proc(p: ?*i32 in level) -> i32 = {
-    q: ?*i32 in level = p;
+use: proc(p: option<*i32 in level>) -> i32 = {
+    q: option<*i32 in level> = p;
     if (q) {
         unsafe { q = null; }
         return q*;

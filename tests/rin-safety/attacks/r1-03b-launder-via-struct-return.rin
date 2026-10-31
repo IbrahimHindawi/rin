@@ -1,7 +1,7 @@
 import "std/print.rin"
 import "std/vec.rin"
 level: region;
-pair: struct = { a: ?*i32; }
+pair: struct = { a: option<*i32>; }
 first: proc(v: *const vec<i32>) -> pair = { return { .a = vec<i32>at(v, 0) }; }
 main: proc() -> i32 = {
     level: region = {

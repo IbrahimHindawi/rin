@@ -5,9 +5,9 @@ frame: region in level;
 H: struct = { x: i32; }
 clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_slice<i32>(t, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } } }
 f: proc(r: region R) -> i32 = {
-    v: *vec<?*i32 in R> in R = vec<?*i32 in R>make(r, 2);
+    v: *vec<option<*i32 in R>> in R = vec<option<*i32 in R>>make(r, 2);
     tmp: region of r = {
-        _ = vec<?*i32 in R>push(v, new<i32>(tmp, 42));
+        _ = vec<option<*i32 in R>>push(v, new<i32>(tmp, 42));
     }
     return 0;
 }

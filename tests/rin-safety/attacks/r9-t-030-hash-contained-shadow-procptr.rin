@@ -2,12 +2,12 @@
 import "std/print.rin"
 import "std/hashmap.rin"
 key: struct = { x: i64; }
-S: struct = { m: ?*hashmap<key, i32> in permanent; armed: b32; }
+S: struct = { m: option<*hashmap<key, i32> in permanent>; armed: b32; }
 g: S = {};
 evil: proc(x: u64) -> u64 = {
     if (g.armed && g.m) {
         g.armed = 0;
-        m: *hashmap<key, i32> in permanent = must(g.m);
+        m: *hashmap<key, i32> in permanent = unwrap(g.m);
         for (i: i64 = 0; i < 20000; i += 1) {
             k2: key = { .x = 100000 + i };
             _ = hashmap<key, i32>set(m, k2, 1);

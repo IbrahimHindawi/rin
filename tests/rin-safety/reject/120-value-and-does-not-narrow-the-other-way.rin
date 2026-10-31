@@ -1,4 +1,4 @@
 // expect: this pointer may be null
 H: struct = { x: i32; }
-use: proc(p: ?*H) -> b32 = { return p != null || p*.x > 0; }
+use: proc(p: option<*H>) -> b32 = { return p != null || p*.x > 0; }
 main: proc() -> i32 = { return 0; }

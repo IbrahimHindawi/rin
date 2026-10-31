@@ -4,13 +4,13 @@ level: region;
 frame: region in level;
 H: struct = { x: i32; }
 clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_slice<i32>(t, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } } }
-put: proc(slot: *?*i32 in frame, v: *i32 in frame) -> void = { slot* = v; }
+put: proc(slot: *option<*i32 in frame>, v: *i32 in frame) -> void = { slot* = v; }
 main: proc() -> i32 = {
     level: region = {
-        o: ?*i32 in level = null;
+        o: option<*i32 in level> = null;
         frame: region = { put(o&, new<i32>(frame, 42)); }
         frame: region = { x: []i32 in frame = new_slice<i32>(frame, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } }
-        printfmt("{}\n", must(o)*);
+        printfmt("{}\n", unwrap(o)*);
     }
     return 0;
 }

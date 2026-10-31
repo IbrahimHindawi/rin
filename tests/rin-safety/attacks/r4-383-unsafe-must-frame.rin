@@ -10,9 +10,9 @@ main: proc() -> i32 = {
         o: i32 = 1;
         q: *i32 = o&;
         frame: region = {
-            x: ?*i32 in frame = null;
+            x: option<*i32 in frame> = null;
             unsafe { x = new<i32>(frame, 42); }
-            q = must(x);
+            q = unwrap(x);
         }
         frame: region = { x: []i32 in frame = new_slice<i32>(frame, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } }
         printfmt("{}\n", q*);

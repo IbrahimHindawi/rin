@@ -1,7 +1,7 @@
 // expect: whose block ends with this return
 level: region;
 frame: region in level;
-use: proc() -> ?*i32 in frame = {
+use: proc() -> option<*i32 in frame> = {
     frame: region = { return new<i32>(frame, 1); }
     return null;
 }

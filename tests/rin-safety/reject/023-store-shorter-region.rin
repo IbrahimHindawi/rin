@@ -1,7 +1,7 @@
 // expect: a pointer into region 'frame' cannot be kept where region 'level' is promised
 level: region;
 frame: region in level;
-holder: struct = { p: ?*i32 in level; }
+holder: struct = { p: option<*i32 in level>; }
 main: proc() -> i32 = {
     level: region = { h: *holder in level = new<holder>(level);
         frame: region = { x: *i32 in frame = new<i32>(frame); h*.p = x; } }

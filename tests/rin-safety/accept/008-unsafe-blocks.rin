@@ -23,7 +23,7 @@ zeroed: proc() -> i32 = {
 }
 
 /* A block that always leaves ends the branch, for narrowing and for returns. */
-first_or_exit: proc(p: ?*i32) -> i32 = {
+first_or_exit: proc(p: option<*i32>) -> i32 = {
     if (!p) { unsafe { exit(1); } }
     return p*;
 }

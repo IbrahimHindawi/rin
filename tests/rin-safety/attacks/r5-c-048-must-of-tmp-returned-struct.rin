@@ -1,8 +1,8 @@
-// must(o) keeps the region; o is a ?*i32 in a tmp, the result returned inside a struct.
+// unwrap(o) keeps the region; o is a option<*i32 in a> tmp, the result returned inside a struct.
 import "std/print.rin"
 smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
 leak: proc(r: region R) -> *i32 = {
-    p: *i32 = r == r ? must(new<i32>(r, 7)) : must(new<i32>(r, 7));
+    p: *i32 = r == r ? unwrap(new<i32>(r, 7)) : unwrap(new<i32>(r, 7));
     return p;
 }
 main: proc() -> i32 = {

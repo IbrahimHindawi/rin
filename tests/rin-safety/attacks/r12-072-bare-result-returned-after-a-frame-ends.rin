@@ -3,13 +3,13 @@ import "std/print.rin"
 level: region;
 frame: region in level;
 enemy: struct = { hp: i32; pad: [8]i64; }
-game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+game: struct = { enemies: []enemy in level; boss: option<*enemy in level>; }
 g: game = {};
 load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
 wipe: proc(r: region level) -> i32 = { reset r; return 0; }
 mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
 pe: enemy = {};
-kf: ?*enemy in frame = null;
-f1: proc() -> *enemy = { return must(kf); }
+kf: option<*enemy in frame> = null;
+f1: proc() -> *enemy = { return unwrap(kf); }
 up: proc() -> *enemy = { q: *enemy = pe&; frame: region = { kf = new<enemy>(frame, {}); q = f1(); } return q; }
 main: proc() -> i32 = { printfmt("{}\n", up()*.hp); return 0; }

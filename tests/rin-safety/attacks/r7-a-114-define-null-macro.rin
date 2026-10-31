@@ -2,7 +2,7 @@
 #define NULL 4096
 import "std/print.rin"
 main: proc() -> i32 = {
-    q: ?*i32 = null;
+    q: option<*i32> = null;
     if (q) { printfmt("{}\n", q*); }
     return 0;
 }

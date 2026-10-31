@@ -1,7 +1,7 @@
 import "std/print.rin"
 import "std/file.rin"
 rewind: proc[external, safe](stream: *FILE) -> void = {}
-gfile: ?*FILE in permanent = null;
-W: struct = { f: ?*FILE in permanent; }
+gfile: option<*FILE in permanent> = null;
+W: struct = { f: option<*FILE in permanent>; }
 gw: W = {};
 main: proc() -> i32 = { if (gw.f) { } rewind(gw.f); printfmt("back\n"); return 0; }

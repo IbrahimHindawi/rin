@@ -143,7 +143,7 @@ map<T>arena_of: proc[unsafe]<T>(m: *const map<T>) -> *memops_arena = {
 
 /* put, find and count: the arena-free forms for a map made by map<T>make. */
 map<T>put: proc<T>(m: *map<T>, key: ^const char, val: T) -> void = { unsafe { map_key_not_null(key); _ = map<T>set(map<T>arena_of(m), m, key, val); } }
-map<T>find: proc<T>(m: *const map<T>, key: ^const char) -> ?*T = { unsafe {
+map<T>find: proc<T>(m: *const map<T>, key: ^const char) -> option<*T> = { unsafe {
     if (m*.entries == null || m*.border == 0 || key == null) {
         return null;
     }
@@ -170,7 +170,7 @@ map<T>destroy: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> void = {
     }
 }
 
-map<T>get: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const char) -> ?*T = { unsafe {
+map<T>get: proc<T>(arena: *memops_arena, hashmap: *map<T>, key: ^const char) -> option<*T> = { unsafe {
     if (hashmap == null || hashmap*.entries == null || hashmap*.border == 0) {
         return null;
     }

@@ -2,7 +2,7 @@
 import "std/print.rin"
 main: proc() -> i32 = {
     k: i32 = 0;
-    q: ?*i32 = null;
+    q: option<*i32> = null;
     top: label = {
         if (q) { printfmt("{}\n", q*); }
         x: i32 = 5;

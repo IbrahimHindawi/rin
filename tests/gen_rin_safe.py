@@ -290,7 +290,7 @@ chk: u64 = 14695981039346656037;
 mix: proc(v: u64) -> void = {{ chk = (chk ^ v) * 1099511628211; }}
 
 box: struct = {{ xs: []i32 in level; }}
-node: struct = {{ v: i32; next: ?*node in level; }}
+node: struct = {{ v: i32; next: option<*node in level>; }}
 
 make_box: proc(r: region level, n: u64) -> *box in level = {{
     b: *box in level = new<box>(r, {{ .xs = new_slice<i32>(r, n) }});
@@ -308,9 +308,9 @@ sum_box: proc(a: *box in level, b: *const box in level) -> i32 = {{
 }}
 walk: proc(n: *node in level) -> i32 = {{
     t: i32 = 0;
-    p: ?*node in level = n;
+    p: option<*node in level> = n;
     for (i: i32 = 0; i < 16 && p != null; i += 1) {{
-        q: *node in level = must(p);
+        q: *node in level = unwrap(p);
         t += q*.v;
         p = q*.next;
     }}

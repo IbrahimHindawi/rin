@@ -1,9 +1,9 @@
 // expect: this pointer may be null
 level: region;
-node: struct = { v: i32; next: ?*node in level; }
+node: struct = { v: i32; next: option<*node in level>; }
 main: proc() -> i32 = {
     level: region = {
-        p: ?*node in level = new<node>(level);
+        p: option<*node in level> = new<node>(level);
         if (p) {
             p = p*.next;
             return p*.v;

@@ -8,7 +8,7 @@ main: proc() -> i32 = {
     level: region = {
         o: i32 = 0;
         q: *i32 = o&;
-        tmp: region of level = { q = must(new<i32>(tmp, 42)); }
+        tmp: region of level = { q = unwrap(new<i32>(tmp, 42)); }
         clobber(level);
         printfmt("{}\n", q*);
     }

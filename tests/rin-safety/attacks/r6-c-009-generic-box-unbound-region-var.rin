@@ -3,16 +3,16 @@ import "std/print.rin"
 level: region;
 frame: region in level;
 box: struct<T> = { v: T; }
-copy: proc(a: *box<?*i32 in R>, b: *box<?*i32 in R>) -> void = { a*.v = b*.v; }
+copy: proc(a: *box<option<*i32 in R>>, b: *box<option<*i32 in R>>) -> void = { a*.v = b*.v; }
 main: proc() -> i32 = {
     level: region = {
-        o: box<?*i32 in level> = {};
+        o: box<option<*i32 in level>> = {};
         frame: region = {
-            f: box<?*i32 in frame> = {};
+            f: box<option<*i32 in frame>> = {};
             f.v = new<i32>(frame, 42);
             copy(o&, f&);
         }
-        if (o.v) { printfmt("{}\n", must(o.v)*); }
+        if (o.v) { printfmt("{}\n", unwrap(o.v)*); }
     }
     return 0;
 }

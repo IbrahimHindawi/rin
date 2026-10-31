@@ -9,7 +9,7 @@ main: proc() -> i32 = {
     level: region = {
         l: *list<i32> in level = list<i32>make(level);
         list<i32>push(l, 1);
-        n: ?*node<i32> = list<i32>node_at(l, 0);
+        n: option<*node<i32>> = list<i32>node_at(l, 0);
         if (n) { printfmt("{}\n", n*.next*.data); }
     }
     return 0; }

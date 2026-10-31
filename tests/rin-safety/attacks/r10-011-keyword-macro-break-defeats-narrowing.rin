@@ -1,3 +1,3 @@
 // `#define break 0` is "a plain number": `break;` becomes `0;`. The checker narrows q after `if (!q) { break; }`, and C runs on into q*. UBSan: load of null pointer.
 #define break 0
-main: proc() -> i32 = { q: ?*i32 in permanent = {}; while (1 == 1) { if (!q) { break; } return q*; } return 0; }
+main: proc() -> i32 = { q: option<*i32 in permanent> = {}; while (1 == 1) { if (!q) { break; } return q*; } return 0; }

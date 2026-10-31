@@ -2,8 +2,8 @@ import "memops.rin"
 import "node.rin"
 
 queue: struct<T> = {
-    head: ?*node<T>;
-    tail: ?*node<T>;
+    head: option<*node<T>>;
+    tail: option<*node<T>>;
     length: usize;
     /* Set by queue<T>make; see list.rin. */
     arena: ^memops_arena;
@@ -24,8 +24,8 @@ queue<T>arena_of: proc[unsafe]<T>(q: *const queue<T>) -> *memops_arena = {
 }
 
 queue<T>push: proc<T>(q: *queue<T>, data: T) -> void = { unsafe { queue<T>enqueue(queue<T>arena_of(q), q, data); } }
-queue<T>pop: proc<T>(q: *queue<T>) -> ?*node<T> = { unsafe { return queue<T>dequeue(queue<T>arena_of(q), q); } }
-queue<T>front: proc<T>(q: *const queue<T>) -> ?*node<T> = { unsafe { return q*.head; } }
+queue<T>pop: proc<T>(q: *queue<T>) -> option<*node<T>> = { unsafe { return queue<T>dequeue(queue<T>arena_of(q), q); } }
+queue<T>front: proc<T>(q: *const queue<T>) -> option<*node<T>> = { unsafe { return q*.head; } }
 queue<T>length: proc<T>(q: *const queue<T>) -> usize = { unsafe { return q*.length; } }
 
 queue<T>create: proc<T>(arena: *memops_arena) -> *queue<T> = { unsafe {
@@ -50,7 +50,7 @@ queue<T>enqueue: proc<T>(arena: *memops_arena, queue: *queue<T>, data: T) -> voi
     queue*.length += 1;
 }
 
-queue<T>dequeue: proc<T>(arena: *memops_arena, queue: *queue<T>) -> ?*node<T> = {
+queue<T>dequeue: proc<T>(arena: *memops_arena, queue: *queue<T>) -> option<*node<T>> = {
     if (queue == null || queue*.head == null) {
         return null;
     }
@@ -64,7 +64,7 @@ queue<T>dequeue: proc<T>(arena: *memops_arena, queue: *queue<T>) -> ?*node<T> = 
     unsafe { return node; }
 }
 
-queue<T>peek: proc<T>(arena: *memops_arena, queue: *queue<T>) -> ?*node<T> = {
+queue<T>peek: proc<T>(arena: *memops_arena, queue: *queue<T>) -> option<*node<T>> = {
     if (queue == null) {
         return null;
     }

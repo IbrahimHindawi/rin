@@ -4,9 +4,9 @@ level: region;
 frame: region in level;
 main: proc() -> i32 = {
     level: region = {
-        outer: [][]?*i32 in level = new_slice<[]?*i32 in level>(level, 1);
+        outer: [][]option<*i32 in level> = new_slice<[]option<*i32 in level>>(level, 1);
         frame: region = {
-            inner: []?*i32 in frame = new_slice<?*i32 in frame>(frame, 1);
+            inner: []option<*i32 in frame> = new_slice<option<*i32 in frame>>(frame, 1);
             inner[0] = new<i32>(frame, 42);
             outer[0] = inner;
         }

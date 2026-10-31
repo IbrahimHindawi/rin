@@ -1,5 +1,5 @@
 import "std/print.rin"
 import "std/file.rin"
 rewind: proc[external, safe](stream: *FILE) -> void = {}
-gfile: ?*FILE in permanent = null;
+gfile: option<*FILE in permanent> = null;
 main: proc() -> i32 = { rewind(gfile); printfmt("back\n"); return 0; }

@@ -2,7 +2,7 @@ import "std/print.rin"
 import "std/slice.rin"
 
 /* No block opens permanent: it is there from the first use. */
-S: struct = { xs: []i32 in permanent; one: ?*i32 in permanent; }
+S: struct = { xs: []i32 in permanent; one: option<*i32 in permanent>; }
 g: S = {};
 fill: proc() -> void = {
     g.xs = new_slice<i32>(permanent, 4);
@@ -12,7 +12,7 @@ fill: proc() -> void = {
 give: proc(r: region R) -> *i32 in R = { return new<i32>(r, 6); }
 main: proc() -> i32 = {
     fill();
-    printfmt("{} {}\n", g.xs[3], must(g.one)*);
+    printfmt("{} {}\n", g.xs[3], unwrap(g.one)*);
     printfmt("{}\n", give(permanent)*);
     return 0;
 }

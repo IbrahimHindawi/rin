@@ -2,13 +2,13 @@
 // for T = *i32 in level, whose body would have been rejected.
 import "std/print.rin"
 level: region;
-g: ?*i32 in permanent = null;
+g: option<*i32 in permanent> = null;
 keep: proc<T>(x: T) -> void = { g = x; }
 main: proc() -> i32 = {
     keep<*i32 in permanent>(new<i32>(permanent, 1));
     level: region = {
         keep<*i32 in level>(new<i32>(level, 42));
     }
-    if (g) { printfmt("{}\n", must(g)*); }
+    if (g) { printfmt("{}\n", unwrap(g)*); }
     return 0;
 }

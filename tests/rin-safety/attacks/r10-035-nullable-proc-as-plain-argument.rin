@@ -2,4 +2,4 @@
 F: alias = proc() -> i32;
 h: proc() -> i32 = { return 1; }
 tk: proc(f: F) -> i32 = { return f(); }
-main: proc() -> i32 = { o: ?*proc() -> i32 = null; return tk(o); }
+main: proc() -> i32 = { o: option<*proc() -> i32> = null; return tk(o); }

@@ -11,12 +11,12 @@ main: proc() -> i32 = {
         x: pad = { .a = 1, .b = 2 };
         list<pad>push(l, x);
         y: pad = { .a = 1, .b = 2 };
-        n: ?*node<pad> = list<pad>take(l, y);
+        n: option<*node<pad>> = list<pad>take(l, y);
         printfmt("{}\n", n != null);
         m: *list<f64> in level = list<f64>make(level);
         list<f64>push(m, 0.0);
         z: f64 = -0.0;
-        k: ?*node<f64> = list<f64>take(m, z);
+        k: option<*node<f64>> = list<f64>take(m, z);
         printfmt("{}\n", k != null);
     }
     return 0;

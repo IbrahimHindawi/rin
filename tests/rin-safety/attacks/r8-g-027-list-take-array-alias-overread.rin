@@ -8,7 +8,7 @@ main: proc() -> i32 = {
         l: *list<a64> in level = list<a64>make(level);
         x: a64 = {};
         list<a64>push(l, x);
-        n: ?*node<a64> = list<a64>take(l, x);
+        n: option<*node<a64>> = list<a64>take(l, x);
         printfmt("{}\n", n ? 1 : 0);
     }
     return 0;

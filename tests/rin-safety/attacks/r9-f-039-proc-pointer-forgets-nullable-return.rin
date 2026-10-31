@@ -1,3 +1,3 @@
-// Proc types are compared without nullability: a proc returning ?*i32 becomes one returning *i32, whose result needs no test. UBSan: load of null pointer / SEGV.
-give_null: proc() -> ?*i32 in permanent = { return null; }
+// Proc types are compared without nullability: a proc returning option<*i32> becomes one returning *i32, whose result needs no test. UBSan: load of null pointer / SEGV.
+give_null: proc() -> option<*i32 in permanent> = { return null; }
 main: proc() -> i32 = { fp: proc() -> *i32 in permanent = give_null; return fp()*; }

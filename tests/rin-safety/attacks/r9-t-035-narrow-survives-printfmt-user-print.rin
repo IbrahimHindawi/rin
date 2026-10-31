@@ -1,11 +1,11 @@
 // printfmt does not end a field path's narrowing, yet runs a user's print<K>, which nulls that field: a null load in a branch the checker thinks is tested.
 import "std/print.rin"
 K: struct = { x: i32; }
-H: struct = { p: ?*i32 in permanent; }
-G: struct = { h: ?*H in permanent; }
+H: struct = { p: option<*i32 in permanent>; }
+G: struct = { h: option<*H in permanent>; }
 g: G = {};
 print: proc<K>(k: K) -> void = {
-    if (g.h) { must(g.h)*.p = null; }
+    if (g.h) { unwrap(g.h)*.p = null; }
 }
 main: proc() -> i32 = {
     h: *H in permanent = new<H>(permanent);

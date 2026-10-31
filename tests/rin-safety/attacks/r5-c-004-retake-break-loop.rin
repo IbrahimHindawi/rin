@@ -2,7 +2,7 @@
 import "std/print.rin"
 level: region;
 main: proc() -> i32 = {
-    q: ?*i32 = null;
+    q: option<*i32> = null;
     level: region = {
         for (i: i32 = 0; i < 2; i += 1) {
             q = new<i32>(level, 42);

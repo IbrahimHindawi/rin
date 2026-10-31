@@ -1,7 +1,7 @@
 // Field narrowed before a do-while whose body calls a clearing proc; read after.
 import "std/print.rin"
 H: struct = { x: i32; }
-S: struct = { h: ?*H in permanent; }
+S: struct = { h: option<*H in permanent>; }
 g: S = {};
 clr: proc() -> i32 = { g.h = null; return 0; }
 main: proc() -> i32 = {

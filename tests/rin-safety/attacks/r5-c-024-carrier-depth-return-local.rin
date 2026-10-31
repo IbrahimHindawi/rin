@@ -1,6 +1,6 @@
 // type_is_carrier gives up past depth 8: a by-value struct with a no-region pointer returns a local's address.
 import "std/print.rin"
-A0: struct = { p: ?*i32; }
+A0: struct = { p: option<*i32>; }
 A1: struct = { a: A0; }
 A2: struct = { a: A1; }
 A3: struct = { a: A2; }

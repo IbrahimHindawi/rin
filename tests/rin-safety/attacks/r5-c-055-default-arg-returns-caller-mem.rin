@@ -2,6 +2,6 @@
 import "std/print.rin"
 level: region;
 frame: region in level;
-mk: proc() -> ?*i32 in permanent = { return new<i32>(permanent, 7); }
-f: proc(p: ?*i32 in permanent = mk()) -> i32 = { if (p) { return p*; } return 0; }
+mk: proc() -> option<*i32 in permanent> = { return new<i32>(permanent, 7); }
+f: proc(p: option<*i32 in permanent> = mk()) -> i32 = { if (p) { return p*; } return 0; }
 main: proc() -> i32 = { printfmt("{}\n", f()); return 0; }

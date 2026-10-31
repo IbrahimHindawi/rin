@@ -1,6 +1,6 @@
 // expect: may be dangling
 level: region;
-f: proc(q: ?*i32) -> i32 = {
+f: proc(q: option<*i32>) -> i32 = {
     level: region = { q = new<i32>(level, 42); }
     if (q) { return q*; }
     return 0;

@@ -10,7 +10,7 @@ main: proc() -> i32 = {
         o: i32 = 1;
         q: *i32 = o&;
         frame: region = {
-            x: ?*i32 in frame = null;
+            x: option<*i32 in frame> = null;
             unsafe { x = new<i32>(frame, 42); }
             if (x) { q = x; }
         }

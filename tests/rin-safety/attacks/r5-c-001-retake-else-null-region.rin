@@ -2,7 +2,7 @@
 import "std/print.rin"
 level: region;
 main: proc() -> i32 = {
-    q: ?*i32 = null;
+    q: option<*i32> = null;
     c: i32 = 1;
     level: region = {
         if (c == 1) { q = new<i32>(level, 42); } else { q = null; }

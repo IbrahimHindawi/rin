@@ -7,7 +7,7 @@ main: proc() -> i32 = {
     w: [1]W = { { .h = a& } };
     s: []W = w;
     t: *const reflect = W<>&;
-    fi: ?*const reflect_field = reflect_find_field(t, "h");
+    fi: option<*const reflect_field> = reflect_find_field(t, "h");
     if (fi) { _ = reflect_field_zero(s.data, fi); }
     printfmt("{}\n", w[0].h*.x);
     return 0;

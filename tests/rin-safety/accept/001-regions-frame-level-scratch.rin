@@ -6,11 +6,11 @@ scratch: region in frame;
 
 entity: struct = {
     hp: i32;
-    target: ?*entity in level;
+    target: option<*entity in level>;
 }
 
 command: struct = {
-    who: ?*entity in level;
+    who: option<*entity in level>;
     damage: i32;
 }
 
@@ -29,7 +29,7 @@ gather: proc(r: region R in level, a: *entity in level, b: *entity in level) -> 
 
 apply: proc(cmds: []command) -> void = {
     for (i: u64 = 0; i < cmds.length; i += 1) {
-        who: ?*entity in level = cmds[i].who;
+        who: option<*entity in level> = cmds[i].who;
         if (who) {
             who*.hp -= cmds[i].damage;
         }
@@ -53,7 +53,7 @@ main: proc() -> i32 = {
                     total += tmp[0];
                     if (total > 1000) { break; }
                 }
-                t: ?*entity in level = a*.target;
+                t: option<*entity in level> = a*.target;
                 if (t != null) {
                     printfmt("frame {}: a {} b {} target {}\n", frames, a*.hp, b*.hp, t*.hp);
                 }

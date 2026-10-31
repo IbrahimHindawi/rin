@@ -11,7 +11,7 @@ main: proc() -> i32 = {
         keys: [8]^const char = { "a", "b", "c", "d", "e", "f", "g", "h" };
         for (i: i32 = 0; i < 200; i += 1) { map<i32>put(m, keys[i % 8], i); }
         for (i: i32 = 0; i < 100; i += 1) { map<i32>put(m, "k", i); }
-        a: ?*i32 = map<i32>find(m, "h");
+        a: option<*i32> = map<i32>find(m, "h");
         printfmt("{} {}\n", a ? a* : -1, map<i32>count(m));
     }
     return 0; }

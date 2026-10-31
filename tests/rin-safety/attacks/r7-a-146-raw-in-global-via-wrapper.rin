@@ -1,7 +1,7 @@
 import "std/print.rin"
 import "std/fmt.rin"
 level: region;
-gf: ?*fmt in level = null;
+gf: option<*fmt in level> = null;
 keep: ^const c8 = "";
 get: proc() -> ^const c8 = {
     if (gf) { return fmt_text(gf); }
@@ -10,7 +10,7 @@ get: proc() -> ^const c8 = {
 fill: proc() -> void = {
     level: region = {
         gf = fmt_make(level, 4096);
-        fmt_cstr(must(gf), "hello");
+        fmt_cstr(unwrap(gf), "hello");
         keep = get();
         gf = null;
     }

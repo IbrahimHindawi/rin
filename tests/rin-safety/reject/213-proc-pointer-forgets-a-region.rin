@@ -1,4 +1,4 @@
 // expect: promises different
-keep: ?*i32 in permanent = null;
+keep: option<*i32 in permanent> = null;
 stash: proc(p: *i32 in permanent) -> void = { keep = p; }
 main: proc() -> i32 = { fp: proc(p: *i32) -> void = stash; x: i32 = 1; fp(x&); return 0; }

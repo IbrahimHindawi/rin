@@ -1,3 +1,3 @@
 // expect: region
-g: ?*i32 in permanent = null;
+g: option<*i32 in permanent> = null;
 main: proc() -> i32 = { scratch { p: *i32 in scratch = new<i32>(scratch); g = p; } return 0; }

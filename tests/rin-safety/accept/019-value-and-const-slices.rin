@@ -2,7 +2,7 @@ import "std/print.rin"
 
 /* `p && p*.x` as a value narrows as it does in an if, and through a longer chain. */
 H: struct = { x: i32; }
-pick: proc(p: ?*H, flag: b32) -> b32 = {
+pick: proc(p: option<*H>, flag: b32) -> b32 = {
     yes: b32 = p != null && flag != 0 && p*.x > 0;
     no: b32 = !p || p*.x == 0;
     return yes && !no;

@@ -3,9 +3,9 @@ import "std/vec.rin"
 level: region;
 main: proc() -> i32 = {
     level: region = {
-        v: *vec<?*i32> in level = vec<?*i32>make(level, 1);
-        if (1) { x: i32 = 3; _ = vec<?*i32>push(v, x&); }
-        q: ?*i32 = vec<?*i32>at(v, 0)*;
+        v: *vec<option<*i32>> in level = vec<option<*i32>>make(level, 1);
+        if (1) { x: i32 = 3; _ = vec<option<*i32>>push(v, x&); }
+        q: option<*i32> = vec<option<*i32>>at(v, 0)*;
         if (q) { printfmt("{}\n", q*); }
     }
     return 0;

@@ -15,10 +15,10 @@ sum: proc(xs: []i32) -> i32 = {
 main: proc() -> i32 = {
     out_entity: i32 = 7;
     level: region = {
-        q: ?*i32 in level = null;
+        q: option<*i32 in level> = null;
         for (i: i32 = 0; i < 2; i += 1) {
             q = new<i32>(level, i);
-            printfmt("{}\n", must(q)*);
+            printfmt("{}\n", unwrap(q)*);
         }
         xs: []i32 in level = new_slice<i32>(level, 3);
         xs[1] = out_entity;

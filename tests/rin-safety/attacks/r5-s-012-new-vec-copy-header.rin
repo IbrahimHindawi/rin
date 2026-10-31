@@ -5,13 +5,13 @@ level: region;
 frame: region in level;
 main: proc() -> i32 = {
     level: region = {
-        k: ?*vec<i32> in level = null;
+        k: option<*vec<i32> in level> = null;
         frame: region = {
             tmp: *vec<i32> in frame = vec<i32>make(frame, 1);
             _ = vec<i32>push(tmp, 42);
             k = new<vec<i32>>(level, tmp*);
         }
-        printfmt("{}\n", vec<i32>at(must(k), 0)*);
+        printfmt("{}\n", vec<i32>at(unwrap(k), 0)*);
     }
     return 0;
 }

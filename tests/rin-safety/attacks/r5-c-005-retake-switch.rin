@@ -2,7 +2,7 @@
 import "std/print.rin"
 level: region;
 main: proc() -> i32 = {
-    q: ?*i32 = null;
+    q: option<*i32> = null;
     n: i32 = 1;
     level: region = {
         switch (n) {

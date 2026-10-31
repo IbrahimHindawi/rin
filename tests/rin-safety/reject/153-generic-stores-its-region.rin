@@ -1,11 +1,11 @@
 // expect: cannot be kept where region
 level: region;
-g: ?*i32 in permanent = null;
+g: option<*i32 in permanent> = null;
 keep: proc<T>(x: T) -> void = { g = x; }
 main: proc() -> i32 = {
     level: region = {
-        p: ?*i32 in level = new<i32>(level, 7);
-        keep<?*i32 in level>(p);
+        p: option<*i32 in level> = new<i32>(level, 7);
+        keep<option<*i32 in level>>(p);
     }
     return 0;
 }

@@ -1,7 +1,7 @@
 // expect: the next time round
 level: region;
 main: proc() -> i32 = {
-    q: ?*i32 = null;
+    q: option<*i32> = null;
     for (i: i32 = 0; i < 2; i += 1) {
         if (q) { return q*; }
         level: region = { q = new<i32>(level, 42); }

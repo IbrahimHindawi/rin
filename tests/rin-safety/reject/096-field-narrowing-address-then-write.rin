@@ -1,10 +1,10 @@
 // expect: this pointer may be null
 H: struct = { x: i32; }
-S: struct = { h: ?*H in permanent; n: i32; }
+S: struct = { h: option<*H in permanent>; n: i32; }
 g: S = {};
 main: proc() -> i32 = {
     if (g.h) {
-        p: *?*H in permanent = g.h&;
+        p: *option<*H in permanent> = g.h&;
         p* = null;
         return g.h*.x;
     }

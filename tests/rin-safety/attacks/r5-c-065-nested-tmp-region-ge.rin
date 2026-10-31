@@ -3,9 +3,9 @@ import "std/print.rin"
 level: region;
 fill: proc(r: region R) -> void = {
     outer: region of r = {
-        slot: *?*i32 in level = must(null);
+        slot: *option<*i32 in level> = unwrap(null);
         inner: region of outer = {
-            box: *?*i32 in level = new<?*i32 in level>(outer, null);
+            box: *option<*i32 in level> = new<option<*i32 in level>>(outer, null);
             box* = new<i32>(inner, 42);
             slot = box;
         }

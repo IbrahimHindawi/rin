@@ -1,2 +1,2 @@
 // expect: braces are for structs
-main: proc() -> i32 = { n: ?*i32 = null; p: *i32 = { n }; return p*; }
+main: proc() -> i32 = { n: option<*i32> = null; p: *i32 = { n }; return p*; }

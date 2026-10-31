@@ -13,7 +13,7 @@ checker or a garbage collector. The bet: give the arenas names (`regions`),
 make every pointer kept in memory say which one it points into (`*T in R`),
 and refuse any pointer that could outlive its region. The temporal half of
 memory safety becomes a lifetime-order check; the spatial half (bounds,
-null, initialisation) is run-time checks and `?*T`.
+null, initialisation) is run-time checks and `option<*T>`.
 
 ## 2. The first build
 
@@ -39,7 +39,7 @@ cheap and the bug is expensive: a region-less pointer taken from a container
 is a *borrow* that remembers its source path and dies when that path is
 passed to a proc that may move it. Integers: wrap in release (`-fwrapv`),
 trap in Debug (sanitizers), shifts masked to the width. A std audit made 21
-find procs return `?*T`, readers take `*const`, and the three
+find procs return `option<*T>`, readers take `*const`, and the three
 pointer-and-length constructors `[unsafe]`.
 
 ## 4. Three attack rounds

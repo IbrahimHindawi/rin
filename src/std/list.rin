@@ -3,7 +3,7 @@ import "node.rin"
 import "equal.rin"
 
 list: struct<T> = {
-    head: ?*node<T>;
+    head: option<*node<T>>;
     length: usize;
     /* Set by list<T>make: the arena the nodes come from, so the procs that
        take no arena can be called from safe code. Null for a list made by
@@ -31,7 +31,7 @@ list<T>push: proc<T>(l: *list<T>, item: T) -> void = { unsafe { list<T>append(li
 list<T>push_front: proc<T>(l: *list<T>, item: T) -> void = { unsafe { list<T>prepend(list<T>arena_of(l), l, item); } }
 list<T>insert: proc<T>(l: *list<T>, item: T, index: i32) -> void = { unsafe { list<T>insert_at(list<T>arena_of(l), l, item, index); } }
 /* The node at an index, borrowed from the list: null past the end. */
-list<T>node_at: proc<T>(l: *const list<T>, index: i32) -> ?*node<T> = { unsafe {
+list<T>node_at: proc<T>(l: *const list<T>, index: i32) -> option<*node<T>> = { unsafe {
     if (index < 0 || cast(index, usize) >= l*.length) {
         return null;
     }
@@ -46,8 +46,8 @@ list<T>node_at: proc<T>(l: *const list<T>, index: i32) -> ?*node<T> = { unsafe {
     }
     return null;
 } }
-list<T>take_at: proc<T>(l: *list<T>, index: i32) -> ?*node<T> = { unsafe { return list<T>remove_at(list<T>arena_of(l), l, index); } }
-list<T>take: proc<T>(l: *list<T>, item: T) -> ?*node<T> = { unsafe { return list<T>remove(list<T>arena_of(l), l, item); } }
+list<T>take_at: proc<T>(l: *list<T>, index: i32) -> option<*node<T>> = { unsafe { return list<T>remove_at(list<T>arena_of(l), l, index); } }
+list<T>take: proc<T>(l: *list<T>, item: T) -> option<*node<T>> = { unsafe { return list<T>remove(list<T>arena_of(l), l, item); } }
 list<T>length: proc<T>(l: *const list<T>) -> usize = { unsafe { return l*.length; } }
 
 list<T>create: proc<T>(arena: *memops_arena) -> *list<T> = { unsafe {
@@ -111,7 +111,7 @@ list<T>get_length: proc<T>(arena: *memops_arena, list: *list<T>) -> usize = {
     return list*.length;
 }
 
-list<T>get_at: proc<T>(arena: *memops_arena, list: *list<T>, index: i32) -> ?*node<T> = { unsafe {
+list<T>get_at: proc<T>(arena: *memops_arena, list: *list<T>, index: i32) -> option<*node<T>> = { unsafe {
     if (list == null || index < 0 || cast(index, usize) >= list*.length) {
         return null;
     }
@@ -127,7 +127,7 @@ list<T>get_at: proc<T>(arena: *memops_arena, list: *list<T>, index: i32) -> ?*no
     return null;
 } }
 
-list<T>remove_at: proc<T>(arena: *memops_arena, list: *list<T>, index: i32) -> ?*node<T> = { unsafe {
+list<T>remove_at: proc<T>(arena: *memops_arena, list: *list<T>, index: i32) -> option<*node<T>> = { unsafe {
     if (list == null || index < 0 || cast(index, usize) >= list*.length) {
         return null;
     }
@@ -152,7 +152,7 @@ list<T>remove_at: proc<T>(arena: *memops_arena, list: *list<T>, index: i32) -> ?
     return null;
 } }
 
-list<T>remove: proc<T>(arena: *memops_arena, list: *list<T>, item: T) -> ?*node<T> = { unsafe {
+list<T>remove: proc<T>(arena: *memops_arena, list: *list<T>, item: T) -> option<*node<T>> = { unsafe {
     if (list == null || list*.length == 0) {
         return null;
     }

@@ -1,8 +1,8 @@
 import "std/print.rin"
 k: const i32 = 5;
 main: proc() -> i32 = {
-    p: ?*const i32 = k&;
-    q: *i32 = must(p);
+    p: option<*const i32> = k&;
+    q: *i32 = unwrap(p);
     q* = 1;
     printfmt("{}\n", k);
     return 0;

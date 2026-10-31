@@ -1,5 +1,5 @@
 main: proc() -> i32 = {
-    f: ?*proc() -> void = null;
+    f: option<*proc() -> void> = null;
     f();
     return 0;
 }

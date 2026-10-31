@@ -5,13 +5,13 @@ frame: region in level;
 
 node: struct = {
     v: i32;
-    next: ?*node in level;
+    next: option<*node in level>;
 }
 
 // A chain in level, built by a proc handed the level region itself; the
 // frame work below only reads it.
-chain: proc(r: region level, n: i32) -> ?*node in level = {
-    head: ?*node in level = null;
+chain: proc(r: region level, n: i32) -> option<*node in level> = {
+    head: option<*node in level> = null;
     for (i: i32 = 0; i < n; i += 1) {
         x: *node in level = new<node>(r);
         x*.v = i;
@@ -21,9 +21,9 @@ chain: proc(r: region level, n: i32) -> ?*node in level = {
     return head;
 }
 
-sum: proc(head: ?*node in level) -> i32 = {
+sum: proc(head: option<*node in level>) -> i32 = {
     total: i32 = 0;
-    p: ?*node in level = head;
+    p: option<*node in level> = head;
     while (p != null) {
         total += p*.v;
         p = p*.next;
@@ -31,9 +31,9 @@ sum: proc(head: ?*node in level) -> i32 = {
     return total;
 }
 
-second: proc(head: ?*node in level) -> i32 = {
+second: proc(head: option<*node in level>) -> i32 = {
     if (!head) { return -1; }
-    n: ?*node in level = head*.next;
+    n: option<*node in level> = head*.next;
     // `n && n*.v` narrows n for the right side and the branch.
     if (n && n*.v >= 0) {
         return n*.v;
@@ -42,7 +42,7 @@ second: proc(head: ?*node in level) -> i32 = {
 }
 
 // Opens frame itself: fine to call where frame is not open.
-frame_work: proc(head: ?*node in level) -> i32 = {
+frame_work: proc(head: option<*node in level>) -> i32 = {
     best: i32 = 0;
     for (round: i32 = 0; round < 4; round += 1) {
         frame: region = {
@@ -60,7 +60,7 @@ frame_work: proc(head: ?*node in level) -> i32 = {
 main: proc() -> i32 = {
     result: i32 = 0;
     level: region = {
-        head: ?*node in level = chain(level, 4);
+        head: option<*node in level> = chain(level, 4);
         printfmt("sum {} second {}\n", sum(head), second(head));
         result = frame_work(head);
     }

@@ -1,12 +1,12 @@
-// a global ?*T in frame may hold a level pointer by covariance; rin_region_forget_level empties only fields that say level, so k survives the reset and reads poison
+// a global option<*T in frame> may hold a level pointer by covariance; rin_region_forget_level empties only fields that say level, so k survives the reset and reads poison
 import "std/print.rin"
 level: region;
 frame: region in level;
 enemy: struct = { hp: i32; pad: [8]i64; }
-game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+game: struct = { enemies: []enemy in level; boss: option<*enemy in level>; }
 g: game = {};
 load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
 wipe: proc(r: region level) -> i32 = { reset r; return 0; }
 mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
-k: ?*enemy in frame = null;
-main: proc() -> i32 = { level: region = { load(level, 4); k = g.boss; reset level; printfmt("{}\n", must(k)*.hp); } return 0; }
+k: option<*enemy in frame> = null;
+main: proc() -> i32 = { level: region = { load(level, 4); k = g.boss; reset level; printfmt("{}\n", unwrap(k)*.hp); } return 0; }

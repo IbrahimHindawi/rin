@@ -6,7 +6,7 @@ abs: proc[external](v: i32) -> i32 = {}
 /* A handle never stales what was taken from anything: there is nothing inside
    it to take. */
 touch: proc(h: *FILE) -> void = {}
-T: struct = { a: i32; h: ?*FILE in permanent; }
+T: struct = { a: i32; h: option<*FILE in permanent>; }
 g: T = {};
 use: proc() -> i32 = {
     p: *i32 = g.a&;

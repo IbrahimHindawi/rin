@@ -1,4 +1,4 @@
-// "may be null" is asked of a *T's flow, not a proc's: `f: F = o` where o is ?*proc and null. ASan: SEGV at pc 0.
+// "may be null" is asked of a *T's flow, not a proc's: `f: F = o` where o is option<*proc> and null. ASan: SEGV at pc 0.
 F: alias = proc() -> i32;
 h: proc() -> i32 = { return 1; }
-main: proc() -> i32 = { o: ?*proc() -> i32 = null; f: F = o; return f(); }
+main: proc() -> i32 = { o: option<*proc() -> i32> = null; f: F = o; return f(); }

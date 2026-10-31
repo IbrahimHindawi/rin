@@ -1,7 +1,7 @@
 // Field path narrowed, then a switch with a call in one case; after the switch the narrowing survives.
 import "std/print.rin"
 H: struct = { x: i32; }
-S: struct = { h: ?*H in permanent; }
+S: struct = { h: option<*H in permanent>; }
 g: S = {};
 clr: proc() -> i32 = { g.h = null; return 0; }
 main: proc() -> i32 = {

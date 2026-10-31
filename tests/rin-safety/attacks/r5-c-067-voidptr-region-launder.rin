@@ -4,13 +4,13 @@ level: region;
 frame: region in level;
 main: proc() -> i32 = {
     level: region = {
-        slot: *?*void in level = new<?*void in level>(level, null);
+        slot: *option<*void in level> = new<option<*void in level>>(level, null);
         frame: region = {
             y: *i32 in frame = new<i32>(frame, 42);
             slot* = y;
         }
         frame: region = { x: []i32 in frame = new_slice<i32>(frame, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } }
-        w: *i32 = must(slot*);
+        w: *i32 = unwrap(slot*);
         printfmt("{}\n", w*);
     }
     return 0;

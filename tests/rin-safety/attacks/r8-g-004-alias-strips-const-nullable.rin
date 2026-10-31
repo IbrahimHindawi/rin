@@ -1,4 +1,4 @@
-// ?*const myint converts to ?*myint, so the narrowed pointer writes a const global.
+// option<*const myint> converts to option<*myint>, so the narrowed pointer writes a const global.
 import "std/vec.rin"
 import "std/slice.rin"
 import "std/option.rin"
@@ -8,8 +8,8 @@ level: region;
 myint: alias = i32;
 G: const myint = 1;
 main: proc() -> i32 = {
-    p: ?*const myint = G&;
-    q: ?*myint = p;
+    p: option<*const myint> = G&;
+    q: option<*myint> = p;
     if (q) { q* = 2; }
     return 0;
 }

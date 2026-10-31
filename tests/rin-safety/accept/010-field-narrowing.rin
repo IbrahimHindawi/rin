@@ -1,7 +1,7 @@
 import "std/print.rin"
 
-H: struct = { x: i32; next: ?*H in permanent; }
-S: struct = { h: ?*H in permanent; n: i32; }
+H: struct = { x: i32; next: option<*H in permanent>; }
+S: struct = { h: option<*H in permanent>; n: i32; }
 g: S = {};
 leaf: H = { .x = 7, .next = null };
 

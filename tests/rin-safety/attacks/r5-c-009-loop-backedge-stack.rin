@@ -2,7 +2,7 @@
 import "std/print.rin"
 smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
 main: proc() -> i32 = {
-    q: ?*i32 = null;
+    q: option<*i32> = null;
     for (i: i32 = 0; i < 2; i += 1) {
         if (q) { smash(); printfmt("{}\n", q*); }
         x: i32 = 42;

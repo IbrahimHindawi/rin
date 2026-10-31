@@ -1,6 +1,6 @@
 import "std/print.rin"
 main: proc() -> i32 = {
-    p: ?*i32 = null;
+    p: option<*i32> = null;
     if (p) { } else { printfmt("{}\n", p*); }
     return 0;
 }

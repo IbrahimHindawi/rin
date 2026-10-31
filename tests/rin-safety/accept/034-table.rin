@@ -9,7 +9,7 @@ enemy: struct = { hp: i32; }
 item: struct = { cost: i32; }
 
 hit: proc(t: *table<enemy>, who: index<enemy>) -> i32 = {
-    e: ?*enemy = table<enemy>get(t, who);
+    e: option<*enemy> = table<enemy>get(t, who);
     if (!e) { return -1; }
     e*.hp -= 3;
     return e*.hp;
@@ -18,7 +18,7 @@ hit: proc(t: *table<enemy>, who: index<enemy>) -> i32 = {
 total: proc(t: *const table<enemy>) -> i32 = {
     sum: i32 = 0;
     for (slot: u32 = 0; slot < table<enemy>capacity(t); slot += 1) {
-        e: ?*const enemy = table<enemy>get_const(t, table<enemy>index_at(t, slot));
+        e: option<*const enemy> = table<enemy>get_const(t, table<enemy>index_at(t, slot));
         if (e) { sum += e*.hp; }
     }
     return sum;
@@ -48,7 +48,7 @@ main: proc() -> i32 = {
         printfmt("{}\n", hit(enemies, forged));
 
         sword: index<item> = table<item>add(items, { .cost = 5 });
-        s: ?*item = table<item>get(items, sword);
+        s: option<*item> = table<item>get(items, sword);
         if (s) { printfmt("{}\n", s*.cost); }
     }
     return 0;

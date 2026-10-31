@@ -1,8 +1,8 @@
 // A static local with no region keeps a borrowed pointer past the call.
 import "std/print.rin"
 smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
-stash: proc(p: ?*i32) -> i32 = {
-    q: static ?*i32 = null;
+stash: proc(p: option<*i32>) -> i32 = {
+    q: static option<*i32> = null;
     r: i32 = 0;
     if (q) { smash(); r = q*; }
     q = p;

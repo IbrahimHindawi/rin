@@ -4,7 +4,7 @@ level: region;
 frame: region in level;
 two: proc(r1: region R, r2: region R) -> *i32 in R = { return new<i32>(r1, 42); }
 main: proc() -> i32 = {
-    q: *i32 = must(null);
+    q: *i32 = unwrap(null);
     level: region = {
         frame: region = {
             q = two(level, frame);

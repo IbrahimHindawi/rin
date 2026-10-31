@@ -5,7 +5,7 @@ f: proc(r: region R) -> *i32 in R = { p: *i32 in R = new<i32>(r); p* = 7; return
 g: proc(p: *i32 in frame) -> *i32 = { return p; }
 main: proc() -> i32 = {
     level: region = {
-        q: ?*i32 = null;
+        q: option<*i32> = null;
         frame: region = { q = g(f(frame)); }
         frame: region = { z: *i32 in frame = new<i32>(frame); z* = 99; }
         if (q) { printfmt("{}\n", q*); }

@@ -3,7 +3,7 @@ import "std/print.rin"
 level: region;
 peek: proc() -> i32 = {
     level: region = {
-        q: static ?*i32 in level = null;
+        q: static option<*i32 in level> = null;
         if (q) { printfmt("{}\n", q*); }
         q = new<i32>(level, 42);
     }

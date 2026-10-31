@@ -5,7 +5,7 @@ pair: struct<T> = { a: T; b: T; }
 mk: proc<T>(r: region R, x: T) -> *pair<T> in R = { return new<pair<T>>(r, { .a = x, .b = x }); }
 main: proc() -> i32 = {
     level: region = {
-        q: ?*pair<*i32 in frame> in level = null;
+        q: option<*pair<*i32 in frame> in level> = null;
         frame: region = { y: *i32 in frame = new<i32>(frame); y* = 7; q = mk<*i32 in frame>(level, y); }
         frame: region = { z: *i32 in frame = new<i32>(frame); z* = 99; }
         if (q) { printfmt("{}\n", q*.a*); }

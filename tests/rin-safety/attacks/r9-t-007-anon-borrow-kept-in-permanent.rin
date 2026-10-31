@@ -1,12 +1,12 @@
 // A pointer that names no region, in an anonymous struct, is kept in permanent memory: a positional initializer fills it with a local's address, and it is read after the return: stack-use-after-return.
 import "std/print.rin"
-S: struct = { struct = { p: ?*i32; } }
+S: struct = { struct = { p: option<*i32>; } }
 leak: proc() -> *S in permanent = {
     x: i32 = 5;
     s: S = { { x& } };
     return new<S>(permanent, s);
 }
 main: proc() -> i32 = {
-    printfmt("{}\n", must(leak()*.p)*);
+    printfmt("{}\n", unwrap(leak()*.p)*);
     return 0;
 }

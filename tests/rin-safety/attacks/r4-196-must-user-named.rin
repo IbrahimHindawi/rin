@@ -1,8 +1,8 @@
 import "std/print.rin"
 H: struct = { x: i32; }
-must: proc(p: ?*H) -> *H in permanent = { a: *H in permanent = new<H>(permanent); return a; }
+must: proc(p: option<*H>) -> *H in permanent = { a: *H in permanent = new<H>(permanent); return a; }
 main: proc() -> i32 = {
-    n: ?*H = null;
-    printfmt("{}\n", must(n)*.x);
+    n: option<*H> = null;
+    printfmt("{}\n", unwrap(n)*.x);
     return 0;
 }

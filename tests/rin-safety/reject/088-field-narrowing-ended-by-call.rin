@@ -1,6 +1,6 @@
 // expect: this pointer may be null
 H: struct = { x: i32; }
-S: struct = { h: ?*H in permanent; n: i32; }
+S: struct = { h: option<*H in permanent>; n: i32; }
 g: S = {};
 clear: proc() -> void = { g.h = null; }
 main: proc() -> i32 = { if (g.h) { clear(); return g.h*.x; } return 0; }

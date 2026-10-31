@@ -1,7 +1,7 @@
 // A static borrowed pointer keeps a caller's local; a later call reads it after the frame is gone.
 import "std/print.rin"
-stash: proc(p: ?*i32) -> i32 = {
-    q: static ?*i32 = null;
+stash: proc(p: option<*i32>) -> i32 = {
+    q: static option<*i32> = null;
     r: i32 = 0;
     if (q) { r = q*; }
     q = p;

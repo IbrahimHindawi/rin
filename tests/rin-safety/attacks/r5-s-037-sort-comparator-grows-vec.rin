@@ -5,12 +5,12 @@ import "std/print.rin"
 import "std/vec.rin"
 import "std/sort.rin"
 level: region;
-S: struct = { v: ?*vec<i32> in permanent; armed: b32; }
+S: struct = { v: option<*vec<i32> in permanent>; armed: b32; }
 g: S = {};
 cmp: proc(a: i32, b: i32) -> b32 = {
     if (g.armed && g.v) {
         g.armed = 0;
-        for (i: i32 = 0; i < 1000; i += 1) { _ = vec<i32>push(must(g.v), 0); }
+        for (i: i32 = 0; i < 1000; i += 1) { _ = vec<i32>push(unwrap(g.v), 0); }
     }
     return a < b;
 }

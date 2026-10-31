@@ -1,5 +1,5 @@
-// Calling a ?*proc in a zeroed struct field with no test.
-S: struct = { f: ?*proc() -> void; }
+// Calling a option<*proc in a> zeroed struct field with no test.
+S: struct = { f: option<*proc() -> void>; }
 main: proc() -> i32 = {
     s: S = {};
     s.f();

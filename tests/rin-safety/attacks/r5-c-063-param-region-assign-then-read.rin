@@ -1,13 +1,13 @@
-// A ?*T in R parameter assigned inside a shorter region, read after: no borrow record for the param.
+// A option<*T in R> parameter assigned inside a shorter region, read after: no borrow record for the param.
 import "std/print.rin"
 level: region;
 frame: region in level;
-f: proc(slot: *?*i32 in level) -> void = {
+f: proc(slot: *option<*i32 in level>) -> void = {
     frame: region = { slot* = new<i32>(frame, 42); }
 }
 main: proc() -> i32 = {
     level: region = {
-        o: ?*i32 in level = null;
+        o: option<*i32 in level> = null;
         f(o&);
         if (o) { printfmt("{}\n", o*); }
     }

@@ -1,3 +1,3 @@
 // expect: does not come back
-f: proc(exit: *proc(c: i32) -> void, p: ?*i32) -> i32 = { if (!p) { exit(1); } return p*; }
+f: proc(exit: *proc(c: i32) -> void, p: option<*i32>) -> i32 = { if (!p) { exit(1); } return p*; }
 main: proc() -> i32 = { return 0; }

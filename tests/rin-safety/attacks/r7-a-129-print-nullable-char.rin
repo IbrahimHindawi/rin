@@ -1,8 +1,8 @@
-// ?*char goes straight to %s; narrowing not asked; null guarded. Non-terminated still.
+// option<*char> goes straight to %s; narrowing not asked; null guarded. Non-terminated still.
 import "std/print.rin"
 main: proc() -> i32 = {
     a: [1]char = { 'x' };
-    p: ?*char = a[0]&;
+    p: option<*char> = a[0]&;
     printfmt("{}\n", p);
     return 0;
 }

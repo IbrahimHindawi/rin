@@ -3,7 +3,7 @@ import "std/reflect.rin"
 P: struct = { x: i32; }
 main: proc() -> i32 = {
     t: *const reflect = P<>&;
-    fi: ?*const reflect_field = reflect_find_field(t, "x");
+    fi: option<*const reflect_field> = reflect_find_field(t, "x");
     v: ^void = "abc";
     if (fi) { _ = reflect_field_zero(v, fi); }
     printfmt("wrote\n");

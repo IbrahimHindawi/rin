@@ -3,7 +3,7 @@ level: region;
 w: struct = { n: i32; }
 main: proc() -> i32 = {
     level: region = {
-        q: ?*i32 = null;
+        q: option<*i32> = null;
         if (1) { ww: *w in level = new<w>(level); ww*.n = 7; q = ww*.n&; }
         if (q) { printfmt("{}\n", q*); }
     }

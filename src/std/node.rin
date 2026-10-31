@@ -2,7 +2,7 @@ import "memops.rin"
 import "option.rin"
 
 node: struct<T> = {
-    next: ?*node<T>;
+    next: option<*node<T>>;
     data: T;
 }
 

@@ -3,7 +3,7 @@ import "std/print.rin"
 level: region;
 frame: region in level;
 enemy: struct = { hp: i32; pad: [8]i64; }
-game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+game: struct = { enemies: []enemy in level; boss: option<*enemy in level>; }
 g: game = {};
 load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
 wipe: proc(r: region level) -> i32 = { reset r; return 0; }

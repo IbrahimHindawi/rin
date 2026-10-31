@@ -8,7 +8,7 @@ enemy: struct = { hp: i32; }
 
 game: struct = {
     enemies: []enemy;
-    boss: ?*enemy;
+    boss: option<*enemy>;
 }
 
 g: game = {};
@@ -31,7 +31,7 @@ sum: proc(n: u64) -> i32 = {
 
 main: proc() -> i32 = {
     load(3);
-    b: ?*enemy in level = g.boss;
+    b: option<*enemy in level> = g.boss;
     if (b) { printfmt("{} {}\n", g.enemies.length, b*.hp); }
     printfmt("{} {}\n", sum(4), sum(100));
     reset level;
