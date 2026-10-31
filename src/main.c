@@ -20959,7 +20959,12 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
         emit_cstr(arena, out, "RIN_MAYBE_UNUSED static memops_arena *rin_region_open(memops_arena *a) {\n"
                               "    if (!a->base) memops_arena_initialize(a, max_alloc_size);\n"
                               "    return a;\n}\n"
+                              /* Each declared region reserves a terabyte, and there are few. These
+                                 can all be open at once, and 256 terabytes is twice what a process
+                                 can address: running out made arenas spread over all of it, which
+                                 has crashed Windows itself on process exit. */
                               "#define RIN_REGION_STACK_DEPTH 256\n"
+                              "#define RIN_REGION_STACK_RESERVE 0x100000000ull\n"
                               "RIN_MAYBE_UNUSED static memops_arena rin_region_stack[RIN_REGION_STACK_DEPTH];\n"
                               "RIN_MAYBE_UNUSED static int rin_region_stack_top = 0;\n"
                               "RIN_MAYBE_UNUSED static memops_arena *rin_region_stack_push(void) {\n"
@@ -20967,7 +20972,9 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
                               "        printf(\"rin runtime: more than %d local regions open\\n\", RIN_REGION_STACK_DEPTH);\n"
                               "        exit(1);\n"
                               "    }\n"
-                              "    return rin_region_open(&rin_region_stack[rin_region_stack_top++]);\n}\n"
+                              "    memops_arena *a = &rin_region_stack[rin_region_stack_top++];\n"
+                              "    if (!a->base) memops_arena_initialize(a, RIN_REGION_STACK_RESERVE);\n"
+                              "    return a;\n}\n"
                               "RIN_MAYBE_UNUSED static void rin_region_stack_pop(void) {\n"
                               "    memops_arena_clear(&rin_region_stack[--rin_region_stack_top]);\n}\n\n");
     }

@@ -1,0 +1,18 @@
+import "std/print.rin"
+
+/* Marks all the way down a recursion, each with its own arena: well within the
+   stack of them, and well within what a process can address. */
+total: proc(r: region R, n: i32) -> i32 = {
+    if (n == 0) { return 0; }
+    tmp: region of r = {
+        here: *i32 in tmp = new<i32>(tmp, n);
+        rest: i32 = total(tmp, n - 1);
+        return here* + rest;
+    }
+    return 0;
+}
+
+main: proc() -> i32 = {
+    printfmt("{}\n", total(permanent, 200));
+    return 0;
+}
