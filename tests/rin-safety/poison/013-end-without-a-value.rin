@@ -1,0 +1,9 @@
+// expect: without returning a value
+import "std/print.rin"
+
+/* The value C leaves here is undefined; the program stops instead of reading it. */
+f: proc(n: i32) -> i32 = { if (n > 100) { return 1; } }
+main: proc(argc: i32, argv: ^^char) -> i32 = {
+    printfmt("{}\n", f(argc));
+    return 0;
+}

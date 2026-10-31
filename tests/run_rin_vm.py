@@ -10,7 +10,11 @@ sandbox has no network, no GPU, no clipboard and 8 GiB of memory, sees the progr
 and can write to one results folder. A failed control fails the run, so a sandbox in which
 nothing really ran cannot pass as clean.
 
-    python tests/run_rin_vm.py [--cc clang] [--controls-only] [--timeout 30] [program.rin ...]
+    python tests/run_rin_vm.py [--cc clang] [--controls-only] [--timeout 30] [--compare] [program.rin ...]
+
+With --compare each program named on the command line is also built with -O2 and no
+sanitizers, and the two must print the same: undefined behaviour shows up as a program that
+means one thing unoptimised and another optimised.
 """
 from __future__ import annotations
 
@@ -95,7 +99,7 @@ def run(cmd: list[str], cwd: Path = ROOT) -> subprocess.CompletedProcess[str]:
                           errors="replace")
 
 
-def build(source: Path, job: Path, gen: Path, cc: str) -> str | None:
+def build(source: Path, job: Path, gen: Path, cc: str, compare: bool = False) -> str | None:
     c_path = gen / f"{source.stem}.c"
     check = run([str(RIN_EXE), "check", str(source)], cwd=source.parent)
     if check.returncode != 0:
@@ -104,10 +108,15 @@ def build(source: Path, job: Path, gen: Path, cc: str) -> str | None:
                     cwd=source.parent)
     if translate.returncode != 0:
         return f"rin compile failed:\n{translate.stdout[:800]}"
-    compiled = run([cc, "-std=c11", "-g", "-Wno-everything", *ASAN, "-D_CRT_SECURE_NO_WARNINGS", str(c_path),
-                    "-I", str(ROOT / "src"), "-I", str(ROOT / "src" / "std"), "-o", str(job / f"{source.stem}.exe")])
+    common = ["-std=c11", "-g", "-Wno-everything", "-ffp-contract=off", "-D_CRT_SECURE_NO_WARNINGS", str(c_path),
+              "-I", str(ROOT / "src"), "-I", str(ROOT / "src" / "std")]
+    compiled = run([cc, *ASAN, *common, "-o", str(job / f"{source.stem}.exe")])
     if compiled.returncode != 0:
         return f"C compile failed:\n{compiled.stdout[:800]}"
+    if compare:
+        compiled = run([cc, "-O2", *common, "-o", str(job / f"{source.stem}__o2.exe")])
+        if compiled.returncode != 0:
+            return f"C compile failed at -O2:\n{compiled.stdout[:800]}"
     return None
 
 
@@ -157,6 +166,9 @@ def judge(name: str, results: Path, want: str | None, own_unsafe: bool) -> tuple
         return f"DID NOT START {code}", out
     if want is not None:
         return ("ok", out) if want in out else (f"CONTROL FAILED exit {code}", out)
+    if "AddressSanitizer: stack-overflow" in out:
+        # The guard page stopped it, as in Rust; nothing past the stack was touched.
+        return "stack overflow", out
     if "AddressSanitizer" in out or "runtime error" in out or code in FAULTS:
         # An `unsafe` block is where the program took the job over from the checker.
         return ("own unsafe", out) if own_unsafe else ("HOLE", out)
@@ -173,6 +185,7 @@ def main() -> int:
     parser.add_argument("--cc", default="clang")
     parser.add_argument("--controls-only", action="store_true")
     parser.add_argument("--timeout", type=int, default=30, help="seconds per program")
+    parser.add_argument("--compare", action="store_true", help="also build named programs at -O2 and compare")
     args = parser.parse_args()
     if not SANDBOX_EXE.exists():
         print("rin-vm: Windows Sandbox is not enabled")
@@ -206,8 +219,10 @@ def main() -> int:
     failures: list[str] = []
     built: dict[str, str | None] = {}
     own_unsafe: dict[str, bool] = {}
+    compared: list[str] = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(2, (os.cpu_count() or 4) // 2)) as pool:
-        for source, problem in zip(wanted, pool.map(lambda s: build(s, job, gen, args.cc), wanted)):
+        named = set(p.resolve() for p in args.programs)
+        for source, problem in zip(wanted, pool.map(lambda s: build(s, job, gen, args.cc, args.compare and s in named), wanted)):
             if problem:
                 print(f"skip {source.name}: {problem.splitlines()[0]}")
                 # A program named on the command line that the checker rejects is a result, not a failure.
@@ -217,6 +232,8 @@ def main() -> int:
             else:
                 built[source.stem] = wanted[source]
                 own_unsafe[source.stem] = "unsafe" in source.read_text(encoding="utf-8")
+                if args.compare and source in named:
+                    compared.append(source.stem)
     print(f"rin-vm: built {len(built)} programs on the host; none of them has run here")
 
     copy_runtime(job, args.cc)
@@ -226,7 +243,7 @@ def main() -> int:
 
     subprocess.Popen([str(SANDBOX_EXE), str(wsb)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     # Boot, then each program's limit; most finish in well under a second.
-    deadline = time.time() + 300 + args.timeout * len(built)
+    deadline = time.time() + 300 + args.timeout * (len(built) + len(compared))
     state = wait_for_guest(results, deadline)
     print(f"rin-vm: guest {state}")
     # Windows allows one sandbox at a time, so this one is ours; its host side can outlive the guest.
@@ -249,6 +266,21 @@ def main() -> int:
                 failures.append(name)
                 print("    " + out[:1200].strip().replace("\n", "\n    "))
     print("rin-vm: " + ", ".join(f"{count} {verdict}" for verdict, count in sorted(counts.items())))
+    differed = 0
+    for name in compared:
+        def outcome(stem: str) -> tuple[str, str]:
+            exit_path, out_path = results / f"{stem}.exit", results / f"{stem}.out"
+            return (exit_path.read_text().strip() if exit_path.exists() else "?",
+                    out_path.read_text(errors="replace") if out_path.exists() else "")
+        base, opt = outcome(name), outcome(f"{name}__o2")
+        # A sanitizer stops with exit 1 where a plain build aborts; both were stopped by a check.
+        stopped = base[0] not in ("00000000",) and opt[0] not in ("00000000",)
+        if base != opt and not stopped:
+            differed += 1
+            failures.append(name)
+            print(f"DIFFERS: {name}: unoptimised exit {base[0]}, -O2 exit {opt[0]}\n    {base[1][:200]!r}\n    {opt[1][:200]!r}")
+    if compared:
+        print(f"rin-vm: compared {len(compared)} programs at -O0 and -O2, {differed} differ")
     print(f"rin-vm: results in {results}")
     return 1 if failures else 0
 

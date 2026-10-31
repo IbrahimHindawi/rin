@@ -719,6 +719,7 @@ struct Expr {
     bool arith_seen;
     u8 cast_code;
     bool cast_seen;
+    bool cast_from_int_too; // a generic cast, from a float in one instance and not in another
     bool index_stable; // a local nothing can change behind: its slice needs no whole read
     /* `s[a..b]`: the end of a subrange, on an Expr_Index whose index_expr is
        the start. */
@@ -17021,6 +17022,8 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
                 bool is_enum = rc->kind == Type_Name && !type_is_float(rc) && lookup_enum_decl(prog, rc->name) != null;
                 if (is_enum) { enum_target.kind = Type_Name; enum_target.name = string8_from_cstr(arena, "i32"); }
                 arith_note(&e->cast_code, &e->cast_seen, is_enum ? &enum_target : rc);
+            } else if (ra) {
+                e->cast_from_int_too = true;
             }
         }
         return;
@@ -19574,7 +19577,29 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
         emit_type(arena, out, e->cast_type, sub);
         emit_cstr(arena, out, ")(");
         ConstVal literal = const_eval(e->inner);
-        bool saturate = e->cast_code > 1 && e->cast_code != 255 && !literal.ok;
+        bool saturate = e->cast_code > 1 && e->cast_code != 255 && !e->cast_from_int_too && !literal.ok;
+        if (e->cast_code > 1 && !saturate && !literal.ok) {
+            /* A generic: this instance's target, and the source decides at compile time. */
+            TypeExpr *target = sub.has ? substitute_type_sub(arena, e->cast_type, sub) : e->cast_type;
+            i32 bits = 0;
+            bool is_signed = false;
+            if (type_int_info(target, &bits, &is_signed)) {
+                char helper[32];
+                snprintf(helper, sizeof(helper), "rin_f2i_%c%d((double)(", is_signed ? 'i' : 'u', bits);
+                emit_cstr(arena, out, "_Generic((");
+                emit_expr(arena, out, e->inner, sub, generic_name);
+                emit_cstr(arena, out, "), float: ");
+                emit_cstr(arena, out, helper);
+                emit_expr(arena, out, e->inner, sub, generic_name);
+                emit_cstr(arena, out, ")), double: ");
+                emit_cstr(arena, out, helper);
+                emit_expr(arena, out, e->inner, sub, generic_name);
+                emit_cstr(arena, out, ")), default: (");
+                emit_expr(arena, out, e->inner, sub, generic_name);
+                emit_cstr(arena, out, "))))");
+                return;
+            }
+        }
         if (saturate) {
             char buf[48];
             snprintf(buf, sizeof(buf), "rin_f2i_%c%d((double)(", (e->cast_code & 1) ? 'i' : 'u', e->cast_code / 2);
@@ -20741,6 +20766,10 @@ static void emit_proc_body(memops_arena *arena, string8 *out, ProcDecl *decl, Ty
     for (i32 i = 0; i < decl->body.length; i++) {
         emit_cstr(arena, out, "    ");
         emit_stmt(arena, out, (Stmt *)decl->body.data[i], sub, generic_name);
+    }
+    /* C's main returns 0 from its end; any other proc must say what it returns. */
+    if (!returns_void && !string8_equals_cstr(&decl->name, "main")) {
+        emit_cstr(arena, out, "    rin_no_return(__FILE__, __LINE__);\n");
     }
 }
 
@@ -23243,6 +23272,8 @@ static void build_write_target(FILE *f, BuildConfig *cfg, const char *target,
                "endif()\n");
     fprintf(f, "target_compile_options(%s PRIVATE\n"
                "    \"$<$<AND:$<BOOL:${rin_gnu_frontend}>,$<NOT:$<CONFIG:Debug>>>:-fwrapv>\"\n"
+               /* A frame bigger than the guard page could step over it; Windows probes by default. */
+               "    \"$<$<AND:$<BOOL:${rin_gnu_frontend}>,$<NOT:$<PLATFORM_ID:Windows>>>:-fstack-clash-protection>\"\n"
                "    \"$<$<AND:$<BOOL:${rin_gnu_frontend}>,$<CONFIG:Debug>>:-fsanitize=signed-integer-overflow,shift-exponent,float-cast-overflow,"
                "integer-divide-by-zero;-fno-sanitize-recover=all>\"\n)\n", target);
     fprintf(f, "target_link_options(%s PRIVATE\n"

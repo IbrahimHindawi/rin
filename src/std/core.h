@@ -212,6 +212,13 @@ RIN_F2I_DEFINE(u16, 0, 65535, 65536.0)
 RIN_F2I_DEFINE(u32, 0, 4294967295u, 4294967296.0)
 RIN_F2I_DEFINE(u64, 0, 18446744073709551615ull, 18446744073709551616.0)
 
+/* A proc that says it returns a value and reached its end without one. Reading what
+   C leaves there is undefined, and an optimiser may run on into the next function. */
+RIN_MAYBE_UNUSED static inline void rin_no_return(const char *file, int line) {
+    fprintf(stderr, "%s:%d: this proc reached its end without returning a value\n", file, line);
+    abort();
+}
+
 /* The same for an expression whose type differs between a generic's instances. */
 #define RIN_WRAP_OP(a, op, b) _Generic((a) op (b), \
     int: (int)((unsigned)(a) op (unsigned)(b)), \

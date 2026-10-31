@@ -11,6 +11,8 @@ not_a_number: proc() -> f64 = { x: f64 = infinite(); return x - x; }
 
 sum: proc<T>(a: T, b: T) -> T = { return a + b; }
 quot: proc<T>(a: T, b: T) -> T = { return a / b; }
+to: proc<T>(f: f64) -> T = { return cast(f, T); }
+from: proc<T>(x: T) -> i32 = { return cast(x, i32); }
 
 main: proc() -> i32 = {
     printfmt("{} {} {}\n", big() + 1, small() - 1, big() * 2);
@@ -46,5 +48,6 @@ main: proc() -> i32 = {
     printfmt("{} {}\n", cast(f, u64) > cast(f, u32), cast(infinite(), i64) > 0);
     printfmt("{} {}\n", sum<i32>(big(), 1), sum<f32>(1.5, 2.0));
     printfmt("{} {}\n", quot<i32>(small(), minus_one()), quot<f32>(1.0, 2.0));
+    printfmt("{} {} {} {}\n", to<i32>(f), to<i64>(f) > 0, from<f64>(f), from<i64>(5));
     return 0;
 }
