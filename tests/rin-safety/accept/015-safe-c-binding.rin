@@ -1,12 +1,12 @@
 import "std/print.rin"
 
-/* A C binding marked trusted has an honest signature, so safe code calls it,
+/* A C binding marked safe has an honest signature, so safe code calls it,
    and the type still says a handle may not be null. */
-abs: proc[external, trusted](v: i32) -> i32 = {}
+abs: proc[external, safe](v: i32) -> i32 = {}
 
 /* A handle never stales what was taken from anything: there is nothing inside
    it to take. */
-touch: proc[trusted](h: *FILE) -> void = {}
+touch: proc(h: *FILE) -> void = {}
 T: struct = { a: i32; h: ?*FILE in permanent; }
 g: T = {};
 use: proc() -> i32 = {

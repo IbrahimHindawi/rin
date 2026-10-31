@@ -2,5 +2,5 @@
 H: struct = { x: i32; }
 S: struct = { h: ?*H in permanent; n: i32; }
 g: S = {};
-set: proc[trusted](out: *?*H in permanent) -> void = { out* = null; }
+set: proc(out: *?*H in permanent) -> void = { unsafe { out* = null; } }
 main: proc() -> i32 = { if (g.h) { set(g.h&); return g.h*.x; } return 0; }

@@ -1,4 +1,4 @@
 import "std/print.rin"
 import "std/file.rin"
-rewind: proc[external, trusted](stream: *FILE = null) -> void = {}
+rewind: proc[external, safe](stream: *FILE = null) -> void = {}
 main: proc() -> i32 = { rewind(); printfmt("back\n"); return 0; }

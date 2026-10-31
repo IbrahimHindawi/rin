@@ -16,8 +16,8 @@ main: proc() -> i32 = {
     }
     return 0;
 }
-new_stats: proc[trusted](r: region R) -> *stats in R = {
+new_stats: proc(r: region R) -> *stats in R = { unsafe {
     s: *stats in R = cast(memops_arena_push_zero(r, sizeof(stats), alignof(stats)), *stats in R);
     s*.name = "x";
     return s;
-}
+} }

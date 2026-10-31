@@ -3,7 +3,7 @@ import "std/print.rin"
 import "std/fmt.rin"
 level: region;
 frame: region in level;
-same: proc[trusted](s: ^const c8) -> ^const c8 = { return s; }
+same: proc(s: ^const c8) -> ^const c8 = { unsafe { return s; } }
 main: proc() -> i32 = {
     level: region = {
         p: ^const c8 = "start";

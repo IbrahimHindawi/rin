@@ -1,6 +1,6 @@
 import "std/print.rin"
 import "std/file.rin"
-rewind: proc[external, trusted](stream: *FILE) -> void = {}
+rewind: proc[external, safe](stream: *FILE) -> void = {}
 gfile: ?*FILE in permanent = null;
 clr: proc() -> i32 = { gfile = null; return 0; }
 f2: proc(s: *FILE, n: i32) -> void = { rewind(s); }

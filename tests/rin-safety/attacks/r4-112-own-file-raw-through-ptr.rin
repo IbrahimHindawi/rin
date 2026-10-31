@@ -4,6 +4,6 @@ import "std/slice.rin"
 smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
 id_raw: proc(p: ^const c8) -> ^const c8 = { return p; }
 K: struct = { name: ^const c8; }
-mk: proc[trusted](r: region R) -> *K in R = { return cast(memops_arena_push_zero(r, sizeof(K), alignof(K)), *K in R); }
+mk: proc(r: region R) -> *K in R = { unsafe { return cast(memops_arena_push_zero(r, sizeof(K), alignof(K)), *K in R); } }
 go: proc(k: *K) -> void = { buf: [8]c8 = {}; _ = cstr_copy(buf, "abc"); k*.name = cstr_of(buf); }
 main: proc() -> i32 = { k: *K in permanent = mk(permanent); go(k); smash(); print_cstr(k*.name); return 0; }

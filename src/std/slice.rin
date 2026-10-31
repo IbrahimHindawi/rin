@@ -32,49 +32,49 @@ slice<T>from_parts: proc[unsafe]<T>(data: ^T, length: u64) -> slice<T> = {
     return s;
 }
 
-slice<T>from_array: proc[trusted]<T>(array: array<T>) -> slice<T> = {
+slice<T>from_array: proc<T>(array: array<T>) -> slice<T> = { unsafe {
     return slice<T>from_parts(array.data, array.length);
-}
+} }
 
-slice<T>from_vec: proc[trusted]<T>(vec: vec<T>) -> slice<T> = {
+slice<T>from_vec: proc<T>(vec: vec<T>) -> slice<T> = { unsafe {
     return slice<T>from_parts(vec.data, vec.length);
-}
+} }
 
-slice<T>is_empty: proc[trusted]<T>(s: slice<T>) -> b32 = {
+slice<T>is_empty: proc<T>(s: slice<T>) -> b32 = { unsafe {
     return s.length == 0;
-}
+} }
 
 /* Aborts on a bad index. The option form below is the one to reach for when
    the index came from outside. */
-slice<T>at: proc[trusted]<T>(s: slice<T>, index: u64) -> *T = {
+slice<T>at: proc<T>(s: slice<T>, index: u64) -> *T = { unsafe {
     if (s.data == null || index >= s.length) {
         printf("rin runtime: slice index out of bounds\n");
         exit(1);
     }
     return s.data[index]&;
-}
+} }
 
-slice<T>get: proc[trusted]<T>(s: slice<T>, index: u64) -> option<T> = {
+slice<T>get: proc<T>(s: slice<T>, index: u64) -> option<T> = { unsafe {
     if (s.data == null || index >= s.length) {
         return option<T>none();
     }
     return option<T>some(s.data[index]);
-}
+} }
 
-slice<T>first: proc[trusted]<T>(s: slice<T>) -> option<T> = {
+slice<T>first: proc<T>(s: slice<T>) -> option<T> = { unsafe {
     return slice<T>get(s, 0);
-}
+} }
 
-slice<T>last: proc[trusted]<T>(s: slice<T>) -> option<T> = {
+slice<T>last: proc<T>(s: slice<T>) -> option<T> = { unsafe {
     if (s.length == 0) {
         return option<T>none();
     }
     return slice<T>get(s, s.length - 1);
-}
+} }
 
 /* Clamped rather than fatal: a sub-range that runs off the end yields the part
    that exists, which is what every caller wants when scanning. */
-slice<T>sub: proc[trusted]<T>(s: slice<T>, start: u64, count: u64) -> slice<T> = {
+slice<T>sub: proc<T>(s: slice<T>, start: u64, count: u64) -> slice<T> = { unsafe {
     out: slice<T> = {};
     if (s.data == null || start >= s.length) {
         return out;
@@ -84,23 +84,23 @@ slice<T>sub: proc[trusted]<T>(s: slice<T>, start: u64, count: u64) -> slice<T> =
         count = remaining;
     }
     return slice<T>from_parts(s.data[start]&, count);
-}
+} }
 
-slice<T>skip: proc[trusted]<T>(s: slice<T>, count: u64) -> slice<T> = {
+slice<T>skip: proc<T>(s: slice<T>, count: u64) -> slice<T> = { unsafe {
     if (count >= s.length) {
         out: slice<T> = {};
         return out;
     }
     return slice<T>sub(s, count, s.length - count);
-}
+} }
 
-slice<T>take: proc[trusted]<T>(s: slice<T>, count: u64) -> slice<T> = {
+slice<T>take: proc<T>(s: slice<T>, count: u64) -> slice<T> = { unsafe {
     return slice<T>sub(s, 0, count);
-}
+} }
 
 /* Byte equality over sizeof(T) * length. Correct for the plain data slices are
    made of; a T holding a pointer compares the pointer, not what it points at. */
-slice<T>equals: proc[trusted]<T>(a: slice<T>, b: slice<T>) -> b32 = {
+slice<T>equals: proc<T>(a: slice<T>, b: slice<T>) -> b32 = { unsafe {
     if (a.length != b.length) {
         return 0;
     }
@@ -111,7 +111,7 @@ slice<T>equals: proc[trusted]<T>(a: slice<T>, b: slice<T>) -> b32 = {
         return 0;
     }
     return memcmp(a.data, b.data, sizeof(T) * a.length) == 0;
-}
+} }
 
 slice<T>copy_to: proc[unsafe]<T>(dst: ^T, s: slice<T>) -> void = {
     if (dst == null || s.data == null || s.length == 0) {
@@ -123,22 +123,22 @@ slice<T>copy_to: proc[unsafe]<T>(dst: ^T, s: slice<T>) -> void = {
 /* The owning copy, when a view has to outlive what it borrowed from. */
 /* memcpy for safe code: both lengths must match, or it stops, as an index out
    of bounds does. The two may overlap. */
-slice<T>copy: proc[trusted]<T>(dst: []T, src: []const T) -> void = {
+slice<T>copy: proc<T>(dst: []T, src: []const T) -> void = { unsafe {
     if (dst.length != src.length) {
         printf("rin runtime: copy between slices of %llu and %llu\n", cast(dst.length, u64), cast(src.length, u64));
         exit(1);
     }
     if (dst.length > 0) { memmove(dst.data, src.data, sizeof(T) * dst.length); }
-}
+} }
 
 /* memset to zero for safe code. Refused for a T with a '*T' in it by what it
    would hold: zero is not a value of that type. */
-slice<T>zero: proc[trusted]<T>(s: []T) -> void = {
+slice<T>zero: proc<T>(s: []T) -> void = { unsafe {
     if (s.length > 0) { memset(s.data, 0, sizeof(T) * s.length); }
-}
+} }
 
-slice<T>to_array: proc[trusted]<T>(arena: *memops_arena, s: slice<T>) -> array<T> = {
+slice<T>to_array: proc<T>(arena: *memops_arena, s: slice<T>) -> array<T> = { unsafe {
     out: array<T> = array<T>reserve(arena, s.length);
     slice<T>copy_to(out.data, s);
     return out;
-}
+} }

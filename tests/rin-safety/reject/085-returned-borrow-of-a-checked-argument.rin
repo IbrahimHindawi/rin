@@ -1,7 +1,7 @@
 // expect: may be stale
 H: struct = { v: *H in permanent; }
-first: proc[trusted](ctx: *H) -> *H = { return ctx; }
-touch: proc[trusted](ctx: *H) -> void = { }
+first: proc(ctx: *H) -> *H = { unsafe { return ctx; } }
+touch: proc(ctx: *H) -> void = { unsafe { ctx*.v = ctx*.v; } }
 use: proc(ctx: *H) -> i32 = {
     f: *H = first(ctx);
     touch(ctx);

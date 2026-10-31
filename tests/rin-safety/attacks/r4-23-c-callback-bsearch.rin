@@ -8,7 +8,7 @@ take: proc(a: i32) -> i32 = { return a; }
 take2: proc(a: i32, b: i32) -> i32 = { return a + b; }
 fill: proc() -> void = { g.h = new<H>(permanent, { .x = 7, .next = null }); }
 cinclude "stdlib.h"
-bsearch: proc[external, trusted](key: ^const void, base: ^const void, n: usize, size: usize, cmp: *proc(a: ^const void, b: ^const void) -> i32) -> ^void = {}
+bsearch: proc[external, safe](key: ^const void, base: ^const void, n: usize, size: usize, cmp: *proc(a: ^const void, b: ^const void) -> i32) -> ^void = {}
 cmp: proc(a: ^const void, b: ^const void) -> i32 = { g.h = null; return 0; }
 main: proc() -> i32 = {
     fill();

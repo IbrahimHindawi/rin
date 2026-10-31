@@ -896,6 +896,7 @@ struct ProcDecl {
        caller's arena from under it, so that is an error; and its address may
        not be taken, since a call through a pointer could not be checked. */
     Vec_string8 opens;
+    bool answers_for_signature; // has an unsafe block: its body cannot show what it moves
     u64 moves; // bit i: a call through parameter i may move storage; see compute_proc_moves
     /* `proc<T>` is one entry; `proc<T, U, V>` is three. A non-generic proc has
        none. Structs are still single-parameter, so StructDecl keeps a bare
@@ -4389,8 +4390,11 @@ static DeclAttributes parse_decl_attributes(Parser *p, bool is_enum) {
                     "'must_use' marks an enum; put it on the status enum the proc returns, "
                     "as in 'E: enum[must_use] = { ... }'");
             }
-        } else if (string8slice_equals_cstr(tok->text, "trusted")) {
+        } else if (string8slice_equals_cstr(tok->text, "safe")) {
             attrs.is_trusted = true;
+        } else if (string8slice_equals_cstr(tok->text, "trusted")) {
+            parser_error_token(p, tok, "'[trusted]' is gone: a proc that does what the rules cannot check says so with "
+                                       "'unsafe { }' in its body; a C binding with an honest signature is '[external, safe]'");
         } else if (string8slice_equals_cstr(tok->text, "unsafe")) {
             attrs.is_unsafe = true;
         } else {
@@ -14450,7 +14454,7 @@ static void safety_check_carrier_value(const char *what, Program *prog, TypeExpr
     char message[512];
     snprintf(message, sizeof(message),
              "%s holds '%.*s' by value, and it carries a pointer whose region the checker cannot see; safe code "
-             "keeps such a value through a pointer into a region, '*%.*s in R', made by a trusted proc",
+             "keeps such a value through a pointer into a region, '*%.*s in R', made by a proc of its own",
              what, (int)shown.length, shown.data, (int)shown.length, shown.data);
     type_error_message(message, line, col);
 }
@@ -14798,7 +14802,7 @@ static bool region_flow_rejects(Program *prog, TypeExpr *dst, TypeExpr *src, i32
     if (g_safe_body && d->kind == Type_Ptr && d->is_str && s->kind == Type_Ptr && !s->is_str &&
         !(type_is_void_pointer(s) && s->is_nullable)) {
         type_error_message("a 'str' lasts the whole program, and this C string may not: only a literal or another "
-                           "'str' becomes one, or a trusted proc that vouches for it", line, col);
+                           "'str' becomes one, or an unsafe block that vouches for it", line, col);
         return true;
     }
     if (g_safe_body && d->kind == Type_Ptr && d->is_raw && s->kind == Type_Ptr && s->is_raw && !type_is_void_pointer(d) &&
@@ -15571,32 +15575,24 @@ static void compute_proc_moves(Program *prog, memops_arena *arena) {
     for (i32 i = 0; i < n; i++) {
         ProcDecl *p = (ProcDecl *)prog->procs.data[i];
         p->moves = 0;
-        bool trusted = p->is_trusted || p->is_unsafe || p->is_external;
+        p->answers_for_signature = false;
+        for (i32 j = 0; j < p->body.length; j++) {
+            stmt_walk((Stmt *)p->body.data[j], null, visit_find_unsafe_block, &p->answers_for_signature, arena);
+        }
+        bool trusted = p->answers_for_signature || p->is_trusted || p->is_unsafe || p->is_external;
         if (!trusted) continue;
         for (i32 j = 0; j < p->params.length && j < 62; j++) {
             if (type_param_shallow_may_move(prog, ((Param *)p->params.data[j])->type, arena)) p->moves |= 1ull<< j;
         }
         if (p->is_variadic) p->moves |= MOVES_ANY;
     }
-    /* A body with an unsafe block can move what its statements do not show, through
-       a raw pointer: it answers for its signature, as a trusted proc does. */
-    for (i32 i = 0; i < n; i++) {
-        ProcDecl *p = (ProcDecl *)prog->procs.data[i];
-        if (p->is_trusted || p->is_unsafe || p->is_external || p->is_generic) continue;
-        bool has_block = false;
-        for (i32 j = 0; j < p->body.length; j++) stmt_walk((Stmt *)p->body.data[j], null, visit_find_unsafe_block, &has_block, arena);
-        if (!has_block) continue;
-        for (i32 j = 0; j < p->params.length && j < 62; j++) {
-            if (type_param_shallow_may_move(prog, ((Param *)p->params.data[j])->type, arena)) p->moves |= 1ull<< j;
-        }
-    }
     bool changed = true;
     for (i32 round = 0; changed && round < 64; round++) {
         changed = false;
         for (i32 i = 0; i < n; i++) {
             ProcDecl *p = (ProcDecl *)prog->procs.data[i];
-            if (p->is_external || p->is_generic) continue;
-            bool signature_only = p->is_trusted || p->is_unsafe;
+            if (p->is_external) continue;
+            bool signature_only = p->answers_for_signature || p->is_trusted || p->is_unsafe;
             MovesCtx c = { .proc = p, .prog = prog, .arena = arena };
             c.local_names = Vec_string8_reserve(arena, 8);
             c.local_roots = ptr_array_reserve(arena, 8);
@@ -15614,7 +15610,7 @@ static void compute_proc_moves(Program *prog, memops_arena *arena) {
     if (getenv("RIN_DEBUG_MOVES")) {
         for (i32 i = 0; i < n; i++) {
             ProcDecl *p = (ProcDecl *)prog->procs.data[i];
-            if (p->moves == 0 || p->is_trusted || p->is_unsafe || p->is_external) continue;
+            if (p->moves == 0 || p->answers_for_signature || p->is_trusted || p->is_unsafe || p->is_external) continue;
             printf("moves: %.*s:", (int)p->name.length, p->name.data);
             for (i32 j = 0; j < p->params.length && j < 63; j++) {
                 if ((p->moves >> j) & 1) printf(" %.*s", (int)((Param *)p->params.data[j])->name.length, ((Param *)p->params.data[j])->name.data);
@@ -15991,7 +15987,7 @@ static bool call_param_may_move(Program *prog, ProcDecl *decl, Expr *call, i32 i
 
 static bool decl_param_may_move(Program *prog, ProcDecl *decl, i32 i, memops_arena *arena) {
     if (!decl || i >= decl->params.length) return false;
-    bool trusted = decl->is_trusted || decl->is_unsafe || decl->is_external;
+    bool trusted = decl->answers_for_signature || decl->is_trusted || decl->is_unsafe || decl->is_external;
     TypeExpr *pt = ((Param *)decl->params.data[i])->type;
     if (trusted) return param_type_may_move(prog, pt, true, arena);
     if (i >= 62) return param_type_may_move(prog, pt, false, arena);
@@ -16672,14 +16668,14 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
         if (decl->is_unsafe) {
             char message[512];
             snprintf(message, sizeof(message),
-                     "'%.*s' is an unsafe proc; it may be called only inside 'unsafe { }', or from a proc marked [trusted] or [unsafe]",
+                     "'%.*s' is an unsafe proc; it may be called only inside 'unsafe { }', or from a proc marked [unsafe]",
                      (int)decl->name.length, decl->name.data);
             type_error_message(message, call->line, call->col);
         } else if (decl->is_external && !decl->is_trusted && proc_touches_pointers(prog, decl)) {
             char message[512];
             snprintf(message, sizeof(message),
                      "'%.*s' is C's, and takes or returns a pointer, so nothing checks what it does with it; "
-                     "call it inside 'unsafe { }', from a proc marked [trusted], or through one in std",
+                     "call it inside 'unsafe { }', or through a proc in std",
                      (int)decl->name.length, decl->name.data);
             type_error_message(message, call->line, call->col);
         }
@@ -16875,7 +16871,7 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         ProcDecl *as_value = lookup_proc_decl(prog, e->name);
         if (as_value && g_safe_body && (as_value->is_unsafe || (as_value->is_external && !as_value->is_trusted && proc_touches_pointers(prog, as_value)))) {
             region_error("'%.*s' is %.*s, and a call through a pointer would not be checked; it is called by name from "
-                         "a [trusted] proc", e->name, as_value->is_unsafe ? string8_from_cstr(arena, "an unsafe proc")
+                         "inside 'unsafe { }'", e->name, as_value->is_unsafe ? string8_from_cstr(arena, "an unsafe proc")
                          : string8_from_cstr(arena, "C's, with pointers in its signature"), e->line, e->col);
         }
         if (as_value && g_safe_body) {
@@ -17912,7 +17908,7 @@ static void type_check_proc_body(
     for (i32 j = 0; j < p->params.length; j++) {
         Param *param = (Param *)p->params.data[j];
         TypeExpr *param_type = type_scope_apply_sub(&scope, arena, param->type);
-        safety_check_carrier_value("a parameter", prog, param_type, arena, param->line, param->col);
+        if (!p->answers_for_signature) safety_check_carrier_value("a parameter", prog, param_type, arena, param->line, param->col);
         check_type_regions_wf(prog, param_type, param->line, param->col, arena);
         if (g_safety && param_type && param_type->kind == Type_Region && region_rank(prog, param_type->region) >= 0 &&
             param_type->region_bound.length > 0) {
@@ -17927,7 +17923,7 @@ static void type_check_proc_body(
     }
 
     TypeExpr *return_type = type_scope_apply_sub(&scope, arena, p->ret_type);
-    safety_check_carrier_value("a return type", prog, return_type, arena, p->line, p->col);
+    if (!p->answers_for_signature) safety_check_carrier_value("a return type", prog, return_type, arena, p->line, p->col);
     check_type_regions_wf(prog, return_type, p->line, p->col, arena);
     if (g_safety && return_type && resolve_alias_type(prog, return_type) && resolve_alias_type(prog, return_type)->kind == Type_Region) {
         type_error_message("a proc does not return a region handle: the caller already has the region it passed in", p->line, p->col);

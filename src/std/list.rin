@@ -13,25 +13,25 @@ list: struct<T> = {
 
 /* A list that lives in a region, for safe code: the header and every node
    come from the region's arena. */
-list<T>make: proc[trusted]<T>(r: region R) -> *list<T> in R = {
+list<T>make: proc<T>(r: region R) -> *list<T> in R = { unsafe {
     l: *list<T> in R = cast(memops_arena_push_zero(r, sizeof(list<T>), alignof(list<T>)), *list<T> in R);
     l*.arena = r;
     return l;
-}
+} }
 
-list<T>arena_of: proc[trusted]<T>(l: *const list<T>) -> *memops_arena = {
+list<T>arena_of: proc<T>(l: *const list<T>) -> *memops_arena = { unsafe {
     if (l*.arena == null) {
         printf("rin runtime: list used without an arena; make it with list<T>make\n");
         exit(1);
     }
     return l*.arena[0]&;
-}
+} }
 
-list<T>push: proc[trusted]<T>(l: *list<T>, item: T) -> void = { list<T>append(list<T>arena_of(l), l, item); }
-list<T>push_front: proc[trusted]<T>(l: *list<T>, item: T) -> void = { list<T>prepend(list<T>arena_of(l), l, item); }
-list<T>insert: proc[trusted]<T>(l: *list<T>, item: T, index: i32) -> void = { list<T>insert_at(list<T>arena_of(l), l, item, index); }
+list<T>push: proc<T>(l: *list<T>, item: T) -> void = { unsafe { list<T>append(list<T>arena_of(l), l, item); } }
+list<T>push_front: proc<T>(l: *list<T>, item: T) -> void = { unsafe { list<T>prepend(list<T>arena_of(l), l, item); } }
+list<T>insert: proc<T>(l: *list<T>, item: T, index: i32) -> void = { unsafe { list<T>insert_at(list<T>arena_of(l), l, item, index); } }
 /* The node at an index, borrowed from the list: null past the end. */
-list<T>node_at: proc[trusted]<T>(l: *const list<T>, index: i32) -> ?*node<T> = {
+list<T>node_at: proc<T>(l: *const list<T>, index: i32) -> ?*node<T> = { unsafe {
     if (index < 0 || cast(index, usize) >= l*.length) {
         return null;
     }
@@ -45,21 +45,21 @@ list<T>node_at: proc[trusted]<T>(l: *const list<T>, index: i32) -> ?*node<T> = {
         count += 1;
     }
     return null;
-}
-list<T>take_at: proc[trusted]<T>(l: *list<T>, index: i32) -> ?*node<T> = { return list<T>remove_at(list<T>arena_of(l), l, index); }
-list<T>take: proc[trusted]<T>(l: *list<T>, item: T) -> ?*node<T> = { return list<T>remove(list<T>arena_of(l), l, item); }
-list<T>length: proc[trusted]<T>(l: *const list<T>) -> usize = { return l*.length; }
+} }
+list<T>take_at: proc<T>(l: *list<T>, index: i32) -> ?*node<T> = { unsafe { return list<T>remove_at(list<T>arena_of(l), l, index); } }
+list<T>take: proc<T>(l: *list<T>, item: T) -> ?*node<T> = { unsafe { return list<T>remove(list<T>arena_of(l), l, item); } }
+list<T>length: proc<T>(l: *const list<T>) -> usize = { unsafe { return l*.length; } }
 
-list<T>create: proc[trusted]<T>(arena: *memops_arena) -> *list<T> = {
+list<T>create: proc<T>(arena: *memops_arena) -> *list<T> = { unsafe {
     list: *list<T> = cast(memops_arena_push_zero(arena, sizeof(list<T>), alignof(list<T>)), *list<T>);
     if (list == null) {
         printf("rin runtime: list allocation failure\n");
         exit(1);
     }
     return list;
-}
+} }
 
-list<T>append: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, item: T) -> void = {
+list<T>append: proc<T>(arena: *memops_arena, list: *list<T>, item: T) -> void = { unsafe {
     node: *node<T> = node<T>create(arena, item);
     if (list*.head == null) {
         list*.head = node;
@@ -72,16 +72,16 @@ list<T>append: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, item: T) -
     }
     iter*.next = node;
     list*.length += 1;
-}
+} }
 
-list<T>prepend: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, item: T) -> void = {
+list<T>prepend: proc<T>(arena: *memops_arena, list: *list<T>, item: T) -> void = { unsafe {
     node: *node<T> = node<T>create(arena, item);
     node*.next = list*.head;
     list*.head = node;
     list*.length += 1;
-}
+} }
 
-list<T>insert_at: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, item: T, index: i32) -> void = {
+list<T>insert_at: proc<T>(arena: *memops_arena, list: *list<T>, item: T, index: i32) -> void = { unsafe {
     if (list == null || index < 0 || cast(index, usize) > list*.length) {
         printf("rin runtime: list invalid index\n");
         return;
@@ -102,16 +102,16 @@ list<T>insert_at: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, item: T
     node*.next = prev*.next;
     prev*.next = node;
     list*.length += 1;
-}
+} }
 
-list<T>get_length: proc[trusted]<T>(arena: *memops_arena, list: *list<T>) -> usize = {
+list<T>get_length: proc<T>(arena: *memops_arena, list: *list<T>) -> usize = { unsafe {
     if (list == null) {
         return 0;
     }
     return list*.length;
-}
+} }
 
-list<T>get_at: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, index: i32) -> ?*node<T> = {
+list<T>get_at: proc<T>(arena: *memops_arena, list: *list<T>, index: i32) -> ?*node<T> = { unsafe {
     if (list == null || index < 0 || cast(index, usize) >= list*.length) {
         return null;
     }
@@ -125,9 +125,9 @@ list<T>get_at: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, index: i32
         count += 1;
     }
     return null;
-}
+} }
 
-list<T>remove_at: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, index: i32) -> ?*node<T> = {
+list<T>remove_at: proc<T>(arena: *memops_arena, list: *list<T>, index: i32) -> ?*node<T> = { unsafe {
     if (list == null || index < 0 || cast(index, usize) >= list*.length) {
         return null;
     }
@@ -150,9 +150,9 @@ list<T>remove_at: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, index: 
         count += 1;
     }
     return null;
-}
+} }
 
-list<T>remove: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, item: T) -> ?*node<T> = {
+list<T>remove: proc<T>(arena: *memops_arena, list: *list<T>, item: T) -> ?*node<T> = { unsafe {
     if (list == null || list*.length == 0) {
         return null;
     }
@@ -173,15 +173,15 @@ list<T>remove: proc[trusted]<T>(arena: *memops_arena, list: *list<T>, item: T) -
         iter = iter*.next;
     }
     return null;
-}
+} }
 
-list<T>destroy: proc[trusted]<T>(arena: *memops_arena, list: *list<T>) -> void = {
+list<T>destroy: proc<T>(arena: *memops_arena, list: *list<T>) -> void = { unsafe {
     if (list != null) {
         list*.head = null;
         list*.length = 0;
     }
-}
+} }
 
-list<T>is_empty: proc[trusted]<T>(list: *list<T>) -> b32 = {
+list<T>is_empty: proc<T>(list: *list<T>) -> b32 = { unsafe {
     return list == null || list*.length == 0;
-}
+} }

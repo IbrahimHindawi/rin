@@ -1,6 +1,6 @@
 import "std/print.rin"
 import "std/file.rin"
-rewind: proc[external, trusted](stream: *FILE) -> void = {}
+rewind: proc[external, safe](stream: *FILE) -> void = {}
 gfile: ?*FILE in permanent = null;
 W: struct = { f: ?*FILE in permanent; }
 gw: W = {};

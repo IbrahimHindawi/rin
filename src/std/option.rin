@@ -7,38 +7,38 @@ option: struct<T> = {
     value: T;
 }
 
-option<T>some: proc[trusted]<T>(value: T) -> option<T> = {
+option<T>some: proc<T>(value: T) -> option<T> = { unsafe {
     option: option<T> = {};
     option.has_value = 1;
     option.value = value;
     return option;
-}
+} }
 
-option<T>none: proc[trusted]<T>() -> option<T> = {
+option<T>none: proc<T>() -> option<T> = { unsafe {
     option: option<T> = {};
     option.has_value = 0;
     return option;
-}
+} }
 
-option<T>is_some: proc[trusted]<T>(option: option<T>) -> b32 = {
+option<T>is_some: proc<T>(option: option<T>) -> b32 = { unsafe {
     return option.has_value;
-}
+} }
 
-option<T>is_none: proc[trusted]<T>(option: option<T>) -> b32 = {
+option<T>is_none: proc<T>(option: option<T>) -> b32 = { unsafe {
     return !option.has_value;
-}
+} }
 
-option<T>unwrap: proc[trusted]<T>(option: option<T>) -> T = {
+option<T>unwrap: proc<T>(option: option<T>) -> T = { unsafe {
     if (!option.has_value) {
         printf("rin runtime: option unwrap on none\n");
         exit(1);
     }
     return option.value;
-}
+} }
 
-option<T>unwrap_or: proc[trusted]<T>(option: option<T>, fallback: T) -> T = {
+option<T>unwrap_or: proc<T>(option: option<T>, fallback: T) -> T = { unsafe {
     if (option.has_value) {
         return option.value;
     }
     return fallback;
-}
+} }

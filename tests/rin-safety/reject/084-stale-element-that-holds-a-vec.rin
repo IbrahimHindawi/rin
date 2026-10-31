@@ -3,7 +3,7 @@ import "std/vec.rin"
 level: region;
 slot: struct = { v: *vec<i32> in level; }
 g: [2]?*slot in permanent = {};
-grow: proc[trusted](s: *slot) -> void = { _ = vec<i32>push(s*.v, 1); }
+grow: proc(s: *slot) -> void = { unsafe { _ = vec<i32>push(s*.v, 1); } }
 use: proc(s: *slot) -> i32 = {
     p: *i32 = vec<i32>at(s*.v, 0);
     grow(s);

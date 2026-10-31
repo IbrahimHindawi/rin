@@ -31,7 +31,7 @@ path_is_sep: proc(c: u8) -> b32 = {
     return c == 47 || c == 92;
 }
 
-string8_reserve: proc[trusted](arena: *memops_arena, capacity: u64) -> string8 = {
+string8_reserve: proc[unsafe](arena: *memops_arena, capacity: u64) -> string8 = {
     s: string8 = {};
     if (arena == null) {
         printf("rin runtime: string8 reserve with null arena\n");
@@ -46,7 +46,7 @@ string8_reserve: proc[trusted](arena: *memops_arena, capacity: u64) -> string8 =
     return s;
 }
 
-string8_grow: proc[trusted](arena: *memops_arena, s: *string8, min_capacity: u64) -> void = {
+string8_grow: proc(arena: *memops_arena, s: *string8, min_capacity: u64) -> void = { unsafe {
     if (arena == null || s == null) {
         printf("rin runtime: string8 grow invalid argument\n");
         exit(1);
@@ -85,9 +85,9 @@ string8_grow: proc[trusted](arena: *memops_arena, s: *string8, min_capacity: u64
         memset(s*.data + old_capacity + 1, 0, new_capacity - old_capacity);
     }
     s*.capacity = new_capacity;
-}
+} }
 
-string8_from_cstr: proc[trusted](arena: *memops_arena, cstr: ^const char) -> string8 = {
+string8_from_cstr: proc[unsafe](arena: *memops_arena, cstr: ^const char) -> string8 = {
     if (cstr == null) {
         return string8_reserve(arena, 0);
     }
@@ -130,19 +130,19 @@ string8slice_from_cstr: proc[unsafe](cstr: ^const char) -> string8slice = {
     return string8slice_from_parts(cast(cstr, *u8), cast(strlen(cstr), u64));
 }
 
-string8slice_from_string8: proc[trusted](s: string8) -> string8slice = {
+string8slice_from_string8: proc[unsafe](s: string8) -> string8slice = {
     return string8slice_from_parts(s.data, s.length);
 }
 
-string8_from_slice: proc[trusted](arena: *memops_arena, s: string8slice) -> string8 = {
+string8_from_slice: proc[unsafe](arena: *memops_arena, s: string8slice) -> string8 = {
     return string8_copy_from_slice(arena, s.data, s.length);
 }
 
-string8_copy: proc[trusted](arena: *memops_arena, s: string8) -> string8 = {
+string8_copy: proc[unsafe](arena: *memops_arena, s: string8) -> string8 = {
     return string8_copy_from_slice(arena, s.data, s.length);
 }
 
-string8_to_cstr_temp: proc[trusted](arena: *memops_arena, s: string8) -> ^char = {
+string8_to_cstr_temp: proc[unsafe](arena: *memops_arena, s: string8) -> ^char = {
     out: ^char = cast(memops_arena_push_zero(arena, s.length + 1, alignof(char)), ^char);
     if (out == null) {
         printf("rin runtime: string8 cstr allocation failure\n");
@@ -155,7 +155,7 @@ string8_to_cstr_temp: proc[trusted](arena: *memops_arena, s: string8) -> ^char =
     return out;
 }
 
-string8slice_to_cstr_temp: proc[trusted](arena: *memops_arena, s: string8slice) -> ^char = {
+string8slice_to_cstr_temp: proc[unsafe](arena: *memops_arena, s: string8slice) -> ^char = {
     out: ^char = cast(memops_arena_push_zero(arena, s.length + 1, alignof(char)), ^char);
     if (out == null) {
         printf("rin runtime: string8slice cstr allocation failure\n");
@@ -168,16 +168,16 @@ string8slice_to_cstr_temp: proc[trusted](arena: *memops_arena, s: string8slice) 
     return out;
 }
 
-path_to_cstr_temp: proc[trusted](arena: *memops_arena, s: string8slice) -> ^char = {
+path_to_cstr_temp: proc[unsafe](arena: *memops_arena, s: string8slice) -> ^char = {
     return string8slice_to_cstr_temp(arena, s);
 }
 
-string8_append_byte: proc[trusted](arena: *memops_arena, s: *string8, byte: u8) -> void = {
+string8_append_byte: proc(arena: *memops_arena, s: *string8, byte: u8) -> void = { unsafe {
     string8_grow(arena, s, s*.length + 1);
     s*.data[s*.length] = byte;
     s*.length += 1;
     s*.data[s*.length] = 0;
-}
+} }
 
 string8_append_bytes: proc[unsafe](arena: *memops_arena, s: *string8, src: ^const u8, count: u64) -> void = {
     if (count == 0) {
@@ -189,23 +189,23 @@ string8_append_bytes: proc[unsafe](arena: *memops_arena, s: *string8, src: ^cons
     s*.data[s*.length] = 0;
 }
 
-string8_append_slice: proc[trusted](arena: *memops_arena, s: *string8, src: string8slice) -> void = {
+string8_append_slice: proc[unsafe](arena: *memops_arena, s: *string8, src: string8slice) -> void = {
     string8_append_bytes(arena, s, src.data, src.length);
 }
 
-string8_append_string8: proc[trusted](arena: *memops_arena, s: *string8, src: string8) -> void = {
+string8_append_string8: proc[unsafe](arena: *memops_arena, s: *string8, src: string8) -> void = {
     string8_append_bytes(arena, s, src.data, src.length);
 }
 
-string8_append_cstr: proc[trusted](arena: *memops_arena, s: *string8, cstr: ^const char) -> void = {
+string8_append_cstr: proc(arena: *memops_arena, s: *string8, cstr: ^const char) -> void = { unsafe {
     if (cstr == null) {
         return;
     }
     count: u64 = cast(strlen(cstr), u64);
     string8_append_bytes(arena, s, cast(cstr, *const u8), count);
-}
+} }
 
-string8_clear: proc[trusted](s: *string8) -> void = {
+string8_clear: proc(s: *string8) -> void = { unsafe {
     if (s == null) {
         return;
     }
@@ -213,9 +213,9 @@ string8_clear: proc[trusted](s: *string8) -> void = {
     if (s*.data != null) {
         s*.data[0] = 0;
     }
-}
+} }
 
-string8_read_file: proc[trusted](arena: *memops_arena, filename: ^const char) -> string8 = {
+string8_read_file: proc[unsafe](arena: *memops_arena, filename: ^const char) -> string8 = {
     file: *FILE = fopen(filename, "rb");
     if (file == null) {
         return string8_reserve(arena, 0);
@@ -237,7 +237,7 @@ string8_read_file: proc[trusted](arena: *memops_arena, filename: ^const char) ->
     return s;
 }
 
-string8_equals: proc[trusted](a: *const string8, b: *const string8) -> b32 = {
+string8_equals: proc(a: *const string8, b: *const string8) -> b32 = { unsafe {
     if (a == null || b == null) {
         return a == b;
     }
@@ -248,9 +248,9 @@ string8_equals: proc[trusted](a: *const string8, b: *const string8) -> b32 = {
         return 1;
     }
     return memcmp(a*.data, b*.data, a*.length) == 0;
-}
+} }
 
-string8_equals_cstr: proc[trusted](a: *const string8, cstr: ^const char) -> b32 = {
+string8_equals_cstr: proc(a: *const string8, cstr: ^const char) -> b32 = { unsafe {
     if (a == null || cstr == null) {
         return 0;
     }
@@ -262,16 +262,16 @@ string8_equals_cstr: proc[trusted](a: *const string8, cstr: ^const char) -> b32 
         return 1;
     }
     return memcmp(a*.data, cstr, length) == 0;
-}
+} }
 
-string8_print: proc[trusted](s: *const string8) -> void = {
+string8_print: proc(s: *const string8) -> void = { unsafe {
     if (s == null || s*.data == null) {
         return;
     }
     printf("%.*s", cast(s*.length, i32), cast(s*.data, ^const char));
-}
+} }
 
-string8slice_sub: proc[trusted](s: string8slice, start: u64, count: u64) -> string8slice = {
+string8slice_sub: proc[unsafe](s: string8slice, start: u64, count: u64) -> string8slice = {
     if (s.data == null) {
         return {};
     }
@@ -284,11 +284,11 @@ string8slice_sub: proc[trusted](s: string8slice, start: u64, count: u64) -> stri
     return string8slice_from_parts(s.data + start, count);
 }
 
-string8_slice: proc[trusted](s: string8, start: u64, count: u64) -> string8slice = {
+string8_slice: proc[unsafe](s: string8, start: u64, count: u64) -> string8slice = {
     return string8slice_sub(string8slice_from_string8(s), start, count);
 }
 
-string8slice_equals: proc[trusted](a: string8slice, b: string8slice) -> b32 = {
+string8slice_equals: proc[unsafe](a: string8slice, b: string8slice) -> b32 = {
     if (a.length != b.length) {
         return 0;
     }
@@ -298,7 +298,7 @@ string8slice_equals: proc[trusted](a: string8slice, b: string8slice) -> b32 = {
     return memcmp(a.data, b.data, a.length) == 0;
 }
 
-string8slice_equals_cstr: proc[trusted](s: string8slice, cstr: ^const char) -> b32 = {
+string8slice_equals_cstr: proc[unsafe](s: string8slice, cstr: ^const char) -> b32 = {
     if (cstr == null) {
         return 0;
     }
@@ -312,22 +312,22 @@ string8slice_equals_cstr: proc[trusted](s: string8slice, cstr: ^const char) -> b
     return memcmp(s.data, cstr, length) == 0;
 }
 
-string8slice_print: proc[trusted](s: string8slice) -> void = {
+string8slice_print: proc[unsafe](s: string8slice) -> void = {
     if (s.data == null) {
         return;
     }
     printf("%.*s", cast(s.length, i32), cast(s.data, ^const char));
 }
 
-print: proc[trusted]<string8>(s: string8) -> void = {
+print: proc[unsafe]<string8>(s: string8) -> void = {
     string8_print(s&);
 }
 
-print: proc[trusted]<string8slice>(s: string8slice) -> void = {
+print: proc[unsafe]<string8slice>(s: string8slice) -> void = {
     string8slice_print(s);
 }
 
-string8slice_trim: proc[trusted](s: string8slice) -> string8slice = {
+string8slice_trim: proc[unsafe](s: string8slice) -> string8slice = {
     start: u64 = 0;
     end: u64 = s.length;
     if (s.data == null) {
@@ -342,11 +342,11 @@ string8slice_trim: proc[trusted](s: string8slice) -> string8slice = {
     return string8slice_sub(s, start, end - start);
 }
 
-string8_trim: proc[trusted](s: string8) -> string8slice = {
+string8_trim: proc[unsafe](s: string8) -> string8slice = {
     return string8slice_trim(string8slice_from_string8(s));
 }
 
-string8slice_starts_with: proc[trusted](s: string8slice, prefix: string8slice) -> b32 = {
+string8slice_starts_with: proc[unsafe](s: string8slice, prefix: string8slice) -> b32 = {
     if (prefix.length > s.length) {
         return 0;
     }
@@ -359,11 +359,11 @@ string8slice_starts_with: proc[trusted](s: string8slice, prefix: string8slice) -
     return memcmp(s.data, prefix.data, prefix.length) == 0;
 }
 
-string8_starts_with: proc[trusted](s: string8, prefix: string8slice) -> b32 = {
+string8_starts_with: proc[unsafe](s: string8, prefix: string8slice) -> b32 = {
     return string8slice_starts_with(string8slice_from_string8(s), prefix);
 }
 
-string8slice_ends_with: proc[trusted](s: string8slice, suffix: string8slice) -> b32 = {
+string8slice_ends_with: proc[unsafe](s: string8slice, suffix: string8slice) -> b32 = {
     if (suffix.length > s.length) {
         return 0;
     }
@@ -376,11 +376,11 @@ string8slice_ends_with: proc[trusted](s: string8slice, suffix: string8slice) -> 
     return memcmp(s.data + s.length - suffix.length, suffix.data, suffix.length) == 0;
 }
 
-string8_ends_with: proc[trusted](s: string8, suffix: string8slice) -> b32 = {
+string8_ends_with: proc[unsafe](s: string8, suffix: string8slice) -> b32 = {
     return string8slice_ends_with(string8slice_from_string8(s), suffix);
 }
 
-string8slice_find: proc[trusted](s: string8slice, needle: string8slice) -> i64 = {
+string8slice_find: proc[unsafe](s: string8slice, needle: string8slice) -> i64 = {
     if (needle.length == 0) {
         return 0;
     }
@@ -396,19 +396,19 @@ string8slice_find: proc[trusted](s: string8slice, needle: string8slice) -> i64 =
     return -1;
 }
 
-string8_find: proc[trusted](s: string8, needle: string8slice) -> i64 = {
+string8_find: proc[unsafe](s: string8, needle: string8slice) -> i64 = {
     return string8slice_find(string8slice_from_string8(s), needle);
 }
 
-string8slice_contains: proc[trusted](s: string8slice, needle: string8slice) -> b32 = {
+string8slice_contains: proc[unsafe](s: string8slice, needle: string8slice) -> b32 = {
     return string8slice_find(s, needle) >= 0;
 }
 
-string8_contains: proc[trusted](s: string8, needle: string8slice) -> b32 = {
+string8_contains: proc[unsafe](s: string8, needle: string8slice) -> b32 = {
     return string8_find(s, needle) >= 0;
 }
 
-string8slice_eq_ignore_case: proc[trusted](a: string8slice, b: string8slice) -> b32 = {
+string8slice_eq_ignore_case: proc[unsafe](a: string8slice, b: string8slice) -> b32 = {
     if (a.length != b.length) {
         return 0;
     }
@@ -426,11 +426,11 @@ string8slice_eq_ignore_case: proc[trusted](a: string8slice, b: string8slice) -> 
     return 1;
 }
 
-string8_eq_ignore_case: proc[trusted](a: string8, b: string8slice) -> b32 = {
+string8_eq_ignore_case: proc[unsafe](a: string8, b: string8slice) -> b32 = {
     return string8slice_eq_ignore_case(string8slice_from_string8(a), b);
 }
 
-string8slice_lower_copy: proc[trusted](arena: *memops_arena, s: string8slice) -> string8 = {
+string8slice_lower_copy: proc[unsafe](arena: *memops_arena, s: string8slice) -> string8 = {
     out: string8 = string8_reserve(arena, s.length);
     if (s.data == null && s.length > 0) {
         return out;
@@ -443,11 +443,11 @@ string8slice_lower_copy: proc[trusted](arena: *memops_arena, s: string8slice) ->
     return out;
 }
 
-string8_lower_copy: proc[trusted](arena: *memops_arena, s: string8) -> string8 = {
+string8_lower_copy: proc[unsafe](arena: *memops_arena, s: string8) -> string8 = {
     return string8slice_lower_copy(arena, string8slice_from_string8(s));
 }
 
-string8slice_hash: proc[trusted](s: string8slice) -> u64 = {
+string8slice_hash: proc[unsafe](s: string8slice) -> u64 = {
     h: u64 = 5381;
     for (i: u64 = 0; i < s.length; i += 1) {
         h = ((h shl 5) + h) ^ cast(s.data[i], u64);
@@ -455,11 +455,11 @@ string8slice_hash: proc[trusted](s: string8slice) -> u64 = {
     return h;
 }
 
-string8_hash: proc[trusted](s: string8) -> u64 = {
+string8_hash: proc[unsafe](s: string8) -> u64 = {
     return string8slice_hash(string8slice_from_string8(s));
 }
 
-path_append_normalized_slice: proc[trusted](arena: *memops_arena, out: *string8, s: string8slice) -> void = {
+path_append_normalized_slice: proc[unsafe](arena: *memops_arena, out: *string8, s: string8slice) -> void = {
     for (i: u64 = 0; i < s.length; i += 1) {
         c: u8 = s.data[i];
         if (path_is_sep(c)) {
@@ -469,13 +469,13 @@ path_append_normalized_slice: proc[trusted](arena: *memops_arena, out: *string8,
     }
 }
 
-path_normalize_slashes: proc[trusted](arena: *memops_arena, path: string8slice) -> string8 = {
+path_normalize_slashes: proc[unsafe](arena: *memops_arena, path: string8slice) -> string8 = {
     out: string8 = string8_reserve(arena, path.length);
     path_append_normalized_slice(arena, out&, path);
     return out;
 }
 
-path_join: proc[trusted](arena: *memops_arena, a: string8slice, b: string8slice) -> string8 = {
+path_join: proc[unsafe](arena: *memops_arena, a: string8slice, b: string8slice) -> string8 = {
     out: string8 = string8_reserve(arena, a.length + b.length + 1);
     a_end: u64 = a.length;
     b_start: u64 = 0;
@@ -493,7 +493,7 @@ path_join: proc[trusted](arena: *memops_arena, a: string8slice, b: string8slice)
     return out;
 }
 
-path_dirname: proc[trusted](path: string8slice) -> string8slice = {
+path_dirname: proc[unsafe](path: string8slice) -> string8slice = {
     end: u64 = path.length;
     if (path.data == null) {
         return {};
@@ -514,7 +514,7 @@ path_dirname: proc[trusted](path: string8slice) -> string8slice = {
     return {};
 }
 
-path_basename: proc[trusted](path: string8slice) -> string8slice = {
+path_basename: proc[unsafe](path: string8slice) -> string8slice = {
     end: u64 = path.length;
     if (path.data == null) {
         return {};
@@ -532,7 +532,7 @@ path_basename: proc[trusted](path: string8slice) -> string8slice = {
     return string8slice_sub(path, 0, end);
 }
 
-path_extension: proc[trusted](path: string8slice) -> string8slice = {
+path_extension: proc[unsafe](path: string8slice) -> string8slice = {
     base: string8slice = path_basename(path);
     if (base.length == 0 || base.data == null) {
         return {};
@@ -550,7 +550,7 @@ path_extension: proc[trusted](path: string8slice) -> string8slice = {
     return {};
 }
 
-path_strip_extension: proc[trusted](path: string8slice) -> string8slice = {
+path_strip_extension: proc[unsafe](path: string8slice) -> string8slice = {
     end: u64 = path.length;
     if (path.data == null) {
         return {};
@@ -567,7 +567,7 @@ path_strip_extension: proc[trusted](path: string8slice) -> string8slice = {
     return path;
 }
 
-string8_split_byte: proc[trusted](arena: *memops_arena, src: string8, sep: u8) -> vec<string8> = {
+string8_split_byte: proc[unsafe](arena: *memops_arena, src: string8, sep: u8) -> vec<string8> = {
     out: vec<string8> = {};
     start: u64 = 0;
     i: u64 = 0;
@@ -582,11 +582,11 @@ string8_split_byte: proc[trusted](arena: *memops_arena, src: string8, sep: u8) -
     return out;
 }
 
-string8_split_char: proc[trusted](arena: *memops_arena, src: string8, sep: u8) -> vec<string8> = {
+string8_split_char: proc[unsafe](arena: *memops_arena, src: string8, sep: u8) -> vec<string8> = {
     return string8_split_byte(arena, src, sep);
 }
 
-string8slice_split: proc[trusted](arena: *memops_arena, src: string8slice, sep: u8) -> vec<string8slice> = {
+string8slice_split: proc[unsafe](arena: *memops_arena, src: string8slice, sep: u8) -> vec<string8slice> = {
     out: vec<string8slice> = {};
     start: u64 = 0;
     i: u64 = 0;
@@ -601,7 +601,7 @@ string8slice_split: proc[trusted](arena: *memops_arena, src: string8slice, sep: 
     return out;
 }
 
-string8slice_split_from_string8: proc[trusted](arena: *memops_arena, src: string8, sep: u8) -> vec<string8slice> = {
+string8slice_split_from_string8: proc[unsafe](arena: *memops_arena, src: string8, sep: u8) -> vec<string8slice> = {
     return string8slice_split(arena, string8slice_from_string8(src), sep);
 }
 
@@ -633,7 +633,7 @@ string8_builder: struct = {
     length: u64;
 }
 
-string8_builder_begin: proc[trusted](arena: *memops_arena) -> string8_builder = {
+string8_builder_begin: proc[unsafe](arena: *memops_arena) -> string8_builder = {
     b: string8_builder = {};
     if (arena == null) {
         printf("rin runtime: string8 builder with null arena\n");
@@ -647,7 +647,7 @@ string8_builder_begin: proc[trusted](arena: *memops_arena) -> string8_builder = 
 
 /* The head check. Cheap enough to run on every append, and the only thing
    standing between an interleaved build and silent corruption. */
-string8_builder_reserve_: proc[trusted](b: *string8_builder, count: u64) -> *u8 = {
+string8_builder_reserve_: proc(b: *string8_builder, count: u64) -> *u8 = { unsafe {
     if (b == null || b*.arena == null) {
         printf("rin runtime: string8 builder invalid argument\n");
         exit(1);
@@ -662,13 +662,13 @@ string8_builder_reserve_: proc[trusted](b: *string8_builder, count: u64) -> *u8 
         exit(1);
     }
     return p;
-}
+} }
 
-string8_builder_append_byte: proc[trusted](b: *string8_builder, byte: u8) -> void = {
+string8_builder_append_byte: proc(b: *string8_builder, byte: u8) -> void = { unsafe {
     p: *u8 = string8_builder_reserve_(b, 1);
     p* = byte;
     b*.length += 1;
-}
+} }
 
 string8_builder_append_bytes: proc[unsafe](b: *string8_builder, src: ^const u8, count: u64) -> void = {
     if (count == 0) {
@@ -679,24 +679,24 @@ string8_builder_append_bytes: proc[unsafe](b: *string8_builder, src: ^const u8, 
     b*.length += count;
 }
 
-string8_builder_append_slice: proc[trusted](b: *string8_builder, src: string8slice) -> void = {
+string8_builder_append_slice: proc[unsafe](b: *string8_builder, src: string8slice) -> void = {
     string8_builder_append_bytes(b, src.data, src.length);
 }
 
-string8_builder_append_string8: proc[trusted](b: *string8_builder, src: string8) -> void = {
+string8_builder_append_string8: proc[unsafe](b: *string8_builder, src: string8) -> void = {
     string8_builder_append_bytes(b, src.data, src.length);
 }
 
-string8_builder_append_cstr: proc[trusted](b: *string8_builder, cstr: ^const char) -> void = {
+string8_builder_append_cstr: proc(b: *string8_builder, cstr: ^const char) -> void = { unsafe {
     if (cstr == null) {
         return;
     }
     string8_builder_append_bytes(b, cast(cstr, *const u8), cast(strlen(cstr), u64));
-}
+} }
 
 /* A view of what has been built. Valid until the arena is reset, and not
    NUL-terminated -- use string8_builder_finish when C has to read it. */
-string8_builder_slice: proc[trusted](b: *const string8_builder) -> string8slice = {
+string8_builder_slice: proc[unsafe](b: *const string8_builder) -> string8slice = {
     out: string8slice = {};
     if (b == null) {
         return out;
@@ -708,7 +708,7 @@ string8_builder_slice: proc[trusted](b: *const string8_builder) -> string8slice 
 
 /* Closes the build in place: pushes the terminator the rest of string8 keeps,
    and hands back an owning string8 over the same arena bytes. No copy. */
-string8_builder_finish: proc[trusted](b: *string8_builder) -> string8 = {
+string8_builder_finish: proc[unsafe](b: *string8_builder) -> string8 = {
     p: *u8 = string8_builder_reserve_(b, 1);
     p* = 0;
     out: string8 = {};
@@ -719,7 +719,7 @@ string8_builder_finish: proc[trusted](b: *string8_builder) -> string8 = {
 }
 
 /* The scratch-to-permanent move: the one copy the pattern actually needs. */
-string8_builder_commit: proc[trusted](b: *const string8_builder, dst: *memops_arena) -> string8 = {
+string8_builder_commit: proc[unsafe](b: *const string8_builder, dst: *memops_arena) -> string8 = {
     if (b == null) {
         out: string8 = {};
         return out;

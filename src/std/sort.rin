@@ -3,7 +3,7 @@ import "order.rin"
 /* In-place sorting and binary search over a slice, ordered by a comparator
    from order.rin or one of your own. `sort` is not stable. */
 
-sort_insertion: proc[trusted]<T>(xs: []T, less: *proc(a: T, b: T) -> b32) -> void = {
+sort_insertion: proc<T>(xs: []T, less: *proc(a: T, b: T) -> b32) -> void = { unsafe {
     for (i: u64 = 1; i < xs.length; i += 1) {
         x: T = xs[i];
         j: u64 = i;
@@ -13,12 +13,12 @@ sort_insertion: proc[trusted]<T>(xs: []T, less: *proc(a: T, b: T) -> b32) -> voi
         }
         xs[j] = x;
     }
-}
+} }
 
 // Hoare partition around the median of the first, middle and last elements, so
 // sorted and reversed input stay O(n log n), and runs of equal keys split evenly.
 // Recursing into the smaller half keeps the stack at O(log n).
-sort: proc[trusted]<T>(xs: []T, less: *proc(a: T, b: T) -> b32) -> void = {
+sort: proc<T>(xs: []T, less: *proc(a: T, b: T) -> b32) -> void = { unsafe {
     while (xs.length > 16) {
         n: u64 = xs.length;
         mid: u64 = n / 2;
@@ -58,10 +58,10 @@ sort: proc[trusted]<T>(xs: []T, less: *proc(a: T, b: T) -> b32) -> void = {
         }
     }
     sort_insertion<T>(xs, less);
-}
+} }
 
 // The first index whose element is not less than x, or xs.length.
-lower_bound: proc[trusted]<T>(xs: []T, x: T, less: *proc(a: T, b: T) -> b32) -> u64 = {
+lower_bound: proc<T>(xs: []T, x: T, less: *proc(a: T, b: T) -> b32) -> u64 = { unsafe {
     lo: u64 = 0;
     hi: u64 = xs.length;
     while (lo < hi) {
@@ -73,10 +73,10 @@ lower_bound: proc[trusted]<T>(xs: []T, x: T, less: *proc(a: T, b: T) -> b32) -> 
         }
     }
     return lo;
-}
+} }
 
 // The first index whose element is greater than x, or xs.length.
-upper_bound: proc[trusted]<T>(xs: []T, x: T, less: *proc(a: T, b: T) -> b32) -> u64 = {
+upper_bound: proc<T>(xs: []T, x: T, less: *proc(a: T, b: T) -> b32) -> u64 = { unsafe {
     lo: u64 = 0;
     hi: u64 = xs.length;
     while (lo < hi) {
@@ -88,9 +88,9 @@ upper_bound: proc[trusted]<T>(xs: []T, x: T, less: *proc(a: T, b: T) -> b32) -> 
         }
     }
     return lo;
-}
+} }
 
-reverse: proc[trusted]<T>(xs: []T) -> void = {
+reverse: proc<T>(xs: []T) -> void = { unsafe {
     if (xs.length < 2) {
         return;
     }
@@ -101,4 +101,4 @@ reverse: proc[trusted]<T>(xs: []T) -> void = {
         i += 1;
         j -= 1;
     }
-}
+} }
