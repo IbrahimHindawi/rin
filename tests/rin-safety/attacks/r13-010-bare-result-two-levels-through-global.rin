@@ -1,0 +1,18 @@
+// in2 hides the global pointer argument of in1 behind a plain *i32 param, so main sees only x& while q holds frame memory read after the block
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+gx: option<*i32 in frame> = null;
+in1: proc(h: *option<*i32 in frame>, d: *i32) -> *i32 = { o: option<*i32 in frame> = h*; if (o) { return o; } return d; }
+in2: proc(d: *i32) -> *i32 = { return in1(gx&, d); }
+main: proc() -> i32 = {
+    x: i32 = 0;
+    q: *i32 = x&;
+    frame: region = {
+        gx = new<i32>(frame, 3);
+        q = in2(x&);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

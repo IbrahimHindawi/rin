@@ -1,0 +1,16 @@
+// A result that names no region points into what the call was given, so when
+// what it was given is in `level`, the result lasts as long and can say so.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+bag: struct = { items: *vec<i32> in level; }
+bag_first: proc(b: *bag) -> *i32 in level = {
+    return vec<i32>at(b*.items, 0);
+}
+main: proc() -> i32 = {
+    v: *vec<i32> in level = vec<i32>make(level, 4);
+    _ = vec<i32>push(v, 7);
+    b: bag = { v };
+    printfmt("{}\n", bag_first(b&)*);
+    return 0;
+}

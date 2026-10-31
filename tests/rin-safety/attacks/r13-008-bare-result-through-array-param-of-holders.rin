@@ -1,0 +1,18 @@
+// a global array given to an array parameter: type_collect_regions runs for a struct by value and not for an array of them, so q keeps no frame and reads poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+holder: struct = { s: []i32 in frame; }
+ga: [2]holder = {};
+keep: proc(h: [2]holder) -> []i32 = { return h[0].s; }
+main: proc() -> i32 = {
+    e: [1]i32 = {};
+    q: []i32 = e;
+    frame: region = {
+        ga[0].s = new_slice<i32>(frame, 3);
+        q = keep(ga);
+    }
+    printfmt("{}\n", q[0]);
+    return 0;
+}

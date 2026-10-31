@@ -1,0 +1,18 @@
+// as 004 with an option field: the narrowed frame pointer leaves through a bare *i32 result and is read after the block ends
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+holder: struct = { p: option<*i32 in frame>; }
+gh: holder = {};
+keep: proc(h: *holder, d: *i32) -> *i32 = { o: option<*i32 in frame> = h*.p; if (o) { return o; } return d; }
+main: proc() -> i32 = {
+    x: i32 = 0;
+    q: *i32 = x&;
+    frame: region = {
+        gh.p = new<i32>(frame, 3);
+        q = keep(gh&, x&);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

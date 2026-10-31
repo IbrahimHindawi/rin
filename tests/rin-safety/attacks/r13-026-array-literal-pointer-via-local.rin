@@ -1,0 +1,11 @@
+// as 025 with an element pointer from an array parameter: stack-use-after-return in main
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+f2: proc(a: [4]i32) -> *i32 = { return a[0]&; }
+mid: proc() -> *i32 = { r: *i32 = f2({ 1, 2, 3, 4 }); return r; }
+main: proc() -> i32 = {
+    printfmt("{}\n", mid()*);
+    return 0;
+}

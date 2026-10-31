@@ -1,0 +1,14 @@
+// the temporary-copy rule runs on declarations, arguments and returns, not on assignment: p = mk().a[0..2] points at mid's temporary, and main reads a dead frame
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+wa: struct = { a: [4]i32; }
+mk: proc() -> wa = { v: wa = {}; return v; }
+mid: proc(p: []i32) -> []i32 = { p = mk().a[0..2]; return p; }
+main: proc() -> i32 = {
+    z: [1]i32 = {};
+    r: []i32 = mid(z);
+    printfmt("{}\n", r[0]);
+    return 0;
+}

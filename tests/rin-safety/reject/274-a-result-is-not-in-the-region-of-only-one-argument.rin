@@ -1,0 +1,10 @@
+// expect: a borrowed pointer cannot be kept in region 'level'
+// The second argument is local, and the result may be that one.
+level: region global;
+pick: proc(a: *i32, b: *i32) -> *i32 = { return b; }
+keep: proc(r: region level) -> *i32 in level = {
+    n: *i32 in level = new<i32>(r);
+    x: i32 = 0;
+    return pick(n, x&);
+}
+main: proc() -> i32 = { return 0; }

@@ -1,0 +1,5 @@
+// expect: the caller has to know
+level: region global;
+holder: struct = { p: *i32 in level; }
+f: proc(h: *holder) -> *i32 = { return h*.p; }
+main: proc() -> i32 = { return 0; }

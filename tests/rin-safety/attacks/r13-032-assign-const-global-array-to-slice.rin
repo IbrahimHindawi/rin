@@ -1,0 +1,14 @@
+// as 031: s = cg.a takes a writable slice of read-only memory, and s[0] = 5 faults
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+wa: struct = { a: [4]i32; }
+cg: const wa = { .a = { 1, 2, 3, 4 } };
+main: proc() -> i32 = {
+    z: [1]i32 = {};
+    s: []i32 = z;
+    s = cg.a;
+    s[0] = 5;
+    return 0;
+}

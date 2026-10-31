@@ -1,0 +1,13 @@
+// unwrap's argument is not held to the temporary rule either: q = unwrap(mk().a[1]&) points at mid's temporary; stack-use-after-return in main
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+wa: struct = { a: [4]i32; }
+mk: proc() -> wa = { v: wa = {}; return v; }
+mid: proc(p: *i32) -> *i32 = { p = unwrap(mk().a[1]&); return p; }
+main: proc() -> i32 = {
+    z: i32 = 0;
+    printfmt("{}\n", mid(z&)*);
+    return 0;
+}

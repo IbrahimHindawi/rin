@@ -1,0 +1,12 @@
+// unwrap's argument is not held to the packed rule: q: *i32 = unwrap(gpk.b&) is a misaligned pointer, and q* is reported by UBSan's alignment check
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+pk: struct[packed] = { a: u8; b: i32; }
+gpk: pk = {};
+main: proc() -> i32 = {
+    q: *i32 = unwrap(gpk.b&);
+    printfmt("{}\n", q*);
+    return 0;
+}

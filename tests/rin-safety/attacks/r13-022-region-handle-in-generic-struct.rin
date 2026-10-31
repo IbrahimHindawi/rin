@@ -1,0 +1,13 @@
+// check_type_stored refuses a handle in a plain struct's field, but a local generic struct takes T = region alias: scratch goes in as permanent, and x reads poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+ra: alias = region permanent;
+bx: struct<T> = { v: T; }
+main: proc() -> i32 = {
+    x: *i32 in permanent = perm&;
+    scratch { b: bx<ra> = { .v = scratch }; x = new<i32>(b.v, 1); }
+    printfmt("{}\n", x*);
+    return 0;
+}

@@ -1,0 +1,17 @@
+// a global array of frame slices given as [][]i32 in frame: the array argument has no region of its own, so the element pointer comes back unknown and reads poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+sr: [1][]i32 in frame = {};
+elem: proc(s: [][]i32 in frame) -> *i32 = { return s[0][1]&; }
+main: proc() -> i32 = {
+    z: i32 = 0;
+    q: *i32 = z&;
+    frame: region = {
+        sr[0] = new_slice<i32>(frame, 2);
+        q = elem(sr);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

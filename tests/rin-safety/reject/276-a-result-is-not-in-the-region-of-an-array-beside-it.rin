@@ -1,0 +1,10 @@
+// expect: a borrowed pointer cannot be kept in region 'level'
+// An array goes by address, and the result may point into it.
+level: region global;
+pick: proc(a: *i32, b: [2]i32) -> *i32 = { return b[0]&; }
+keep: proc(r: region level) -> *i32 in level = {
+    n: *i32 in level = new<i32>(r);
+    x: [2]i32 = { 1, 2 };
+    return pick(n, x);
+}
+main: proc() -> i32 = { return 0; }

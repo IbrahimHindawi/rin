@@ -1,0 +1,16 @@
+// a generic struct local keeps scratch's handle past the block: new then carves from the popped arena, the next scratch reuses that memory and poisons it, and x reads it
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+ra: alias = region permanent;
+bx: struct<T> = { v: T; }
+mk: proc() -> bx<ra> = { b: bx<ra> = { .v = permanent }; return b; }
+main: proc() -> i32 = {
+    b: bx<ra> = mk();
+    scratch { b.v = scratch; }
+    x: *i32 in permanent = new<i32>(b.v, 1);
+    scratch { y: *i32 in scratch = new<i32>(scratch, 2); printfmt("{}\n", y*); }
+    printfmt("{}\n", x*);
+    return 0;
+}

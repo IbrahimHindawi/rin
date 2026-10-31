@@ -1,0 +1,18 @@
+// keep returns a frame slice read through its pointer param; the caller collects regions of a pointer argument but not of what it points at, and gh& says nothing, so q[0] after the block reads poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+holder: struct = { s: []i32 in frame; }
+gh: holder = {};
+keep: proc(h: *holder) -> []i32 = { return h*.s; }
+main: proc() -> i32 = {
+    e: [1]i32 = {};
+    q: []i32 = e;
+    frame: region = {
+        gh.s = new_slice<i32>(frame, 3);
+        q = keep(gh&);
+    }
+    printfmt("{}\n", q[0]);
+    return 0;
+}

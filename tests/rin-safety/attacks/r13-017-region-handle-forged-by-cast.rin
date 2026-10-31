@@ -1,0 +1,10 @@
+// the pointer-cast rule does not know Type_Region, so an integer casts to a handle: memops_arena_push reads through (memops_arena *)8 and faults
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+main: proc() -> i32 = {
+    x: *i32 in permanent = new<i32>(cast(8, region permanent), 1);
+    printfmt("{}\n", x*);
+    return 0;
+}

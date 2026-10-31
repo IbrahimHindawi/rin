@@ -1,0 +1,17 @@
+// as 004 with a pointer straight to a global option: the argument's type names frame only one level in, which is not collected
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+gp: option<*i32 in frame> = null;
+keep: proc(h: *option<*i32 in frame>, d: *i32) -> *i32 = { o: option<*i32 in frame> = h*; if (o) { return o; } return d; }
+main: proc() -> i32 = {
+    x: i32 = 0;
+    q: *i32 = x&;
+    frame: region = {
+        gp = new<i32>(frame, 3);
+        q = keep(gp&, x&);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

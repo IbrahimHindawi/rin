@@ -1,0 +1,12 @@
+// an array literal given to an array parameter is a compound literal in this frame; the local holding the result has no path or region, so returning it passes, and main reads a dead frame (stack-use-after-return)
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+ida: proc(s: [4]i32) -> []i32 = { return s; }
+mid: proc() -> []i32 = { r: []i32 = ida({ 1, 2, 3, 4 }); return r; }
+main: proc() -> i32 = {
+    r: []i32 = mid();
+    printfmt("{}\n", r[0]);
+    return 0;
+}

@@ -1,0 +1,3 @@
+// expect: this list is a temporary
+f: proc(a: [2]i32) -> *i32 = { return a[0]&; }
+main: proc() -> i32 = { f({ 1, 2 }); return 0; }

@@ -1,0 +1,12 @@
+// as 026 through an assignment to a parameter, whose root also counts as the caller's memory: stack-use-after-return in main
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+f2: proc(a: [4]i32) -> *i32 = { return a[0]&; }
+mid: proc(r: *i32) -> *i32 = { r = f2({ 1, 2, 3, 4 }); return r; }
+main: proc() -> i32 = {
+    z: i32 = 0;
+    printfmt("{}\n", mid(z&)*);
+    return 0;
+}

@@ -1,0 +1,12 @@
+// r = level gives a *i32 in permanent in level's arena; reset_kills spares a local declared permanent, so x* after the reset reads poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+f: proc(r: region R) -> *i32 in R = { r = level; return new<i32>(r, 1); }
+main: proc() -> i32 = {
+    x: *i32 in permanent = f(permanent);
+    reset level;
+    printfmt("{}\n", x*);
+    return 0;
+}

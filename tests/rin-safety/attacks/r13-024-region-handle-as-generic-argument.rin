@@ -1,0 +1,13 @@
+// T = alias of region permanent takes scratch as an argument, past the rule for a region parameter; the instance's new says permanent and x reads poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+ra: alias = region permanent;
+ta: proc<T>(a: T, q: *i32) -> *i32 in permanent = { return new<i32>(a, q*); }
+main: proc() -> i32 = {
+    x: *i32 in permanent = perm&;
+    scratch { x = ta<ra>(scratch, perm&); }
+    printfmt("{}\n", x*);
+    return 0;
+}

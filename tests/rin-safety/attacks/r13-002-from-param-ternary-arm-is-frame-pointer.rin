@@ -1,0 +1,17 @@
+// a ternary with one arm from a param sets from_param and skips the other arm's region, so the frame pointer comes back bare and q* after the block reads poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+boss: option<*i32 in frame> = null;
+f: proc(p: *i32, c: b32) -> *i32 = { return c ? unwrap(boss) : p; }
+main: proc() -> i32 = {
+    x: i32 = 0;
+    q: *i32 = x&;
+    frame: region = {
+        boss = new<i32>(frame, 5);
+        q = f(x&, 1);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

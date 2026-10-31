@@ -1,0 +1,14 @@
+// a table typed in permanent is carved from scratch through a reassigned handle; table add after the block writes poisoned memory
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+import "std/table.rin"
+f: proc(r: region R, s: region S) -> *table<i32> in R = { r = s; return table<i32>make(r, 4); }
+main: proc() -> i32 = {
+    t: *table<i32> in permanent = table<i32>make(permanent, 1);
+    scratch { t = f(permanent, scratch); }
+    i: index<i32> = table<i32>add(t, 1);
+    printfmt("{}\n", i.slot);
+    return 0;
+}

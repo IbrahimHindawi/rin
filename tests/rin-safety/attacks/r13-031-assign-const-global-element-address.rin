@@ -1,0 +1,13 @@
+// the const-memory rule does not run on assignment and the expression's type has no const: p = cg.a[0]&; p* writes read-only memory and faults
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+wa: struct = { a: [4]i32; }
+cg: const wa = { .a = { 1, 2, 3, 4 } };
+main: proc() -> i32 = {
+    p: *i32 = perm&;
+    p = cg.a[0]&;
+    p* = 5;
+    return 0;
+}

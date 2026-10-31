@@ -1,0 +1,13 @@
+// option<alias of region> is the struct option, zeroed by {} because a handle counts as no pointer; new reads through the null arena and faults
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+import "std/option.rin"
+ra: alias = region permanent;
+main: proc() -> i32 = {
+    o: option<ra> = {};
+    x: *i32 in permanent = new<i32>(o.value, 1);
+    printfmt("{}\n", x*);
+    return 0;
+}

@@ -1,0 +1,17 @@
+// one param in a returned local's paths sets from_param, so f may return a frame pointer as bare; the caller's q has no frame in its regions, and q* after the block reads poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+boss: option<*i32 in frame> = null;
+f: proc(p: *i32, c: b32) -> *i32 = { q: *i32 = p; if (c) { q = unwrap(boss); } return q; }
+main: proc() -> i32 = {
+    x: i32 = 0;
+    q: *i32 = x&;
+    frame: region = {
+        boss = new<i32>(frame, 5);
+        q = f(x&, 1);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

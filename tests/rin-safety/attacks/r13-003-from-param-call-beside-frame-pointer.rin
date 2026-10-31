@@ -1,0 +1,18 @@
+// a call given a param and a frame pointer sets from_param, so the bare result hides frame from the caller; q* after the block reads poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+boss: option<*i32 in frame> = null;
+pick: proc(a: *i32, b: *i32) -> *i32 = { return b; }
+f: proc(p: *i32) -> *i32 = { return pick(p, unwrap(boss)); }
+main: proc() -> i32 = {
+    x: i32 = 0;
+    q: *i32 = x&;
+    frame: region = {
+        boss = new<i32>(frame, 5);
+        q = f(x&);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

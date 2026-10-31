@@ -1,0 +1,4 @@
+// expect: it cannot be assigned
+level: region global;
+f: proc(r: region level, s: region level) -> void = { r = s; }
+main: proc() -> i32 = { return 0; }

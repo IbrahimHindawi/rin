@@ -1,0 +1,12 @@
+// [1] of an alias for region permanent takes scratch in its literal, past the local-handle rule; x says permanent and reads poison after the block
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+ra: alias = region permanent;
+main: proc() -> i32 = {
+    x: *i32 in permanent = perm&;
+    scratch { a: [1]ra = { scratch }; x = new<i32>(a[0], 1); }
+    printfmt("{}\n", x*);
+    return 0;
+}

@@ -1,0 +1,11 @@
+// a parameter takes the callee's own scratch handle: the returned *i32 in R is in an arena popped by the return itself, and reads poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+f: proc(r: region R) -> *i32 in R = { scratch { r = scratch; return new<i32>(r, 1); } return new<i32>(r, 1); }
+main: proc() -> i32 = {
+    x: *i32 in permanent = f(permanent);
+    printfmt("{}\n", x*);
+    return 0;
+}

@@ -1,0 +1,12 @@
+// a local array of handles is written with no check of its region: a[0] = s, then new says R and lands in S, and x reads poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+f: proc(r: region R, s: region S) -> *i32 in R = { a: [1]region R = { r }; a[0] = s; return new<i32>(a[0], 1); }
+main: proc() -> i32 = {
+    x: *i32 in permanent = perm&;
+    scratch { x = f(permanent, scratch); }
+    printfmt("{}\n", x*);
+    return 0;
+}

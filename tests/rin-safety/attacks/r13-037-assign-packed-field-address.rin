@@ -1,0 +1,13 @@
+// the packed rule does not run on assignment: q = gpk.b& is a misaligned *i32, and q* is reported by UBSan's alignment check
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+pk: struct[packed] = { a: u8; b: i32; }
+gpk: pk = {};
+main: proc() -> i32 = {
+    q: *i32 = perm&;
+    q = gpk.b&;
+    printfmt("{}\n", q*);
+    return 0;
+}

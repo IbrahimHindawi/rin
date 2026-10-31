@@ -1,0 +1,14 @@
+// as 037 with a slice: s = gpk.b; s[0] is a misaligned load reported by UBSan
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+pk: struct[packed] = { a: u8; b: [2]i32; }
+gpk: pk = {};
+main: proc() -> i32 = {
+    z: [1]i32 = {};
+    s: []i32 = z;
+    s = gpk.b;
+    printfmt("{}\n", s[0]);
+    return 0;
+}

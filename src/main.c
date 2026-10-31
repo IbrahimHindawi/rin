@@ -628,6 +628,8 @@ struct TypeExpr {
        A region parameter's name when the proc took `r: region R`. On a
        Type_Region, the region the value names. See docs/regions.md. */
     string8 region;
+    /* How long a borrowed result lasts, worked out from what the call was given. */
+    string8 region_from_args;
     /* `r: region R in level`: R is bound at each call to a region that lives
        no longer than level, so inside the proc, level outlives R. On a
        Type_Region only. */
@@ -1013,6 +1015,9 @@ typedef struct LocalDeclSite {
 } LocalDeclSite;
 
 typedef struct Parser {
+    /* The next type is a parameter's, the one place a region can be named as a value. */
+    bool region_type_ok;
+    bool region_type_here;
     memops_arena *arena;
     string8 source;
     Vec_Token tokens;
@@ -2484,6 +2489,8 @@ static void parse_region_suffix(Parser *p, TypeExpr *t) {
    The stub keeps the parser moving instead of unwinding into the same error at
    every level, which is what parse_expr does for the same reason. */
 static TypeExpr *parse_type(Parser *p) {
+    p->region_type_here = p->region_type_ok;
+    p->region_type_ok = false;
     if (p->type_depth >= RIN_MAX_TYPE_DEPTH) {
         if (!p->reported_depth) {
             p->reported_depth = true;
@@ -2592,6 +2599,7 @@ static TypeExpr *parse_type_inner(Parser *p) {
                 bool was_in_param = p->in_param_type;
                 p->in_param_type = true;
                 p->noalias_ok = true;
+                p->region_type_ok = true;
                 TypeExpr *arg = parse_type(p);
                 p->in_param_type = was_in_param;
                 if (parser_peek(p)->kind == Token_Equal) {
@@ -2744,6 +2752,10 @@ static TypeExpr *parse_type_inner(Parser *p) {
         /* `r: region R`: an arena handle whose region the type system calls R.
            R is bound at each call from what the caller passes. */
         Token *kw = parser_prev(p);
+        if (!p->region_type_here && g_safety) {
+            parser_error_token(p, kw, "a region is a parameter, 'r: region R', and nothing else: it cannot be stored, "
+                                      "cast, aliased, or held in an array or a generic");
+        }
         Token *name = parser_expect(p, Token_Identifier, "expected a region name after 'region', as in 'r: region R'");
         TypeExpr *t = type_new(p->arena, Type_Region);
         t->name = string8_from_cstr(p->arena, "region");
@@ -4862,6 +4874,7 @@ static ProcDecl *parse_proc_decl(Parser *p, Token *name_tok) {
             param->name = token_to_string8(p->arena, param_name);
             p->in_param_type = true;
             p->noalias_ok = true;
+            p->region_type_ok = true;
             param->type = parse_type(p);
             p->in_param_type = false;
             if (parser_peek(p)->kind == Token_LBracket) {
@@ -11102,6 +11115,7 @@ static TypeExpr *resolve_alias_type(Program *prog, TypeExpr *type);
 static TypeExpr *binary_numeric_result(Program *prog, memops_arena *arena, TypeExpr *left, LitKind lk,
                                        TypeExpr *right, LitKind rk, LitKind *kind);
 static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena, LitKind *kind);
+static TypeExpr *call_result_in_its_args_region(Program *prog, TypeExpr *ret, Expr *call, TypeScope *scope, memops_arena *arena);
 
 /* The element type of `[]T` (written `slice<T>` too), or null for anything else. */
 static TypeExpr *type_slice_elem(TypeExpr *type) {
@@ -11361,7 +11375,7 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
                 RegionBindings rb = call_region_bindings(prog, decl, e, scope, arena, false);
                 ret = regions_substitute(arena, ret, &rb);
             }
-            return ret;
+            return g_safety ? call_result_in_its_args_region(prog, ret, e, scope, arena) : ret;
         }
         TypeExpr *callee_type = type_scope_lookup(scope, e->name);
         TypeExpr *proc_type = type_proc_from_callable_type(prog, callee_type);
@@ -11911,6 +11925,7 @@ static bool type_compatible(Program *prog, TypeExpr *dst, TypeExpr *src) {
         if (dreg.length > 0) {
             if (!type_is_checked_pointer(prog, src)) return false;
             string8 sreg = type_region_of(prog, src);
+            if (sreg.length == 0) sreg = resolve_alias_type(prog, src)->region_from_args;
             if (sreg.length == 0 || !region_ge(prog, sreg, dreg)) return false;
         }
     }
@@ -15064,6 +15079,35 @@ static bool type_is_checked_pointer(Program *prog, TypeExpr *type) {
     return (type->kind == Type_Ptr && !type->is_raw) || type_slice_elem(type) != null;
 }
 
+static bool type_has_pointer_deep(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth);
+/* A result that names no region points into what the call was given, or at something that lasts for
+   good: a proc may not hand out anything else unsaid. So when every pointer given is in a region, the
+   result lasts as long as the shortest of them. That counts where it may be kept, and nowhere else: it
+   is still a borrow, as a pointer into a vec that can grow is. Anything less plain given, such as a raw pointer, an array
+   (which goes by address), or a struct with pointers inside, and the result stays borrowed. */
+static TypeExpr *call_result_in_its_args_region(Program *prog, TypeExpr *ret, Expr *call, TypeScope *scope, memops_arena *arena) {
+    if (!ret || !type_is_checked_pointer(prog, ret)) return ret;
+    if (type_region_of(prog, ret).length > 0) return ret;
+    string8 shortest = {0};
+    for (i32 i = 0; i < call->args.length; i++) {
+        TypeExpr *t = resolve_alias_type(prog, infer_expr_type((Expr *)call->args.data[i], scope, prog, arena));
+        if (!t) return ret;
+        if (t->kind == Type_Region) continue;
+        if (t->kind == Type_Array) return ret;
+        if (type_is_proc_pointer(prog, t)) continue;
+        if (!type_has_pointer_deep(prog, t, arena, 0)) continue;
+        if (!type_is_checked_pointer(prog, t)) return ret;
+        string8 r = type_region_of(prog, t);
+        if (r.length == 0) return ret;
+        if (shortest.length == 0 || region_ge(prog, shortest, r)) shortest = r;
+        else if (!region_ge(prog, r, shortest)) return ret;
+    }
+    if (shortest.length == 0) return ret;
+    TypeExpr *t = clone_type_expr(arena, resolve_alias_type(prog, ret));
+    t->region_from_args = shortest;
+    return t;
+}
+
 static void region_error(const char *format, string8 a, string8 b, i32 line, i32 col) {
     char message[640];
     snprintf(message, sizeof(message), format, (int)a.length, a.data, (int)b.length, b.data);
@@ -15419,6 +15463,7 @@ static bool region_flow_rejects(Program *prog, TypeExpr *dst, TypeExpr *src, i32
     if (type_is_void_pointer(s)) return false; // null
     if (!type_is_checked_pointer(prog, s)) return false;
     string8 sreg = type_region_of(prog, s);
+    if (sreg.length == 0) sreg = s->region_from_args;
     if (sreg.length == 0) {
         region_error("a borrowed pointer cannot be kept in region '%.*s'%.0s: nothing says how long it lives; "
                      "take or make it with a region, '*T in R'", dreg, (string8){0}, line, col);
@@ -18057,6 +18102,16 @@ static bool expr_place_is_temporary(Expr *e, TypeScope *scope, Program *prog, me
 
 /* A pointer, a slice or an array parameter made from a place: through a non-const one, safe
    code would write to memory that may be read-only; through a packed one, it may be misaligned. */
+/* An array parameter is the address of the caller's array, and a list there has none past the statement. */
+static void safety_check_list_for_array_param(TypeExpr *param, Expr *arg, Program *prog) {
+    if (!g_safe_body || !param || !arg) return;
+    TypeExpr *d = resolve_alias_type(prog, param);
+    if (d && d->kind == Type_Array && (arg->kind == Expr_InitList || arg->kind == Expr_CompoundInit)) {
+        type_error_message("this list is a temporary, gone at the end of the statement, and an array parameter is its "
+                           "address: store it in a local first", arg->line, arg->col);
+    }
+}
+
 static void safety_check_place_for_view(TypeExpr *dst, Expr *value, TypeScope *scope, Program *prog, memops_arena *arena) {
     if (!g_safe_body || !dst || !value) return;
     TypeExpr *d = resolve_alias_type(prog, dst);
@@ -18199,6 +18254,7 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
             type_check_initializer_against(arg, expected, scope, prog, arena);
             type_check_expr(arg, scope, prog, arena);
             TypeExpr *actual = infer_expr_type(arg, scope, prog, arena);
+            safety_check_list_for_array_param(expected, arg, prog);
             safety_check_place_for_view(expected, arg, scope, prog, arena);
             safety_check_proc_null(prog, expected, arg);
             if (expected && actual && region_flow_rejects(prog, expected, actual, arg ? arg->line : call->line, arg ? arg->col : call->col)) {
@@ -18232,6 +18288,7 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
         Expr *arg = (Expr *)call->args.data[0];
         type_check_expr(arg, scope, prog, arena);
         TypeExpr *t = resolve_alias_type(prog, infer_expr_type(arg, scope, prog, arena));
+        if (t) safety_check_place_for_view(t, arg, scope, prog, arena);
         if (!t || t->kind != Type_Ptr || t->is_raw) {
             type_error_message("must takes a 'option<*T>': it is how one becomes a '*T'", call->line, call->col);
             return;
@@ -18330,6 +18387,7 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
             type_check_initializer_against(arg, expected, scope, prog, arena);
             type_check_expr(arg, scope, prog, arena);
             TypeExpr *actual = infer_expr_type(arg, scope, prog, arena);
+            safety_check_list_for_array_param(expected, arg, prog);
             safety_check_place_for_view(expected, arg, scope, prog, arena);
             safety_check_proc_null(prog, expected, arg);
             if (expected && actual && region_flow_rejects(prog, expected, actual, arg ? arg->line : call->line, arg ? arg->col : call->col)) {
@@ -18464,6 +18522,7 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
         }
         if (g_safety) expected = regions_substitute(arena, expected, &region_bindings);
         Expr *arg = (Expr *)call->args.data[i];
+        safety_check_list_for_array_param(expected, arg, prog);
         safety_check_place_for_view(expected, arg, scope, prog, arena);
         /* With the callee's region variables bound, its parameter types must
            obey the rule in the caller's terms: this is where a generic
@@ -18623,6 +18682,12 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
     if (e->kind == Expr_Addr) {
         if (!expr_is_assignment_target(e->inner)) {
             type_error_address_target(e->inner, e->line, e->col);
+        }
+        {
+            TypeExpr *of = resolve_alias_type(prog, infer_expr_type(e->inner, scope, prog, arena));
+            if (g_safety && of && of->kind == Type_Region) {
+                type_error_message("a region is a parameter, and has no address to take", e->line, e->col);
+            }
         }
         type_check_expr(e->inner, scope, prog, arena);
         if (e->inner) e->inner->const_literal = null; // its address is the C variable's
@@ -19349,6 +19414,14 @@ static void type_check_stmt(
             pointer_one_violation("pointer arithmetic", resolve_alias_type(prog, expected), s->line, s->col);
         }
         if (s->assign_op == Token_Equal) safety_check_proc_null(prog, expected, s->expr);
+        if (g_safety && resolve_alias_type(prog, expected) && resolve_alias_type(prog, expected)->kind == Type_Region) {
+            type_error_message("a region parameter says what the call was given, and stays that: it cannot be assigned",
+                               s->line, s->col);
+        }
+        /* A pointer or a slice made here goes by the same rules as in a declaration. */
+        if (s->assign_op == Token_Equal && resolve_alias_type(prog, expected) && resolve_alias_type(prog, expected)->kind != Type_Array) {
+            safety_check_place_for_view(expected, s->expr, scope, prog, arena);
+        }
         if (g_safe_body && !g_checking_std && s->assign_op != Token_Equal) {
             TypeExpr *le = resolve_alias_type(prog, expected);
             TypeExpr *re = resolve_alias_type(prog, actual);
@@ -19404,15 +19477,9 @@ static void type_check_stmt(
                     Vec_string8 paths = Vec_string8_reserve(arena, 2);
                     Vec_string8 regions = Vec_string8_reserve(arena, 2);
                     borrow_paths_from_expr(s->expr, scope, prog, arena, &paths, &regions);
-                    /* Taken from what the caller passed, the caller knows already. */
-                    bool from_param = false;
-                    for (i32 i = 0; i < paths.length; i++) {
-                        string8 root = path_root(paths.data[i]);
-                        for (i32 j = 0; j < current_proc->params.length; j++) {
-                            if (string8_equals(&root, &((Param *)current_proc->params.data[j])->name)) from_param = true;
-                        }
-                    }
-                    for (i32 i = 0; i < regions.length && !from_param; i++) {
+                    TypeExpr *value_type = resolve_alias_type(prog, infer_expr_type(s->expr, scope, prog, arena));
+                    if (value_type && value_type->region.length > 0) Vec_string8_append(arena, &regions, value_type->region);
+                    for (i32 i = 0; i < regions.length; i++) {
                         if (region_rank(prog, regions.data[i]) >= 0 && !string8_equals_cstr(&regions.data[i], "permanent")) {
                             region_error("this points into region '%.*s', and the caller has to know: say so, '-> *T in "
                                          "%.*s'", regions.data[i], regions.data[i], s->line, s->col);
@@ -20931,6 +20998,9 @@ static void rewrite_printfmt_call_stmt_inner(Stmt *stmt, TypeScope *scope, Progr
         if (n) {
             printfmt_append_print_cstr(arena, out, stmt, lit.data + chunk_start, i - chunk_start, fmt->line, fmt->col);
             Expr *arg = (Expr *)call->args.data[arg_index + 1];
+            if (width.length > 6) {
+                printfmt_error_at(stmt->source_path, arg->line, arg->col, "a width or precision this long is more than C's printf takes");
+            }
             const char *spec = width.length > 0 ? printfmt_spec_for_type(prog, infer_expr_type(arg, scope, prog, arena)) : null;
             if (width.length > 0 && !spec) {
                 printfmt_error_at(stmt->source_path, arg->line, arg->col,

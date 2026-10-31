@@ -1,0 +1,13 @@
+// a parameter typed as permanent through an alias still takes any handle by assignment: new in r says permanent and lands in scratch, and x reads poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+ra: alias = region permanent;
+f: proc(r: ra, s: region S) -> *i32 in permanent = { r = s; return new<i32>(r, 1); }
+main: proc() -> i32 = {
+    x: *i32 in permanent = perm&;
+    scratch { x = f(permanent, scratch); }
+    printfmt("{}\n", x*);
+    return 0;
+}

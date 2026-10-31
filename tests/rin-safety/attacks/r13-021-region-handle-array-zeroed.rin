@@ -1,0 +1,10 @@
+// a zeroed array of handles passes the zero rule, so new reads through a null arena and faults
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+f: proc(r: region R) -> *i32 in R = { a: [1]region R = {}; return new<i32>(a[0], 1); }
+main: proc() -> i32 = {
+    printfmt("{}\n", f(permanent)*);
+    return 0;
+}

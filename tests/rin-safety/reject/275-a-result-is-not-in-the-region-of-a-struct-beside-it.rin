@@ -1,0 +1,12 @@
+// expect: a borrowed pointer cannot be kept in region 'level'
+// A struct given by value holds a pointer the result may be.
+level: region global;
+holder: struct = { p: *i32; }
+pick: proc(a: *i32, h: holder) -> *i32 = { return h.p; }
+keep: proc(r: region level) -> *i32 in level = {
+    n: *i32 in level = new<i32>(r);
+    x: i32 = 0;
+    h: holder = { x& };
+    return pick(n, h);
+}
+main: proc() -> i32 = { return 0; }

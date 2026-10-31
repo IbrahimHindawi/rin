@@ -1,0 +1,12 @@
+// r& gives a *region R, and a write through it changes the handle with nothing said about R; x reads poison after the block
+import "std/print.rin"
+level: region global;
+frame: region in level;
+perm: i32 = 7;
+f: proc(r: region R, s: region S) -> *i32 in R = { p: *region R = r&; p* = s; return new<i32>(r, 1); }
+main: proc() -> i32 = {
+    x: *i32 in permanent = perm&;
+    scratch { x = f(permanent, scratch); }
+    printfmt("{}\n", x*);
+    return 0;
+}
