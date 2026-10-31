@@ -1,0 +1,12 @@
+// Same unchecked printfmt-only instance: cast(b.x, i32) on f64 1e300 emits a bare (i32)(b.x) instead of rin_f2i saturation. UBSan: float-cast-overflow.
+import "std/print.rin"
+box: struct<T> = { x: T; }
+print: proc<box<T>>(b: box<T>) -> void = {
+    n: i32 = cast(b.x, i32);
+    print<i32>(n);
+}
+main: proc() -> i32 = {
+    b: box<f64> = { .x = 1e300 };
+    printfmt("{}\n", b);
+    return 0;
+}

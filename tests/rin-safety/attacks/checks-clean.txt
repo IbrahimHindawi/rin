@@ -210,3 +210,8 @@ r8-s-025-generic-literal-index-varies-unchecked.rin
 r8-s-026-generic-literal-range-varies-unchecked.rin
 r8-s-027-generic-cstr-of-copy-count-last-instance.rin
 r8-s-028-generic-narrow-cast-applied-to-float-instance.rin
+r8-r-001-printfmt-instance-array-oob-write.rin
+r8-r-002-printfmt-instance-float-cast-overflow.rin
+r8-r-003-printfmt-instance-signed-overflow.rin
+r8-r-004-printfmt-instance-global-array-oob.rin
+r8-r-005-printfmt-instance-transitive-generic-oob.rin

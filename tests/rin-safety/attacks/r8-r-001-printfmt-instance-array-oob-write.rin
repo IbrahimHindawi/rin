@@ -1,0 +1,14 @@
+// print<box<T>> is instantiated only by the printfmt rewrite, which runs after type_check_program, so its body is never checked and emits a[i] with no RIN_INDEX: a[100000] into a [4]i32 stack array. ASan: stack-buffer-overflow (write).
+import "std/print.rin"
+box: struct<T> = { x: T; }
+print: proc<box<T>>(b: box<T>) -> void = {
+    a: [4]i32 = {};
+    i: u64 = cast(b.x, u64);
+    a[i] = 1234;
+    print<i32>(a[i]);
+}
+main: proc() -> i32 = {
+    b: box<i32> = { .x = 100000 };
+    printfmt("{}\n", b);
+    return 0;
+}

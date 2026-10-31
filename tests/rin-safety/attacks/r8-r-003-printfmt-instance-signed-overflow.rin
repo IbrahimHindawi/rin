@@ -1,0 +1,13 @@
+// Same unchecked printfmt-only instance: a*a on i32 2e9 emits (a * a) instead of the ((i32)((u32)a*(u32)a)) wrap a checked body gets. UBSan: signed-integer-overflow.
+import "std/print.rin"
+box: struct<T> = { x: T; }
+print: proc<box<T>>(b: box<T>) -> void = {
+    a: i32 = cast(b.x, i32);
+    r: i32 = a * a;
+    print<i32>(r);
+}
+main: proc() -> i32 = {
+    b: box<i32> = { .x = 2000000000 };
+    printfmt("{}\n", b);
+    return 0;
+}

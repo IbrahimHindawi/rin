@@ -916,6 +916,10 @@ struct ProcDecl {
        that differs between instances, so each has a copy; `body` stays as parsed. */
     Vec_string8 instance_keys;
     Vec_voidptr instance_bodies; // Vec_voidptr*
+    /* `body` before printfmt was rewritten in it, for an instance that only the rewrite
+       brought into being: the checker reads what the program wrote. */
+    Vec_voidptr parsed_body;
+    bool has_parsed_body;
     bool no_move; // proc[no_move]: std says this trusted body moves nothing
     string8 specialized_from; // `hash: proc<point>`: hash
     bool noalias_contained; // reaches memory only through its parameters and what it allocates
@@ -19156,9 +19160,10 @@ static Vec_voidptr *proc_instance_body(ProcDecl *p, TypeSub sub, bool make, memo
     i32 found = string8_vec_find(&p->instance_keys, key);
     if (found >= 0) return (Vec_voidptr *)p->instance_bodies.data[found];
     if (!make) return null;
+    Vec_voidptr *from = p->has_parsed_body ? &p->parsed_body : &p->body;
     Vec_voidptr *body = memops_arena_push_struct(arena, Vec_voidptr);
-    *body = ptr_array_reserve(arena, p->body.length > 0 ? p->body.length : 1);
-    for (i32 i = 0; i < p->body.length; i++) ptr_array_append(arena, body, clone_stmt(arena, (Stmt *)p->body.data[i]));
+    *body = ptr_array_reserve(arena, from->length > 0 ? from->length : 1);
+    for (i32 i = 0; i < from->length; i++) ptr_array_append(arena, body, clone_stmt(arena, (Stmt *)from->data[i]));
     Vec_string8_append(arena, &p->instance_keys, key);
     ptr_array_append(arena, &p->instance_bodies, body);
     return body;
@@ -19373,6 +19378,10 @@ static void safety_check_trusted_instance(Program *prog, ProcDecl *p, TypeSub su
     }
 }
 
+static i32 g_region_instance_next;
+static TypeScope g_check_globals;
+static bool g_new_instances_checked;
+
 static void type_check_generic_proc_instances(
     Program *prog,
     TypeScope *globals,
@@ -19389,6 +19398,8 @@ static void type_check_generic_proc_instances(
         for (i32 j = 0; j < instances.length; j++) {
             TypeExpr *arg = mangle_type_for(arena, sub_instances.data[j]);
             TypeSub sub = proc_sub_for_instance(arena, p, instances.data[j], arg);
+            if (proc_instance_body(p, sub, false, arena)) continue; // checked by an earlier pass
+            g_new_instances_checked = true;
             /* Spelled in the call or worked out from an argument. An alias is fine: it
                stays a typedef in C, which has the whole type. */
             for (i32 k = 0; k < sub.args.length; k++) {
@@ -19407,8 +19418,8 @@ static void type_check_generic_proc_instances(
         }
     }
     /* Grows as it goes: a body may call another generic with what it was given. */
-    for (i32 i = 0; i < g_region_instances.length; i++) {
-        RegionInstance *inst = (RegionInstance *)g_region_instances.data[i];
+    for (; g_region_instance_next < g_region_instances.length; g_region_instance_next++) {
+        RegionInstance *inst = (RegionInstance *)g_region_instances.data[g_region_instance_next];
         g_instance_regions = Vec_string8_reserve(arena, 4);
         for (i32 k = 0; k < inst->sub.args.length; k++) {
             type_collect_regions(prog, (TypeExpr *)inst->sub.args.data[k], &g_instance_regions, arena, 0);
@@ -19552,12 +19563,23 @@ static void type_check_program(Program *prog, memops_arena *arena) {
     }
 
     type_check_generic_proc_instances(prog, &globals, arena);
+    g_check_globals = globals;
     if (g_mangle_collision.data) {
         char message[256];
         snprintf(message, sizeof(message), "two different types get the C name '%.*s', and C would use one for both: "
                  "rename one of them", (int)g_mangle_collision.length, g_mangle_collision.data);
         type_error_message(message, 1, 1);
     }
+}
+
+/* Rewriting printfmt can call what nothing called before: `print<box<i32>>` exists only
+   once a format picks it. The emitter depends on what the checker wrote on each instance's
+   body, bounds checks among it, so these are checked like the rest. */
+static bool type_check_new_instances(Program *prog, memops_arena *arena) {
+    g_generic_cache_ready = false;
+    g_new_instances_checked = false;
+    type_check_generic_proc_instances(prog, &g_check_globals, arena);
+    return g_new_instances_checked;
 }
 
 static const char *printfmt_path(const char *path) {
@@ -20186,6 +20208,10 @@ static void rewrite_printfmt_formats(Program *prog, memops_arena *arena) {
                 string8 record = concat_name2(arena, p->type_params.data[j], "_", string8_from_cstr(arena, "reflect"));
                 type_scope_add(arena, &scope, record, reflect_global_type(arena, "reflect"));
             }
+        }
+        if (p->is_generic && !p->has_parsed_body) {
+            p->parsed_body = clone_stmt_list(arena, &p->body);
+            p->has_parsed_body = true;
         }
         rewrite_printfmt_body(&p->body, &scope, prog, arena);
         for (i32 j = 0; j < p->instance_bodies.length; j++) {
@@ -22263,7 +22289,15 @@ static void emit_proc_body(memops_arena *arena, string8 *out, ProcDecl *decl, Ty
         emit_cstr(arena, out, ";\n");
     }
     Vec_voidptr *emitted_body = proc_instance_body(decl, sub, false, arena);
-    if (!emitted_body) emitted_body = &decl->body;
+    if (!emitted_body) {
+        if (decl->is_generic && sub.has && !decl->is_external) {
+            g_diag_source_path = decl->source_path;
+            type_error_message("internal: this generic instance was reached only when writing C, so nothing checked "
+                               "it and its bounds checks are missing; please report this", decl->line, decl->col);
+            exit(1); // with nothing more written: a build must not go on with this body
+        }
+        emitted_body = &decl->body;
+    }
     for (i32 i = 0; i < emitted_body->length; i++) {
         emit_cstr(arena, out, "    ");
         emit_stmt(arena, out, (Stmt *)emitted_body->data[i], sub, generic_name);
@@ -25548,6 +25582,13 @@ i32 main(i32 argc, char *argv[]) {
     type_check_program(&prog, &arena);
     profile_mark("type check", &profile_last, profile_start);
     rewrite_printfmt_formats(&prog, &arena);
+    for (i32 round = 0; type_check_new_instances(&prog, &arena); round++) {
+        if (round >= 32) {
+            type_error_message("generic instances keep making more through printfmt, so they cannot all be checked", 1, 1);
+            break;
+        }
+        rewrite_printfmt_formats(&prog, &arena);
+    }
     profile_mark("printfmt rewrite", &profile_last, profile_start);
     /* Every semantic and type diagnostic has been reported by here, so nothing is
        generated if any of them failed. */
