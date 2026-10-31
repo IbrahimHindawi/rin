@@ -106,6 +106,7 @@ Next, in the order that pays:
    `system`, pointer-to-array element codegen, threads, which safe code has no way to
    start.
 
-The claim that holds today: a rin program with no `unsafe { }` or `[unsafe]` of its own
-has no known memory error after four attack rounds, provided std and the C it calls
-are correct. What it still needs is that argument and strangers.
+The claim, and exactly what it excludes, is in `rin/docs/soundness.md`. Seven attack rounds have run. Rounds five to
+seven each found dozens of holes in safe code and all are closed, but they have not slowed down, so expect more.
+Before calling it safe: a fresh round per new rule, `tests/gen_rin_safe.py` with `run_rin_vm.py --compare`, and strangers.
+Windows Sandbox opens a window the user sees; ask before running it.
