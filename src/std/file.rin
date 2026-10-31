@@ -72,9 +72,9 @@ file_close: proc(f: file) -> void = {
     file_table_generation[f.slot] += 1;
 }
 
-file_end_: proc[unsafe](arg: ^void) -> void = { unsafe {
+file_end_: proc[unsafe](arg: ^void) -> void = {
     file_close(cast(arg, ^file)[0]);
-} }
+}
 
 /* A file that closes when the region ends, whichever way it ends. */
 file_open_in: proc(r: region R, path: ^const char, mode: ^const char) -> file = { unsafe {

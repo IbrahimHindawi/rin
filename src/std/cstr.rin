@@ -281,7 +281,7 @@ cstr_parse_f64: proc(s: ^const c8, out: *f64) -> b32 = { unsafe {
    Like strtok it writes a terminator into the buffer, so the input must be
    mutable. An empty `delims` returns the whole remainder, which is how the
    callers get "the rest of the line". */
-cstr_token: proc[unsafe](s: ^c8, cursor: *u64, delims: ^const c8) -> ^c8 = { unsafe {
+cstr_token: proc[unsafe](s: ^c8, cursor: *u64, delims: ^const c8) -> ^c8 = {
     if (s == null || cursor == null) {
         return null;
     }
@@ -311,4 +311,4 @@ cstr_token: proc[unsafe](s: ^c8, cursor: *u64, delims: ^const c8) -> ^c8 = { uns
     }
     cursor* = i;
     return s[start]&;
-} }
+}

@@ -39,54 +39,54 @@ table<T>make: proc<T>(r: region R, capacity: u32) -> *table<T> in R = { unsafe {
 } }
 
 /* A full table gives back the empty index, which finds nothing. */
-table<T>add: proc[no_move]<T>(t: *table<T>, value: T) -> index<T> = { unsafe {
+table<T>add: proc[no_move]<T>(t: *table<T>, value: T) -> index<T> = {
     none: index<T> = {};
     if (t*.free_head >= t*.capacity) {
         return none;
     }
     slot: u32 = t*.free_head;
-    t*.free_head = t*.next_free[slot];
-    t*.generations[slot] += 1;
-    t*.data[slot] = value;
+    unsafe { t*.free_head = t*.next_free[slot]; }
+    unsafe { t*.generations[slot] += 1; }
+    unsafe { t*.data[slot] = value; }
     t*.count += 1;
     out: index<T> = {};
     out.slot = slot;
-    out.generation = t*.generations[slot];
+    unsafe { out.generation = t*.generations[slot]; }
     return out;
-} }
+}
 
-table<T>has: proc[no_move]<T>(t: *const table<T>, i: index<T>) -> b32 = { unsafe {
+table<T>has: proc[no_move]<T>(t: *const table<T>, i: index<T>) -> b32 = {
     if (i.slot >= t*.capacity || (i.generation & 1) == 0) {
         return 0;
     }
-    return t*.generations[i.slot] == i.generation;
-} }
+    unsafe { return t*.generations[i.slot] == i.generation; }
+}
 
-table<T>get: proc[no_move]<T>(t: *table<T>, i: index<T>) -> option<*T> = { unsafe {
+table<T>get: proc[no_move]<T>(t: *table<T>, i: index<T>) -> option<*T> = {
     if (!table<T>has(t, i)) {
         return null;
     }
-    return t*.data[i.slot]&;
-} }
+    unsafe { return t*.data[i.slot]&; }
+}
 
-table<T>get_const: proc[no_move]<T>(t: *const table<T>, i: index<T>) -> option<*const T> = { unsafe {
+table<T>get_const: proc[no_move]<T>(t: *const table<T>, i: index<T>) -> option<*const T> = {
     if (!table<T>has(t, i)) {
         return null;
     }
-    return t*.data[i.slot]&;
-} }
+    unsafe { return t*.data[i.slot]&; }
+}
 
 /* False if it was already gone. */
-table<T>remove: proc[no_move]<T>(t: *table<T>, i: index<T>) -> b32 = { unsafe {
+table<T>remove: proc[no_move]<T>(t: *table<T>, i: index<T>) -> b32 = {
     if (!table<T>has(t, i)) {
         return 0;
     }
-    t*.generations[i.slot] += 1;
-    t*.next_free[i.slot] = t*.free_head;
+    unsafe { t*.generations[i.slot] += 1; }
+    unsafe { t*.next_free[i.slot] = t*.free_head; }
     t*.free_head = i.slot;
     t*.count -= 1;
     return 1;
-} }
+}
 
 table<T>count: proc[no_move]<T>(t: *const table<T>) -> u32 = {
     return t*.count;
