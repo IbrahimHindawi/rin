@@ -1,0 +1,28 @@
+import "std/print.rin"
+import "std/vec.rin"
+
+/* What a branch that returned did is not what the code after the if sees. */
+first_unless: proc(v: *vec<i32>, c: b32) -> i32 = {
+    p: *i32 = vec<i32>at(v, 0);
+    if (c) {
+        _ = vec<i32>push(v, 1);
+        return 0;
+    }
+    return p*;
+}
+else_leaves: proc(v: *vec<i32>, c: b32) -> i32 = {
+    p: *i32 = vec<i32>at(v, 0);
+    if (c) {
+        c = 0;
+    } else {
+        _ = vec<i32>push(v, 1);
+        return 0;
+    }
+    return p*;
+}
+main: proc() -> i32 = {
+    v: *vec<i32> in permanent = vec<i32>make(permanent, 1);
+    _ = vec<i32>push(v, 42);
+    printfmt("{} {}\n", first_unless(v, 0), else_leaves(v, 1));
+    return 0;
+}

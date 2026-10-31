@@ -17528,7 +17528,17 @@ static void type_check_stmt(
             }
         }
         BorrowState after_else = borrows_save(arena);
-        borrows_join(&before, &after_then, &after_else);
+        /* A branch that always leaves does not reach what follows: a `break` or
+           `continue` in it has already recorded its state with the loop. */
+        bool then_leaves = stmt_list_ends_in_jump(&s->if_then_body);
+        bool else_leaves = !s->if_else_if && s->if_else_body.length > 0 && stmt_list_ends_in_jump(&s->if_else_body);
+        if (then_leaves && !else_leaves) {
+            borrows_restore(&after_else);
+        } else if (else_leaves && !then_leaves) {
+            borrows_restore(&after_then);
+        } else {
+            borrows_join(&before, &after_then, &after_else);
+        }
         g_diag_source_path = prev_diag_source_path;
         g_diag_import_chain = prev_diag_import_chain;
         return;
@@ -18226,6 +18236,11 @@ static void printfmt_append_print_arg(memops_arena *arena, Vec_voidptr *out, Stm
        reflection record every enum already has. A print<E> written by hand
        still wins, so a project that wants its own spelling keeps it. */
     TypeExpr *resolved = type ? resolve_alias_type(prog, type) : null;
+    if (resolved && type_slice_elem(resolved)) {
+        printfmt_error_at(source ? source->source_path : null, arg->line, arg->col,
+                          "printfmt does not print a slice; print its elements, or for chars, 'cstr_of(s)'");
+        return;
+    }
     if (resolved && resolved->kind == Type_Ptr && !printfmt_spec_for_type(prog, type)) {
         printfmt_error_at(source ? source->source_path : null, arg->line, arg->col,
                           "printfmt does not print a pointer; print what it points at, 'p*', or compare it with null");

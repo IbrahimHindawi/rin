@@ -1,0 +1,11 @@
+// expect: may be stale
+import "std/vec.rin"
+use: proc(v: *vec<i32>, c: b32) -> i32 = {
+    p: *i32 = vec<i32>at(v, 0);
+    while (1) {
+        if (c) { _ = vec<i32>push(v, 1); break; }
+        c = 1;
+    }
+    return p*;
+}
+main: proc() -> i32 = { return 0; }
