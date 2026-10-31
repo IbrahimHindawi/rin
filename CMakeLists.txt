@@ -23,7 +23,9 @@ add_executable(${PROJECT_NAME}
     src/string8slice.c
 )
 add_dependencies(${PROJECT_NAME} haikal)
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+# A target of its own and not a post-build step of rin: a change to std alone relinks
+# nothing, and a post-build step would leave the old std beside the compiler.
+add_custom_target(rin_std ALL
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/src/std"
         "$<TARGET_FILE_DIR:${PROJECT_NAME}>/std"
@@ -35,6 +37,8 @@ if (RIN_PACKAGE)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:${PROJECT_NAME}>"
             "${RIN_PACKAGE_DIR}/rin.exe"
+    )
+    add_custom_command(TARGET rin_std POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_SOURCE_DIR}/src/std"
             "${RIN_PACKAGE_DIR}/std"
