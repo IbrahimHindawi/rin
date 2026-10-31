@@ -21342,19 +21342,6 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
 
     g_emit_regions = &prog->regions;
 
-    for (i32 i = 0; i < prog->globals.length; i++) {
-        Stmt *s = (Stmt *)prog->globals.data[i];
-        emit_line_directive_path(arena, out, s->source_path, s->line);
-        if (s->is_external) {
-            /* C owns the definition and its own header declares it; anything
-               emitted here would be a second declaration with a linkage of
-               rin's choosing rather than C's. See docs/attributes.md. */
-            continue;
-        }
-        emit_stmt(arena, out, s, (TypeSub){0}, (string8){0});
-    }
-    emit_cstr(arena, out, "\n");
-
     // prototypes for non-generic procs
     for (i32 i = 0; i < prog->procs.length; i++) {
         ProcDecl *decl = (ProcDecl *)prog->procs.data[i];
@@ -21379,6 +21366,20 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
         }
     }
 
+    emit_cstr(arena, out, "\n");
+
+    /* After the prototypes, so an initializer can name a proc declared later. */
+    for (i32 i = 0; i < prog->globals.length; i++) {
+        Stmt *s = (Stmt *)prog->globals.data[i];
+        emit_line_directive_path(arena, out, s->source_path, s->line);
+        if (s->is_external) {
+            /* C owns the definition and its own header declares it; anything
+               emitted here would be a second declaration with a linkage of
+               rin's choosing rather than C's. See docs/attributes.md. */
+            continue;
+        }
+        emit_stmt(arena, out, s, (TypeSub){0}, (string8){0});
+    }
     emit_cstr(arena, out, "\n");
 
     if (g_uses_must) {

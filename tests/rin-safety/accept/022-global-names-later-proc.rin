@@ -1,0 +1,10 @@
+import "std/print.rin"
+
+/* An initializer may name a proc declared after it. */
+table: struct = { run: *proc(v: i32) -> i32; }
+g_table: table = { .run = twice };
+twice: proc(v: i32) -> i32 = { return v * 2; }
+main: proc() -> i32 = {
+    printfmt("{}\n", g_table.run(21));
+    return 0;
+}
