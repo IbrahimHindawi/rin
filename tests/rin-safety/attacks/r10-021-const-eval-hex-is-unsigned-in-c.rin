@@ -1,0 +1,2 @@
+// const_eval folds in i64, but 0x80000000 is unsigned in C: it says the divisor is 2147483647, C works out 0x80000001u / 0xFFFFFFFFu = 0, and a "safe" divisor means plain `/`. UBSan: division by zero.
+main: proc() -> i32 = { x: i32 = 5; return x / ((1 - 0x80000000) / (0x80000000 - 0x80000001)); }

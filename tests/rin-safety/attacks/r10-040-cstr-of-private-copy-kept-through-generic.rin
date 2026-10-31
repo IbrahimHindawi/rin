@@ -1,0 +1,7 @@
+// As 038 with cstr_of's private copy, a compound literal in use's frame: g points at a dead frame. ASan: stack-use-after-return in cstr_length.
+import "std/print.rin"
+import "std/cstr.rin"
+g: ^const c8 = null;
+keepg: proc<T>(s: T) -> void = { g = s; }
+use: proc() -> u64 = { a: [8]c8 = { 97, 0, 0, 0, 0, 0, 0, 0 }; keepg<^const c8>(cstr_of(a)); return 0; }
+main: proc() -> i32 = { n: u64 = use(); printfmt("{}\n", cstr_length(g)); return 0; }

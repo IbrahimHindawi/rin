@@ -1,0 +1,9 @@
+// A #define above a field is emitted in place, not in preprocessor_lines: no duplicate check. The array was declared with N = 2, and RIN_INDEX(i, N) after it reads N = 1000. ASan: global-buffer-overflow.
+#define N 2
+T: struct = { a: [N]i32; }
+U: struct = {
+#define N 1000
+    x: i32;
+}
+g: T = {};
+main: proc() -> i32 = { i: i32 = 500; g.a[i] = 1; return g.a[i]; }

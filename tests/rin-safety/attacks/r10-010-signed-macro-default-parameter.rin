@@ -1,0 +1,4 @@
+// A parameter default is checked the same way, and is emitted at the call: f((1 / Z)). UBSan: division by zero.
+#define Z -0
+f: proc(x: i32 = 1 / Z) -> i32 = { return x; }
+main: proc() -> i32 = { return f(); }

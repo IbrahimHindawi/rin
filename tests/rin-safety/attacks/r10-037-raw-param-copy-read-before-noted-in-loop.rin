@@ -1,0 +1,16 @@
+// raw_param_note_local works forward, so `g = q` is checked before q is known to hold s; the second time round the loop g keeps it. ASan: use-after-poison in cstr_length.
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/cstr.rin"
+level: region;
+g: ^const c8 = null;
+keep: proc(s: ^const c8) -> void = { q: ^const c8 = null; for (i: i32 = 0; i < 2; i += 1) { g = q; q = s; } }
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 16);
+        fmt_cstr(f, "hello");
+        keep(fmt_text(f));
+    }
+    printfmt("{}\n", cstr_length(g));
+    return 0;
+}

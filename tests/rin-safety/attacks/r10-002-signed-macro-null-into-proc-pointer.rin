@@ -1,0 +1,4 @@
+// "a macro's value does not become a pointer" lists Type_Ptr and slices, not a proc; safety_check_proc_null sees only literals. A signed macro makes a plain proc pointer null. ASan: SEGV at pc 0.
+#define Z -0
+F: alias = proc() -> i32;
+main: proc() -> i32 = { p: F = Z; return p(); }

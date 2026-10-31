@@ -1,0 +1,2 @@
+// Unary minus notes no arithmetic when its operand has a literal kind, and `~2147483647` has one yet is INT_MIN in C: `-~2147483647`. UBSan: signed integer overflow.
+main: proc() -> i32 = { x: i32 = -~2147483647; return x; }

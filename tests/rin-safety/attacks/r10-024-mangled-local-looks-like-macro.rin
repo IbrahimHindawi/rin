@@ -1,0 +1,3 @@
+// const_eval's Name case ignores scope. A local `auto` is emitted rin_auto, so C's macro does not touch it, but emit_binary_expr reads it as the macro, 7: a safe divisor, plain `5 / rin_auto`. UBSan: division by zero.
+#define auto 7
+main: proc() -> i32 = { auto: i32 = 0; return 5 / auto; }

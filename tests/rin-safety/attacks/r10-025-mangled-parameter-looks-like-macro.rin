@@ -1,0 +1,4 @@
+// As 024 with a parameter named register, emitted rin_register: `5 % rin_register`, given 0. UBSan: division by zero.
+#define register 7
+f: proc(register: i32) -> i32 = { return 5 % register; }
+main: proc() -> i32 = { return f(0); }

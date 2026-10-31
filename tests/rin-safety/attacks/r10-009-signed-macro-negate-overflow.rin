@@ -1,0 +1,3 @@
+// `-(Z - y)` with no type: neither the subtraction nor the negation has an arith_note, and Z - y is INT_MIN. UBSan: signed integer overflow.
+#define Z -2147483647
+main: proc() -> i32 = { y: i32 = 1; return -(Z - y); }

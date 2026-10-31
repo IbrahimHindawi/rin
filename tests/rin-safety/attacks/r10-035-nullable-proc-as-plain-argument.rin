@@ -1,0 +1,5 @@
+// As 034 at a call, so a callee with a checked signature calls null. ASan: SEGV at pc 0.
+F: alias = proc() -> i32;
+h: proc() -> i32 = { return 1; }
+tk: proc(f: F) -> i32 = { return f(); }
+main: proc() -> i32 = { o: ?*proc() -> i32 = null; return tk(o); }

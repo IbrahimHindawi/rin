@@ -1,0 +1,3 @@
+// As 013 per instance: the divisor is 0 only for T = i32, in a generic with no literal in sight. UBSan: division by zero.
+d: proc<T>() -> i32 = { return 1 / (sizeof(T) - 4); }
+main: proc() -> i32 = { return d<i32>(); }

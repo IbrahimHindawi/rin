@@ -1,0 +1,4 @@
+// safety_check_proc_null is asked at a declaration, a return and a call, not on the Stmt_Assign path: `f = null`. ASan: SEGV at pc 0.
+F: alias = proc() -> i32;
+h: proc() -> i32 = { return 1; }
+main: proc() -> i32 = { f: F = h; f = null; return f(); }

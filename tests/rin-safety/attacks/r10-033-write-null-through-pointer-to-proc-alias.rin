@@ -1,0 +1,4 @@
+// `*alias_of_proc`: `q* = null` writes the proc pointer it is a ** to in C. ASan: SEGV at pc 0.
+F: alias = proc() -> i32;
+h: proc() -> i32 = { return 1; }
+main: proc() -> i32 = { f: F = h; q: *F = f&; q* = null; return f(); }

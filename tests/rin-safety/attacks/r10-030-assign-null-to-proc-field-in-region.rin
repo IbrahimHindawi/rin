@@ -1,0 +1,6 @@
+// As 029 through a field in a region. ASan: SEGV at pc 0.
+F: alias = proc() -> i32;
+h: proc() -> i32 = { return 1; }
+S: struct = { f: F; }
+mk: proc() -> *S in permanent = { return new<S>(permanent, { .f = h }); }
+main: proc() -> i32 = { s: *S in permanent = mk(); s*.f = null; return s*.f(); }

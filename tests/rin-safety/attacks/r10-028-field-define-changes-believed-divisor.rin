@@ -1,0 +1,7 @@
+// program_macro_number finds the top-level D, 1, so the divisor is safe and `/` is plain; C has D = 0 by then. UBSan: division by zero.
+#define D 1
+U: struct = {
+#define D 0
+    x: i32;
+}
+main: proc() -> i32 = { x: i32 = 5; return x / D; }

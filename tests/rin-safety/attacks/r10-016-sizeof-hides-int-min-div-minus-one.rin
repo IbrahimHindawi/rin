@@ -1,0 +1,2 @@
+// Literal because of the sizeof: `~2147483647` is INT_MIN, the +4 and -4 land back on it, and it divides by -1 in plain C. UBSan: division overflow.
+main: proc() -> i32 = { return (sizeof(i32) + ~2147483647 - 4) / -1; }

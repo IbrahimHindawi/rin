@@ -1,0 +1,3 @@
+// As 005 through +=: the emitter writes `*(u32 *)&x += (u32)(Z)`. UBSan: float-cast-overflow.
+#define Z -1e30
+main: proc() -> i32 = { x: i32 = 1; x += Z; return x; }

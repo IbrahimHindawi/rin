@@ -1,0 +1,4 @@
+// As 003 with -1: plain `x / -1`, x = INT_MIN at run time. UBSan: division overflow.
+#define Z -1
+small: proc() -> i32 = { return -2147483647 - 1; }
+main: proc() -> i32 = { x: i32 = small(); return x / Z; }

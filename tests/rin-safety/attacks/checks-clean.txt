@@ -211,3 +211,13 @@ r9-f-025-const-eval-divisor-wraps-to-minus-one.rin
 r9-f-037-static-slice-counted-as-stable.rin
 r9-t-060-cstr-ends-with-null.rin
 r5-e-032-named-const-slice-coerce.rin
+r10-013-sizeof-divisor-zero.rin
+r10-014-alignof-remainder-zero.rin
+r10-015-sizeof-product-overflows-int.rin
+r10-016-sizeof-hides-int-min-div-minus-one.rin
+r10-017-sizeof-of-T-divisor-in-generic.rin
+r10-018-sizeof-default-parameter.rin
+r10-019-negate-literal-kind-int-min.rin
+r10-020-negate-ternary-of-literals.rin
+r10-021-const-eval-hex-is-unsigned-in-c.rin
+r10-022-const-eval-hex-compound-divide.rin

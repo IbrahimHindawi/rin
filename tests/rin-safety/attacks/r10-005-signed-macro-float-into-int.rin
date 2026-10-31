@@ -1,0 +1,3 @@
+// A signed float macro has no type, so "a float does not become an integer" never asks: C converts -1e30 to int. UBSan: float-cast-overflow.
+#define Z -1e30
+main: proc() -> i32 = { x: i32 = Z; return x; }

@@ -1,0 +1,3 @@
+// No type, no arith_note: `Z + y` is plain int arithmetic with Z = +2147483647. UBSan: signed integer overflow.
+#define Z +2147483647
+main: proc() -> i32 = { y: i32 = 1; return Z + y; }

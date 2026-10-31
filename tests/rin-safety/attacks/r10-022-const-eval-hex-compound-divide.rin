@@ -1,0 +1,2 @@
+// As 021 through /=, where emit_defined_compound asks const_eval too. UBSan: division by zero.
+main: proc() -> i32 = { x: i32 = 5; x /= ((1 - 0x80000000) / (0x80000000 - 0x80000001)); return x; }

@@ -5,6 +5,28 @@ proof. Each section says what is claimed, which rule holds it up, and what that 
 To break the language, break an assumption or find a path the table misses, then see
 [attacks/README.md](../tests/rin-safety/attacks/README.md).
 
+## What safe rin is for
+
+Safe rin does not try to make any program safe. It makes one way of programming safe, the way
+working arena code is already written, and anything outside it is `unsafe` or cannot be written.
+The patterns come from a shipped engine, and a feature earns its place by a pattern needing it:
+
+| Pattern | What makes it safe |
+|---|---|
+| Memory lives as long as its arena | The region is part of a pointer's type |
+| Scratch work | A block region, which ends on every way out |
+| A whole lifetime ends at once | A region's end is one event, in one place |
+| Arrays sized once | A fixed length, checked on every access; they never move |
+| Things refer to each other by index | Indexes are checked against their table |
+| Pointers used briefly | Locals and parameters may not outlive what they point at |
+| GPU buffers and files | Tied to a region, and released when it ends; there is no release call to forget or misuse |
+
+There are no destructors, no ownership, no borrow checker and no methods: nothing runs that the
+program does not show, and a region's end is written where it happens.
+
+The checker fails closed. When it cannot work something out it adds a check at run time or refuses
+the program; it never takes not knowing for nothing to check.
+
 ## The claim
 
 Take a single-threaded program with no `unsafe { }`, no `[unsafe]` proc, no line marked `// unsafe`, no
@@ -29,7 +51,7 @@ The argument rests on these and checks none of them:
 | `proc[no_move]` in std | It says a trusted body moves nothing, so pointers taken before the call stay good. Only std may say it | Read `vec<T>at`, `last` and `items` |
 | C the program links, and calls from `unsafe` | Anything | Per program |
 | What a program says of C: `proc[external]`, `proc[external_emit]`, `struct[external]`, a global with no value, `cinclude` | No checker can see past a declaration. `free: proc[external](p: u64)` is callable from safe code, and is a lie | Per program; they are excluded from the claim above |
-| The checker and emitter in `src/main.c` | A rule below does not hold | About 23,000 lines |
+| The checker and emitter in `src/main.c` | A rule below does not hold | About 26,000 lines |
 | The C compiler, the OS and the hardware | Anything | Out of scope |
 | The stack guard page | A deep recursion could reach other memory | Windows probes by default; `rin build` asks for `-fstack-clash-protection` elsewhere |
 
@@ -75,9 +97,10 @@ Three rules that are easy to miss, because they hold up the others:
 - **Names.** The emitted C spells types and the runtime by name in the scope of the code around them. A
   local may not be named like a type or a runtime helper, nor a proc or global like the C library
   (`safety_check_local_name`, `safety_check_program_names`).
-- **Directives.** A preprocessor line applies to the text of the C, under every rule here. Safe code may
-  define a plain number; anything else, above a field or an enum item as well, needs `// unsafe: why`
-  (`safety_check_directive_lines`). A `cinclude` is C, and trusted as C is.
+- **Directives.** A preprocessor line applies to the text of the C, under every rule here, so safe code has
+  none: a constant is `N: const i32 = 4`, and C is handed its value. Any preprocessor line, above a field
+  or an enum item as well, needs `// unsafe: why` (`safety_check_directive_lines`). A `cinclude` is C, and
+  trusted as C is.
 - **Generics.** An instance is named without regions, so each generic body is checked again with the
   regions its type arguments really have (`region_instance_note`).
 

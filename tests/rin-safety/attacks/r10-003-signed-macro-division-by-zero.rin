@@ -1,0 +1,3 @@
+// An untyped macro leaves type_check_binary_op with no type, so no arith_note: `x / Z` is C's plain division. UBSan: division by zero.
+#define Z (-0)
+main: proc() -> i32 = { x: i32 = 5; return x / Z; }

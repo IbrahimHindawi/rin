@@ -1,0 +1,2 @@
+// expr_stays_literal says yes to anything with a sizeof, const_eval cannot see the divisor is 0, and literal_fold leaves C's `/`: `1 / ((i32)sizeof(i32) - 4)`. UBSan: division by zero.
+main: proc() -> i32 = { return 1 / (sizeof(i32) - 4); }

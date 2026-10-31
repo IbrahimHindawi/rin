@@ -1,0 +1,4 @@
+// `#define Z -0` passes the directive check, which skips a sign, but program_macro_number does not, so Z has no type; a call argument asks nothing, and C takes -0 as a null constant. UBSan: load of null pointer.
+#define Z -0
+f: proc(p: *i32) -> i32 = { return p*; }
+main: proc() -> i32 = { return f(Z); }

@@ -1,0 +1,5 @@
+// As 029 on a global, whose declaration with null is refused. ASan: SEGV at pc 0.
+F: alias = proc() -> i32;
+h: proc() -> i32 = { return 1; }
+g: F = h;
+main: proc() -> i32 = { g = null; return g(); }

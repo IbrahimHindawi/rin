@@ -1,0 +1,3 @@
+// As 011 with continue: `if (!q) { continue; }` is `0;`. UBSan: load of null pointer.
+#define continue 0
+main: proc() -> i32 = { q: ?*i32 in permanent = {}; for (i: i32 = 0; i < 2; i += 1) { if (!q) { continue; } return q*; } return 0; }

@@ -1,0 +1,5 @@
+// As 029 in an instance: `s* = null` with T = F; for T = *i32 the same line is refused. ASan: SEGV at pc 0.
+F: alias = proc() -> i32;
+h: proc() -> i32 = { return 1; }
+zap: proc<T>(s: *T) -> void = { s* = null; }
+main: proc() -> i32 = { f: F = h; zap<F>(f&); return f(); }

@@ -1,0 +1,17 @@
+// raw_from_param follows no deref, and nothing tracks what `*^T` points at: pp holds a local copy of s, and `g = pp*` keeps it. ASan: use-after-poison in cstr_length.
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/cstr.rin"
+level: region;
+g: ^const c8 = null;
+in2: proc(pp: *^const c8) -> void = { g = pp*; }
+keep: proc(s: ^const c8) -> void = { l: ^const c8 = s; in2(l&); }
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 16);
+        fmt_cstr(f, "hello");
+        keep(fmt_text(f));
+    }
+    printfmt("{}\n", cstr_length(g));
+    return 0;
+}

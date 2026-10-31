@@ -1,0 +1,4 @@
+// As 029 through an element and a ternary arm: the arm is a null literal, and the Stmt_Assign path never looks. ASan: SEGV at pc 0.
+F: alias = proc() -> i32;
+h: proc() -> i32 = { return 1; }
+main: proc(argc: i32, argv: ^^c8) -> i32 = { a: [2]F = { h, h }; a[1] = argc > 0 ? null : h; return a[1](); }

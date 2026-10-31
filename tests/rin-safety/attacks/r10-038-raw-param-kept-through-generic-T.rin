@@ -1,0 +1,17 @@
+// raw_from_param resolves the parameter's written type, T, so `g = s` in keepg<^const c8> is not a raw parameter. ASan: use-after-poison in cstr_length.
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/cstr.rin"
+level: region;
+g: ^const c8 = null;
+keepg: proc<T>(s: T) -> void = { g = s; }
+keep: proc(s: ^const c8) -> void = { keepg<^const c8>(s); }
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 16);
+        fmt_cstr(f, "hello");
+        keep(fmt_text(f));
+    }
+    printfmt("{}\n", cstr_length(g));
+    return 0;
+}

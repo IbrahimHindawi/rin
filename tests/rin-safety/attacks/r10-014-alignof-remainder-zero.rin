@@ -1,0 +1,2 @@
+// As 013 with % and alignof. UBSan: division by zero.
+main: proc() -> i32 = { return sizeof(i32) % (alignof(i32) - 4); }

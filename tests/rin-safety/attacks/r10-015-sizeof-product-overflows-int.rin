@@ -1,0 +1,2 @@
+// sizeof emits as (i32), so with a sizeof the product is unguarded int arithmetic: 4 * 1000000000. UBSan: signed integer overflow.
+main: proc() -> i32 = { return sizeof(i32) * 1000000000; }

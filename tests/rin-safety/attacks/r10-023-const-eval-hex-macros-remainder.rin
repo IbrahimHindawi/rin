@@ -1,0 +1,4 @@
+// As 021 through two plain macros, which const_eval reads the same way. UBSan: division by zero.
+#define Q 0x80000000
+#define R 0x80000001
+main: proc() -> i32 = { x: i32 = 5; return x % ((1 - Q) / (Q - R)); }
