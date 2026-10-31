@@ -4125,6 +4125,24 @@ static Stmt *parse_stmt_inner(Parser *p) {
         return s;
     }
 
+    /* `scratch { }`: memory for this block, gone however the block is left. */
+    if (parser_peek(p)->kind == Token_Identifier && string8slice_equals_cstr(parser_peek(p)->text, "scratch") &&
+        parser_peek_n(p, 1)->kind == Token_LBrace) {
+        Token *scratch_tok = parser_next(p);
+        parser_next(p);
+        Stmt *s = stmt_new(p->arena, Stmt_Region);
+        s->name = token_to_string8(p->arena, scratch_tok);
+        s->region_parent = string8_from_cstr(p->arena, "permanent");
+        s->line = scratch_tok->line;
+        s->col = scratch_tok->col;
+        s->while_body = ptr_array_reserve(p->arena, 8);
+        while (!parser_at_block_end(p)) {
+            ptr_array_append(p->arena, &s->while_body, parse_stmt_recovering(p));
+        }
+        p->uses_regions = true;
+        return s;
+    }
+
     if (parser_peek(p)->kind == Token_Identifier && string8slice_equals_cstr(parser_peek(p)->text, "reset") &&
         parser_peek_n(p, 1)->kind == Token_Identifier && parser_peek_n(p, 2)->kind == Token_Semicolon) {
         Token *reset_tok = parser_next(p);
@@ -10711,6 +10729,123 @@ static string8 enum_item_c_name(memops_arena *arena, EnumDecl *decl, EnumItem *i
 /* Rewrites `[Enum.Member]` array counts to the member's C name, now that every
    import has been merged and all enums are visible. A bare identifier is left
    alone: it names a C constant or macro the generated code refers to directly. */
+static memops_arena *g_infer_arena;
+typedef void (*FieldExprVisit)(Expr *e, void *ctx, memops_arena *arena);
+typedef void (*FieldStmtVisit)(Stmt *s, void *ctx, memops_arena *arena);
+static void stmt_walk(Stmt *s, FieldExprVisit fe, FieldStmtVisit fs, void *ctx, memops_arena *arena);
+static void expr_walk(Expr *e, FieldExprVisit fe, void *ctx, memops_arena *arena);
+
+/* A pointer or slice field that names no region takes it from what the program stores there:
+   allocated from `level`, it is in level. This only fills in what could be written by hand, and the
+   checker then holds the program to it, so a wrong guess is an error and never a hole. Two regions, or
+   nothing to go on, leave it as written, and the checker asks for it to be said. */
+typedef struct FieldRegions {
+    Program *prog;
+    ProcDecl *proc;
+    Vec_string8 names;
+    Vec_string8 regions; // parallel; empty when two regions were seen
+} FieldRegions;
+
+static void field_regions_note(FieldRegions *f, string8 field, string8 region, memops_arena *arena) {
+    if (region.length == 0) return;
+    for (i32 i = 0; i < f->names.length; i++) {
+        if (!string8_equals(&f->names.data[i], &field)) continue;
+        if (!string8_equals(&f->regions.data[i], &region)) f->regions.data[i] = (string8){0};
+        return;
+    }
+    Vec_string8_append(arena, &f->names, field);
+    Vec_string8_append(arena, &f->regions, region);
+}
+
+static string8 field_regions_of_value(FieldRegions *f, Expr *e, i32 depth) {
+    string8 none = {0};
+    if (!e || depth > 16) return none;
+    if (e->kind == Expr_Cast) return field_regions_of_value(f, e->inner, depth + 1);
+    if (e->kind == Expr_Ternary) {
+        string8 a = field_regions_of_value(f, e->right, depth + 1);
+        string8 b = field_regions_of_value(f, e->third, depth + 1);
+        return string8_equals(&a, &b) ? a : none;
+    }
+    if (e->kind == Expr_Addr && e->inner && e->inner->kind == Expr_Name) {
+        for (i32 i = 0; i < f->prog->globals.length; i++) {
+            Stmt *g = (Stmt *)f->prog->globals.data[i];
+            if (string8_equals(&g->name, &e->inner->name)) return string8_from_cstr(g_infer_arena, "permanent");
+        }
+        return none;
+    }
+    if (e->kind != Expr_Call || e->base || e->args.length == 0) return none;
+    Expr *first = (Expr *)e->args.data[0];
+    if (!first || first->kind != Expr_Name) return none;
+    if (f->proc) {
+        for (i32 i = 0; i < f->proc->params.length; i++) {
+            Param *param = (Param *)f->proc->params.data[i];
+            if (string8_equals(&param->name, &first->name)) {
+                return param->type && param->type->kind == Type_Region ? param->type->region : none;
+            }
+        }
+    }
+    if (string8_equals_cstr(&first->name, "permanent") || array_string8_contains(&f->prog->regions, first->name)) return first->name;
+    return none;
+}
+
+static void field_regions_visit_expr(Expr *e, void *ctx, memops_arena *arena) {
+    FieldRegions *f = (FieldRegions *)ctx;
+    if (e->kind != Expr_InitList) return;
+    for (i32 i = 0; i < e->args.length && i < e->designators.length; i++) {
+        Expr *name = (Expr *)e->designators.data[i];
+        if (e->designator_kinds.data[i] == InitDesignator_Field && name) {
+            field_regions_note(f, name->name, field_regions_of_value(f, (Expr *)e->args.data[i], 0), arena);
+        }
+    }
+}
+
+static void field_regions_visit_stmt(Stmt *s, void *ctx, memops_arena *arena) {
+    FieldRegions *f = (FieldRegions *)ctx;
+    if (s->kind == Stmt_Assign && s->assign_op == Token_Equal && s->lhs && s->lhs->kind == Expr_Field) {
+        field_regions_note(f, s->lhs->name, field_regions_of_value(f, s->expr, 0), arena);
+    }
+}
+
+static void field_regions_fill(TypeExpr *t, string8 region, i32 depth) {
+    if (!t || depth > 8) return;
+    if (t->kind == Type_Array) { field_regions_fill(t->elem, region, depth + 1); return; }
+    bool slice = t->kind == Type_Generic && string8_equals_cstr(&t->name, "slice");
+    if (((t->kind == Type_Ptr && !t->is_raw) || slice) && t->region.length == 0) {
+        if (t->kind == Type_Ptr && t->elem && t->elem->kind == Type_Proc) return;
+        t->region = region;
+    }
+}
+
+static void infer_field_regions(Program *prog, memops_arena *arena) {
+    if (!g_safety) return;
+    g_infer_arena = arena;
+    FieldRegions f = { .prog = prog };
+    f.names = Vec_string8_reserve(arena, 32);
+    f.regions = Vec_string8_reserve(arena, 32);
+    for (i32 i = 0; i < prog->procs.length; i++) {
+        ProcDecl *proc = (ProcDecl *)prog->procs.data[i];
+        f.proc = proc;
+        for (i32 j = 0; j < proc->body.length; j++) {
+            stmt_walk((Stmt *)proc->body.data[j], field_regions_visit_expr, field_regions_visit_stmt, &f, arena);
+        }
+    }
+    f.proc = null;
+    for (i32 i = 0; i < prog->globals.length; i++) {
+        Stmt *g = (Stmt *)prog->globals.data[i];
+        if (g->expr) expr_walk(g->expr, field_regions_visit_expr, &f, arena);
+    }
+    for (i32 i = 0; i < prog->structs.length; i++) {
+        StructDecl *d = (StructDecl *)prog->structs.data[i];
+        if (d->is_external || d->is_union || path_is_std(d->source_path)) continue;
+        for (i32 j = 0; j < d->fields.length; j++) {
+            Field *field = (Field *)d->fields.data[j];
+            if (!field->type) continue;
+            i32 found = string8_vec_find(&f.names, field->name);
+            if (found >= 0 && f.regions.data[found].length > 0) field_regions_fill(field->type, f.regions.data[found], 0);
+        }
+    }
+}
+
 typedef struct ConstVal {
     bool ok;
     bool is_float;
@@ -26286,6 +26421,7 @@ i32 main(i32 argc, char *argv[]) {
     /* Every import is merged, so a `[Enum.Member]` count can now name an enum
        from any of them. Runs before analysis so array types are final. */
     resolve_array_count_constants(&arena, &prog);
+    infer_field_regions(&prog, &arena);
     profile_import_summary();
     Vec_string8 symbol_known_types = semantic_collect_known_type_names(&prog, &arena);
     semantic_collect_program_external_type_names(&prog, &symbol_known_types, &arena);

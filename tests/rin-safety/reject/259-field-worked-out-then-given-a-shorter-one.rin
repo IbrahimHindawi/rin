@@ -1,0 +1,8 @@
+// expect: region
+level: region global;
+frame: region in level;
+S: struct = { p: []i32; }
+s: S = {};
+f: proc() -> void = { s.p = new_slice<i32>(level, 2); }
+g: proc(x: []i32 in frame) -> void = { s.p = x; }
+main: proc() -> i32 = { return 0; }

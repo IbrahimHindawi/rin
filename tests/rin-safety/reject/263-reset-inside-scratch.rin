@@ -1,0 +1,3 @@
+// always: cannot be reset
+level: region global;
+main: proc() -> i32 = { scratch { reset level; } return 0; }

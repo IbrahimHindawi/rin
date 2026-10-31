@@ -1,0 +1,2 @@
+// expect: stale
+main: proc() -> i32 = { x: i32 = 0; q: *i32 = x&; scratch { p: *i32 in scratch = new<i32>(scratch); q = p; } return q*; }

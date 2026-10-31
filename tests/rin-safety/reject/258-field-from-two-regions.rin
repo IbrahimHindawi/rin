@@ -1,0 +1,6 @@
+// expect: names
+level: region global;
+S: struct = { p: []i32; }
+s: S = {};
+f: proc() -> void = { s.p = new_slice<i32>(level, 2); s.p = new_slice<i32>(permanent, 2); }
+main: proc() -> i32 = { return 0; }

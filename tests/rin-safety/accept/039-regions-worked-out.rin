@@ -1,0 +1,40 @@
+import "std/print.rin"
+
+/* A field says nothing about its region when what is stored there says it already. The block
+   `scratch { }` is memory for itself, gone however it is left. */
+level: region global;
+
+enemy: struct = { hp: i32; }
+
+game: struct = {
+    enemies: []enemy;
+    boss: ?*enemy;
+}
+
+g: game = {};
+
+load: proc(n: u64) -> void = {
+    reset level;
+    g.enemies = new_slice<enemy>(level, n);
+    g.boss = new<enemy>(level, { .hp = 7 });
+}
+
+sum: proc(n: u64) -> i32 = {
+    total: i32 = 0;
+    scratch {
+        xs: []i32 in scratch = new_slice<i32>(scratch, n);
+        for (i: u64 = 0; i < n; i += 1) { xs[i] = cast(i, i32); total += xs[i]; }
+        if (total > 100) { return -1; }
+    }
+    return total;
+}
+
+main: proc() -> i32 = {
+    load(3);
+    b: ?*enemy in level = g.boss;
+    if (b) { printfmt("{} {}\n", g.enemies.length, b*.hp); }
+    printfmt("{} {}\n", sum(4), sum(100));
+    reset level;
+    printfmt("{}\n", g.enemies.length);
+    return 0;
+}

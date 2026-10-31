@@ -1,0 +1,4 @@
+// expect: may end before
+level: region global;
+S: struct = { p: []i32; }
+main: proc() -> i32 = { h: *S in permanent = new<S>(permanent, { .p = new_slice<i32>(level, 2) }); return 0; }
