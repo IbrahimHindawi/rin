@@ -3,7 +3,7 @@
 Each program has no `unsafe` of its own, stays within moderate memory, and folds what it
 computes into a checksum it prints. It leans on the places a safe language tends to break:
 extreme integer values, slices replaced during an index, a value and its container passed
-together, regions opened inside regions, nullable fields, noalias kernels, containers
+together, regions opened inside regions, nullable fields, kernels over slices, containers
 growing while they are read.
 
 The oracle is tests/run_rin_vm.py --compare, in a sandbox: a sanitizer report or a fault means
@@ -266,7 +266,7 @@ class Gen:
             f = self.name("kernel")
             op = r.choice(["+=", "-=", "*="])
             self.helpers.append(
-                f"{f}: proc(a: noalias []f32, b: []const f32, k: f32) -> void = {{\n"
+                f"{f}: proc(a: []f32, b: []const f32, k: f32) -> void = {{\n"
                 f"    for (i: u64 = 0; i < a.length && i < b.length; i += 1) {{ a[i] {op} b[i] * k; }}\n}}\n")
             self.noalias.append(f)
         env = dict(empty)

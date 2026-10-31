@@ -99,7 +99,6 @@ r4-415-file-open-exhaust.rin
 r4-416-file-reuse-generation-collides.rin
 r4-417-open-null-str.rin
 r4-418-str-zero-global-print.rin
-r5-c-042-noalias-region-pointer-pass.rin
 r5-c-048-must-of-tmp-returned-struct.rin
 r5-c-080-generic-mangle-region-ptr.rin
 r5-e-019-const-eval-int-overflow-index.rin
@@ -180,7 +179,6 @@ r7-b-015-printf-mixed-format-mismatch.rin
 r7-b-016-printfmt-precision-on-char.rin
 r7-b-017-fprintfmt-stream-before-arg-closes.rin
 r7-b-018-printfmt-str-call-evaluated-twice.rin
-r7-b-019-noalias-past-16-params.rin
 r7-b-020-fmt-f64-decimals-overflow.rin
 r7-b-021-fmt-f64-inf-large-nan.rin
 r7-b-022-fmt-truncated-number-keeps-high-digits.rin

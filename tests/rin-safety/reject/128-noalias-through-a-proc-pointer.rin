@@ -1,7 +1,0 @@
-// expect: noalias parameters the checker cannot vouch for
-g: i32 = 0;
-via_global: proc(a: noalias *i32) -> i32 = { a* = 1; g = 2; return a*; }
-main: proc() -> i32 = {
-    f: *proc(a: noalias *i32) -> i32 = via_global;
-    return f(g&);
-}

@@ -1,15 +1,15 @@
 // expect: noalias
 import "std/print.rin"
 
-/* Vouched for by its shape; the two slices only turn out the same at run time. */
+/* The promise is made by hand, and broken: the two slices turn out the same at run time. */
 level: region;
-over: proc(a: noalias []i32, b: noalias []i32) -> i32 = { a[0] = 1; b[0] = 2; return a[0]; }
+over: proc[unsafe](a: noalias []i32, b: noalias []i32) -> i32 = { a[0] = 1; b[0] = 2; return a[0]; }
 main: proc(argc: i32, argv: ^^char) -> i32 = {
     r: i32 = 0;
     level: region = {
         x: []i32 in level = new_slice<i32>(level, 4);
         y: []i32 in level = argc > 0 ? x : new_slice<i32>(level, 4);
-        r = over(x, y);
+        unsafe { r = over(x, y); }
     }
     printfmt("{}\n", r);
     return 0;

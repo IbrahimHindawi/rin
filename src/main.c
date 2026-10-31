@@ -16071,6 +16071,26 @@ static void c_refuses_visit_expr(Expr *e, void *ctx, memops_arena *arena) {
 
 static void safety_check_what_c_refuses(Program *prog, memops_arena *arena) {
     if (!g_safety) return;
+    for (i32 i = 0; i < prog->procs.length; i++) {
+        ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+        if (p->is_unsafe || p->is_external || path_is_std(p->source_path)) continue;
+        for (i32 j = 0; j < p->params.length; j++) {
+            TypeExpr *t = ((Param *)p->params.data[j])->type;
+            if (t && t->is_noalias) {
+                g_diag_source_path = p->source_path;
+                type_error_message("noalias is a promise to the C optimiser that the checker cannot keep: "
+                                   "it belongs on a 'proc[unsafe]'", p->line, p->col);
+            }
+        }
+    }
+    for (i32 i = 0; i < prog->structs.length; i++) {
+        StructDecl *d = (StructDecl *)prog->structs.data[i];
+        if (d->is_union && !d->is_external && !path_is_std(d->source_path)) {
+            g_diag_source_path = d->source_path;
+            type_error_message("a union reads one type's bytes as another's, which no rule can follow: declare a "
+                               "struct, or say what C has with 'union[external]'", d->line, d->col);
+        }
+    }
     for (i32 i = 0; i < prog->globals.length; i++) {
         Stmt *g = (Stmt *)prog->globals.data[i];
         if (path_is_std(g->source_path) || (g->type && g->type->kind == Type_Region)) continue;
@@ -16485,54 +16505,6 @@ static void compute_proc_noalias(Program *prog, memops_arena *arena) {
     }
 }
 
-static bool proc_noalias_needs_unsafe(Program *prog, ProcDecl *decl, memops_arena *arena) {
-    bool any = false;
-    for (i32 i = 0; i < decl->params.length; i++) {
-        TypeExpr *t = ((Param *)decl->params.data[i])->type;
-        if (t && t->is_noalias) any = true;
-    }
-    if (!any) return false;
-    if (!decl->noalias_contained) return true;
-    for (i32 i = 0; i < decl->params.length; i++) {
-        TypeExpr *t = resolve_alias_type(prog, ((Param *)decl->params.data[i])->type);
-        if (!t || t->kind == Type_Region) continue;
-        TypeExpr *elem = type_slice_elem(t);
-        if (t->kind == Type_Ptr) {
-            if (t->is_raw) return true;
-            elem = t->elem;
-        }
-        if (!type_is_plain_data(prog, elem ? elem : t, arena, 0)) return true;
-    }
-    return false;
-}
-
-/* `f(x&, x&)`: the same place twice, where one of them is noalias and may be written. */
-static string8 noalias_arg_root(Expr *arg) {
-    if (arg && arg->kind == Expr_Addr) arg = arg->inner;
-    return arg && arg->kind == Expr_Name ? arg->name : (string8){0};
-}
-
-static void noalias_check_same_args(Program *prog, ProcDecl *decl, Expr *call) {
-    for (i32 i = 0; i < decl->params.length && i < call->args.length; i++) {
-        string8 a = noalias_arg_root((Expr *)call->args.data[i]);
-        if (a.length == 0) continue;
-        TypeExpr *ti = resolve_alias_type(prog, ((Param *)decl->params.data[i])->type);
-        if (!ti) continue;
-        TypeExpr *ei = type_slice_elem(ti) ? type_slice_elem(ti) : (ti->kind == Type_Ptr ? ti->elem : null);
-        if (!ei) continue;
-        for (i32 j = i + 1; j < decl->params.length && j < call->args.length; j++) {
-            string8 b = noalias_arg_root((Expr *)call->args.data[j]);
-            if (b.length == 0 || !string8_equals(&a, &b)) continue;
-            TypeExpr *tj = resolve_alias_type(prog, ((Param *)decl->params.data[j])->type);
-            if (!tj) continue;
-            TypeExpr *ej = type_slice_elem(tj) ? type_slice_elem(tj) : (tj->kind == Type_Ptr ? tj->elem : null);
-            if (!ej || !(ti->is_noalias || tj->is_noalias) || (ei->is_const && ej->is_const)) continue;
-            type_error_message("the same memory is passed twice to a proc that promises its noalias parameter does not "
-                               "overlap the others", call->line, call->col);
-            return;
-        }
-    }
-}
 
 /* ---- Borrowed pointers taken from containers. See docs/regions.md.
 
@@ -18086,14 +18058,6 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
                      "'%.*s' is an unsafe proc; it may be called only inside 'unsafe { }', or from a proc marked [unsafe]",
                      (int)decl->name.length, decl->name.data);
             type_error_message(message, call->line, call->col);
-        } else if (proc_noalias_needs_unsafe(prog, decl, arena)) {
-            char message[640];
-            snprintf(message, sizeof(message),
-                     "'%.*s' promises its noalias parameters overlap nothing, and the checker cannot show that: it must take "
-                     "only plain data, touch no globals, and call only procs that do the same. Call it inside 'unsafe { }', "
-                     "where the promise is yours",
-                     (int)decl->name.length, decl->name.data);
-            type_error_message(message, call->line, call->col);
         } else if (decl->is_external && proc_touches_pointers(prog, decl)) {
             char message[512];
             snprintf(message, sizeof(message),
@@ -18103,7 +18067,6 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
             type_error_message(message, call->line, call->col);
         }
     }
-    if (g_safe_body) noalias_check_same_args(prog, decl, call);
     safety_check_open_cstr(decl, call, scope, prog, arena);
     if (g_safe_body && !g_checking_std && !call->base && string8_equals_cstr(&call->name, "cstr_of") && call->args.length == 1) {
         /* The terminator it finds is only good while nothing can overwrite it, and what is read
@@ -18335,10 +18298,6 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         /* A proc used as a value: a call through the pointer could not be
            checked against the regions open at that point. */
         ProcDecl *as_value = lookup_proc_decl(prog, e->name);
-        if (as_value && g_safe_body && proc_noalias_needs_unsafe(prog, as_value, arena)) {
-            region_error("'%.*s' has noalias parameters the checker cannot vouch for, and a call through a pointer would "
-                         "skip that: %.*s it is called by name from inside 'unsafe { }'", e->name, (string8){0}, e->line, e->col);
-        }
         if (as_value && g_safe_body && (as_value->is_unsafe || (as_value->is_external && proc_touches_pointers(prog, as_value)))) {
             region_error("'%.*s' is %.*s, and a call through a pointer would not be checked; it is called by name from "
                          "inside 'unsafe { }'", e->name, as_value->is_unsafe ? string8_from_cstr(arena, "an unsafe proc")

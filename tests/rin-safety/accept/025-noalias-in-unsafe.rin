@@ -1,0 +1,25 @@
+import "std/print.rin"
+
+/* noalias is a promise to the C optimiser, made by hand, for the hot loops that want it. */
+scale: proc(x: f32, k: f32) -> f32 = { return x * k; }
+move: proc[unsafe](ps: noalias []f32, vs: []const f32, dt: f32) -> void = {
+    for (i: u64 = 0; i < ps.length; i += 1) { ps[i] += scale(vs[i], dt); }
+}
+add: proc[unsafe](a: noalias *i32, b: *const i32) -> i32 = { a* += b*; return a*; }
+
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        ps: []f32 in level = new_slice<f32>(level, 4);
+        vs: []f32 in level = new_slice<f32>(level, 4);
+        vs[3] = 2.0;
+        unsafe { move(ps, vs, 0.5); }
+        printfmt("{}\n", ps[3]);
+    }
+    x: i32 = 2;
+    y: i32 = 5;
+    r: i32 = 0;
+    unsafe { r = add(x&, y&); }
+    printfmt("{}\n", r);
+    return 0;
+}

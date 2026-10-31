@@ -1,6 +1,0 @@
-// expect: the same memory is passed twice
-add: proc(a: noalias *i32, b: noalias *i32) -> i32 = { a* = 1; b* = 2; return a*; }
-main: proc() -> i32 = {
-    x: i32 = 0;
-    return add(x&, x&);
-}

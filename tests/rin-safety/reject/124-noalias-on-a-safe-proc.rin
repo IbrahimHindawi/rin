@@ -1,0 +1,3 @@
+// expect: noalias is a promise
+add: proc(a: noalias []f32, b: []const f32) -> void = { a[0] += b[0]; }
+main: proc() -> i32 = { return 0; }

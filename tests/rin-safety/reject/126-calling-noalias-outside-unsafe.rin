@@ -1,0 +1,3 @@
+// expect: an unsafe proc
+add: proc[unsafe](a: noalias []f32, b: []const f32) -> void = { a[0] += b[0]; }
+main: proc() -> i32 = { a: [1]f32 = {}; b: [1]f32 = {}; add(a, b); return 0; }

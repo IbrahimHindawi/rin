@@ -1,5 +1,0 @@
-// expect: promises its noalias parameters overlap nothing
-g: i32 = 0;
-poke: proc() -> void = { g = 2; }
-f: proc(a: noalias *i32) -> i32 = { a* = 1; poke(); return a*; }
-main: proc() -> i32 = { return f(g&); }
