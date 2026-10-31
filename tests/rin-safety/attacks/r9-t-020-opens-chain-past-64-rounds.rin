@@ -1,0 +1,82 @@
+// compute_proc_opens stops after 64 rounds, and a caller-first chain propagates one step a round: p0 is not known to open level, whose block then clears the arena main is using: use-after-poison.
+import "std/print.rin"
+level: region;
+p0: proc() -> void = { p1(); }
+p1: proc() -> void = { p2(); }
+p2: proc() -> void = { p3(); }
+p3: proc() -> void = { p4(); }
+p4: proc() -> void = { p5(); }
+p5: proc() -> void = { p6(); }
+p6: proc() -> void = { p7(); }
+p7: proc() -> void = { p8(); }
+p8: proc() -> void = { p9(); }
+p9: proc() -> void = { p10(); }
+p10: proc() -> void = { p11(); }
+p11: proc() -> void = { p12(); }
+p12: proc() -> void = { p13(); }
+p13: proc() -> void = { p14(); }
+p14: proc() -> void = { p15(); }
+p15: proc() -> void = { p16(); }
+p16: proc() -> void = { p17(); }
+p17: proc() -> void = { p18(); }
+p18: proc() -> void = { p19(); }
+p19: proc() -> void = { p20(); }
+p20: proc() -> void = { p21(); }
+p21: proc() -> void = { p22(); }
+p22: proc() -> void = { p23(); }
+p23: proc() -> void = { p24(); }
+p24: proc() -> void = { p25(); }
+p25: proc() -> void = { p26(); }
+p26: proc() -> void = { p27(); }
+p27: proc() -> void = { p28(); }
+p28: proc() -> void = { p29(); }
+p29: proc() -> void = { p30(); }
+p30: proc() -> void = { p31(); }
+p31: proc() -> void = { p32(); }
+p32: proc() -> void = { p33(); }
+p33: proc() -> void = { p34(); }
+p34: proc() -> void = { p35(); }
+p35: proc() -> void = { p36(); }
+p36: proc() -> void = { p37(); }
+p37: proc() -> void = { p38(); }
+p38: proc() -> void = { p39(); }
+p39: proc() -> void = { p40(); }
+p40: proc() -> void = { p41(); }
+p41: proc() -> void = { p42(); }
+p42: proc() -> void = { p43(); }
+p43: proc() -> void = { p44(); }
+p44: proc() -> void = { p45(); }
+p45: proc() -> void = { p46(); }
+p46: proc() -> void = { p47(); }
+p47: proc() -> void = { p48(); }
+p48: proc() -> void = { p49(); }
+p49: proc() -> void = { p50(); }
+p50: proc() -> void = { p51(); }
+p51: proc() -> void = { p52(); }
+p52: proc() -> void = { p53(); }
+p53: proc() -> void = { p54(); }
+p54: proc() -> void = { p55(); }
+p55: proc() -> void = { p56(); }
+p56: proc() -> void = { p57(); }
+p57: proc() -> void = { p58(); }
+p58: proc() -> void = { p59(); }
+p59: proc() -> void = { p60(); }
+p60: proc() -> void = { p61(); }
+p61: proc() -> void = { p62(); }
+p62: proc() -> void = { p63(); }
+p63: proc() -> void = { p64(); }
+p64: proc() -> void = { p65(); }
+p65: proc() -> void = { p66(); }
+p66: proc() -> void = { p67(); }
+p67: proc() -> void = { p68(); }
+p68: proc() -> void = { p69(); }
+p69: proc() -> void = { p70(); }
+p70: proc() -> void = { level: region = { } }
+main: proc() -> i32 = {
+    level: region = {
+        p: *i32 in level = new<i32>(level, 7);
+        p0();
+        printfmt("{}\n", p*);
+    }
+    return 0;
+}

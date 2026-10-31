@@ -1,0 +1,8 @@
+// As 055, by plain assignment to an integer local: the C converts 1e30 to i32: float-cast-overflow.
+import "std/print.rin"
+#define BIG 1e30
+main: proc() -> i32 = {
+    y: i32 = BIG;
+    printfmt("{}\n", y);
+    return 0;
+}

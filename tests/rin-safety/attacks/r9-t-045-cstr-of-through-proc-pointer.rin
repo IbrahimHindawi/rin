@@ -1,0 +1,15 @@
+// safety_check_open_cstr is not asked on an indirect call, so rd overwrites the terminator cstr_of just found, then reads on: overrun into the arena's redzone.
+import "std/print.rin"
+import "std/cstr.rin"
+X: struct = { s: []c8 in permanent; }
+g: X = {};
+rd: proc(p: ^const c8) -> u64 = {
+    for (i: u64 = 0; i < g.s.length; i += 1) { g.s[i] = cast(65, c8); }
+    return cstr_length(p);
+}
+main: proc() -> i32 = {
+    g.s = new_slice<c8>(permanent, 8);
+    f: *proc(p: ^const c8) -> u64 = rd;
+    printfmt("{}\n", f(cstr_of(g.s)));
+    return 0;
+}

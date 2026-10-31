@@ -1,0 +1,14 @@
+// printfmt is not asked the "call beside cstr_of" rule: printf("%s %d", cstr_of(s), clobber()). clang evaluates left to right, so clobber overwrites the terminator cstr_of just found, and %s runs off the end: overrun into the arena's redzone. (A right-to-left compiler stops at cstr_of instead.)
+import "std/print.rin"
+import "std/cstr.rin"
+X: struct = { s: []c8 in permanent; }
+g: X = {};
+clobber: proc() -> i32 = {
+    for (i: u64 = 0; i < g.s.length; i += 1) { g.s[i] = cast(65, c8); }
+    return 1;
+}
+main: proc() -> i32 = {
+    g.s = new_slice<c8>(permanent, 8);
+    printfmt("{} {}\n", cstr_of(g.s), clobber());
+    return 0;
+}

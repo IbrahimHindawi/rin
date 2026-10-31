@@ -1,0 +1,7 @@
+// stmt_list_ends_in_jump trusts any call spelled exit; the Stmt_Var rule refuses a local of that name but a parameter passes, so `if (!p) { exit(1); }` narrows p though exit is a no-op. UBSan: load of null pointer / SEGV.
+noop: proc(c: i32) -> void = { }
+f: proc(exit: proc(c: i32) -> void, p: ?*i32) -> i32 = {
+    if (!p) { exit(1); }
+    return p*;
+}
+main: proc() -> i32 = { return f(noop, null); }

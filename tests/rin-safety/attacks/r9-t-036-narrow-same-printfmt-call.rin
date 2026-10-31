@@ -1,0 +1,19 @@
+// As 035, inside one printfmt: pieces run in order, so print<K> runs before the read of the narrowed field: a null load.
+import "std/print.rin"
+K: struct = { x: i32; }
+H: struct = { p: ?*i32 in permanent; }
+G: struct = { h: ?*H in permanent; }
+g: G = {};
+print: proc<K>(k: K) -> void = {
+    if (g.h) { must(g.h)*.p = null; }
+}
+main: proc() -> i32 = {
+    h: *H in permanent = new<H>(permanent);
+    h*.p = new<i32>(permanent, 5);
+    g.h = h;
+    k: K = { .x = 1 };
+    if (h*.p) {
+        printfmt("{} {}\n", k, h*.p*);
+    }
+    return 0;
+}

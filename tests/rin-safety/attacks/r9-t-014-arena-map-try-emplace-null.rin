@@ -1,0 +1,12 @@
+// map<T>try_emplace returns *T, and null for a null key (set refuses it, get misses): a null write with no test demanded.
+import "std/print.rin"
+import "std/map.rin"
+H: struct = { struct = { a: memops_arena; } }
+main: proc() -> i32 = {
+    h: *H in permanent = new<H>(permanent);
+    memops_arena_initialize(h*.a&, 1048576);
+    m: *map<i32> in permanent = map<i32>make(permanent);
+    p: *i32 = map<i32>try_emplace(h*.a&, m, null, 1);
+    p* = 3;
+    return 0;
+}

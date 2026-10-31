@@ -1,0 +1,3 @@
+// In a generic body `x: T = { 0 }` with T = *i32 in permanent: the zero rule looks only at `{}`, and the list is unchecked for a pointer T, so the instance returns null as a non-null pointer. UBSan: load of null pointer / SEGV.
+mk: proc<T>() -> T = { x: T = { 0 }; return x; }
+main: proc() -> i32 = { p: *i32 in permanent = mk<*i32 in permanent>(); return p*; }

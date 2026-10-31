@@ -1,0 +1,6 @@
+// `.p = { x& }` in a field initializer: check_assignment_compatible sees the field's own type as the value's, so a local's address is stored in a *i32 in permanent field and copied to a global. ASan: stack-use-after-return.
+g: i32 = 1;
+H: struct = { p: *i32 in permanent; }
+gh: H = { .p = g& };
+leak: proc() -> void = { x: i32 = 5; h: H = { .p = { x& } }; gh = h; }
+main: proc() -> i32 = { leak(); return gh.p*; }

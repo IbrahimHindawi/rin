@@ -1,0 +1,9 @@
+// A named union is checked for pointer arms, but not inside an anonymous struct arm: a u64 read as *i32: SEGV.
+import "std/print.rin"
+U: union = { struct = { p: *i32 in permanent; } x: u64; }
+main: proc() -> i32 = {
+    u: U = {};
+    u.x = 0x41414140;
+    printfmt("{}\n", u.p*);
+    return 0;
+}

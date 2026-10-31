@@ -1,0 +1,8 @@
+// `{}` zeroes a *i32 inside an anonymous struct: type_has_nonnull_pointer skips anonymous members, so the deref is a null load.
+import "std/print.rin"
+S: struct = { struct = { p: *i32 in permanent; } }
+main: proc() -> i32 = {
+    s: S = {};
+    printfmt("{}\n", s.p*);
+    return 0;
+}

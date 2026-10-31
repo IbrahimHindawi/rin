@@ -1,0 +1,4 @@
+// #define Z 0 has no type: infer returns null and Stmt_Assign has no macro check (only check_assignment_compatible does), so `p = Z` is C's null pointer constant in a *i32. UBSan: load of null pointer / SEGV.
+#define Z 0
+g: i32 = 7;
+main: proc() -> i32 = { p: *i32 in permanent = g&; p = Z; return p*; }

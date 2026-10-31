@@ -1,0 +1,15 @@
+// cstr_of of an array hands back a private copy on helper's stack; a raw parameter keeps it past the return: stack-use-after-return.
+import "std/print.rin"
+import "std/cstr.rin"
+g: ^const c8 = null;
+keep: proc(s: ^const c8) -> void = { g = s; }
+helper: proc() -> void = {
+    buf: [8]c8 = {};
+    buf[0] = cast(65, c8);
+    keep(cstr_of(buf));
+}
+main: proc() -> i32 = {
+    helper();
+    printfmt("{}\n", cstr_length(g));
+    return 0;
+}

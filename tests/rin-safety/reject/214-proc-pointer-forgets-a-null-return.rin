@@ -1,0 +1,3 @@
+// expect: promises different
+give: proc() -> ?*i32 in permanent = { return null; }
+main: proc() -> i32 = { fp: proc() -> *i32 in permanent = give; return fp()*; }

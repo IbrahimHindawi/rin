@@ -1,0 +1,2 @@
+// `p: *i32 = { 0 }`: an init list on a non-aggregate is unchecked (type_check_initializer_list returns at !decl, infer returns cast_type), so a non-null *T holds null. UBSan: load of null pointer / SEGV.
+main: proc() -> i32 = { p: *i32 = { 0 }; return p*; }

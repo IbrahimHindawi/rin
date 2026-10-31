@@ -1,0 +1,4 @@
+// expect: region's
+level: region;
+main: proc() -> i32 = { return 0; }
+permanent: i32 = 0;

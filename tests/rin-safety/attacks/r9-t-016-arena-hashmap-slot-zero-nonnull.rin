@@ -1,0 +1,11 @@
+// hashmap<K,V>slot zeroes a new value. With V = *i32 the slot holds null in a non-null pointer: a null load.
+import "std/print.rin"
+import "std/hashmap.rin"
+H: struct = { struct = { a: memops_arena; } }
+main: proc() -> i32 = {
+    h: *H in permanent = new<H>(permanent);
+    memops_arena_initialize(h*.a&, 1048576);
+    m: *hashmap<i64, *i32 in permanent> in permanent = hashmap<i64, *i32 in permanent>make(permanent);
+    printfmt("{}\n", hashmap<i64, *i32 in permanent>slot(h*.a&, m, 1)**);
+    return 0;
+}

@@ -1,0 +1,2 @@
+// `b += f`: b32 is numeric but type_int_info says nothing of it, so d_int is false and no rule fires; rin_cadd_i(int *, int) converts the double. UBSan: float-cast-overflow.
+main: proc() -> i32 = { f: f64 = 1e300; b: b32 = 1; b += f; return cast(b, i32); }

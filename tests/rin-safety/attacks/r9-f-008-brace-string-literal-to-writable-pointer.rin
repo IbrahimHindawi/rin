@@ -1,0 +1,2 @@
+// `p: *c8 in permanent = { "abc" }` turns a str into a writable pointer through the unchecked list; the write hits a string literal. Write fault / SEGV.
+main: proc() -> i32 = { p: *c8 in permanent = { "abc" }; p* = 65; return cast(p*, i32); }

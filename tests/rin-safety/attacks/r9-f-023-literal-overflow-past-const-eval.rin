@@ -1,0 +1,2 @@
+// const_eval gives up on i64 overflow, literal_fold then emits the C as written, and no arith_note ran: 9223372036854775807LL + 1LL. UBSan: signed-integer-overflow.
+main: proc() -> i32 = { x: i64 = 9223372036854775807 + 1; return cast(x, i32); }

@@ -108,8 +108,9 @@ Next, in the order that pays:
    `system`, pointer-to-array element codegen, threads, which safe code has no way to
    start.
 
-The claim, and exactly what it excludes, is in `rin/docs/soundness.md`. Eight attack rounds have run. Rounds five to
-eight each found dozens of holes in safe code and all are closed, but they have not slowed down, so expect more.
+The claim, and exactly what it excludes, is in `rin/docs/soundness.md`. Nine attack rounds have run. Rounds five to
+nine each found dozens of holes in safe code and all are closed. Round nine was the largest (78 confirmed), so they have
+not slowed down: expect more. The pattern to hunt is fail-open: a check that returns when inference has no answer.
 Each instance of a generic now checks and emits its own copy of the body (`proc_instance_body`), so what the
 checker writes on the tree cannot leak between instances; the old `*_varies` fields are left over from before that.
 Before calling it safe: a fresh round per new rule, `tests/gen_rin_safe.py` with `run_rin_vm.py --compare`, and strangers.

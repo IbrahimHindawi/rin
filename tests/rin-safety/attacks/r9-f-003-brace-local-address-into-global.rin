@@ -1,0 +1,5 @@
+// `keep = { x& }`: the list has type cast_type (the place's own type), so region flow compares *i32 in permanent with itself and a local's address lands in a global. ASan: stack-use-after-return.
+g: i32 = 1;
+keep: *i32 in permanent = g&;
+leak: proc() -> void = { x: i32 = 5; keep = { x& }; }
+main: proc() -> i32 = { leak(); return keep*; }

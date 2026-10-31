@@ -1,0 +1,3 @@
+// cast(F, i32): the cast check notes a float source only when infer knows it (`ra`), so cast_code is unset and the emitter writes (i32)(1e300), not rin_f2i. UBSan: float-cast-overflow.
+#define F 1e300
+main: proc() -> i32 = { x: i32 = cast(F, i32); return x; }

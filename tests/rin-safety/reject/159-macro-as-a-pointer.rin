@@ -1,4 +1,4 @@
-// expect: a macro's value does not become a pointer
+// expect: expected 'ptr_i32'
 #define P 16
 main: proc() -> i32 = {
     p: *i32 = P;

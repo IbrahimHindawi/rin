@@ -1,0 +1,9 @@
+// `c ? p : Z`: type_check_ternary returns at !third and infer answers with p's type, so the macro check (Expr_Name only) never fires; C reads the arm as a null pointer constant. UBSan: load of null pointer / SEGV.
+#define Z 0
+g: i32 = 7;
+pick: proc(c: b32) -> i32 = {
+    p: *i32 in permanent = g&;
+    q: *i32 in permanent = c ? p : Z;
+    return q*;
+}
+main: proc() -> i32 = { return pick(0); }

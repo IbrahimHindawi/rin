@@ -1,0 +1,17 @@
+// A vec of raw pointers in permanent holds what fmt_text gave for a shorter region, through a raw parameter: use-after-poison.
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/cstr.rin"
+import "std/vec.rin"
+level: region;
+keep: proc(v: *vec<^const c8>, s: ^const c8) -> void = { _ = vec<^const c8>push(v, s); }
+main: proc() -> i32 = {
+    v: *vec<^const c8> in permanent = vec<^const c8>make(permanent, 1);
+    level: region = {
+        f: *fmt in level = fmt_make(level, 16);
+        fmt_cstr(f, "hello");
+        keep(v, fmt_text(f));
+    }
+    printfmt("{}\n", cstr_length(vec<^const c8>at(v, 0)*));
+    return 0;
+}

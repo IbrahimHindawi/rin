@@ -1,0 +1,13 @@
+// A heap by value in an anonymous struct, zeroed, so its `less` is null; the second push calls it: a jump to 0.
+import "std/print.rin"
+import "std/heap.rin"
+H: struct = { struct = { a: memops_arena; } }
+Q: struct = { struct = { h: heap<i32>; } }
+main: proc() -> i32 = {
+    h: *H in permanent = new<H>(permanent);
+    memops_arena_initialize(h*.a&, 1048576);
+    q: *Q in permanent = new<Q>(permanent);
+    heap<i32>push(h*.a&, q*.h&, 1);
+    heap<i32>push(h*.a&, q*.h&, 2);
+    return 0;
+}

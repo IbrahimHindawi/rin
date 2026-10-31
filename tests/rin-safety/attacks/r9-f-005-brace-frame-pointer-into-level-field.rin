@@ -1,0 +1,16 @@
+// `h.p = { q }` keeps a pointer into frame in a field that says level; the list's type is the place's, so region_flow_rejects never sees frame. Read after frame's block ended. ASan: use-after-poison.
+level: region;
+frame: region in level;
+H: struct = { p: *i32 in level; }
+main: proc() -> i32 = {
+  level: region = {
+    z: *i32 in level = new<i32>(level);
+    h: H = { .p = z };
+    frame: region = {
+      q: *i32 in frame = new<i32>(frame);
+      h.p = { q };
+    }
+    return h.p*;
+  }
+  return 0;
+}

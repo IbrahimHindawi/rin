@@ -1,0 +1,11 @@
+// map<T>set_entry is not [unsafe] yet takes a raw table and its length on faith, and null is a raw pointer safe code can make: a null load at entries[index].
+import "std/print.rin"
+import "std/map.rin"
+H: struct = { struct = { a: memops_arena; } }
+main: proc() -> i32 = {
+    h: *H in permanent = new<H>(permanent);
+    memops_arena_initialize(h*.a&, 1048576);
+    u: usize = 0;
+    _ = map<i32>set_entry(h*.a&, null, 16, "k", 1, u&);
+    return 0;
+}

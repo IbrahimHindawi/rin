@@ -1,0 +1,2 @@
+// expect: null
+main: proc() -> i32 = { f: proc() -> i32 = {}; return f(); }

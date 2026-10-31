@@ -1,0 +1,10 @@
+// A float index on a slice: RIN_INDEX takes (u64)(f). UBSan: float-cast-overflow.
+level: region;
+main: proc() -> i32 = {
+  level: region = {
+    s: []i32 in level = new_slice<i32>(level, 4);
+    f: f64 = 1e300;
+    return s[f];
+  }
+  return 0;
+}

@@ -1,0 +1,2 @@
+// 127'i8 + 127'i8 + 1'i8 is 255 to const_eval, so it looks safe; in C it is (i8)-1, and INT_MIN / -1 is plain C. UBSan: signed-integer-overflow / SIGFPE.
+main: proc() -> i32 = { x: i32 = -2147483647 - 1; y: i32 = x / (127'i8 + 127'i8 + 1'i8); return y; }

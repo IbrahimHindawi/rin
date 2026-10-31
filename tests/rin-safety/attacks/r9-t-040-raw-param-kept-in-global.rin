@@ -1,0 +1,16 @@
+// A raw parameter has no borrow behind it, so raw_keep_check passes `g = s`: fmt_text's pointer outlives its region, and cstr_length reads the taken-back memory: use-after-poison.
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/cstr.rin"
+level: region;
+g: ^const c8 = null;
+keep: proc(s: ^const c8) -> void = { g = s; }
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 16);
+        fmt_char(f, cast(65, c8));
+        keep(fmt_text(f));
+    }
+    printfmt("{}\n", cstr_length(g));
+    return 0;
+}

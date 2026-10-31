@@ -1,0 +1,7 @@
+// cstr_ends_with(null, null): both lengths 0, then s[0]& on a null s, applying zero offset to a null pointer: UBSan pointer-overflow, if the C keeps the arithmetic.
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    printfmt("{}\n", cstr_ends_with(null, null));
+    return 0;
+}

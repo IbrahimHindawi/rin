@@ -1,0 +1,8 @@
+// new<T> without a value on a generic with its T in an anonymous struct: the zero rule does not see it, so *i32 is null.
+import "std/print.rin"
+B: struct<T> = { struct = { v: T; } }
+main: proc() -> i32 = {
+    b: *B<*i32 in permanent> in permanent = new<B<*i32 in permanent>>(permanent);
+    printfmt("{}\n", b*.v*);
+    return 0;
+}

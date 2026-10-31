@@ -1,0 +1,17 @@
+// Opens are looked up by the call's bare name: `foo<K>` finds no decl called foo, so wrap opens nothing, and foo_K clears level under main: use-after-poison.
+import "std/print.rin"
+level: region;
+K: struct = { x: i32; }
+foo: proc<K>(k: K) -> void = {
+    level: region = { }
+}
+wrap: proc(k: K) -> void = { foo<K>(k); }
+main: proc() -> i32 = {
+    level: region = {
+        p: *i32 in level = new<i32>(level, 7);
+        k: K = { .x = 1 };
+        wrap(k);
+        printfmt("{}\n", p*);
+    }
+    return 0;
+}

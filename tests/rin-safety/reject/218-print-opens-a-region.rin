@@ -1,0 +1,6 @@
+// expect: may not open a region
+import "std/print.rin"
+level: region;
+K: struct = { x: i32; }
+print: proc<K>(k: K) -> void = { level: region = { } }
+main: proc() -> i32 = { return 0; }

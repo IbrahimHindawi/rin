@@ -1,0 +1,31 @@
+// A plain proc foo and a specialisation foo<key>: the walk resolves foo<key> to the clean plain proc, while the C calls foo_key, which re-enters the map: out-of-bounds read of states.
+import "std/print.rin"
+import "std/hashmap.rin"
+key: struct = { x: i64; }
+S: struct = { m: ?*hashmap<key, i32> in permanent; armed: b32; }
+g: S = {};
+foo: proc(x: i32) -> u64 = { return 0; }
+foo: proc<key>(k: key) -> u64 = {
+    if (g.armed && g.m) {
+        g.armed = 0;
+        m: *hashmap<key, i32> in permanent = must(g.m);
+        for (i: i64 = 0; i < 20000; i += 1) {
+            k2: key = { .x = 100000 + i };
+            _ = hashmap<key, i32>set(m, k2, 1);
+            _ = hashmap<key, i32>remove(m, k2);
+        }
+    }
+    return cast(k.x, u64) * 31;
+}
+hash: proc<key>(k: key) -> u64 = { return foo<key>(k); }
+equal: proc<key>(a: key, b: key) -> b32 = { return a.x == b.x; }
+main: proc() -> i32 = {
+    m: *hashmap<key, i32> in permanent = hashmap<key, i32>make(permanent);
+    g.m = m;
+    for (i: i64 = 0; i < 4000; i += 1) { k: key = { .x = i }; _ = hashmap<key, i32>set(m, k, 1); }
+    for (i: i64 = 0; i < 4000; i += 1) { k: key = { .x = i }; _ = hashmap<key, i32>remove(m, k); }
+    g.armed = 1;
+    k: key = { .x = 5000 };
+    printfmt("{}\n", hashmap<key, i32>has(m, k));
+    return 0;
+}

@@ -1,0 +1,10 @@
+// index_stable counts a static local as a local nothing can change, so s[f()] reads s.data before the call and s.length after it; the recursive call makes s long. 50 passes the check against 100 and reads sh[50]. ASan: global-buffer-overflow.
+sh: [1]i32 = { 1 };
+lg: [100]i32 = {};
+rec: proc(n: i32) -> i32 = {
+    s: static []i32 in permanent = {};
+    if (n == 0) { s = lg[0..100]; return 50; }
+    s = sh[0..1];
+    return s[rec(0)];
+}
+main: proc() -> i32 = { return rec(1); }

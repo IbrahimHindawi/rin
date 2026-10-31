@@ -1,0 +1,3 @@
+// `F * y` has a null type, so check_numeric_conversion returns at !s and C converts the double to int. UBSan: float-cast-overflow.
+#define F 1e300
+main: proc() -> i32 = { y: f64 = 2.0; x: i32 = F * y; return x; }

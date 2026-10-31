@@ -1,0 +1,9 @@
+// A str overlaid with a u64 in an anonymous union: any bits become a C string that "lasts": SEGV in print_cstr.
+import "std/print.rin"
+S: struct = { union = { s: str; x: u64; } }
+main: proc() -> i32 = {
+    v: S = {};
+    v.x = 0x41414140;
+    print_cstr(v.s);
+    return 0;
+}

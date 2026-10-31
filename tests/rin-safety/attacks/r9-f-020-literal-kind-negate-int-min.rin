@@ -1,0 +1,2 @@
+// Unary minus skips arith_note when the operand has a LitKind: `-(1 shl n)` with n = 31 is plain C negation of INT_MIN. UBSan: signed-integer-overflow.
+main: proc() -> i32 = { n: i32 = 31; y: i32 = -(1 shl n); return y; }

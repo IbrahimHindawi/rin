@@ -1,0 +1,10 @@
+// new_slice refuses a type holding a *T but not one holding a proc, and hands back zeroed memory: w[1].cb is a null non-null proc pointer. ASan: SEGV at pc 0.
+level: region;
+S: struct = { cb: proc() -> i32; }
+main: proc() -> i32 = {
+  level: region = {
+    w: []S in level = new_slice<S>(level, 2);
+    return w[1].cb();
+  }
+  return 0;
+}

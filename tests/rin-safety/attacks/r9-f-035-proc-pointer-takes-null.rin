@@ -1,0 +1,3 @@
+// The null literal converts to a plain proc parameter. ASan: SEGV at pc 0.
+take: proc(f: proc() -> i32) -> i32 = { return f(); }
+main: proc() -> i32 = { return take(null); }

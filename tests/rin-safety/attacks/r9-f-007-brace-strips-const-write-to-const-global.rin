@@ -1,0 +1,3 @@
+// `p: *i32 = { cg& }` launders *const i32 to *i32 (C only warns), then writes a const global in read-only memory. Write fault / SEGV.
+cg: const i32 = 5;
+main: proc() -> i32 = { p: *i32 = { cg& }; p* = 1; return cg; }

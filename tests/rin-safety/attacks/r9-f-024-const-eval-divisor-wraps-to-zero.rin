@@ -1,0 +1,2 @@
+// safe_divisor trusts const_eval, which folds in i64: 128'u8 + 128'u8 is 256 to it and 0 in the C ((u8) cast), so the emitter drops rin_idiv. UBSan: integer-divide-by-zero / SIGFPE.
+main: proc() -> i32 = { x: i32 = 5; y: i32 = x / (128'u8 + 128'u8); return y; }

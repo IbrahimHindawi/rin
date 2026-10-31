@@ -1,0 +1,18 @@
+// As 050, an array of a struct with fields called as the arena's: safe code writes rin_region_level's used, npages and reserved, and the next allocation lands on uncommitted memory: SEGV.
+import "std/print.rin"
+level: region;
+M: struct = { filler: u64; cursor2: u64; prev: u64; used: u64; pagesize: u64; npages: u64; reserved: u64; }
+level: [1]M = {};
+poke: proc() -> void = {
+    level[0].used = 0x7000000000;
+    level[0].reserved = 0xFFFFFFFFFFFF;
+    level[0].npages = 0xFFFFFFFFF;
+}
+main: proc() -> i32 = {
+    level: region = {
+        poke();
+        p: *i32 in level = new<i32>(level, 7);
+        printfmt("{}\n", p*);
+    }
+    return 0;
+}

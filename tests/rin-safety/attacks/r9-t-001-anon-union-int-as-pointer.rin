@@ -1,0 +1,9 @@
+// An anonymous union member escapes the carrier and pointer rules (field->type is null): a u64 written, then read as *i32: SEGV on a wild load.
+import "std/print.rin"
+S: struct = { union = { p: *i32 in permanent; x: u64; } }
+main: proc() -> i32 = {
+    s: S = {};
+    s.x = 0x41414140;
+    printfmt("{}\n", s.p*);
+    return 0;
+}

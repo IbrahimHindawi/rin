@@ -1,0 +1,13 @@
+// dlist<T>remove_at returns *binode<T>, and null for a bad index: a null load with no test demanded.
+import "std/print.rin"
+import "std/dlist.rin"
+H: struct = { struct = { a: memops_arena; } }
+main: proc() -> i32 = {
+    h0: *H in permanent = new<H>(permanent);
+    h1: *H in permanent = new<H>(permanent);
+    memops_arena_initialize(h0*.a&, 1048576);
+    memops_arena_initialize(h1*.a&, 1048576);
+    l: *dlist<i32> = dlist<i32>create(h0*.a&);
+    printfmt("{}\n", dlist<i32>remove_at(h1*.a&, l, 5)*.data);
+    return 0;
+}

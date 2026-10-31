@@ -1,0 +1,3 @@
+// expect: anonymous member
+U: union = { x: u64; struct = { p: *i32 in permanent; }; }
+main: proc() -> i32 = { return 0; }

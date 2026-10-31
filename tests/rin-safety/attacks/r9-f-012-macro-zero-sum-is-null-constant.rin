@@ -1,0 +1,3 @@
+// `Z + Z` is a Binary, not an Expr_Name, so the macro check misses it, its type is null, and C takes the constant 0 as a null pointer. UBSan: load of null pointer / SEGV.
+#define Z 0
+main: proc() -> i32 = { p: *i32 in permanent = Z + Z; return p*; }

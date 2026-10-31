@@ -1,0 +1,18 @@
+// visit_find_changing_call skips builtins and type_check_call never ends field narrowing for one, so h.p stays a *i32 after print<box<i32>> sets it null. UBSan: load of null pointer / SEGV.
+import "std/print.rin"
+H: struct = { p: ?*i32 in permanent; }
+g: i32 = 1;
+h: H = { .p = null };
+box: struct<T> = { x: T; }
+print: proc<box<T>>(b: box<T>) -> void = {
+    h.p = null;
+}
+main: proc() -> i32 = {
+    h.p = g&;
+    if (h.p) {
+        b: box<i32> = { .x = 1 };
+        printfmt("{}\n", b);
+        return h.p*;
+    }
+    return 0;
+}

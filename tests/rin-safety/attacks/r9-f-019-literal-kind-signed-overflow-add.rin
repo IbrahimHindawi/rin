@@ -1,0 +1,2 @@
+// `(1 shl n) + (1 shl n)` is two "literals", so no arith_note: plain C + on int with n = 30. UBSan: signed-integer-overflow.
+main: proc() -> i32 = { n: i32 = 30; y: i32 = (1 shl n) + (1 shl n); return y; }

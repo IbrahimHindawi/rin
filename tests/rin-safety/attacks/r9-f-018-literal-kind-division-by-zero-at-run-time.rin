@@ -1,0 +1,2 @@
+// `1 shr n` has LitKind Int with a variable n, so `5 / (1 shr n)` counts as two literals: no arith_note, and const_eval cannot see the zero. Plain C division. UBSan: integer-divide-by-zero / SIGFPE.
+main: proc() -> i32 = { n: i32 = 1; y: i32 = 5 / (1 shr n); return y; }

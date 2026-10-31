@@ -1,0 +1,17 @@
+// As 040, in an array of raw pointers in a struct in permanent, which is not a carrier: use-after-poison.
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/cstr.rin"
+level: region;
+H: struct = { p: [1]^const c8; }
+keep: proc(h: *H, s: ^const c8) -> void = { h*.p[0] = s; }
+main: proc() -> i32 = {
+    h: *H in permanent = new<H>(permanent);
+    level: region = {
+        f: *fmt in level = fmt_make(level, 16);
+        fmt_cstr(f, "hello");
+        keep(h, fmt_text(f));
+    }
+    printfmt("{}\n", cstr_length(h*.p[0]));
+    return 0;
+}

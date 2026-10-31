@@ -1,0 +1,2 @@
+// type_has_nonnull_pointer does not count a proc type, so `{}` makes a plain proc pointer null, and only ?-pointers are tested before a call. ASan: SEGV at pc 0.
+main: proc() -> i32 = { fp: proc() -> i32 = {}; return fp(); }

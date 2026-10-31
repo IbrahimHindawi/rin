@@ -1,0 +1,20 @@
+// hash<key> opens level, and hashmap's generic body calling it is not known to: the map's own memory is taken back mid-operation: use-after-poison.
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region;
+key: struct = { x: i64; }
+hash: proc<key>(k: key) -> u64 = {
+    level: region = { }
+    return cast(k.x, u64) * 31;
+}
+equal: proc<key>(a: key, b: key) -> b32 = { return a.x == b.x; }
+main: proc() -> i32 = {
+    level: region = {
+        p: *i32 in level = new<i32>(level, 7);
+        m: *hashmap<key, i32> in level = hashmap<key, i32>make(level);
+        k: key = { .x = 1 };
+        _ = hashmap<key, i32>set(m, k, 1);
+        printfmt("{}\n", p*);
+    }
+    return 0;
+}

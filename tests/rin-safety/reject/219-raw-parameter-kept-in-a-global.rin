@@ -1,0 +1,4 @@
+// expect: raw parameter
+g: ^const c8 = null;
+keep: proc(s: ^const c8) -> void = { g = s; }
+main: proc() -> i32 = { return 0; }

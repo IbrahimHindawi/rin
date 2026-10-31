@@ -1,0 +1,20 @@
+// printfmt is a builtin, so compute_proc_opens and the check at the call see no callee; print<box<i32>> opens and clears level while main holds p in it. ASan: use-after-poison on p*.
+import "std/print.rin"
+level: region;
+box: struct<T> = { x: T; }
+print: proc<box<T>>(b: box<T>) -> void = {
+    level: region = {
+        q: *i32 in level = new<i32>(level);
+        q* = b.x;
+    }
+}
+main: proc() -> i32 = {
+    level: region = {
+        p: *i32 in level = new<i32>(level);
+        p* = 5;
+        b: box<i32> = { .x = 1 };
+        printfmt("{}\n", b);
+        printfmt("{}\n", p*);
+    }
+    return 0;
+}

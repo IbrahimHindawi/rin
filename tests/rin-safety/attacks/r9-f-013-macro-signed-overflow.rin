@@ -1,0 +1,3 @@
+// `x + BIG`: type_check_binary_op returns at !right, so arith_code stays 0 and the emitter writes plain C + on int. UBSan: signed-integer-overflow.
+#define BIG 2147483647
+main: proc() -> i32 = { x: i32 = 1; y: i32 = x + BIG; return y; }

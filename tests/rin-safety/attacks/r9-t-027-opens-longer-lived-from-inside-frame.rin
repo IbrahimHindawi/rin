@@ -1,0 +1,19 @@
+// frame is open and a level pointer held; print<K> opens level, longer-lived than what is open: the rank rule is not asked either: use-after-poison.
+import "std/print.rin"
+level: region;
+frame: region in level;
+K: struct = { x: i32; }
+print: proc<K>(k: K) -> void = {
+    level: region = { }
+}
+main: proc() -> i32 = {
+    level: region = {
+        p: *i32 in level = new<i32>(level, 7);
+        frame: region = {
+            k: K = { .x = 1 };
+            printfmt("{}\n", k);
+            printfmt("{}\n", p*);
+        }
+    }
+    return 0;
+}

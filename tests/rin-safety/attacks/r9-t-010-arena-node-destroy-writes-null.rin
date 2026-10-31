@@ -1,0 +1,17 @@
+// node<T>destroy(arena, **node<T>) writes null into a *node<T>, with the arena from an anonymous member. The caller's kill stops the read there, so the callee reads through its parameter: a null load.
+import "std/print.rin"
+import "std/list.rin"
+H: struct = { struct = { a: memops_arena; } }
+g: proc(pp: **node<i32>, a: *memops_arena) -> void = {
+    node<i32>destroy(a, pp);
+    printfmt("{}\n", pp**.data);
+}
+main: proc() -> i32 = {
+    h0: *H in permanent = new<H>(permanent);
+    h1: *H in permanent = new<H>(permanent);
+    memops_arena_initialize(h0*.a&, 1048576);
+    memops_arena_initialize(h1*.a&, 1048576);
+    n: *node<i32> = node<i32>create(h0*.a&, 1);
+    g(n&, h1*.a&);
+    return 0;
+}

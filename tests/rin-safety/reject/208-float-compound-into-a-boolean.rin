@@ -1,0 +1,2 @@
+// expect: float does not become
+main: proc() -> i32 = { b: b32 = 0; f: f64 = 1e300; b += f; return 0; }

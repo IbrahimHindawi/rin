@@ -1,0 +1,2 @@
+// expect: braces are for structs
+main: proc() -> i32 = { p: *i32 = { 0 }; return p*; }

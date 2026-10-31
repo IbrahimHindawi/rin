@@ -1,0 +1,16 @@
+// printfmt is a builtin to the opens walk, so print<K> opening level goes unseen: use-after-poison.
+import "std/print.rin"
+level: region;
+K: struct = { x: i32; }
+print: proc<K>(k: K) -> void = {
+    level: region = { }
+}
+main: proc() -> i32 = {
+    level: region = {
+        p: *i32 in level = new<i32>(level, 7);
+        k: K = { .x = 1 };
+        printfmt("{}\n", k);
+        printfmt("{}\n", p*);
+    }
+    return 0;
+}

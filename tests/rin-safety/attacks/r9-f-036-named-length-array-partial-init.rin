@@ -1,0 +1,6 @@
+// array_count is -1 for [N], so "leaves elements zero" never fires: o[1].p is null in a non-null pointer. UBSan: load of null pointer / SEGV.
+H: struct = { p: *i32 in permanent; }
+N: const i32 = 3;
+g: i32 = 1;
+y: H = { .p = g& };
+main: proc() -> i32 = { o: [N]H = { y }; return o[1].p*; }

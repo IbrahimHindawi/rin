@@ -1,0 +1,2 @@
+// always: cannot
+main: proc() -> i32 = { i: i32 = 0; c: b32 = 1; x: i32 = c ? i : 1e300; return x; }

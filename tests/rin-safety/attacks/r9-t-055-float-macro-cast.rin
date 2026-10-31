@@ -1,0 +1,7 @@
+// A plain-number define may be a float, and the cast of a name is emitted as a C cast: (i32)(1e30), float-cast-overflow, past rin_f2i.
+import "std/print.rin"
+#define BIG 1e30
+main: proc() -> i32 = {
+    printfmt("{}\n", cast(BIG, i32));
+    return 0;
+}

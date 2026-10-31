@@ -1,0 +1,2 @@
+// `x: i32 = { f }` skips check_numeric_conversion; C converts 1e300 to int implicitly. UBSan: float-cast-overflow.
+main: proc() -> i32 = { f: f64 = 1e300; x: i32 = { f }; return x; }

@@ -99,7 +99,6 @@ r4-415-file-open-exhaust.rin
 r4-416-file-reuse-generation-collides.rin
 r4-417-open-null-str.rin
 r4-418-str-zero-global-print.rin
-r5-c-038-noalias-shadow-proc-local.rin
 r5-c-042-noalias-region-pointer-pass.rin
 r5-c-048-must-of-tmp-returned-struct.rin
 r5-c-080-generic-mangle-region-ptr.rin
@@ -199,7 +198,6 @@ r7-b-026-list-take-compares-padding.rin
 r7-b-027-slice-equals-padding-and-float.rin
 r7-b-028-memops-helpers-zero-align.rin
 r7-b-029-null-plus-zero.rin
-r7-b-030-shl-literal-left-wrong-width.rin
 r7-b-031-sort-bad-less-hangs.rin
 r7-b-034-printfmt-b32-depends-on-sibling-arg.rin
 r8-s-021-generic-index-count-first-instance-alias.rin
@@ -215,3 +213,17 @@ r8-r-002-printfmt-instance-float-cast-overflow.rin
 r8-r-003-printfmt-instance-signed-overflow.rin
 r8-r-004-printfmt-instance-global-array-oob.rin
 r8-r-005-printfmt-instance-transitive-generic-oob.rin
+r9-f-013-macro-signed-overflow.rin
+r9-f-014-macro-division-by-zero.rin
+r9-f-016-macro-float-cast-does-not-saturate.rin
+r9-f-018-literal-kind-division-by-zero-at-run-time.rin
+r9-f-019-literal-kind-signed-overflow-add.rin
+r9-f-020-literal-kind-negate-int-min.rin
+r9-f-021-literal-kind-int-min-div-minus-one.rin
+r9-f-022-literal-ternary-overflow.rin
+r9-f-023-literal-overflow-past-const-eval.rin
+r9-f-024-const-eval-divisor-wraps-to-zero.rin
+r9-f-025-const-eval-divisor-wraps-to-minus-one.rin
+r9-f-037-static-slice-counted-as-stable.rin
+r9-t-055-float-macro-cast.rin
+r9-t-060-cstr-ends-with-null.rin

@@ -1,0 +1,3 @@
+// expect: may not be null
+take: proc(f: proc() -> i32) -> i32 = { return f(); }
+main: proc() -> i32 = { return take(null); }

@@ -1,0 +1,8 @@
+// A proc pointer in an anonymous struct, zeroed by {}, called: a jump to address 0.
+import "std/print.rin"
+S: struct = { struct = { f: *proc() -> void; } }
+main: proc() -> i32 = {
+    s: S = {};
+    s.f();
+    return 0;
+}
