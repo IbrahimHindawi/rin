@@ -1,0 +1,12 @@
+// expect: index
+level: region;
+enemy: struct = { hp: i32; }
+g: []enemy in level = {};
+main: proc() -> i32 = {
+    level: region = {
+        g = new_slice<enemy>(level, 4);
+        reset level;
+        return g[0].hp;
+    }
+    return 0;
+}

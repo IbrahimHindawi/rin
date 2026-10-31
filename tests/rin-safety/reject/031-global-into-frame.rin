@@ -1,4 +1,4 @@
-// expect: may end before the memory in region 'permanent'
+// expect: must be able to be empty
 frame: region;
-g: ?*i32 in frame = null;
+g: *i32 in frame = null;
 main: proc() -> i32 = { return 0; }

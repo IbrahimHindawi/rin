@@ -228,3 +228,4 @@ r11-008-annotated-u64-literal-divisor-zero.rin
 r11-009-annotated-u64-compound-divide.rin
 r11-010-annotated-u32-divide.rin
 r11-011-annotated-u64-argument.rin
+r5-c-023-stored-depth-global.rin

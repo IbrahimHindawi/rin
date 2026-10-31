@@ -1,0 +1,8 @@
+// expect: cannot be reset
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; }
+game: struct = { enemies: []enemy in level; }
+g: game = {};
+load: proc(r: region level) -> void = { reset r; g.enemies = new_slice<enemy>(r, 4); }
+main: proc() -> i32 = { level: region = { frame: region = { load(level); } } return 0; }

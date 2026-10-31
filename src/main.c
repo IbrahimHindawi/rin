@@ -783,6 +783,7 @@ typedef enum StmtKind {
     Stmt_Goto,
     Stmt_Label,
     Stmt_Directive, // a '#' line written inside a body; `name` holds it verbatim
+    Stmt_Reset,     // `reset level;`: the region's memory goes, and it stays open
     Stmt_Region,    // `frame: region = { }`: an arena that lives exactly as long as the block
     Stmt_Unsafe,    // `unsafe { }`: the safety rules are off inside; the body is in while_body
 } StmtKind;
@@ -916,6 +917,8 @@ struct ProcDecl {
        caller's arena from under it, so that is an error; and its address may
        not be taken, since a call through a pointer could not be checked. */
     Vec_string8 opens;
+    /* The regions this proc may reset, in its own body or in anything it calls by name. */
+    Vec_string8 resets;
     bool answers_for_signature; // has an unsafe block: its body cannot show what it moves
     /* A generic's body as each instance checked it. The checker writes what it learns
        onto the tree (the length a bounds check uses, the cast a narrow sum needs), and
@@ -4120,6 +4123,18 @@ static Stmt *parse_stmt_inner(Parser *p) {
         return s;
     }
 
+    if (parser_peek(p)->kind == Token_Identifier && string8slice_equals_cstr(parser_peek(p)->text, "reset") &&
+        parser_peek_n(p, 1)->kind == Token_Identifier && parser_peek_n(p, 2)->kind == Token_Semicolon) {
+        Token *reset_tok = parser_next(p);
+        Token *name_tok = parser_next(p);
+        parser_next(p);
+        Stmt *s = stmt_new(p->arena, Stmt_Reset);
+        s->name = token_to_string8(p->arena, name_tok);
+        s->line = reset_tok->line;
+        s->col = reset_tok->col;
+        return s;
+    }
+
     if (parser_match(p, Token_Keyword_Break)) {
         Token *break_tok = parser_prev(p);
         Stmt *s = stmt_new(p->arena, Stmt_Break);
@@ -6204,6 +6219,7 @@ static void semantic_check_stmt(Program *prog, Stmt *stmt, Scope *scope, Vec_str
         }
         return;
     }
+    if (stmt->kind == Stmt_Reset) return;
     if (stmt->kind == Stmt_Break || stmt->kind == Stmt_Continue) {
         if (stmt->kind == Stmt_Break && scope->loop_depth == 0 && scope->switch_depth == 0) {
             semantic_error_control_flow("break", "loop or switch", stmt->line, stmt->col);
@@ -14914,6 +14930,8 @@ static void type_regions_key_early(Program *prog, TypeExpr *type, string8 *key, 
     for (i32 i = 0; i < r->args.length; i++) type_regions_key_early(prog, (TypeExpr *)r->args.data[i], key, arena, depth + 1);
 }
 
+static bool g_storing_global;
+
 static void check_type_stored(Program *prog, TypeExpr *type, string8 outer, bool in_carrier,
                               i32 line, i32 col, memops_arena *arena, i32 depth, Vec_string8 *seen) {
     if (!g_safety || !type) return;
@@ -14957,6 +14975,20 @@ static void check_type_stored(Program *prog, TypeExpr *type, string8 outer, bool
         }
         /* An unbounded region variable as the holder is decided at each call,
            once it is bound; here nothing is known about it. */
+        /* A global lives longer than any region, and can still hold what is in one: the region's
+           end empties it. So it must be able to be empty, which a `*T` cannot. */
+        if (g_storing_global && region_rank(prog, region) >= 0 && !string8_equals_cstr(&region, "permanent")) {
+            if (r->kind == Type_Ptr && !r->is_nullable) {
+                region_error("a global outlives region '%.*s', whose end empties what points into it, so this must be "
+                             "able to be empty: make it '?*T in %.*s'", region, region, line, col);
+                return;
+            }
+            bool was_global = g_storing_global;
+            g_storing_global = false;
+            check_type_stored(prog, elem, region, false, line, col, arena, depth + 1, seen);
+            g_storing_global = was_global;
+            return;
+        }
         bool outer_open = outer.length > 0 && region_rank(prog, outer) < 0 && region_var_bound(outer).length == 0;
         if (outer.length > 0 && !outer_open && !region_ge(prog, region, outer)) {
             region_error("this points into region '%.*s', which may end before the memory in region '%.*s' that holds it",
@@ -15774,6 +15806,33 @@ static void opens_collect_stmt(Program *prog, Stmt *s, Vec_string8 *regions, Vec
     }
 }
 
+typedef void (*ResetExprVisit)(Expr *e, void *ctx, memops_arena *arena);
+typedef void (*ResetStmtVisit)(Stmt *s, void *ctx, memops_arena *arena);
+static void stmt_walk(Stmt *s, ResetExprVisit fe, ResetStmtVisit fs, void *ctx, memops_arena *arena);
+static void reset_check_open(Program *prog, string8 region, i32 line, i32 col);
+static void reset_kills(TypeScope *scope, memops_arena *arena);
+typedef struct ResetScan { Program *prog; ProcDecl *proc; Vec_string8 *calls; } ResetScan;
+
+static void visit_reset_stmt(Stmt *s, void *ctx, memops_arena *arena) {
+    ResetScan *scan = (ResetScan *)ctx;
+    if (s->kind != Stmt_Reset) return;
+    string8 region = s->name;
+    for (i32 i = 0; i < scan->proc->params.length; i++) {
+        Param *param = (Param *)scan->proc->params.data[i];
+        TypeExpr *pt = resolve_alias_type(scan->prog, param->type);
+        if (string8_equals(&param->name, &s->name) && pt && pt->kind == Type_Region && pt->region.length > 0) {
+            region = pt->region;
+        }
+    }
+    if (!array_string8_contains(&scan->proc->resets, region)) Vec_string8_append(arena, &scan->proc->resets, region);
+}
+
+static void visit_reset_call(Expr *e, void *ctx, memops_arena *arena) {
+    ResetScan *scan = (ResetScan *)ctx;
+    if (e->kind != Expr_Call || e->base || e->name.length == 0 || array_string8_contains(scan->calls, e->name)) return;
+    Vec_string8_append(arena, scan->calls, e->name);
+}
+
 static void compute_proc_opens(Program *prog, memops_arena *arena) {
     if (!g_safety) return;
     i32 n = prog->procs.length;
@@ -15808,6 +15867,39 @@ static void compute_proc_opens(Program *prog, memops_arena *arena) {
             }
         }
     }
+    /* What each may reset, by the same walk: `reset r;` with `r: region level` resets level. */
+    Vec_voidptr all_calls = ptr_array_reserve(arena, n);
+    for (i32 i = 0; i < n; i++) {
+        ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+        p->resets = Vec_string8_reserve(arena, 1);
+        Vec_string8 *calls = memops_arena_push_struct(arena, Vec_string8);
+        *calls = Vec_string8_reserve(arena, 8);
+        ResetScan scan = { .prog = prog, .proc = p, .calls = calls };
+        for (i32 j = 0; j < p->body.length; j++) stmt_walk((Stmt *)p->body.data[j], visit_reset_call, visit_reset_stmt, &scan, arena);
+        ptr_array_append(arena, &all_calls, calls);
+    }
+    changed = true;
+    while (changed) {
+        changed = false;
+        for (i32 i = 0; i < n; i++) {
+            ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+            Vec_string8 *calls = (Vec_string8 *)all_calls.data[i];
+            for (i32 c = 0; c < n; c++) {
+                ProcDecl *callee = (ProcDecl *)prog->procs.data[c];
+                if (callee == p || callee->resets.length == 0) continue;
+                /* By name alone, and each proc of a name answers for all of them. */
+                bool named = string8_equals(&callee->name, &p->name) || array_string8_contains(calls, callee->name) ||
+                             (callee->specialized_from.length > 0 && (array_string8_contains(calls, callee->specialized_from) ||
+                                                                       string8_equals(&callee->specialized_from, &p->name)));
+                if (!named) continue;
+                for (i32 k = 0; k < callee->resets.length; k++) {
+                    if (array_string8_contains(&p->resets, callee->resets.data[k])) continue;
+                    Vec_string8_append(arena, &p->resets, callee->resets.data[k]);
+                    changed = true;
+                }
+            }
+        }
+    }
     /* printfmt reaches a program's own print, and nothing at the call says so. */
     for (i32 i = 0; i < n; i++) {
         ProcDecl *p = (ProcDecl *)prog->procs.data[i];
@@ -15815,10 +15907,10 @@ static void compute_proc_opens(Program *prog, memops_arena *arena) {
                         (p->name.length > 6 && memcmp(p->name.data, "print@", 6) == 0);
         if (path_is_std(p->source_path) || !is_print) continue;
         g_user_print = true;
-        if (p->opens.length > 0) {
+        if (p->opens.length > 0 || p->resets.length > 0) {
             g_diag_source_path = p->source_path;
             type_error_message("a print is reached through printfmt, where nothing can check what is open, so it may "
-                               "not open a region", p->line, p->col);
+                               "not open a region or reset one", p->line, p->col);
         }
     }
 }
@@ -16408,7 +16500,7 @@ static void safety_check_program_names(Program *prog, memops_arena *arena) {
         string8 base = p->specialized_from.length > 0 ? p->specialized_from : (p->generic_pattern ? p->name : (string8){0});
         if (!(string8_equals_cstr(&base, "hash") || string8_equals_cstr(&base, "equal") ||
               string8_equals_cstr(&base, "runtime_equal") || string8_equals_cstr(&base, "order"))) continue;
-        if (p->is_unsafe || p->answers_for_signature || !p->noalias_contained) {
+        if (p->is_unsafe || p->answers_for_signature || !p->noalias_contained || p->resets.length > 0) {
             g_diag_source_path = p->source_path;
             type_error_message("std calls this in the middle of an operation on a container, so it must touch no global and "
                                "call only procs that do the same", p->line, p->col);
@@ -18083,6 +18175,10 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
     if (g_safety) {
         /* The callee may open regions; none of them may be open here, and
            each must be shorter-lived than everything that is. */
+        for (i32 i = 0; i < decl->resets.length; i++) {
+            reset_check_open(prog, decl->resets.data[i], call->line, call->col);
+        }
+        if (decl->resets.length > 0) reset_kills(scope, arena);
         for (i32 i = 0; i < decl->opens.length; i++) {
             string8 r = decl->opens.data[i];
             if (array_string8_contains(&g_active_regions, r)) {
@@ -18279,6 +18375,9 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
             if (b->paths.length > 0) {
                 region_error("'%.*s' may be stale: '%.*s', which it was taken from, has been changed since; take it again",
                              e->name, b->paths.data[0], e->line, e->col);
+            } else if (b->regions.length == 0) {
+                region_error("'%.*s' may be dangling%.0s: a region has been reset since it was taken, and it could have "
+                             "pointed there; take it again", e->name, (string8){0}, e->line, e->col);
             } else {
                 region_error("'%.*s' may be dangling: it was made in region '%.*s', whose block has ended",
                              e->name, b->regions.length > 0 ? b->regions.data[0] : (string8){0}, e->line, e->col);
@@ -18369,6 +18468,10 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
                     break;
                 }
             }
+        }
+        if (as_value && as_value->resets.length > 0) {
+            region_error("'%.*s' may reset a region, and a call through a pointer could not be checked for what it leaves "
+                         "dangling%.0s", e->name, (string8){0}, e->line, e->col);
         }
         if (as_value && as_value->opens.length > 0) {
             region_error("'%.*s' opens region '%.*s', so it is called by name, not through a pointer: a call through "
@@ -18820,6 +18923,37 @@ static void type_check_condition(
     }
 }
 
+/* A region's memory has gone, or may have. Nothing local that is not known to be elsewhere can be
+   read again, and a narrowed field may have been emptied. */
+static void reset_kills(TypeScope *scope, memops_arena *arena) {
+    for (i32 i = 0; i < g_borrows.length; i++) {
+        Borrow *b = (Borrow *)g_borrows.data[i];
+        bool elsewhere = b->paths.length == 0 && b->regions.length > 0;
+        for (i32 j = 0; elsewhere && j < b->regions.length; j++) {
+            if (!string8_equals_cstr(&b->regions.data[j], "permanent")) elsewhere = false;
+        }
+        if (!elsewhere) { b->dead = true; b->scope_killed = true; b->reportable = true; }
+    }
+    narrow_end_fields(arena, scope, NarrowEnd_All, (string8){0});
+}
+
+/* Nothing shorter-lived may be open: it may hold pointers into what is about to go. */
+static void reset_check_open(Program *prog, string8 region, i32 line, i32 col) {
+    if (g_local_regions.length > 0) {
+        region_error("region '%.*s' cannot be reset while '%.*s' is open inside it: what that holds may point here",
+                     region, g_local_regions.data[g_local_regions.length - 1], line, col);
+        return;
+    }
+    i32 rank = region_rank(prog, region);
+    for (i32 i = 0; i < g_active_regions.length; i++) {
+        if (region_rank(prog, g_active_regions.data[i]) > rank) {
+            region_error("region '%.*s' cannot be reset while '%.*s' is open inside it: what that holds may point here",
+                         region, g_active_regions.data[i], line, col);
+            return;
+        }
+    }
+}
+
 static void type_check_stmt(
     Stmt *s,
     TypeScope *scope,
@@ -19234,6 +19368,21 @@ static void type_check_stmt(
         for (i32 i = 0; i < ctx->conts.length; i++) ptr_array_append(arena, &states, ctx->conts.data[i]);
         borrows_join_all(before->length, &states);
         g_jump_ctx.length--;
+        g_diag_source_path = prev_diag_source_path;
+        g_diag_import_chain = prev_diag_import_chain;
+        return;
+    }
+    if (s->kind == Stmt_Reset) {
+        TypeExpr *named = resolve_alias_type(prog, type_scope_lookup(scope, s->name));
+        string8 region = named && named->kind == Type_Region && named->region.length > 0 ? named->region : s->name;
+        if (!named || named->kind != Type_Region || region_rank(prog, region) < 0 || string8_equals_cstr(&region, "permanent")) {
+            region_error("'%.*s' is not a region this can reset%.0s: it takes a declared region that is open, or a "
+                         "parameter 'r: region level'", s->name, (string8){0}, s->line, s->col);
+        } else {
+            reset_check_open(prog, region, s->line, s->col);
+            reset_kills(scope, arena);
+            s->region_parent = region;
+        }
         g_diag_source_path = prev_diag_source_path;
         g_diag_import_chain = prev_diag_import_chain;
         return;
@@ -19948,7 +20097,9 @@ static void type_check_program(Program *prog, memops_arena *arena) {
         }
         g_diag_import_chain = g->import_chain;
         safety_check_carrier_value("a global", prog, g->type, arena, g->line, g->col);
+        g_storing_global = true;
         check_type_stored_at(prog, g->type, string8_from_cstr(arena, "permanent"), g->line, g->col, arena);
+        g_storing_global = false;
         if (!g->expr || g->expr->kind == Expr_ZeroInit) {
             safety_check_zeroed("a global", prog, g->type, arena, g->line, g->col);
         }
@@ -21777,6 +21928,14 @@ static void emit_size_of_type(memops_arena *arena, string8 *out, TypeExpr *type,
 static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, string8 generic_name) {
     if (!s) return;
     emit_line_directive_path(arena, out, s->source_path, s->line);
+    if (s->kind == Stmt_Reset) {
+        emit_cstr(arena, out, "rin_region_forget_");
+        emit_string8(arena, out, s->region_parent);
+        emit_cstr(arena, out, "(); memops_arena_clear(&rin_region_");
+        emit_string8(arena, out, s->region_parent);
+        emit_cstr(arena, out, ");\n");
+        return;
+    }
     if (s->kind == Stmt_Region) {
         /* `{ open; body; clear; }`. Inside, the name is the arena. `of parent`
            is a lifetime, not a place: a rewind of the parent's arena would free
@@ -21798,7 +21957,9 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
             emit_cstr(arena, out, "        rin_region_open(&rin_region_");
             emit_string8(arena, out, target);
             emit_cstr(arena, out, ");\n");
-            string8_append_cstr(arena, &cleanup, "memops_arena_clear(&rin_region_");
+            string8_append_cstr(arena, &cleanup, "rin_region_forget_");
+            string8_append_bytes(arena, &cleanup, target.data, target.length);
+            string8_append_cstr(arena, &cleanup, "(); memops_arena_clear(&rin_region_");
             string8_append_bytes(arena, &cleanup, target.data, target.length);
             string8_append_cstr(arena, &cleanup, "); ");
         }
@@ -22601,6 +22762,70 @@ static void emit_natvis_type(memops_arena *arena, string8 *out, ConcreteStructDe
         emit_cstr(arena, out, "    <Expand>\n      <Item Name=\"[length]\">length</Item>\n");
         if (capacity) emit_cstr(arena, out, "      <Item Name=\"[capacity]\">capacity</Item>\n");
         emit_cstr(arena, out, "    </Expand>\n  </Type>\n");
+    }
+}
+
+static bool type_collect_holds_region(Program *prog, TypeExpr *type, string8 region, memops_arena *arena, i32 depth) {
+    TypeExpr *r = resolve_alias_type(prog, type);
+    if (!r || depth > 64) return false;
+    if (r->kind == Type_Array) return type_collect_holds_region(prog, r->elem, region, arena, depth + 1);
+    if (r->kind == Type_Ptr || type_slice_elem(r)) return !r->is_raw && string8_equals(&r->region, &region);
+    if (r->kind != Type_Name && r->kind != Type_Generic) return false;
+    TypeSub sub = {0};
+    StructDecl *decl = lookup_aggregate_decl(prog, r, &sub, arena);
+    if (!decl || decl->is_external || decl->is_union) return false;
+    for (i32 i = 0; i < decl->fields.length; i++) {
+        Field *f = (Field *)decl->fields.data[i];
+        if (!f->type) continue;
+        TypeExpr *ft = sub.has ? substitute_type_sub(arena, f->type, sub) : f->type;
+        if (type_collect_holds_region(prog, ft, region, arena, depth + 1)) return true;
+    }
+    return false;
+}
+
+static void emit_region_forget(memops_arena *arena, string8 *out, Program *prog, TypeExpr *type, string8 path, string8 region, i32 depth) {
+    TypeExpr *r = resolve_alias_type(prog, type);
+    if (!r || depth > 64) return;
+    if (r->kind == Type_Array) {
+        if (!type_collect_holds_region(prog, r->elem, region, arena, 0)) return;
+        char var[32];
+        snprintf(var, sizeof(var), "rin_i%d", depth);
+        emit_cstr(arena, out, "for (u64 ");
+        emit_cstr(arena, out, var);
+        emit_cstr(arena, out, " = 0; ");
+        emit_cstr(arena, out, var);
+        emit_cstr(arena, out, " < sizeof(");
+        emit_string8(arena, out, path);
+        emit_cstr(arena, out, ") / sizeof(");
+        emit_string8(arena, out, path);
+        emit_cstr(arena, out, "[0]); ");
+        emit_cstr(arena, out, var);
+        emit_cstr(arena, out, "++) {\n");
+        string8 inner = concat_name2(arena, path, "[", string8_from_cstr(arena, var));
+        inner = concat_name2(arena, inner, "]", (string8){0});
+        emit_region_forget(arena, out, prog, r->elem, inner, region, depth + 1);
+        emit_cstr(arena, out, "}\n");
+        return;
+    }
+    if (r->kind == Type_Ptr || type_slice_elem(r)) {
+        if (r->is_raw || !string8_equals(&r->region, &region)) return;
+        emit_cstr(arena, out, "memset(&(");
+        emit_string8(arena, out, path);
+        emit_cstr(arena, out, "), 0, sizeof(");
+        emit_string8(arena, out, path);
+        emit_cstr(arena, out, "));\n");
+        return;
+    }
+    if (r->kind != Type_Name && r->kind != Type_Generic) return;
+    TypeSub sub = {0};
+    StructDecl *decl = lookup_aggregate_decl(prog, r, &sub, arena);
+    if (!decl || decl->is_external || decl->is_union) return;
+    for (i32 i = 0; i < decl->fields.length; i++) {
+        Field *f = (Field *)decl->fields.data[i];
+        if (!f->type || f->name.length == 0) continue;
+        TypeExpr *ft = sub.has ? substitute_type_sub(arena, f->type, sub) : f->type;
+        string8 inner = concat_name2(arena, path, ".", c_ident(arena, f->name));
+        emit_region_forget(arena, out, prog, ft, inner, region, depth + 1);
     }
 }
 
@@ -23808,6 +24033,20 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
                               "    return a;\n}\n"
                               "RIN_MAYBE_UNUSED static void rin_region_stack_pop(void) {\n"
                               "    memops_arena_clear(&rin_region_stack[--rin_region_stack_top]);\n}\n\n");
+    }
+
+    /* What a region's end empties: every global holding its memory, as many fields down as it goes. */
+    for (i32 i = 0; i < prog->regions.length; i++) {
+        emit_cstr(arena, out, "RIN_MAYBE_UNUSED static void rin_region_forget_");
+        emit_string8(arena, out, prog->regions.data[i]);
+        emit_cstr(arena, out, "(void) {\n");
+        for (i32 j = 0; j < prog->globals.length; j++) {
+            Stmt *g = (Stmt *)prog->globals.data[j];
+            if (g->is_external || !g->type || g->type->is_const) continue;
+            string8 path = c_ident(arena, reflect_runtime_c_name(arena, g->name));
+            emit_region_forget(arena, out, prog, g->type, path, prog->regions.data[i], 0);
+        }
+        emit_cstr(arena, out, "}\n");
     }
 
     // non-generic proc definitions

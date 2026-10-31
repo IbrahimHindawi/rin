@@ -1,0 +1,8 @@
+// expect: ends inside this loop
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; }
+game: struct = { enemies: []enemy in level; }
+g: game = {};
+load: proc(r: region level) -> void = { reset r; g.enemies = new_slice<enemy>(r, 4); }
+main: proc() -> i32 = { level: region = { load(level); p: *enemy = g.enemies[0]&; for (i: i32 = 0; i < 2; i += 1) { i = i + p*.hp; load(level); } } return 0; }
