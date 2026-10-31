@@ -1,0 +1,19 @@
+// the ternary's first arm says level, so a global option in level, which frame's end does not empty, takes the frame pointer; u* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+tmp: region in frame;
+gt: option<*i32 in tmp> = null;
+pick: proc(a: *i32 in R) -> *i32 = { return a; }
+gg: option<*i32 in level> = null;
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    c: i32 = 0;
+    frame: region = {
+        f: *i32 in frame = new<i32>(frame, 2);
+        gg = c != 0 ? pick(a) : pick(f);
+    }
+    u: option<*i32 in level> = gg;
+    if (u) { printfmt("{}\n", u*); }
+    return 0;
+}

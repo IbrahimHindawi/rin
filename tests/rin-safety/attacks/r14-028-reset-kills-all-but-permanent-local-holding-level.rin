@@ -1,0 +1,12 @@
+// R binds level through a global's address; the call's result counts as permanent, and a local saying 'in permanent' is exempt from what reset kills; dx* after the reset reads released level memory: use-after-poison
+import "std/print.rin"
+level: region global;
+gl: option<*i32 in level> = null;
+bk: proc(h: *option<*i32 in R>) -> *i32 = { return unwrap(h*); }
+main: proc() -> i32 = {
+    gl = new<i32>(level, 1);
+    dx: *i32 in permanent = bk(gl&);
+    reset level;
+    printfmt("{}\n", dx*);
+    return 0;
+}

@@ -1,0 +1,17 @@
+// as 005 with the memory passed through another proc's named result: sub(new_slice(r)) in the callee, a handle the caller's walk skips; q[0] after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+sub: proc(c: []i32 in S) -> []i32 in S = { return c; }
+mk: proc(r: region R, b: *i32 in level) -> []i32 = {
+    return sub(new_slice<i32>(r, 2));
+}
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: []i32 in level = new_slice<i32>(level, 1);
+    frame: region = {
+        q = mk(frame, a);
+    }
+    printfmt("{}\n", q[0]);
+    return 0;
+}

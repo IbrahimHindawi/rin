@@ -1,0 +1,19 @@
+// through-a-call form of 011: g(p) on the second pass hands back x's address, its bare result taken as caller memory; q* in main is stack-use-after-return
+import "std/print.rin"
+level: region global;
+g: proc(p: *i32) -> *i32 = { return p; }
+f: proc(a: *i32 in R, n: i32) -> *i32 = {
+    x: i32 = 2;
+    p: *i32 = a;
+    for (i: i32 = 0; i < n; i += 1) {
+        if (i == 1) { return g(p); }
+        p = x&;
+    }
+    return a;
+}
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 = f(a, 3);
+    printfmt("{}\n", q*);
+    return 0;
+}

@@ -1,0 +1,23 @@
+// A pointer walked along a list is what the loop comes back with, and all of
+// it is in the region the result says.
+import "std/print.rin"
+level: region global;
+node: struct = { value: i32; next: option<*node in level>; }
+find: proc(head: *node in level, want: i32) -> option<*node in level> = {
+    p: option<*node in level> = head;
+    while (p) {
+        if (p*.value == want) { return p; }
+        p = p*.next;
+    }
+    return null;
+}
+main: proc() -> i32 = {
+    b: *node in level = new<node>(level);
+    b*.value = 3;
+    a: *node in level = new<node>(level);
+    a*.value = 1;
+    a*.next = b;
+    r: option<*node in level> = find(a, 3);
+    if (r) { printfmt("{}\n", r*.value); }
+    return 0;
+}

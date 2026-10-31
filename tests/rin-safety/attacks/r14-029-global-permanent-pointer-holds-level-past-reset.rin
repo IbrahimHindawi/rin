@@ -1,0 +1,14 @@
+// as 028 stored in a global non-option '*i32 in permanent', which no region end touches; gq* after the reset is use-after-poison
+import "std/print.rin"
+level: region global;
+gi: i32 = 0;
+gl: option<*i32 in level> = null;
+gq: *i32 in permanent = gi&;
+bk: proc(h: *option<*i32 in R>) -> *i32 = { return unwrap(h*); }
+main: proc() -> i32 = {
+    gl = new<i32>(level, 1);
+    gq = bk(gl&);
+    reset level;
+    printfmt("{}\n", gq*);
+    return 0;
+}

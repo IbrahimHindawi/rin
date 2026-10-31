@@ -1,0 +1,14 @@
+// mk's bare result is new memory in its region parameter, but the call_result_in_its_args_region walk skips the region handle, so the call claims to last as long as `a` (level) and q holds frame memory read after the block: use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+mk: proc(r: region R, a: *i32 in level) -> *i32 = { return new<i32>(r, 1); }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    frame: region = {
+        q = mk(frame, a);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

@@ -1,0 +1,19 @@
+// the ternary passes as a *i32 in level argument to tk, whose named result then says level outright; q* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+tmp: region in frame;
+gt: option<*i32 in tmp> = null;
+pick: proc(a: *i32 in R) -> *i32 = { return a; }
+tk: proc(x: *i32 in level) -> *i32 in level = { return x; }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    c: i32 = 0;
+    frame: region = {
+        f: *i32 in frame = new<i32>(frame, 2);
+        q = tk(c != 0 ? pick(a) : pick(f));
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

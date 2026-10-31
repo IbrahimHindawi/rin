@@ -1,0 +1,24 @@
+// slice form of 008: p takes a frame slice from a global below the return; the caller's q says level and q[0] after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+holder: struct = { s: []i32 in frame; }
+gh: holder = {};
+f: proc(a: []i32 in R, n: i32) -> []i32 = {
+    p: []i32 = a;
+    for (i: i32 = 0; i < n; i += 1) {
+        if (i == 1) { return p; }
+        p = gh.s;
+    }
+    return a;
+}
+main: proc() -> i32 = {
+    a: []i32 in level = new_slice<i32>(level, 2);
+    q: []i32 in level = a;
+    frame: region = {
+        gh.s = new_slice<i32>(frame, 3);
+        q = f(a, 3);
+    }
+    printfmt("{}\n", q[0]);
+    return 0;
+}

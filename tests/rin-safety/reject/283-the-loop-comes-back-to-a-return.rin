@@ -1,0 +1,11 @@
+// expect: the loop comes back to a return
+f: proc(n: i32, p: *i32) -> *i32 = {
+    x: i32 = 0;
+    q: *i32 = p;
+    for (i: i32 = 0; i < n; i += 1) {
+        if (i == 1) { return q; }
+        q = x&;
+    }
+    return p;
+}
+main: proc() -> i32 = { return 0; }

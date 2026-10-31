@@ -1,0 +1,16 @@
+// `h` binds R to frame but the return check only flags declared regions; the caller collects nothing from boss& (a global's address) and q is not killed by the block's end, so q* afterward is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+boss: option<*i32 in frame> = null;
+gi: i32 = 0;
+bk: proc(h: *option<*i32 in R>) -> *i32 = { return unwrap(h*); }
+main: proc() -> i32 = {
+    q: *i32 = gi&;
+    frame: region = {
+        boss = new<i32>(frame, 2);
+        q = bk(boss&);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

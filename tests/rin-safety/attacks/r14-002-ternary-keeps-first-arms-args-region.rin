@@ -1,0 +1,16 @@
+// a ternary's type is its first arm's, region_from_args included, so two bare calls compare equal and the whole takes level from pick(a) though the arm taken is pick(f), in frame; q* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+pick: proc(a: *i32 in R) -> *i32 = { return a; }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    c: i32 = 0;
+    frame: region = {
+        f: *i32 in frame = new<i32>(frame, 2);
+        q = c != 0 ? pick(a) : pick(f);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

@@ -1,0 +1,14 @@
+// the ternary's type is its first arm's, a bare call's region_from_args = level, so `x&` in the other arm passes as *i32 in level; the arm taken returns a local's address: stack-use-after-return at q*
+import "std/print.rin"
+level: region global;
+pick: proc(a: *i32 in R) -> *i32 = { return a; }
+f: proc(a: *i32 in level, c: i32) -> *i32 in level = {
+    x: i32 = 2;
+    return c != 0 ? pick(a) : x&;
+}
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = f(a, 0);
+    printfmt("{}\n", q*);
+    return 0;
+}

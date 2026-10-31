@@ -1,0 +1,23 @@
+// option form of 008: p takes the frame global below the return, and the bare option result lets the caller keep it in level; q* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+boss: option<*i32 in frame> = null;
+f: proc(a: *i32 in R, n: i32) -> option<*i32> = {
+    p: option<*i32> = a;
+    for (i: i32 = 0; i < n; i += 1) {
+        if (i == 1) { return p; }
+        p = boss;
+    }
+    return a;
+}
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: option<*i32 in level> = a;
+    frame: region = {
+        boss = new<i32>(frame, 2);
+        q = f(a, 3);
+    }
+    if (q) { printfmt("{}\n", q*); }
+    return 0;
+}

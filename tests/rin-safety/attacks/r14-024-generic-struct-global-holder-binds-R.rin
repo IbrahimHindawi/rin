@@ -1,0 +1,19 @@
+// the holder is a generic struct: R binds through its type argument, the walk reads only the outer permanent; q says level and q* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+boss: option<*i32 in frame> = null;
+gi: i32 = 0;
+bx: struct<T> = { v: T; }
+gb: bx<option<*i32 in frame>> = { null };
+bk: proc(h: *bx<option<*i32 in R>>, a: *i32 in level) -> *i32 = { return unwrap(h*.v); }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    frame: region = {
+        gb.v = new<i32>(frame, 1);
+        q = bk(gb&, a);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

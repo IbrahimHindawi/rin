@@ -1,0 +1,17 @@
+// the only argument is a global's address, so the call's result is taken to last for good (permanent), though it is what the global holds, in frame; q* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+boss: option<*i32 in frame> = null;
+gi: i32 = 0;
+bk: proc(h: *option<*i32 in R>) -> *i32 = { return unwrap(h*); }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    frame: region = {
+        boss = new<i32>(frame, 1);
+        q = bk(boss&);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

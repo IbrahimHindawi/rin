@@ -1,0 +1,17 @@
+// the region handle gives memory through a local 't' typed in R, whose rank is unknown so the return check passes it; the caller thinks the result lasts as long as b (level), and q[0] after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+mk: proc(r: region R, b: *i32 in level) -> []i32 = {
+    t: []i32 in R = new_slice<i32>(r, 2);
+    return t;
+}
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: []i32 in level = new_slice<i32>(level, 1);
+    frame: region = {
+        q = mk(frame, a);
+    }
+    printfmt("{}\n", q[0]);
+    return 0;
+}

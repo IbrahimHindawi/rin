@@ -1,0 +1,13 @@
+// scratch's handle goes to mk beside a level pointer; the walk skips it, so the result is kept in level past the scratch block: q* is use-after-poison
+import "std/print.rin"
+level: region global;
+mk: proc(r: region R, a: *i32 in level) -> *i32 = { return new<i32>(r, 1); }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    scratch {
+        q = mk(scratch, a);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

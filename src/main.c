@@ -11334,6 +11334,9 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
         }
         if (right_kind && third) return third;
         if (third_kind && right) return right;
+        /* What a call's arguments say about its result is about that call: the other arm may be anything. */
+        if (right && right->region_from_args.length > 0) { right = clone_type_expr(arena, right); right->region_from_args = (string8){0}; }
+        if (third && third->region_from_args.length > 0) { third = clone_type_expr(arena, third); third->region_from_args = (string8){0}; }
         if (right && third && type_compatible(prog, right, third)) return right;
         if (right && third && type_compatible(prog, third, right)) return third;
         return right;
@@ -15092,8 +15095,13 @@ static TypeExpr *call_result_in_its_args_region(Program *prog, TypeExpr *ret, Ex
     for (i32 i = 0; i < call->args.length; i++) {
         TypeExpr *t = resolve_alias_type(prog, infer_expr_type((Expr *)call->args.data[i], scope, prog, arena));
         if (!t) return ret;
-        if (t->kind == Type_Region) continue;
         if (t->kind == Type_Array) return ret;
+        if (t->kind == Type_Region) {
+            if (t->region.length == 0) return ret;
+            if (shortest.length == 0 || region_ge(prog, shortest, t->region)) shortest = t->region;
+            else if (!region_ge(prog, t->region, shortest)) return ret;
+            continue;
+        }
         if (type_is_proc_pointer(prog, t)) continue;
         if (!type_has_pointer_deep(prog, t, arena, 0)) continue;
         if (!type_is_checked_pointer(prog, t)) return ret;
@@ -17970,6 +17978,90 @@ static bool return_root_ok(string8 name, ProcDecl *proc, TypeScope *scope, Progr
     return false;
 }
 
+static bool expr_returns_caller_memory(Expr *e, ProcDecl *proc, TypeScope *scope, Program *prog, memops_arena *arena, i32 depth);
+/* A pointer with no region points into what the caller passed, and that is all the caller can tell. One
+   from a region's memory, a region the caller gave included, would outlive what the caller knows. */
+static void return_says_its_region(TypeExpr *return_type, Expr *value, i32 line, i32 col, TypeScope *scope, Program *prog, memops_arena *arena) {
+    TypeExpr *rt = resolve_alias_type(prog, return_type);
+    if (!rt || !(rt->kind == Type_Ptr || type_slice_elem(rt)) || rt->is_raw || rt->region.length > 0) return;
+    Vec_string8 paths = Vec_string8_reserve(arena, 2);
+    Vec_string8 regions = Vec_string8_reserve(arena, 2);
+    borrow_paths_from_expr(value, scope, prog, arena, &paths, &regions);
+    TypeExpr *value_type = resolve_alias_type(prog, infer_expr_type(value, scope, prog, arena));
+    if (value_type && value_type->region.length > 0) Vec_string8_append(arena, &regions, value_type->region);
+    for (i32 i = 0; i < regions.length; i++) {
+        if (!string8_equals_cstr(&regions.data[i], "permanent")) {
+            region_error("this points into region '%.*s', and the caller has to know: say so, '-> *T in "
+                         "%.*s'", regions.data[i], regions.data[i], line, col);
+            return;
+        }
+    }
+}
+
+typedef struct LoopAssigns { Vec_voidptr stmts; } LoopAssigns;
+typedef struct NamesIn { Vec_string8 *names; } NamesIn;
+static void names_in_visit(Expr *e, void *ctx, memops_arena *arena) {
+    if (e->kind == Expr_Name) Vec_string8_append(arena, ((NamesIn *)ctx)->names, e->name);
+}
+static void loop_assign_visit(Stmt *s, void *ctx, memops_arena *arena) {
+    if (s->kind == Stmt_Assign && s->assign_op == Token_Equal && s->lhs) ptr_array_append(arena, &((LoopAssigns *)ctx)->stmts, s);
+}
+
+/* The enclosing loop, outermost: a return inside it also returns what is assigned below it, on the next
+   pass. Each assignment that can reach the value is held to what the value itself is held to. */
+static Stmt *g_outer_loop = null;
+static void return_checks_later_assignments(Stmt *ret, TypeExpr *return_type, ProcDecl *proc, TypeScope *scope, Program *prog, memops_arena *arena) {
+    if (!g_outer_loop || !ret->expr || !type_is_checked_pointer(prog, return_type)) return;
+    LoopAssigns found = { .stmts = ptr_array_reserve(arena, 8) };
+    stmt_walk(g_outer_loop, null, loop_assign_visit, &found, arena);
+    if (found.stmts.length == 0) return;
+    Vec_string8 work = Vec_string8_reserve(arena, 8);
+    Vec_string8 regions = Vec_string8_reserve(arena, 2);
+    borrow_paths_from_expr(ret->expr, scope, prog, arena, &work, &regions);
+    for (i32 w = 0; w < work.length; w++) work.data[w] = path_root(work.data[w]);
+    /* Paths are what a local holds now; the local itself is what the next pass changes. */
+    NamesIn names = { .names = &work };
+    expr_walk(ret->expr, names_in_visit, &names, arena);
+    bool bare = type_region_of(prog, return_type).length == 0;
+    for (i32 w = 0; w < work.length; w++) {
+        if (work.length > 256) {
+            type_error_message("this return reaches too many assignments in its loop to follow; use fewer locals", ret->line, ret->col);
+            return;
+        }
+        string8 name = work.data[w];
+        bool seen = false;
+        for (i32 k = 0; k < w && !seen; k++) seen = string8_equals(&work.data[k], &name);
+        if (seen) continue;
+        Borrow *b = borrow_find(name);
+        for (i32 i = 0; b && i < b->paths.length; i++) Vec_string8_append(arena, &work, path_root(b->paths.data[i]));
+        for (i32 i = 0; i < found.stmts.length; i++) {
+            Stmt *a = (Stmt *)found.stmts.data[i];
+            string8 root = path_root(expr_path(a->lhs, arena));
+            if (!string8_equals(&root, &name)) continue;
+            /* Numbers, or zeroing, give no memory to point at. */
+            TypeExpr *place = infer_expr_type(a->lhs, scope, prog, arena);
+            if (place && !type_has_pointer_deep(prog, place, arena, 0)) continue;
+            if (a->expr && a->expr->kind == Expr_InitList && a->expr->args.length == 0) continue;
+            if (bare) {
+                return_says_its_region(return_type, a->expr, a->line, a->col, scope, prog, arena);
+                if (!expr_returns_caller_memory(a->expr, proc, scope, prog, arena, 0)) {
+                    type_error_message("the loop comes back to a return with this value: a returned pointer with no region "
+                                       "must point into the caller's memory", a->line, a->col);
+                }
+            } else {
+                TypeExpr *t = infer_expr_type(a->expr, scope, prog, arena);
+                if (!t) {
+                    type_error_message("the loop comes back to a return with this value, and it is not known here: "
+                                       "declare what it uses before the loop", a->line, a->col);
+                } else {
+                    region_flow_rejects(prog, return_type, t, a->line, a->col);
+                }
+            }
+            expr_walk(a->expr, names_in_visit, &names, arena);
+        }
+    }
+}
+
 static bool expr_returns_caller_memory(Expr *e, ProcDecl *proc, TypeScope *scope, Program *prog, memops_arena *arena, i32 depth) {
     if (!e || depth > 8) return false;
     if (e->kind == Expr_Name && string8_equals_cstr(&e->name, "null")) return true;
@@ -19230,7 +19322,29 @@ static void type_check_stmt(
     memops_arena *arena
 );
 
+static void type_check_stmt_inner(
+    Stmt *s,
+    TypeScope *scope,
+    Program *prog,
+    TypeExpr *return_type,
+    ProcDecl *current_proc,
+    memops_arena *arena
+) ;
 static void type_check_stmt(
+    Stmt *s,
+    TypeScope *scope,
+    Program *prog,
+    TypeExpr *return_type,
+    ProcDecl *current_proc,
+    memops_arena *arena
+) {
+    Stmt *outer = g_outer_loop;
+    if (!outer && s && (s->kind == Stmt_For || s->kind == Stmt_While || s->kind == Stmt_DoWhile)) g_outer_loop = s;
+    type_check_stmt_inner(s, scope, prog, return_type, current_proc, arena);
+    g_outer_loop = outer;
+}
+
+static void type_check_stmt_inner(
     Stmt *s,
     TypeScope *scope,
     Program *prog,
@@ -19472,21 +19586,8 @@ static void type_check_stmt(
             if (g_safe_body && !g_checking_std) {
                 /* A pointer with no region points into what the caller passed, and that is all the
                    caller can tell. One from a region's memory would outlive what the caller knows. */
-                TypeExpr *rt = resolve_alias_type(prog, return_type);
-                if (rt && (rt->kind == Type_Ptr || type_slice_elem(rt)) && !rt->is_raw && rt->region.length == 0) {
-                    Vec_string8 paths = Vec_string8_reserve(arena, 2);
-                    Vec_string8 regions = Vec_string8_reserve(arena, 2);
-                    borrow_paths_from_expr(s->expr, scope, prog, arena, &paths, &regions);
-                    TypeExpr *value_type = resolve_alias_type(prog, infer_expr_type(s->expr, scope, prog, arena));
-                    if (value_type && value_type->region.length > 0) Vec_string8_append(arena, &regions, value_type->region);
-                    for (i32 i = 0; i < regions.length; i++) {
-                        if (region_rank(prog, regions.data[i]) >= 0 && !string8_equals_cstr(&regions.data[i], "permanent")) {
-                            region_error("this points into region '%.*s', and the caller has to know: say so, '-> *T in "
-                                         "%.*s'", regions.data[i], regions.data[i], s->line, s->col);
-                            break;
-                        }
-                    }
-                }
+                return_says_its_region(return_type, s->expr, s->line, s->col, scope, prog, arena);
+                return_checks_later_assignments(s, return_type, current_proc, scope, prog, arena);
             }
             if (g_safe_body && g_active_regions.length > 0) {
                 /* Named or not, through a pointer or inside a struct: what this
@@ -20529,10 +20630,15 @@ static u64 printfmt_placeholder_at(string8 lit, u64 i, string8 *spec) {
     if (lit.data[i + 1] != ':') return 0;
     u64 j = i + 2;
     if (j < lit.length - 1 && lit.data[j] == '-') j++;
+    /* Longer than this is more than C's printf takes: it is not a placeholder, and prints as written. */
+    u64 digits = j;
     while (j < lit.length - 1 && lit.data[j] >= '0' && lit.data[j] <= '9') j++;
+    if (j - digits > 6) return 0;
     if (j < lit.length - 1 && lit.data[j] == '.') {
         j++;
+        digits = j;
         while (j < lit.length - 1 && lit.data[j] >= '0' && lit.data[j] <= '9') j++;
+        if (j - digits > 6) return 0;
     }
     /* `{:.6g}`, `{:x}`: a conversion, kept to one the argument's type can take. */
     if (j < lit.length - 1 && (lit.data[j] == 'g' || lit.data[j] == 'e' || lit.data[j] == 'x' || lit.data[j] == 'X')) j++;
@@ -20660,7 +20766,12 @@ static void printfmt_append_conversion(memops_arena *arena, string8 *out, string
     if (written) width.length--;
     /* C leaves a zero flag or a precision on %c, and a zero flag on %s, undefined. */
     if (spec[1] == 'c' || spec[1] == 's') {
+        bool minus = width.length > 0 && width.data[0] == '-';
+        if (minus) { width.data++; width.length--; }
         while (width.length > 0 && width.data[0] == '0') { width.data++; width.length--; }
+        if (minus) {
+            string8_append_byte(arena, out, '-');
+        }
         if (spec[1] == 'c') {
             for (u64 k = 0; k < width.length; k++) {
                 if (width.data[k] == '.') { width.length = k; break; }
@@ -20798,6 +20909,31 @@ static void rewrite_printfmt_in_expr(Expr *e, const char *path) {
 
    Returns false when any argument has no matching conversion, in which case the
    caller falls back and nothing is lost. */
+static Expr *printfmt_cstr_guard(memops_arena *arena, Expr *arg) {
+    Expr *guard = expr_new(arena, Expr_Ternary);
+    Expr *cmp = expr_new(arena, Expr_Binary);
+    Expr *nul = expr_new(arena, Expr_Name);
+    Expr *fallback = expr_new(arena, Expr_String);
+    nul->name = string8_from_cstr(arena, "null");
+    nul->line = arg->line;
+    nul->col = arg->col;
+    cmp->op = Token_BangEqual;
+    cmp->left = arg;
+    cmp->right = nul;
+    cmp->line = arg->line;
+    cmp->col = arg->col;
+    fallback->string_lit = string8_from_cstr(arena, "\"(null)\"");
+    fallback->line = arg->line;
+    fallback->col = arg->col;
+    guard->left = cmp;
+    guard->right = arg;
+    guard->third = fallback;
+    guard->cstr_guard = true;
+    guard->line = arg->line;
+    guard->col = arg->col;
+    return guard;
+}
+
 static bool printfmt_try_single_call(
     memops_arena *arena,
     Vec_voidptr *out,
@@ -20841,28 +20977,7 @@ static bool printfmt_try_single_call(
             /* print_cstr prints "(null)" for a null pointer; printf with %s would
                be undefined. The guard keeps the behaviour without costing a call. */
             if (printfmt_spec_is_cstr(spec)) {
-                Expr *guard = expr_new(arena, Expr_Ternary);
-                Expr *cmp = expr_new(arena, Expr_Binary);
-                Expr *nul = expr_new(arena, Expr_Name);
-                Expr *fallback = expr_new(arena, Expr_String);
-                nul->name = string8_from_cstr(arena, "null");
-                nul->line = arg->line;
-                nul->col = arg->col;
-                cmp->op = Token_BangEqual;
-                cmp->left = arg;
-                cmp->right = nul;
-                cmp->line = arg->line;
-                cmp->col = arg->col;
-                fallback->string_lit = string8_from_cstr(arena, "\"(null)\"");
-                fallback->line = arg->line;
-                fallback->col = arg->col;
-                guard->left = cmp;
-                guard->right = arg;
-                guard->third = fallback;
-                guard->cstr_guard = true;
-                guard->line = arg->line;
-                guard->col = arg->col;
-                ptr_array_append(arena, &printf_call->args, guard);
+                ptr_array_append(arena, &printf_call->args, printfmt_cstr_guard(arena, arg));
             } else {
                 /* What was worked out here is what printf is told, whatever the arms of a
                    ternary or the sides of an operator turn out to be. A hex conversion
@@ -20998,9 +21113,6 @@ static void rewrite_printfmt_call_stmt_inner(Stmt *stmt, TypeScope *scope, Progr
         if (n) {
             printfmt_append_print_cstr(arena, out, stmt, lit.data + chunk_start, i - chunk_start, fmt->line, fmt->col);
             Expr *arg = (Expr *)call->args.data[arg_index + 1];
-            if (width.length > 6) {
-                printfmt_error_at(stmt->source_path, arg->line, arg->col, "a width or precision this long is more than C's printf takes");
-            }
             const char *spec = width.length > 0 ? printfmt_spec_for_type(prog, infer_expr_type(arg, scope, prog, arena)) : null;
             if (width.length > 0 && !spec) {
                 printfmt_error_at(stmt->source_path, arg->line, arg->col,
@@ -21018,7 +21130,7 @@ static void rewrite_printfmt_call_stmt_inner(Stmt *stmt, TypeScope *scope, Progr
                 fmt_arg->col = arg->col;
                 fmt_arg->string_lit = built;
                 ptr_array_append(arena, &printf_call->args, fmt_arg);
-                ptr_array_append(arena, &printf_call->args, arg);
+                ptr_array_append(arena, &printf_call->args, printfmt_spec_is_cstr(spec) ? printfmt_cstr_guard(arena, arg) : arg);
                 ptr_array_append(arena, out, printfmt_expr_stmt(arena, printf_call, stmt));
             } else {
                 printfmt_append_print_arg(arena, out, stmt, arg, arg_index + 1, scope, prog);

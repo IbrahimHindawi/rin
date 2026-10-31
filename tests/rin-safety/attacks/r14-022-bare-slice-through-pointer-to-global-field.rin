@@ -1,0 +1,17 @@
+// slice form of 019: gh.s& is the address of a global's field holding a frame slice, bound to R; the bare result is not tied to frame in the caller, and q[0] after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+hd: struct = { s: []i32 in frame; }
+gh: hd = {};
+gi: [1]i32 = {};
+bk: proc(h: *[]i32 in R) -> []i32 = { return h*; }
+main: proc() -> i32 = {
+    q: []i32 = gi;
+    frame: region = {
+        gh.s = new_slice<i32>(frame, 2);
+        q = bk(gh.s&);
+    }
+    printfmt("{}\n", q[0]);
+    return 0;
+}

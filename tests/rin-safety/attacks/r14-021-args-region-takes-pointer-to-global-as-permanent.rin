@@ -1,0 +1,16 @@
+// boss& counts as a pointer in permanent, and only its outer region is read, so shortest = level though the result is what boss holds, in frame; q says level and q* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+boss: option<*i32 in frame> = null;
+bk: proc(h: *option<*i32 in R>, a: *i32 in level) -> *i32 = { return unwrap(h*); }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    frame: region = {
+        boss = new<i32>(frame, 2);
+        q = bk(boss&, a);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

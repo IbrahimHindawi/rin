@@ -1,0 +1,18 @@
+// two levels in frame behind a global; the arg still reads permanent, and q says level; q* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+boss: option<*i32 in frame> = null;
+gi: i32 = 0;
+gg: option<*option<*i32 in frame> in frame> = null;
+bk: proc(h: *option<*option<*i32 in R> in R>, a: *i32 in level) -> *i32 = { return unwrap(unwrap(h*)*); }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    frame: region = {
+        gg = new<option<*i32 in frame>>(frame, null);
+        q = bk(gg&, a);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

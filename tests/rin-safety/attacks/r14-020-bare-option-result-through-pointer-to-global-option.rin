@@ -1,0 +1,16 @@
+// as 019 with a bare option result: the inner R is frame, nothing in the caller says so, and q survives the block; q* is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+boss: option<*i32 in frame> = null;
+gi: i32 = 0;
+bk: proc(h: *option<*i32 in R>) -> option<*i32> = { return h*; }
+main: proc() -> i32 = {
+    q: option<*i32> = gi&;
+    frame: region = {
+        boss = new<i32>(frame, 2);
+        q = bk(boss&);
+    }
+    if (q) { printfmt("{}\n", q*); }
+    return 0;
+}

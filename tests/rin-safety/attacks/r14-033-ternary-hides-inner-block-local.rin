@@ -1,0 +1,18 @@
+// the ternary's second arm is the address of a block's local; q says level and outlives y: stack-use-after-scope at q*
+import "std/print.rin"
+level: region global;
+frame: region in level;
+tmp: region in frame;
+gt: option<*i32 in tmp> = null;
+pick: proc(a: *i32 in R) -> *i32 = { return a; }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    c: i32 = 0;
+    q: *i32 in level = a;
+    if (c == 0) {
+        y: i32 = 1;
+        q = c != 0 ? pick(a) : y&;
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

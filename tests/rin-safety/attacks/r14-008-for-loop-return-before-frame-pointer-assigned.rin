@@ -1,0 +1,23 @@
+// the return check looks at p's sources as read top to bottom; p takes the frame pointer after the return, in the same loop, so the second pass returns it unsaid. The call says level, and q* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+boss: option<*i32 in frame> = null;
+f: proc(a: *i32 in R, n: i32) -> *i32 = {
+    p: *i32 = a;
+    for (i: i32 = 0; i < n; i += 1) {
+        if (i == 1) { return p; }
+        p = unwrap(boss);
+    }
+    return a;
+}
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    frame: region = {
+        boss = new<i32>(frame, 2);
+        q = f(a, 3);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

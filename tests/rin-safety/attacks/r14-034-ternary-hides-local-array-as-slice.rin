@@ -1,0 +1,15 @@
+// the slice local s views a local array, and passes in the second arm under the first arm's region_from_args; returned as []i32 in level it views a dead frame: stack-use-after-return at q[0]
+import "std/print.rin"
+level: region global;
+pick: proc(a: []i32 in R) -> []i32 = { return a; }
+f: proc(a: []i32 in level, c: i32) -> []i32 in level = {
+    z: [4]i32 = {};
+    s: []i32 = z;
+    return c != 0 ? pick(a) : s;
+}
+main: proc() -> i32 = {
+    a: []i32 in level = new_slice<i32>(level, 1);
+    q: []i32 in level = f(a, 0);
+    printfmt("{}\n", q[0]);
+    return 0;
+}

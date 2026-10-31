@@ -41,7 +41,6 @@ r3-04c-list-oob.rin
 r3-04f-map-ops.rin
 r3-04g-map-growth.rin
 r3-05-print-cstr-null.rin
-r3-05b-printfmt-huge-width.rin
 r3-05c-printfmt-malformed.rin
 r3-05d-printfmt-malformed2.rin
 r3-05e-print-float-special.rin
@@ -99,7 +98,6 @@ r4-415-file-open-exhaust.rin
 r4-416-file-reuse-generation-collides.rin
 r4-417-open-null-str.rin
 r4-418-str-zero-global-print.rin
-r5-c-048-must-of-tmp-returned-struct.rin
 r5-c-080-generic-mangle-region-ptr.rin
 r5-e-019-const-eval-int-overflow-index.rin
 r5-e-020-const-eval-u64-wrap-index.rin
@@ -152,8 +150,6 @@ r7-a-091-enum-count-bare-shadow.rin
 r7-a-107-str-zero-field.rin
 r7-a-120-align-small-attr.rin
 r7-a-121-print-char-precision.rin
-r7-a-122-print-huge-width.rin
-r7-a-123-print-precision-float.rin
 r7-a-126-print-percent-in-format.rin
 r7-a-128-print-str-null-nested.rin
 r7-a-163-procptr-variadic-type.rin

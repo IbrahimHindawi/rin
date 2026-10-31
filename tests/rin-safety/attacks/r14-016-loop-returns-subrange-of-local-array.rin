@@ -1,0 +1,18 @@
+// subrange form of 011: p = x below the return, and p[0..1] on the second pass is a view of a local array; q[0] in main is stack-use-after-return
+import "std/print.rin"
+level: region global;
+f: proc(a: []i32 in R, n: i32) -> []i32 = {
+    x: [2]i32 = {1,2};
+    p: []i32 = a;
+    for (i: i32 = 0; i < n; i += 1) {
+        if (i == 1) { return p[0..1]; }
+        p = x;
+    }
+    return a[0..1];
+}
+main: proc() -> i32 = {
+    a: []i32 in level = new_slice<i32>(level, 2);
+    q: []i32 = f(a, 3);
+    printfmt("{}\n", q[0]);
+    return 0;
+}

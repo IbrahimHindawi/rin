@@ -1,0 +1,17 @@
+// a is a bare parameter, 'retaken' only marks it after the assignment, and the assignment is below the return in the loop; the second pass returns x's address: stack-use-after-return at q*
+import "std/print.rin"
+gi: i32 = 0;
+f: proc(a: *i32, n: i32) -> *i32 = {
+    x: i32 = 7;
+    for (i: i32 = 0; i < n; i += 1) {
+        if (i == 1) { return a; }
+        a = x&;
+    }
+    return gi&;
+}
+main: proc() -> i32 = {
+    y: i32 = 1;
+    q: *i32 = f(y&, 3);
+    printfmt("{}\n", q*);
+    return 0;
+}

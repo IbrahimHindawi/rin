@@ -1,0 +1,3 @@
+// expect: the caller has to know
+mk: proc(r: region R) -> *i32 = { return new<i32>(r); }
+main: proc() -> i32 = { return 0; }

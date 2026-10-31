@@ -1,0 +1,14 @@
+// option form: the bare option<*i32> holds new memory from the handle, the call takes a's region (level), the test passes and q* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+mk: proc(r: region R, a: option<*i32 in level>) -> option<*i32> = { return new<i32>(r, 1); }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: option<*i32 in level> = a;
+    frame: region = {
+        q = mk(frame, a);
+    }
+    if (q) { printfmt("{}\n", q*); }
+    return 0;
+}

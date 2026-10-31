@@ -1,0 +1,20 @@
+// the ternary takes pick(a)'s region_from_args, level, and a list given to new<T> stores pick(f)'s frame pointer in level memory; h*.p* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+tmp: region in frame;
+gt: option<*i32 in tmp> = null;
+pick: proc(a: *i32 in R) -> *i32 = { return a; }
+hd: struct = { p: *i32 in level; }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    h: *hd in level = new<hd>(level, { .p = a });
+    c: i32 = 0;
+    frame: region = {
+        f: *i32 in frame = new<i32>(frame, 2);
+        n: *hd in level = new<hd>(level, { .p = c != 0 ? pick(a) : pick(f) });
+        h = n;
+    }
+    printfmt("{}\n", h*.p*);
+    return 0;
+}

@@ -1,0 +1,25 @@
+// as 008 in a while: p is assigned the frame pointer below the return, and the back edge carries it up to it; q* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+boss: option<*i32 in frame> = null;
+f: proc(a: *i32 in R, n: i32) -> *i32 = {
+    p: *i32 = a;
+    i: i32 = 0;
+    while (i < n) {
+        if (i == 1) { return p; }
+        i += 1;
+        p = unwrap(boss);
+    }
+    return a;
+}
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    frame: region = {
+        boss = new<i32>(frame, 2);
+        q = f(a, 3);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

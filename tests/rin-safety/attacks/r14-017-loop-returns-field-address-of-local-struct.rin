@@ -1,0 +1,19 @@
+// field-address form of 011: p = x& below the return, p*.f& on the second pass points into a local struct; q* in main is stack-use-after-return
+import "std/print.rin"
+level: region global;
+hd: struct = { f: i32; }
+f: proc(a: *hd in R, n: i32) -> *i32 = {
+    x: hd = { .f = 1 };
+    p: *hd = a;
+    for (i: i32 = 0; i < n; i += 1) {
+        if (i == 1) { return p*.f&; }
+        p = x&;
+    }
+    return a*.f&;
+}
+main: proc() -> i32 = {
+    a: *hd in level = new<hd>(level, { .f = 1 });
+    q: *i32 = f(a, 3);
+    printfmt("{}\n", q*);
+    return 0;
+}

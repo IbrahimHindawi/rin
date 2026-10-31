@@ -1,0 +1,19 @@
+// R is the frame region of a global vec, and at()'s bare result goes out of bk bare; the walk sees level and permanent; q* after the block reads the frame vec's buffer: use-after-poison
+import "std/vec.rin"
+import "std/print.rin"
+level: region global;
+frame: region in level;
+boss: option<*i32 in frame> = null;
+gi: i32 = 0;
+gv: option<*vec<i32> in frame> = null;
+bk: proc(h: *option<*vec<i32> in R>, a: *i32 in level) -> *i32 = { return vec<i32>at(unwrap(h*), 0); }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    frame: region = {
+        gv = vec<i32>make(frame, 2); _ = vec<i32>push(unwrap(gv), 3);
+        q = bk(gv&, a);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

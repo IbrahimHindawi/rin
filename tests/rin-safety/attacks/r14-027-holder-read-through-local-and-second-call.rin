@@ -1,0 +1,18 @@
+// through a local typed in R and a second bare call inside the callee; the walk at the outer call still reads permanent and level; q* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+boss: option<*i32 in frame> = null;
+gi: i32 = 0;
+pass: proc(x: *i32 in S) -> *i32 = { return x; }
+bk: proc(h: *option<*i32 in R>, a: *i32 in level) -> *i32 = { o: option<*i32 in R> = h*; if (o) { return pass(o); } return gi&; }
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    frame: region = {
+        boss = new<i32>(frame, 1);
+        q = bk(boss&, a);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}
