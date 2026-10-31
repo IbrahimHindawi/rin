@@ -1,0 +1,13 @@
+// as 030 through a struct and an array of them
+import "std/print.rin"
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; pad: [8]i64; }
+game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+g: game = {};
+load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
+wipe: proc(r: region level) -> i32 = { reset r; return 0; }
+mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
+hold: struct = { s: []enemy in frame; }
+ks: [2]hold = {};
+main: proc() -> i32 = { level: region = { load(level, 4); ks[1].s = g.enemies; } printfmt("{}\n", ks[1].s[0].hp); return 0; }

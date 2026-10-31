@@ -1,0 +1,9 @@
+// expect: statement of its own
+level: region global;
+frame: region in level;
+enemy: struct = { hp: i32; }
+game: struct = { es: []enemy in level; }
+g: game = {};
+wipe: proc() -> i32 = { reset level; g.es = new_slice<enemy>(level, 4); return 0; }
+pick: proc(p: *enemy, n: i32) -> i32 = { return p*.hp + n; }
+main: proc() -> i32 = { wipe(); return pick(g.es[0]&, wipe()); }

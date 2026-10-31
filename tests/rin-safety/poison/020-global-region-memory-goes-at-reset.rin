@@ -1,0 +1,10 @@
+// expect: use-after-poison
+level: region global;
+main: proc() -> i32 = {
+    unsafe {
+        p: ^i32 = new<i32>(level);
+        reset level;
+        return p[0];
+    }
+    return 0;
+}

@@ -1,0 +1,12 @@
+// as 070 with a slice: q holds level memory after level ended
+import "std/print.rin"
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; pad: [8]i64; }
+game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+g: game = {};
+load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
+wipe: proc(r: region level) -> i32 = { reset r; return 0; }
+mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
+f0: proc() -> []enemy = { return g.enemies; }
+main: proc() -> i32 = { arr: [2]enemy = {}; q: []enemy = arr; level: region = { load(level, 4); q = f0(); } printfmt("{}\n", q[0].hp); return 0; }

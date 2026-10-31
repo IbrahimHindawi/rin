@@ -755,6 +755,7 @@ struct Expr {
     /* A read of `N: const i32 = 4`: C gets the value, and never hears of the name. A
        #define would rewrite every `N` after it, a field's and a header's included. */
     Stmt *const_literal;
+    bool reset_alone; // a call with nothing beside it to be read after what it may reset
     bool checked; // the checker has been here: what the emitter writes for it is what was decided
     string8 coerce_count;
     i32 line;
@@ -5032,9 +5033,9 @@ static Program parse_program(Parser *p) {
             }
             if (parser_peek(p)->kind == Token_Identifier && string8slice_equals_cstr(parser_peek(p)->text, "global")) {
                 Token *global_tok = parser_next(p);
-                if (prog.global_regions.length != prog.regions.length) {
-                    parser_error_token(p, global_tok, "a global region comes first: it outlives every region that opens "
-                                                      "in a block");
+                if (prog.regions.length != 0) {
+                    parser_error_token(p, global_tok, "a program has one global region, and it comes first: it outlives "
+                                                      "every region that opens in a block");
                 }
                 Vec_string8_append(p->arena, &prog.global_regions, base_name);
             } else if (parser_match(p, Token_Keyword_In)) {
@@ -10842,6 +10843,9 @@ static void infer_field_regions(Program *prog, memops_arena *arena) {
             if (!field->type) continue;
             i32 found = string8_vec_find(&f.names, field->name);
             if (found >= 0 && f.regions.data[found].length > 0) field_regions_fill(field->type, f.regions.data[found], 0);
+            /* Nothing allocated goes there by name, or it is only ever filled by C: permanent, the
+               region that holds the longest, and anything shorter stored there later is an error. */
+            if (found < 0) field_regions_fill(field->type, string8_from_cstr(arena, "permanent"), 0);
         }
     }
 }
@@ -17098,6 +17102,26 @@ static void borrow_register(string8 name, Expr *init, TypeScope *scope, Program 
     ptr_array_append(arena, &g_borrows, b);
 }
 
+/* A struct or an array in a local or a parameter can hold what a region holds, as a pointer can.
+   It is gone with the region, and nothing about it goes stale otherwise. */
+static void borrow_register_holder(string8 name, TypeExpr *type, Program *prog, memops_arena *arena) {
+    TypeExpr *r = resolve_alias_type(prog, type);
+    if (!r || r->kind == Type_Ptr || type_slice_elem(r) || r->kind == Type_Region) return;
+    Vec_string8 regions = Vec_string8_reserve(arena, 2);
+    type_collect_regions(prog, r, &regions, arena, 0);
+    bool any = false;
+    for (i32 i = 0; i < regions.length; i++) {
+        if (!string8_equals_cstr(&regions.data[i], "permanent")) any = true;
+    }
+    if (!any) return;
+    Borrow *b = memops_arena_push_struct(arena, Borrow);
+    b->name = name;
+    b->paths = Vec_string8_reserve(arena, 2);
+    b->regions = regions;
+    b->reportable = true;
+    ptr_array_append(arena, &g_borrows, b);
+}
+
 static bool g_leaving_scope = false;
 
 /* `pq = q&`: what q holds is read through pq, so when q's target ends, pq has nothing good either. */
@@ -17712,6 +17736,10 @@ typedef struct NarrowLoopScan { TypeScope *scope; Program *prog; bool found_call
 
 static void visit_narrow_loop_stmt(Stmt *s, void *ctx, memops_arena *arena) {
     NarrowLoopScan *scan = (NarrowLoopScan *)ctx;
+    if (s->kind == Stmt_Reset) {
+        narrow_end_fields(arena, scan->scope, NarrowEnd_All, (string8){0});
+        return;
+    }
     if (s->kind != Stmt_Assign || !s->lhs) return;
     if (s->lhs->kind == Expr_Name) narrow_end_fields(arena, scan->scope, NarrowEnd_Root, s->lhs->name);
     else narrow_end_for_write(s->lhs, scan->scope, scan->prog, arena);
@@ -18324,7 +18352,18 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
         for (i32 i = 0; i < decl->resets.length; i++) {
             reset_check_open(prog, decl->resets.data[i], call->line, call->col);
         }
+        if (decl->resets.length > 0 && !call->reset_alone && g_safe_body) {
+            type_error_message("this call may reset a region, and anything beside it in the expression could be read "
+                               "after that: make it a statement of its own", call->line, call->col);
+        }
         if (decl->resets.length > 0) reset_kills(scope, arena);
+        for (i32 i = 0; i < decl->opens.length && g_local_regions.length > 0; i++) {
+            if (region_rank(prog, decl->opens.data[i]) >= 0) {
+                region_error("'%.*s' opens region '%.*s', and a local region is open here: what that holds could point "
+                             "into it after it ends", decl->name, decl->opens.data[i], call->line, call->col);
+                break;
+            }
+        }
         for (i32 i = 0; i < decl->opens.length; i++) {
             string8 r = decl->opens.data[i];
             if (array_string8_contains(&g_active_regions, r)) {
@@ -18991,6 +19030,14 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
              type_compatible(prog, right, left) ||
              (left_null && right && right->kind == Type_Ptr) ||
              (right_null && left && left->kind == Type_Ptr);
+        /* Comparing two addresses reads neither: what either may be, or how long it lasts, is no matter. */
+        if (!ok && left && right && left->kind == Type_Ptr && right->kind == Type_Ptr && !left->is_raw && !right->is_raw &&
+            left->elem && right->elem) {
+            TypeExpr a = *left->elem, b = *right->elem;
+            a.is_const = false;
+            b.is_const = false;
+            ok = type_expr_equal_resolved(prog, &a, &b);
+        }
     } else if (e->op == Token_AmpAmp || e->op == Token_PipePipe) {
         ok = type_is_truthy(prog, left) && type_is_truthy(prog, right);
     } else {
@@ -19074,11 +19121,9 @@ static void type_check_condition(
 static void reset_kills(TypeScope *scope, memops_arena *arena) {
     for (i32 i = 0; i < g_borrows.length; i++) {
         Borrow *b = (Borrow *)g_borrows.data[i];
-        bool elsewhere = b->paths.length == 0 && b->regions.length > 0;
-        for (i32 j = 0; elsewhere && j < b->regions.length; j++) {
-            if (!string8_equals_cstr(&b->regions.data[j], "permanent")) elsewhere = false;
-        }
-        /* It says so itself: `dx: *state in permanent`. */
+        bool elsewhere = false;
+        /* It says so itself: `dx: *state in permanent`. Where a value came from says less: a call
+           given `permanent` can still hand back whatever a global holds. */
         TypeExpr *declared = resolve_alias_type(g_narrow_prog, type_scope_lookup(scope, b->name));
         if (declared && (declared->kind == Type_Ptr || type_slice_elem(declared)) && !declared->is_raw &&
             string8_equals_cstr(&declared->region, "permanent")) elsewhere = true;
@@ -19122,6 +19167,11 @@ static void type_check_stmt(
     memops_arena *arena
 ) {
     if (!s) return;
+    /* `load();`, `n = load();`, `n: i32 = load();`: nothing beside it. */
+    if (s->expr && s->expr->kind == Expr_Call &&
+        (s->kind == Stmt_Expr || s->kind == Stmt_Var || (s->kind == Stmt_Assign && s->lhs && s->lhs->kind == Expr_Name))) {
+        s->expr->reset_alone = true;
+    }
     const char *prev_diag_source_path = g_diag_source_path;
     const char *prev_diag_import_chain = g_diag_import_chain;
     if (s->source_path) {
@@ -19189,6 +19239,8 @@ static void type_check_stmt(
         safety_check_option(prog, local_type, arena, s->line, s->col);
         if (g_safe_body && s->expr && (type_is_checked_pointer(prog, local_type) || type_is_tracked_raw(prog, local_type))) {
             borrow_register(s->name, s->expr, scope, prog, arena);
+        } else if (g_safe_body && local_type) {
+            borrow_register_holder(s->name, local_type, prog, arena);
         }
         if (g_safe_body) {
             /* A local that points into a region exists only where the region
@@ -19336,6 +19388,31 @@ static void type_check_stmt(
             TypeExpr *actual = infer_expr_type(s->expr, scope, prog, arena);
             check_assignment_compatible("return", prog, return_type, actual, s->expr, scope, s->line, s->col, arena);
             raw_keep_check(return_type, s->expr, scope, prog, arena);
+            if (g_safe_body && !g_checking_std) {
+                /* A pointer with no region points into what the caller passed, and that is all the
+                   caller can tell. One from a region's memory would outlive what the caller knows. */
+                TypeExpr *rt = resolve_alias_type(prog, return_type);
+                if (rt && (rt->kind == Type_Ptr || type_slice_elem(rt)) && !rt->is_raw && rt->region.length == 0) {
+                    Vec_string8 paths = Vec_string8_reserve(arena, 2);
+                    Vec_string8 regions = Vec_string8_reserve(arena, 2);
+                    borrow_paths_from_expr(s->expr, scope, prog, arena, &paths, &regions);
+                    /* Taken from what the caller passed, the caller knows already. */
+                    bool from_param = false;
+                    for (i32 i = 0; i < paths.length; i++) {
+                        string8 root = path_root(paths.data[i]);
+                        for (i32 j = 0; j < current_proc->params.length; j++) {
+                            if (string8_equals(&root, &((Param *)current_proc->params.data[j])->name)) from_param = true;
+                        }
+                    }
+                    for (i32 i = 0; i < regions.length && !from_param; i++) {
+                        if (region_rank(prog, regions.data[i]) >= 0 && !string8_equals_cstr(&regions.data[i], "permanent")) {
+                            region_error("this points into region '%.*s', and the caller has to know: say so, '-> *T in "
+                                         "%.*s'", regions.data[i], regions.data[i], s->line, s->col);
+                            break;
+                        }
+                    }
+                }
+            }
             if (g_safe_body && g_active_regions.length > 0) {
                 /* Named or not, through a pointer or inside a struct: what this
                    returns may not be in a block the return itself ends. */
@@ -19927,7 +20004,11 @@ static void type_check_proc_body(
     /* A parameter may be assigned, and then it holds what any local would. */
     for (i32 j = 0; j < p->params.length; j++) {
         Param *param = (Param *)p->params.data[j];
-        TypeExpr *pt = resolve_alias_type(prog, param->type);
+        /* Through the instance: `v: T` may be a pointer or a struct holding one here. */
+        TypeExpr *pt = resolve_alias_type(prog, type_scope_apply_sub(&scope, arena, param->type));
+        if (param->name.length > 0 && pt && !type_is_checked_pointer(prog, pt)) {
+            borrow_register_holder(param->name, pt, prog, arena);
+        }
         if (param->name.length == 0 || !pt || !type_is_checked_pointer(prog, pt)) continue;
         Borrow *b = memops_arena_push_struct(arena, Borrow);
         b->name = param->name;
@@ -20111,6 +20192,27 @@ static i32 g_region_instance_next;
 static TypeScope g_check_globals;
 static bool g_new_instances_checked;
 
+static bool global_const_holds_region(Program *prog, TypeExpr *type, bool under_const, memops_arena *arena, i32 depth) {
+    TypeExpr *r = resolve_alias_type(prog, type);
+    if (!r || depth > 32) return false;
+    under_const = under_const || r->is_const;
+    if (r->kind == Type_Array) return global_const_holds_region(prog, r->elem, under_const, arena, depth + 1);
+    if (r->kind == Type_Ptr || type_slice_elem(r)) {
+        return under_const && !r->is_raw && r->region.length > 0 && !string8_equals_cstr(&r->region, "permanent");
+    }
+    if (r->kind != Type_Name && r->kind != Type_Generic) return false;
+    TypeSub sub = {0};
+    StructDecl *decl = lookup_aggregate_decl(prog, r, &sub, arena);
+    if (!decl || decl->is_external) return false;
+    for (i32 i = 0; i < decl->fields.length; i++) {
+        Field *f = (Field *)decl->fields.data[i];
+        if (!f->type) continue;
+        TypeExpr *ft = sub.has ? substitute_type_sub(arena, f->type, sub) : f->type;
+        if (global_const_holds_region(prog, ft, under_const, arena, depth + 1)) return true;
+    }
+    return false;
+}
+
 static void type_check_generic_proc_instances(
     Program *prog,
     TypeScope *globals,
@@ -20255,6 +20357,10 @@ static void type_check_program(Program *prog, memops_arena *arena) {
         }
         g_diag_import_chain = g->import_chain;
         safety_check_carrier_value("a global", prog, g->type, arena, g->line, g->col);
+        if (g_safety && global_const_holds_region(prog, g->type, false, arena, 0)) {
+            region_error("'%.*s' is const, and a region's end empties what points into it%.0s: it cannot hold such a "
+                         "pointer", g->name, (string8){0}, g->line, g->col);
+        }
         g_storing_global = true;
         check_type_stored_at(prog, g->type, string8_from_cstr(arena, "permanent"), g->line, g->col, arena);
         g_storing_global = false;
@@ -20985,7 +21091,9 @@ static bool emit_region_name(memops_arena *arena, string8 *out, string8 name) {
     }
     /* `permanent` has no block to open it, so its first use does, and so does a global region's. */
     if (string8_equals_cstr(&target, "permanent") || (g_emit_global_regions && array_string8_contains(g_emit_global_regions, target))) {
-        emit_cstr(arena, out, "rin_region_open(&rin_region_permanent)");
+        emit_cstr(arena, out, "rin_region_open(&rin_region_");
+        emit_string8(arena, out, target);
+        emit_cstr(arena, out, ")");
         return true;
     }
     emit_cstr(arena, out, "(&rin_region_");
@@ -22924,11 +23032,19 @@ static void emit_natvis_type(memops_arena *arena, string8 *out, ConcreteStructDe
     }
 }
 
+/* A shorter-lived region's field can hold a longer-lived one's pointer, and none of them outlives
+   the region ending. */
+static bool region_is_gone_with(Program *prog, string8 field, string8 ending) {
+    if (field.length == 0 || string8_equals_cstr(&field, "permanent")) return false;
+    i32 rank = region_rank(prog, field);
+    return rank >= 0 && rank >= region_rank(prog, ending);
+}
+
 static bool type_collect_holds_region(Program *prog, TypeExpr *type, string8 region, memops_arena *arena, i32 depth) {
     TypeExpr *r = resolve_alias_type(prog, type);
     if (!r || depth > 64) return false;
     if (r->kind == Type_Array) return type_collect_holds_region(prog, r->elem, region, arena, depth + 1);
-    if (r->kind == Type_Ptr || type_slice_elem(r)) return !r->is_raw && string8_equals(&r->region, &region);
+    if (r->kind == Type_Ptr || type_slice_elem(r)) return !r->is_raw && region_is_gone_with(prog, r->region, region);
     if (r->kind != Type_Name && r->kind != Type_Generic) return false;
     TypeSub sub = {0};
     StructDecl *decl = lookup_aggregate_decl(prog, r, &sub, arena);
@@ -22944,7 +23060,7 @@ static bool type_collect_holds_region(Program *prog, TypeExpr *type, string8 reg
 
 static void emit_region_forget(memops_arena *arena, string8 *out, Program *prog, TypeExpr *type, string8 path, string8 region, i32 depth) {
     TypeExpr *r = resolve_alias_type(prog, type);
-    if (!r || depth > 64) return;
+    if (!r || depth > 64 || r->is_const) return;
     if (r->kind == Type_Array) {
         if (!type_collect_holds_region(prog, r->elem, region, arena, 0)) return;
         char var[32];
@@ -22967,7 +23083,7 @@ static void emit_region_forget(memops_arena *arena, string8 *out, Program *prog,
         return;
     }
     if (r->kind == Type_Ptr || type_slice_elem(r)) {
-        if (r->is_raw || !string8_equals(&r->region, &region)) return;
+        if (r->is_raw || !region_is_gone_with(prog, r->region, region)) return;
         emit_cstr(arena, out, "memset(&(");
         emit_string8(arena, out, path);
         emit_cstr(arena, out, "), 0, sizeof(");
@@ -24202,7 +24318,7 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
         emit_cstr(arena, out, "(void) {\n");
         for (i32 j = 0; j < prog->globals.length; j++) {
             Stmt *g = (Stmt *)prog->globals.data[j];
-            if (g->is_external || !g->type || g->type->is_const) continue;
+            if (g->is_external || !g->type) continue;
             string8 path = c_ident(arena, reflect_runtime_c_name(arena, g->name));
             emit_region_forget(arena, out, prog, g->type, path, prog->regions.data[i], 0);
         }

@@ -1,0 +1,13 @@
+// g.enemies is copied to the parameter on one side of the reset: one of the two calls, by C argument order, gets the stale slice and reads poison
+import "std/print.rin"
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; pad: [8]i64; }
+game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+g: game = {};
+load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
+wipe: proc(r: region level) -> i32 = { reset r; return 0; }
+mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
+part: proc(s: []enemy, n: i32) -> i32 = { if (s.length == 0) { return n; } return s[0].hp + n; }
+part2: proc(n: i32, s: []enemy) -> i32 = { if (s.length == 0) { return n; } return s[0].hp + n; }
+main: proc() -> i32 = { level: region = { load(level, 4); printfmt("{}\n", part(g.enemies, wipe(level))); load(level, 4); printfmt("{}\n", part2(wipe(level), g.enemies)); } return 0; }

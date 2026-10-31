@@ -1,0 +1,12 @@
+// as 007 with T a slice: the instance keeps its parameter over a reset and hands it back, read in poisoned memory
+import "std/print.rin"
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; pad: [8]i64; }
+game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+g: game = {};
+load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
+wipe: proc(r: region level) -> i32 = { reset r; return 0; }
+mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
+rd: proc<T>(v: T, r: region level) -> T = { reset r; return v; }
+main: proc() -> i32 = { level: region = { load(level, 4); e: []enemy in level = rd<[]enemy in level>(g.enemies, level); printfmt("{}\n", e[0].hp); } return 0; }

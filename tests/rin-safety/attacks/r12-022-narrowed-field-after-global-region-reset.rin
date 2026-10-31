@@ -1,0 +1,7 @@
+// as 020 on a global region, where nothing is ever poisoned: the emptied field is still dereferenced as null on the second pass
+import "std/print.rin"
+level: region global;
+enemy: struct = { hp: i32; }
+boss: struct = { e: ?*enemy in level; }
+g: boss = {};
+main: proc() -> i32 = { g.e = new<enemy>(level, {}); if (g.e) { for (i: i32 = 0; i < 2; i += 1) { printfmt("{}\n", g.e*.hp); reset level; } } return 0; }

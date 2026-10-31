@@ -1,0 +1,14 @@
+// as 050 one level down: tmp is of level, and holds a frame pointer past the end of the frame a call opened
+import "std/print.rin"
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; pad: [8]i64; }
+game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+g: game = {};
+load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
+wipe: proc(r: region level) -> i32 = { reset r; return 0; }
+mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
+holder: struct = { e: ?*enemy in frame; }
+mh: proc(t: region R) -> *holder in R = { return new<holder>(t, {}); }
+fill: proc(x: *holder in R) -> *holder in R = { frame: region = { x*.e = new<enemy>(frame, {}); } return x; }
+main: proc() -> i32 = { level: region = { tmp: region of level = { printfmt("{}\n", must(fill(mh(tmp))*.e)*.hp); } } return 0; }

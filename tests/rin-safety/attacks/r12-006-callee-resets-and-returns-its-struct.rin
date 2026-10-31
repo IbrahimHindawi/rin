@@ -1,0 +1,12 @@
+// the resetting proc itself returns a struct copied before its reset: the caller gets a slice into memory the reset poisoned
+import "std/print.rin"
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; pad: [8]i64; }
+game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+g: game = {};
+load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
+wipe: proc(r: region level) -> i32 = { reset r; return 0; }
+mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
+f: proc(r: region level) -> game = { s: game = g; reset r; return s; }
+main: proc() -> i32 = { level: region = { load(level, 4); t: game = f(level); printfmt("{}\n", t.enemies[0].hp); } return 0; }

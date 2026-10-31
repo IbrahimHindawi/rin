@@ -1,0 +1,3 @@
+// file_end_ is an unannotated proc with an unsafe body, so safe code may call it: it reads a file through whatever ^void it is given, here null
+import "std/file.rin"
+main: proc() -> i32 = { file_end_(null); return 0; }

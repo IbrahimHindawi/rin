@@ -1,0 +1,9 @@
+// expect: is const
+level: region global;
+frame: region in level;
+enemy: struct = { hp: i32; }
+game: struct = { es: []enemy in level; }
+g: game = {};
+wipe: proc() -> i32 = { reset level; g.es = new_slice<enemy>(level, 4); return 0; }
+K: const game = {};
+main: proc() -> i32 = { return 0; }

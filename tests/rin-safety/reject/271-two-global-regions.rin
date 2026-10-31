@@ -1,0 +1,4 @@
+// always: one global region
+first: region global;
+other: region global;
+main: proc() -> i32 = { return 0; }

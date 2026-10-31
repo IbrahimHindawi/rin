@@ -229,3 +229,6 @@ r11-009-annotated-u64-compound-divide.rin
 r11-010-annotated-u32-divide.rin
 r11-011-annotated-u64-argument.rin
 r5-c-023-stored-depth-global.rin
+r12-030-level-pointer-in-a-frame-global-over-reset.rin
+r12-031-level-slice-in-a-frame-global-over-block-end.rin
+r12-032-level-slice-in-frame-field-of-global-array.rin

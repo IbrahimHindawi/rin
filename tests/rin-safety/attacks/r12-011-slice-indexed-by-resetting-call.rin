@@ -1,0 +1,11 @@
+// q is checked before its index; the index resets; q.data[0] is read from poison whichever way C orders it
+import "std/print.rin"
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; pad: [8]i64; }
+game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+g: game = {};
+load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
+wipe: proc(r: region level) -> i32 = { reset r; return 0; }
+mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
+main: proc() -> i32 = { level: region = { load(level, 4); q: []enemy in level = g.enemies; printfmt("{}\n", q[wipe(level)].hp); } return 0; }

@@ -1,0 +1,14 @@
+// a call may open a declared region inside a local one, unlike a block; fill stores a level pointer in memory of the longer-lived tmp, and it dangles when level ends in the call
+import "std/print.rin"
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; pad: [8]i64; }
+game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+g: game = {};
+load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
+wipe: proc(r: region level) -> i32 = { reset r; return 0; }
+mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
+holder: struct = { e: ?*enemy in level; }
+mh: proc(t: region R) -> *holder in R = { return new<holder>(t, {}); }
+fill: proc(x: *holder in R) -> *holder in R = { level: region = { x*.e = new<enemy>(level, {}); } return x; }
+main: proc() -> i32 = { tmp: region of permanent = { printfmt("{}\n", must(fill(mh(tmp))*.e)*.hp); } return 0; }

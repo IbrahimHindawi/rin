@@ -1,0 +1,11 @@
+// the loop prescan ends field narrowing on a call or a write, not on a reset statement: the second time round g.boss has been emptied and is dereferenced as null
+import "std/print.rin"
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; pad: [8]i64; }
+game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+g: game = {};
+load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
+wipe: proc(r: region level) -> i32 = { reset r; return 0; }
+mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
+main: proc() -> i32 = { level: region = { load(level, 4); if (g.boss) { for (i: i32 = 0; i < 2; i += 1) { printfmt("{}\n", g.boss*.hp); reset level; } } } return 0; }

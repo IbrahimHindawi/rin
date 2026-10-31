@@ -1,0 +1,12 @@
+// only a pointer-typed parameter is registered as a borrow; a by-value struct parameter keeps its level slice across a call that resets
+import "std/print.rin"
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; pad: [8]i64; }
+game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+g: game = {};
+load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
+wipe: proc(r: region level) -> i32 = { reset r; return 0; }
+mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
+use: proc(s: game, r: region level) -> i32 = { wipe(r); return s.enemies[0].hp; }
+main: proc() -> i32 = { level: region = { load(level, 4); printfmt("{}\n", use(g, level)); } return 0; }

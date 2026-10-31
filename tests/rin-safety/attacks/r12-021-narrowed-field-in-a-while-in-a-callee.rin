@@ -1,0 +1,14 @@
+// as 020 in a while, in a proc given the region: the second pass reads a null g.boss
+import "std/print.rin"
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; pad: [8]i64; }
+game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+g: game = {};
+load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
+go: proc(r: region level) -> i32 = {
+    i: i32 = 0;
+    if (g.boss) { while (i < 2) { i += g.boss*.hp + 1; reset r; } }
+    return i;
+}
+main: proc() -> i32 = { level: region = { load(level, 4); printfmt("{}\n", go(level)); } return 0; }

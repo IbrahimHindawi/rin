@@ -1,0 +1,12 @@
+// q came from a call given only the permanent handle, so reset_kills takes it for permanent memory; f returned level memory as a bare *enemy, and q reads poison
+import "std/print.rin"
+level: region;
+frame: region in level;
+enemy: struct = { hp: i32; pad: [8]i64; }
+game: struct = { enemies: []enemy in level; boss: ?*enemy in level; }
+g: game = {};
+load: proc(r: region level, n: u64) -> void = { reset r; g.enemies = new_slice<enemy>(r, n); g.boss = g.enemies[0]&; }
+wipe: proc(r: region level) -> i32 = { reset r; return 0; }
+mk: proc(r: region level) -> enemy = { reset r; e: enemy = {}; return e; }
+f: proc(r: region R) -> *enemy = { return must(g.boss); }
+main: proc() -> i32 = { level: region = { load(level, 4); q: *enemy = f(permanent); reset level; printfmt("{}\n", q*.hp); } return 0; }

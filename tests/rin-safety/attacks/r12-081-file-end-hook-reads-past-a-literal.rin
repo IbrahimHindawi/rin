@@ -1,0 +1,3 @@
+// as 080 with a two-byte string literal: an eight-byte read through it runs off the end of the global
+import "std/file.rin"
+main: proc() -> i32 = { file_end_("x"); return 0; }

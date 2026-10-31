@@ -1,0 +1,9 @@
+// expect: may be null
+level: region global;
+frame: region in level;
+enemy: struct = { hp: i32; }
+game: struct = { es: []enemy in level; }
+g: game = {};
+wipe: proc() -> i32 = { reset level; g.es = new_slice<enemy>(level, 4); return 0; }
+h: ?*enemy in level = null;
+main: proc() -> i32 = { h = new<enemy>(level); if (h) { for (i: i32 = 0; i < 2; i += 1) { i += h*.hp; reset level; } } return 0; }
