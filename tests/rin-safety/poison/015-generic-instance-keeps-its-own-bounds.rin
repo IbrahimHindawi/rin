@@ -1,0 +1,9 @@
+// expect: index
+A4: alias = [4]i32;
+A400: alias = [400]i32;
+top: proc<A>(a: A, i: u64) -> i32 = { return a[i]; }
+main: proc() -> i32 = {
+    big: A400 = {};
+    small: A4 = {};
+    return top<A400>(big, 300) + top<A4>(small, 300);
+}

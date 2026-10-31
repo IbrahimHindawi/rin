@@ -1,0 +1,10 @@
+// narrow_type is set only by instances narrower than int, so the u8 instance's cast is emitted in every other: f64 result = ((u8)(a * b)) is an unsaturated float-to-integer conversion, undefined for 1e300 (-fsanitize=float-cast-overflow), and the i64 instance silently truncates to 8 bits.
+import "std/print.rin"
+op: proc<T>(a: T, b: T) -> T = { return a * b; }
+main: proc() -> i32 = {
+  x: f64 = 1e300;
+  printfmt("{}\n", op<u8>(2, 3));
+  printfmt("{}\n", op<i64>(1000, 1000));
+  printfmt("{}\n", op<f64>(x, 2.0));
+  return 0;
+}

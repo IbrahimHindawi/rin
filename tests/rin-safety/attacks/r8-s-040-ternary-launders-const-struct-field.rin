@@ -1,0 +1,10 @@
+// A const global struct's array field through a ternary becomes a writable slice. Segfault in any build.
+import "std/print.rin"
+import "std/slice.rin"
+import "std/vec.rin"
+A4: alias = [4]i32;
+gi: const i32 = 5;
+g: const A4 = {1,2,3,4};
+K: struct = { y: [4]i32; }
+gs: const K = { .y = { 1, 2, 3, 4 } };
+main: proc() -> i32 = { t: K = {}; s: []i32 = t.y[0] == 0 ? gs.y : t.y; s[0] = 9; printfmt("{}\n", gs.y[0]); return 0; }

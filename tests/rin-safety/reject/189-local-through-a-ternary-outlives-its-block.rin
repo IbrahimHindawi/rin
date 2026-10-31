@@ -1,0 +1,12 @@
+// expect: may
+S: struct = { x: i32; }
+main: proc() -> i32 = {
+    o: S = {};
+    keep: *i32 = o.x&;
+    c: b32 = 1;
+    if (c) {
+        y: S = {};
+        keep = (c ? y& : y&)*.x&;
+    }
+    return keep*;
+}

@@ -1,0 +1,14 @@
+// A literal index: unchecked in the [400] instance, checked in the [CNT] instance (count unknown to the checker), so index_varies is set and the emitter writes a[0][300] with no check in either. ASan: stack-buffer-overflow.
+import "std/print.rin"
+#define CNT 4
+A4: alias = [4]i32;
+A400: alias = [400]i32;
+AC: alias = [CNT]i32;
+get: proc<A>(a: *A) -> i32 = { return a*[300]; }
+main: proc() -> i32 = {
+  big: A400 = {};
+  small: AC = {};
+  printfmt("{}\n", get<A400>(big&));
+  printfmt("{}\n", get<AC>(small&));
+  return 0;
+}

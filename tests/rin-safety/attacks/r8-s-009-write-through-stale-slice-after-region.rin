@@ -1,0 +1,21 @@
+// A write: keep from at(v,0)*.y survives frame and writes into its cleared arena. ASan: use-after-poison on write.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+frame: region in level;
+S: struct = { x: i32; y: [4]i32; }
+main: proc() -> i32 = {
+  level: region = {
+    z: *S in level = new<S>(level);
+    keep: []i32 = z*.y;
+    frame: region = {
+      v: *vec<S> in frame = vec<S>make(frame, 1);
+      s0: S = {};
+      _ = vec<S>push(v, s0);
+      keep = vec<S>at(v, 0)*.y;
+    }
+    keep[0] = 1234;
+    printfmt("{}\n", keep[0]);
+  }
+  return 0;
+}

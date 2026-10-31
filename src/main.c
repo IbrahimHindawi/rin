@@ -750,10 +750,6 @@ struct Expr {
     TypeExpr *coerce_from;
     bool coerce_varies;
     string8 coerce_count;
-    /* A generic body is checked once per instance, and where the conversion differs
-       between them the emitter finds each one here, by the instance's key. */
-    Vec_string8 coerce_keys;
-    Vec_voidptr coerce_instances;
     i32 line;
     i32 col;
 };
@@ -914,6 +910,11 @@ struct ProcDecl {
        not be taken, since a call through a pointer could not be checked. */
     Vec_string8 opens;
     bool answers_for_signature; // has an unsafe block: its body cannot show what it moves
+    /* A generic's body as each instance checked it. The checker writes what it learns
+       onto the tree (the length a bounds check uses, the cast a narrow sum needs), and
+       that differs between instances, so each has a copy; `body` stays as parsed. */
+    Vec_string8 instance_keys;
+    Vec_voidptr instance_bodies; // Vec_voidptr*
     bool no_move; // proc[no_move]: std says this trusted body moves nothing
     string8 specialized_from; // `hash: proc<point>`: hash
     bool noalias_contained; // reaches memory only through its parameters and what it allocates
@@ -8833,6 +8834,26 @@ typedef struct MangleListBinding {
 static Vec_voidptr g_mangle_list_bindings;
 static bool g_mangle_list_ready;
 
+static string8 g_mangle_collision;
+
+static bool type_same_shape(TypeExpr *a, TypeExpr *b, i32 depth) {
+    if (!a || !b) return a == b;
+    if (depth > 32) return true;
+    if (a->kind != b->kind || a->is_const != b->is_const) return false;
+    if (a->kind == Type_Name) return string8_equals(&a->name, &b->name);
+    if (a->kind == Type_Array) return string8_equals(&a->array_count, &b->array_count) && type_same_shape(a->elem, b->elem, depth + 1);
+    if (a->kind == Type_Ptr) {
+        return a->is_raw == b->is_raw && a->is_nullable == b->is_nullable && type_same_shape(a->elem, b->elem, depth + 1);
+    }
+    if (a->kind == Type_Generic) {
+        if (!string8_equals(&a->name, &b->name) || a->args.length != b->args.length) return false;
+        for (i32 i = 0; i < a->args.length; i++) {
+            if (!type_same_shape((TypeExpr *)a->args.data[i], (TypeExpr *)b->args.data[i], depth + 1)) return false;
+        }
+    }
+    return true;
+}
+
 static void mangle_register_list(memops_arena *arena, string8 mangle, Vec_voidptr *types) {
     if (!mangle.data || !types) return;
     if (!g_mangle_list_ready) {
@@ -8841,7 +8862,14 @@ static void mangle_register_list(memops_arena *arena, string8 mangle, Vec_voidpt
     }
     for (i32 i = 0; i < g_mangle_list_bindings.length; i++) {
         MangleListBinding *b = (MangleListBinding *)g_mangle_list_bindings.data[i];
-        if (string8_equals(&b->mangle, &mangle)) return;
+        if (string8_equals(&b->mangle, &mangle)) {
+            bool same = b->types.length == types->length;
+            for (i32 j = 0; same && j < types->length; j++) {
+                same = type_same_shape((TypeExpr *)b->types.data[j], (TypeExpr *)types->data[j], 0);
+            }
+            if (!same && !g_mangle_collision.data) g_mangle_collision = mangle;
+            return;
+        }
     }
     MangleListBinding *entry = memops_arena_push_struct(arena, MangleListBinding);
     entry->mangle = mangle;
@@ -8869,7 +8897,10 @@ static void mangle_register(memops_arena *arena, string8 mangle, TypeExpr *type)
     }
     for (i32 i = 0; i < g_mangle_bindings.length; i++) {
         MangleBinding *binding = (MangleBinding *)g_mangle_bindings.data[i];
-        if (string8_equals(&binding->mangle, &mangle)) return;
+        if (string8_equals(&binding->mangle, &mangle)) {
+            if (!type_same_shape(binding->type, type, 0) && !g_mangle_collision.data) g_mangle_collision = mangle;
+            return;
+        }
     }
     MangleBinding *entry = memops_arena_push_struct(arena, MangleBinding);
     entry->mangle = mangle;
@@ -13956,29 +13987,7 @@ static bool expr_is_pure(Expr *e) {
     }
 }
 
-typedef struct CoerceInstance {
-    TypeExpr *to;
-    TypeExpr *from;
-    string8 count;
-} CoerceInstance;
-
-/* The instance whose body is being checked, for a conversion to be filed under. */
-static TypeSub g_check_sub;
-static memops_arena *g_check_arena;
-static string8 type_sub_key(memops_arena *arena, TypeSub sub);
-
 static void coerce_set(Program *prog, Expr *e, TypeExpr *type, TypeExpr *from, string8 count) {
-    if (g_check_sub.has && g_check_arena) {
-        string8 key = type_sub_key(g_check_arena, g_check_sub);
-        if (string8_vec_find(&e->coerce_keys, key) < 0) {
-            CoerceInstance *inst = memops_arena_push_struct(g_check_arena, CoerceInstance);
-            inst->to = type;
-            inst->from = from;
-            inst->count = count;
-            Vec_string8_append(g_check_arena, &e->coerce_keys, key);
-            ptr_array_append(g_check_arena, &e->coerce_instances, inst);
-        }
-    }
     if (e->coerce_varies) return;
     if (!e->coerce_to) {
         e->coerce_to = type;
@@ -14887,12 +14896,14 @@ static bool type_flow_same(Program *prog, TypeExpr *a, TypeExpr *b, i32 depth) {
         if (depth > 0 && !a->is_raw && a->region.length == 0 && b->region.length > 0) return false;
         if (!a->is_raw && a->region.length > 0 && !string8_equals(&a->region, &b->region) &&
             (region_rank(prog, a->region) >= 0 || array_string8_contains(&g_region_vars, a->region))) return false;
+        if (depth > 0 && a->elem && b->elem && a->elem->is_const != b->elem->is_const) return false;
         return type_flow_same(prog, a->elem, b->elem, depth + 1);
     }
     if (type_slice_elem(a) && type_slice_elem(b)) {
         if (depth > 0 && a->region.length == 0 && b->region.length > 0) return false;
         if (a->region.length > 0 && !string8_equals(&a->region, &b->region) &&
             (region_rank(prog, a->region) >= 0 || array_string8_contains(&g_region_vars, a->region))) return false;
+        if (depth > 0 && type_slice_elem(a)->is_const != type_slice_elem(b)->is_const) return false;
         return type_flow_same(prog, type_slice_elem(a), type_slice_elem(b), depth + 1);
     }
     if (a->kind == Type_Array && b->kind == Type_Array) return type_flow_same(prog, a->elem, b->elem, depth + 1);
@@ -16377,6 +16388,20 @@ static void borrow_paths_from_expr(Expr *init, TypeScope *scope, Program *prog, 
         return;
     }
     {
+        /* `at(v, 0)*.x&`, `(c ? a& : b&)*.x&`: a place reached through a call or a
+           ternary has no path of its own, and lives as long as what they gave back. */
+        Expr *root = init;
+        for (i32 depth = 0; root && depth < 64; depth++) {
+            if (root->kind == Expr_Field || root->kind == Expr_Index) root = root->base;
+            else if (root->kind == Expr_Addr || root->kind == Expr_Unary || root->kind == Expr_Cast) root = root->inner;
+            else break;
+        }
+        if (root && root != init && (root->kind == Expr_Call || root->kind == Expr_Ternary)) {
+            borrow_paths_from_expr(root, scope, prog, arena, out, out_regions);
+            return;
+        }
+    }
+    {
         /* `q = must(x)` with x in tmp: gone with tmp, whatever q says. */
         string8 made_in = type_region_of(prog, infer_expr_type(init, scope, prog, arena));
         if (made_in.length > 0 && !array_string8_contains(out_regions, made_in)) Vec_string8_append(arena, out_regions, made_in);
@@ -17354,6 +17379,10 @@ static bool expr_place_is_const(Expr *e, TypeScope *scope, Program *prog, memops
         return t && t->is_const;
     }
     if (e->kind == Expr_Field) return expr_place_is_const(e->base, scope, prog, arena, depth + 1);
+    if (e->kind == Expr_Ternary) {
+        return expr_place_is_const(e->right, scope, prog, arena, depth + 1) ||
+               expr_place_is_const(e->third, scope, prog, arena, depth + 1);
+    }
     if (e->kind == Expr_Index) {
         TypeExpr *bt = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
         if (bt && bt->kind == Type_Ptr) return bt->elem && bt->elem->is_const;
@@ -17381,6 +17410,19 @@ static bool expr_place_is_packed(Expr *e, TypeScope *scope, Program *prog, memop
     return false;
 }
 
+/* A field or element of a value a call or a ternary made: C's temporary, gone with the
+   statement. Through a pointer it is somewhere else, and not this rule's business. */
+static bool expr_place_is_temporary(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena, i32 depth) {
+    if (!e || depth > 64) return false;
+    if (e->kind == Expr_Call || e->kind == Expr_Ternary || e->kind == Expr_CompoundInit) return true;
+    if (e->kind == Expr_Field || e->kind == Expr_Index) {
+        TypeExpr *bt = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
+        if (!bt || bt->kind == Type_Ptr || (e->kind == Expr_Index && bt->kind != Type_Array)) return false;
+        return expr_place_is_temporary(e->base, scope, prog, arena, depth + 1);
+    }
+    return false;
+}
+
 /* A pointer, a slice or an array parameter made from a place: through a non-const one, safe
    code would write to memory that may be read-only; through a packed one, it may be misaligned. */
 static void safety_check_place_for_view(TypeExpr *dst, Expr *value, TypeScope *scope, Program *prog, memops_arena *arena) {
@@ -17389,12 +17431,26 @@ static void safety_check_place_for_view(TypeExpr *dst, Expr *value, TypeScope *s
     if (!d) return;
     TypeExpr *elem = d->kind == Type_Ptr || d->kind == Type_Array ? d->elem : type_slice_elem(d);
     if (!elem) return;
+    if (value->kind == Expr_Ternary) {
+        /* `c ? g[0]& : a[0]&`: the result is as const as either arm. */
+        TypeExpr *result = resolve_alias_type(prog, infer_expr_type(value, scope, prog, arena));
+        if (!result || result->kind != Type_Array) {
+            safety_check_place_for_view(dst, value->right, scope, prog, arena);
+            safety_check_place_for_view(dst, value->third, scope, prog, arena);
+            return;
+        }
+    }
     Expr *place = value;
     if (place->kind == Expr_Addr) place = place->inner;
     else if (place->kind == Expr_Index && place->index_end) place = place->base;
     else {
         TypeExpr *vt = resolve_alias_type(prog, infer_expr_type(value, scope, prog, arena));
         if (!vt || vt->kind != Type_Array) return;
+    }
+    if (expr_place_is_temporary(place, scope, prog, arena, 0)) {
+        type_error_message("this is part of a temporary copy, gone at the end of the statement, so nothing may point "
+                           "at it: store the value in a local first", value->line, value->col);
+        return;
     }
     /* `const vec3`: the const is on the alias, and the array under it has plain elements. */
     if (!elem->is_const && !dst->is_const && !d->is_const && expr_place_is_const(place, scope, prog, arena, 0)) {
@@ -18969,6 +19025,91 @@ static void type_check_stmt(
     g_diag_import_chain = prev_diag_import_chain;
 }
 
+static Stmt *clone_stmt(memops_arena *arena, Stmt *s);
+
+static Expr *clone_expr(memops_arena *arena, Expr *e) {
+    if (!e) return null;
+    Expr *c = memops_arena_push_struct(arena, Expr);
+    *c = *e;
+    c->inner = clone_expr(arena, e->inner);
+    c->left = clone_expr(arena, e->left);
+    c->right = clone_expr(arena, e->right);
+    c->third = clone_expr(arena, e->third);
+    c->base = clone_expr(arena, e->base);
+    c->index_expr = clone_expr(arena, e->index_expr);
+    c->index_end = clone_expr(arena, e->index_end);
+    if (e->args.length > 0) {
+        c->args = ptr_array_reserve(arena, e->args.length);
+        for (i32 i = 0; i < e->args.length; i++) ptr_array_append(arena, &c->args, clone_expr(arena, (Expr *)e->args.data[i]));
+    }
+    if (e->designators.length > 0) {
+        c->designators = ptr_array_reserve(arena, e->designators.length);
+        for (i32 i = 0; i < e->designators.length; i++) {
+            ptr_array_append(arena, &c->designators, clone_expr(arena, (Expr *)e->designators.data[i]));
+        }
+    }
+    return c;
+}
+
+static Vec_voidptr clone_stmt_list(memops_arena *arena, Vec_voidptr *list) {
+    Vec_voidptr out = {0};
+    if (list->length == 0) return *list;
+    out = ptr_array_reserve(arena, list->length);
+    for (i32 i = 0; i < list->length; i++) ptr_array_append(arena, &out, clone_stmt(arena, (Stmt *)list->data[i]));
+    return out;
+}
+
+static Stmt *clone_stmt(memops_arena *arena, Stmt *s) {
+    if (!s) return null;
+    Stmt *c = memops_arena_push_struct(arena, Stmt);
+    *c = *s;
+    c->expr = clone_expr(arena, s->expr);
+    c->lhs = clone_expr(arena, s->lhs);
+    c->for_init = clone_stmt(arena, s->for_init);
+    c->for_cond = clone_expr(arena, s->for_cond);
+    c->for_step = clone_stmt(arena, s->for_step);
+    c->for_body = clone_stmt_list(arena, &s->for_body);
+    c->while_cond = clone_expr(arena, s->while_cond);
+    c->while_body = clone_stmt_list(arena, &s->while_body);
+    c->if_cond = clone_expr(arena, s->if_cond);
+    c->if_then_body = clone_stmt_list(arena, &s->if_then_body);
+    c->if_else_body = clone_stmt_list(arena, &s->if_else_body);
+    c->if_else_if = clone_stmt(arena, s->if_else_if);
+    c->switch_expr = clone_expr(arena, s->switch_expr);
+    c->switch_default_body = clone_stmt_list(arena, &s->switch_default_body);
+    if (s->switch_cases.length > 0) {
+        c->switch_cases = ptr_array_reserve(arena, s->switch_cases.length);
+        for (i32 i = 0; i < s->switch_cases.length; i++) {
+            SwitchCase *from = (SwitchCase *)s->switch_cases.data[i];
+            SwitchCase *to = from;
+            if (from) {
+                to = memops_arena_push_struct(arena, SwitchCase);
+                *to = *from;
+                to->expr = clone_expr(arena, from->expr);
+                to->body = clone_stmt_list(arena, &from->body);
+            }
+            ptr_array_append(arena, &c->switch_cases, to);
+        }
+    }
+    return c;
+}
+
+/* This instance's body, made the first time the checker asks. Not found, null: an
+   instance the checker never saw has nothing written on it, and `body` will do. */
+static Vec_voidptr *proc_instance_body(ProcDecl *p, TypeSub sub, bool make, memops_arena *arena) {
+    if (!p->is_generic || !sub.has) return null;
+    string8 key = type_sub_key(arena, sub);
+    i32 found = string8_vec_find(&p->instance_keys, key);
+    if (found >= 0) return (Vec_voidptr *)p->instance_bodies.data[found];
+    if (!make) return null;
+    Vec_voidptr *body = memops_arena_push_struct(arena, Vec_voidptr);
+    *body = ptr_array_reserve(arena, p->body.length > 0 ? p->body.length : 1);
+    for (i32 i = 0; i < p->body.length; i++) ptr_array_append(arena, body, clone_stmt(arena, (Stmt *)p->body.data[i]));
+    Vec_string8_append(arena, &p->instance_keys, key);
+    ptr_array_append(arena, &p->instance_bodies, body);
+    return body;
+}
+
 static void type_check_proc_body(
     Program *prog,
     ProcDecl *p,
@@ -18976,8 +19117,6 @@ static void type_check_proc_body(
     TypeSub sub,
     memops_arena *arena
 ) {
-    g_check_sub = sub;
-    g_check_arena = arena;
     const char *prev_diag_source_path = g_diag_source_path;
     const char *prev_diag_import_chain = g_diag_import_chain;
     if (p->source_path) {
@@ -19087,8 +19226,10 @@ static void type_check_proc_body(
     if (g_safety && return_type && resolve_alias_type(prog, return_type) && resolve_alias_type(prog, return_type)->kind == Type_Region) {
         type_error_message("a proc does not return a region handle: the caller already has the region it passed in", p->line, p->col);
     }
-    for (i32 j = 0; j < p->body.length; j++) {
-        type_check_stmt((Stmt *)p->body.data[j], &scope, prog, return_type, p, arena);
+    Vec_voidptr *checked_body = proc_instance_body(p, sub, true, arena);
+    if (!checked_body) checked_body = &p->body;
+    for (i32 j = 0; j < checked_body->length; j++) {
+        type_check_stmt((Stmt *)checked_body->data[j], &scope, prog, return_type, p, arena);
     }
     g_safe_body = prev_safe_body;
 
@@ -19316,6 +19457,12 @@ static void type_check_program(Program *prog, memops_arena *arena) {
     }
 
     type_check_generic_proc_instances(prog, &globals, arena);
+    if (g_mangle_collision.data) {
+        char message[256];
+        snprintf(message, sizeof(message), "two different types get the C name '%.*s', and C would use one for both: "
+                 "rename one of them", (int)g_mangle_collision.length, g_mangle_collision.data);
+        type_error_message(message, 1, 1);
+    }
 }
 
 static const char *printfmt_path(const char *path) {
@@ -19946,6 +20093,9 @@ static void rewrite_printfmt_formats(Program *prog, memops_arena *arena) {
             }
         }
         rewrite_printfmt_body(&p->body, &scope, prog, arena);
+        for (i32 j = 0; j < p->instance_bodies.length; j++) {
+            rewrite_printfmt_body((Vec_voidptr *)p->instance_bodies.data[j], &scope, prog, arena);
+        }
     }
 }
 
@@ -20655,21 +20805,6 @@ static string8 slice_const_source_name(memops_arena *arena, TypeExpr *slice, Typ
    slice conversion is written field by field. */
 static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
     if (!e) return;
-    if (e->coerce_varies && sub.has && e->coerce_keys.length > 0) {
-        i32 found = string8_vec_find(&e->coerce_keys, type_sub_key(arena, sub));
-        if (found >= 0) {
-            /* This instance's conversion, for the length of this one emission. */
-            CoerceInstance *inst = (CoerceInstance *)e->coerce_instances.data[found];
-            Expr saved = *e;
-            e->coerce_to = inst->to;
-            e->coerce_from = inst->from;
-            e->coerce_count = inst->count;
-            e->coerce_varies = false;
-            emit_expr(arena, out, e, sub, generic_name);
-            *e = saved;
-            return;
-        }
-    }
     if (e->coerce_to && !e->coerce_varies && !e->index_end && e->coerce_count.length == 0 && e->coerce_from) {
         string8 from = type_mangle(arena, e->coerce_from, sub);
         string8 widened = slice_const_source_name(arena, e->coerce_to, sub);
@@ -22032,9 +22167,11 @@ static void emit_proc_body(memops_arena *arena, string8 *out, ProcDecl *decl, Ty
         emit_string8(arena, out, c_ident(arena, reflect_runtime_c_name(arena, param->name)));
         emit_cstr(arena, out, ";\n");
     }
-    for (i32 i = 0; i < decl->body.length; i++) {
+    Vec_voidptr *emitted_body = proc_instance_body(decl, sub, false, arena);
+    if (!emitted_body) emitted_body = &decl->body;
+    for (i32 i = 0; i < emitted_body->length; i++) {
         emit_cstr(arena, out, "    ");
-        emit_stmt(arena, out, (Stmt *)decl->body.data[i], sub, generic_name);
+        emit_stmt(arena, out, (Stmt *)emitted_body->data[i], sub, generic_name);
     }
     /* C's main returns 0 from its end; any other proc must say what it returns. */
     if (!returns_void && !string8_equals_cstr(&decl->name, "main")) {

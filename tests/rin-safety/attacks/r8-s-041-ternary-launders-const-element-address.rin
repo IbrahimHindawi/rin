@@ -1,0 +1,8 @@
+// c ? g[0]& : a[0]& is typed from the arms as *i32 although one arm points into a const array (the arm check that catches gi& misses an element of a const alias). p* = 9 writes rodata. Segfault in any build.
+import "std/print.rin"
+import "std/slice.rin"
+import "std/vec.rin"
+A4: alias = [4]i32;
+gi: const i32 = 5;
+g: const A4 = {1,2,3,4};
+main: proc() -> i32 = { a: A4 = {}; p: *i32 = a[0] == 0 ? g[0]& : a[0]&; p* = 9; printfmt("{}\n", g[0]); return 0; }

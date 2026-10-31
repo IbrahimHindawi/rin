@@ -1,0 +1,15 @@
+// Stopped only by C: the checker accepts *vec<*i32> as *vec<*const i32> (the same missing invariance as 042), and only C's incompatible-pointer error stands in the way: clang and gcc 14 refuse it, gcc before 14 or -Wno-incompatible-pointer-types builds it and writes rodata. Same footing as the commit's array-argument fix.
+import "std/print.rin"
+import "std/slice.rin"
+import "std/vec.rin"
+A4: alias = [4]i32;
+gi: const i32 = 5;
+g: const A4 = {1,2,3,4};
+main: proc() -> i32 = {
+  v: *vec<*i32 in permanent> in permanent = vec<*i32 in permanent>make(permanent, 1);
+  _ = vec<*i32 in permanent>push(v, new<i32>(permanent));
+  c: *vec<*const i32 in permanent> in permanent = v;
+  vec<*const i32 in permanent>at(c, 0)* = gi&;
+  vec<*i32 in permanent>at(v, 0)** = 9;
+  return 0;
+}

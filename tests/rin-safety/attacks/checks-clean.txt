@@ -202,3 +202,11 @@ r7-b-029-null-plus-zero.rin
 r7-b-030-shl-literal-left-wrong-width.rin
 r7-b-031-sort-bad-less-hangs.rin
 r7-b-034-printfmt-b32-depends-on-sibling-arg.rin
+r8-s-021-generic-index-count-first-instance-alias.rin
+r8-s-022-generic-range-count-first-instance-alias.rin
+r8-s-023-generic-struct-array-field-count-first-instance.rin
+r8-s-024-generic-write-count-first-instance.rin
+r8-s-025-generic-literal-index-varies-unchecked.rin
+r8-s-026-generic-literal-range-varies-unchecked.rin
+r8-s-027-generic-cstr-of-copy-count-last-instance.rin
+r8-s-028-generic-narrow-cast-applied-to-float-instance.rin

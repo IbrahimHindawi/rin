@@ -1,0 +1,8 @@
+// The same ternary as an argument: slice<i32>zero memsets a const global. Segfault in any build.
+import "std/print.rin"
+import "std/slice.rin"
+import "std/vec.rin"
+A4: alias = [4]i32;
+gi: const i32 = 5;
+g: const A4 = {1,2,3,4};
+main: proc() -> i32 = { a: A4 = {}; slice<i32>zero(a[0] == 0 ? g : a); printfmt("{}\n", g[0]); return 0; }

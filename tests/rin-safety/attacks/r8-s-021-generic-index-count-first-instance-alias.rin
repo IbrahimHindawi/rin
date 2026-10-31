@@ -1,0 +1,14 @@
+// index_set keeps the first instance's count; the commit's alias exception reopens r5-e-015: get<A4> checks against 400 and reads small[300]. ASan: stack-buffer-overflow.
+import "std/print.rin"
+#define CNT 4
+A4: alias = [4]i32;
+A400: alias = [400]i32;
+AC: alias = [CNT]i32;
+get: proc<A>(a: *A, i: u64) -> i32 = { return a*[i]; }
+main: proc() -> i32 = {
+  big: A400 = {};
+  small: A4 = {};
+  printfmt("{}\n", get<A400>(big&, 300));
+  printfmt("{}\n", get<A4>(small&, 300));
+  return 0;
+}

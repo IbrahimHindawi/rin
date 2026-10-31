@@ -1,0 +1,21 @@
+// keep = at(v,0)*.x&: the borrow's source is a call under a field, expr_path gives nothing, so keep outlives frame. ASan: use-after-poison on the cleared arena.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+frame: region in level;
+S: struct = { x: i32; y: [4]i32; }
+main: proc() -> i32 = {
+  level: region = {
+    z: *S in level = new<S>(level);
+    keep: *i32 = z*.x&;
+    frame: region = {
+      v: *vec<S> in frame = vec<S>make(frame, 4);
+      s0: S = {};
+      s0.x = 7; s0.y[0] = 7; s0.y[1] = 7;
+      _ = vec<S>push(v, s0);
+      keep = vec<S>at(v, 0)*.x&;
+    }
+    printfmt("{}\n", keep*); // frame has ended: its arena is cleared and poisoned
+  }
+  return 0;
+}

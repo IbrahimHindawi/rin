@@ -1,0 +1,15 @@
+// The write form of 021: a*[i] = v past a 4-long array smashes the neighbouring stack. ASan: stack-buffer-overflow on write.
+import "std/print.rin"
+#define CNT 4
+A4: alias = [4]i32;
+A400: alias = [400]i32;
+AC: alias = [CNT]i32;
+put: proc<A>(a: *A, i: u64) -> void = { a*[i] = 0x41414141; }
+main: proc() -> i32 = {
+  big: A400 = {};
+  small: A4 = {};
+  put<A400>(big&, 300);
+  put<A4>(small&, 300);
+  printfmt("{}\n", small[0]);
+  return 0;
+}

@@ -1,0 +1,11 @@
+// expect: say different things
+G: const i32 = 1;
+main: proc() -> i32 = {
+    i: i32 = 0;
+    a: [1]*i32 = { i& };
+    s: []*i32 = a;
+    t: []*const i32 = s;
+    t[0] = G&;
+    s[0]* = 2;
+    return 0;
+}

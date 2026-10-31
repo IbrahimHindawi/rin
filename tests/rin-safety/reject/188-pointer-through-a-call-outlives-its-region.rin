@@ -1,0 +1,19 @@
+// expect: may
+import "std/vec.rin"
+level: region;
+frame: region in level;
+S: struct = { x: i32; }
+main: proc() -> i32 = {
+    level: region = {
+        z: *S in level = new<S>(level);
+        keep: *i32 = z*.x&;
+        frame: region = {
+            v: *vec<S> in frame = vec<S>make(frame, 4);
+            s0: S = {};
+            _ = vec<S>push(v, s0);
+            keep = vec<S>at(v, 0)*.x&;
+        }
+        return keep*;
+    }
+    return 0;
+}

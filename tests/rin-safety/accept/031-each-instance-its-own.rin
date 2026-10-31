@@ -1,0 +1,20 @@
+import "std/print.rin"
+
+/* A generic body checked per instance writes what it learns on its own copy. */
+A4: alias = [4]i32;
+A400: alias = [400]i32;
+top: proc<A>(a: A, i: u64) -> i32 = { return a[i]; }
+mul: proc<T>(a: T, b: T) -> T = { return a * b; }
+
+main: proc() -> i32 = {
+    big: A400 = {};
+    small: A4 = {};
+    big[300] = 7;
+    small[3] = 8;
+    printfmt("{} {}\n", top<A400>(big, 300), top<A4>(small, 3));
+    x: u8 = 200;
+    y: u8 = 2;
+    p: f64 = 1.5;
+    printfmt("{} {}\n", mul<u8>(x, y), mul<f64>(p, p));
+    return 0;
+}

@@ -1,0 +1,13 @@
+// Proc instances collide too: f<A_B, C> and f<A, B_C> are both f_A_B_C, and the second is never checked or emitted. T = f64 reaches a u8 parameter by C's implicit conversion, no saturation: undefined for 1e300 (-fsanitize=float-cast-overflow), and a wrong answer anyway.
+import "std/print.rin"
+A: alias = f64;
+A_B: alias = u8;
+B_C: alias = i32;
+C: alias = i32;
+f: proc<T, U>(a: T, b: U) -> i32 = { return cast(a, i32) + b; }
+main: proc() -> i32 = {
+  x: A = 1e300;
+  printfmt("{}\n", f<A_B, C>(1, 2));
+  printfmt("{}\n", f<A, B_C>(x, 2));
+  return 0;
+}

@@ -1,0 +1,14 @@
+// A literal range, same way: a[0..300] loses the check, so a 300-long slice of a 4-long array is made and its own bounds check passes. ASan: stack-buffer-overflow.
+import "std/print.rin"
+#define CNT 4
+A4: alias = [4]i32;
+A400: alias = [400]i32;
+AC: alias = [CNT]i32;
+get: proc<A>(a: *A) -> i32 = { s: []i32 = a*[0..300]; return s[299]; }
+main: proc() -> i32 = {
+  big: A400 = {};
+  small: AC = {};
+  printfmt("{}\n", get<A400>(big&));
+  printfmt("{}\n", get<AC>(small&));
+  return 0;
+}

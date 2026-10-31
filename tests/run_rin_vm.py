@@ -150,7 +150,7 @@ def run_one(stem):
     home.mkdir()
     os.chown(home, uid, uid)
     say(stage="started", name=stem)
-    env = {"PATH": "/usr/bin", "ASAN_OPTIONS": "detect_leaks=0:allocator_may_return_null=1", "UBSAN_OPTIONS": "print_stacktrace=0"}
+    env = {"PATH": "/usr/bin", "ASAN_OPTIONS": "detect_leaks=0:allocator_may_return_null=1:detect_stack_use_after_return=1", "UBSAN_OPTIONS": "print_stacktrace=0"}
     command = ["systemd-run", "--scope", "--quiet", "--collect", f"-pMemoryMax={job['memory']}", "-pMemorySwapMax=0", "-pTasksMax=64",
                "--", "unshare", "-n", "-m", "-i", "-u", "-p", "-f", "--mount-proc", "--kill-child",
                "sh", "-c", CHAIN, str(uid), str(timeout), str(bins / stem)]
@@ -184,7 +184,9 @@ say(stage="done")
 # getting one wrong is a bug to see, and silencing it makes a binary that means nothing.
 C_QUIET = ["-Wno-everything", "-Werror=int-conversion", "-Werror=incompatible-pointer-types",
            "-Werror=incompatible-function-pointer-types", "-Werror=implicit-function-declaration"]
-ASAN = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
+# float-cast-overflow is not in `undefined`, and a float reaching an integer without rin's
+# saturating cast is what it would catch.
+ASAN = ["-fsanitize=address,undefined,float-cast-overflow", "-fno-sanitize-recover=all"]
 # 0xC0000005 access violation, 0xC0000374 heap corruption. Not 0xC0000409: abort() exits with
 # it on Windows, and a checked failure is meant to end that way. On Linux the same: abort is 134
 # and stays out; 132 illegal instruction, 135 bus error, 136 arithmetic, 139 segmentation fault.
@@ -335,7 +337,7 @@ def outside_the_claim(source: str) -> bool:
     code = re.sub(r"//[^\n]*", " ", code)
     code = re.sub(r'"(?:[^"\\\n]|\\.)*"', '""', code)
     # A global with no value is C's, whatever it says it is; a region is rin's own.
-    if re.search(r"^\w+\s*:\s*(?!region\b)[^=\n(]*;\s*$", code, re.M):
+    if re.search(r"^\w+\s*:(?!\s*region\b)[^=\n(]*;\s*$", code, re.M):
         return True
     return re.search(r"\bunsafe\b|\[\s*external\w*\s*\]|\bcinclude\b", code) is not None
 

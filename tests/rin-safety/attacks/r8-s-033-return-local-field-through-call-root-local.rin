@@ -1,0 +1,16 @@
+// k = same(y&)*.x& gives k no source, so return k passes the caller's-memory rule: a pointer to a dead frame's local reaches the caller. ASan: stack-use-after-return (detect_stack_use_after_return=1), or a clobbered read.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+frame: region in level;
+S: struct = { x: i32; y: [4]i32; }
+same: proc(p: *S) -> *S = { return p; }
+f: proc(q: *S) -> *i32 = { y: S = {}; y.x = 7; k: *i32 = same(y&)*.x&; return k; }
+clobber: proc() -> i32 = { w: [64]i32 = {}; for (i: u64 = 0; i < 64; i += 1) { w[i] = 99; } return w[3]; }
+main: proc() -> i32 = {
+  z: S = {};
+  p: *i32 = f(z&);
+  n: i32 = clobber();
+  printfmt("{} {}\n", p*, n);
+  return 0;
+}

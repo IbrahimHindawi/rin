@@ -1,0 +1,11 @@
+// always: get the C name
+A: alias = i32;
+A_B: alias = u8;
+B_C: alias = i32;
+C: alias = i32;
+P: struct<X, Y> = { x: X; y: Y; }
+main: proc() -> i32 = {
+    a: P<A_B, C> = {};
+    b: P<A, B_C> = {};
+    return a.y + b.y;
+}

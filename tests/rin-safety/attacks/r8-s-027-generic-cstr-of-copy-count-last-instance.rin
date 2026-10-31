@@ -1,0 +1,14 @@
+// cstr_copy_count is per Expr, so the last instance's length serves all: show<C400> copies 4 bytes into a text[4] with no terminator and print_cstr reads past it. ASan: stack-buffer-overflow.
+import "std/print.rin"
+import "std/cstr.rin"
+C4: alias = [4]c8;
+C400: alias = [400]c8;
+show: proc<A>(a: A) -> void = { print_cstr(cstr_of(a)); }
+main: proc() -> i32 = {
+  big: C400 = {};
+  small: C4 = {};
+  for (i: u64 = 0; i < 300; i += 1) { big[i] = cast(65, c8); }
+  show<C400>(big);
+  show<C4>(small);
+  return 0;
+}

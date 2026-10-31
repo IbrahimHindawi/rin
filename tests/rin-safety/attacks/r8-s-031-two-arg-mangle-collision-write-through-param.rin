@@ -1,0 +1,15 @@
+// As 030 through a pointer parameter and a write: idx checks 400 against the [4] field of the one C struct and overwrites the stack past q. ASan: stack-buffer-overflow on write.
+import "std/print.rin"
+A: struct = { z: i32; }
+A_B: struct = { z: i32; }
+B_C: struct = { w: [400]i32; }
+C: struct = { w: [4]i32; }
+P: struct<T, U> = { a: T; b: U; }
+idx: proc(q: *P<A, B_C>, i: u64) -> void = { q*.b.w[i] = 0x41414141; }
+main: proc() -> i32 = {
+  p: P<A_B, C> = {};
+  q: P<A, B_C> = {};
+  idx(q&, 300);
+  printfmt("{}\n", q.a.z);
+  return 0;
+}

@@ -1,0 +1,14 @@
+// Two-argument mangling joins with _: P<A_B, C> and P<A, B_C> are both P_A_B_C, and C gets the first definition. The checker sees q.b.w as [400]i32 and C has [4]i32: RIN_INDEX(i, 400) passes and reads past q. ASan: stack-buffer-overflow.
+import "std/print.rin"
+A: struct = { z: i32; }
+A_B: struct = { z: i32; }
+B_C: struct = { w: [400]i32; }
+C: struct = { w: [4]i32; }
+P: struct<T, U> = { a: T; b: U; }
+main: proc() -> i32 = {
+  p: P<A_B, C> = {};
+  q: P<A, B_C> = {};
+  i: u64 = 300;
+  printfmt("{}\n", q.b.w[i]);
+  return 0;
+}

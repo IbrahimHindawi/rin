@@ -1,0 +1,17 @@
+// No user proc storing: slice<T>copy with T = ?*const i32 takes []?*i32 as its dst, so const pointers land in a slice typed writable. q* = 9 writes rodata. Segfault in any build.
+import "std/print.rin"
+import "std/slice.rin"
+import "std/vec.rin"
+A4: alias = [4]i32;
+gi: const i32 = 5;
+g: const A4 = {1,2,3,4};
+main: proc() -> i32 = {
+  a: []?*i32 in permanent = new_slice<?*i32 in permanent>(permanent, 1);
+  b: []?*const i32 in permanent = new_slice<?*const i32 in permanent>(permanent, 1);
+  b[0] = gi&;
+  slice<?*const i32 in permanent>copy(a, b);
+  q: ?*i32 in permanent = a[0];
+  if (q) { q* = 9; }
+  printfmt("{}\n", gi);
+  return 0;
+}

@@ -1,0 +1,17 @@
+// A std call: vec<S>get(v,0).value.y is a slice of a returned option's temporary. Dangles after the statement. UB per C11 6.2.4p8: expect 7 at -O0 and something else at -O2 (run_rin_vm --compare); ASan stack-use-after-scope where clang marks the temporary.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+frame: region in level;
+S: struct = { x: i32; y: [4]i32; }
+mk: proc(n: i32) -> S = { s: S = {}; s.x = n; s.y[0] = n; s.y[1] = n; return s; }
+main: proc() -> i32 = {
+  level: region = {
+    v: *vec<S> in level = vec<S>make(level, 2);
+    _ = vec<S>push(v, mk(7));
+    keep: []i32 = vec<S>get(v, 0).value.y;
+    other: S = mk(9);
+    printfmt("{} {}\n", keep[0], other.x);
+  }
+  return 0;
+}

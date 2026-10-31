@@ -1,0 +1,19 @@
+// Stack in a loop: keep takes a loop-body local through a call root, and the next iteration reads it before the local exists again; the loop rule misses it too. ASan: stack-use-after-scope.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+frame: region in level;
+S: struct = { x: i32; y: [4]i32; }
+same: proc(p: *S) -> *S = { return p; }
+main: proc() -> i32 = {
+  z: S = {};
+  keep: *i32 = z.x&;
+  for (i: i32 = 0; i < 2; i += 1) {
+    printfmt("{}\n", keep*);
+    y: S = {};
+    y.x = i;
+    keep = same(y&)*.x&;
+  }
+  printfmt("{}\n", keep*);
+  return 0;
+}

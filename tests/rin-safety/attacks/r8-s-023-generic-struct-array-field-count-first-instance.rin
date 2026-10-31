@@ -1,0 +1,15 @@
+// A generic struct holding the array: b*.a[i] keeps the first instance's 400 for B<A4>. ASan: stack-buffer-overflow.
+import "std/print.rin"
+#define CNT 4
+A4: alias = [4]i32;
+A400: alias = [400]i32;
+AC: alias = [CNT]i32;
+B: struct<T> = { a: T; }
+get: proc<T>(b: *B<T>, i: u64) -> i32 = { return b*.a[i]; }
+main: proc() -> i32 = {
+  big: B<A400> = {};
+  small: B<A4> = {};
+  printfmt("{}\n", get<A400>(big&, 300));
+  printfmt("{}\n", get<A4>(small&, 300));
+  return 0;
+}

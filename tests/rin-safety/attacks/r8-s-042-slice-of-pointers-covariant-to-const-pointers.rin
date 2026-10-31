@@ -1,0 +1,17 @@
+// []*i32 converts to []*const i32 at a call, and a slice's elements are writable: the callee stores gi& where the caller's type promises *i32, and s[0]* = 9 writes rodata. Places through a slice are not invariant in const. Segfault in any build.
+import "std/print.rin"
+import "std/slice.rin"
+import "std/vec.rin"
+A4: alias = [4]i32;
+gi: const i32 = 5;
+g: const A4 = {1,2,3,4};
+w2: proc(s: []*const i32 in permanent) -> void = { s[0] = gi&; }
+main: proc() -> i32 = {
+  v: *vec<*i32 in permanent> in permanent = vec<*i32 in permanent>make(permanent, 1);
+  _ = vec<*i32 in permanent>push(v, new<i32>(permanent));
+  s: []*i32 in permanent = vec<*i32 in permanent>items(v);
+  w2(s);
+  s[0]* = 9;
+  printfmt("{}\n", gi);
+  return 0;
+}
