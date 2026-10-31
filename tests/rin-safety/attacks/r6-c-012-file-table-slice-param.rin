@@ -1,0 +1,13 @@
+// assign_writes_carrier_field looks at the root of the written place: a global array coerced to a
+// slice parameter is not it. Two slots hold one FILE; closing one leaves the other freed.
+import "std/print.rin"
+import "std/file.rin"
+dup: proc(s: []^FILE) -> void = { s[1] = s[0]; }
+main: proc() -> i32 = {
+    a: file = file_open("c-012.tmp", "wb");
+    b: file = file_open("c-012b.tmp", "wb");
+    dup(file_table_stream);
+    file_close(a);
+    file_write_text(b, "use after fclose\n");
+    return 0;
+}

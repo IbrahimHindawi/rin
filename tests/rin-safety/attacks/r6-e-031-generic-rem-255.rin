@@ -1,0 +1,11 @@
+import "std/print.rin"
+// Remainder in a generic with mixed instances: is RIN_REM_ANY used (safe) or plain? expect safe (control).
+rm: proc<T>(x: T, y: T) -> T = { return x % y; }
+main: proc() -> i32 = {
+    a: i32 = -2147483648;
+    b: i64 = 10;
+    r: i32 = rm<i32>(a, -1);
+    s: i64 = rm<i64>(b, 3);
+    printfmt("{} {}\n", r, cast(s, i32));
+    return 0;
+}

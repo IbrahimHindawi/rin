@@ -1,0 +1,8 @@
+import "std/print.rin"
+// Signed overflow on a long computed then used; UBSan should flag the overflow itself.
+mul: proc(a: long, b: long) -> long = { return a * b; }
+main: proc() -> i32 = {
+    r: long = mul(200000, 200000);
+    printfmt("{}\n", cast(r, i32));
+    return 0;
+}

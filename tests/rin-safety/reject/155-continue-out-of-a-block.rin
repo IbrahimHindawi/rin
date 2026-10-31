@@ -1,0 +1,11 @@
+// expect: the next time round
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    for (i: i32 = 0; i < 2; i += 1) {
+        a = q*;
+        if (i == 0) { x: i32 = 42; q = x&; continue; }
+        q = a&;
+    }
+    return 0;
+}

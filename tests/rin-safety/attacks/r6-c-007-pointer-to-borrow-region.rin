@@ -1,0 +1,11 @@
+// As c-006, through a region's end.
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    pq: **i32 = q&;
+    level: region = { q = new<i32>(level, 42); }
+    printfmt("{}\n", pq**);
+    return 0;
+}

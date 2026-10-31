@@ -1,0 +1,9 @@
+import "std/print.rin"
+// An object-like macro has no type the checker knows: is it assignable to a pointer?
+#define P 0x10
+main: proc() -> i32 = {
+    p: *i32 = P;
+    p* = 1;
+    printfmt("{}\n", p*);
+    return 0;
+}

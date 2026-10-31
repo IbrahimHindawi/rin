@@ -1,0 +1,11 @@
+import "std/print.rin"
+// Division in a generic: RIN_DIV_ANY should catch MIN/-1 and /0 via _Generic. Control: expect SAFE.
+dv: proc<T>(x: T, y: T) -> T = { return x / y; }
+main: proc() -> i32 = {
+    a: i32 = -2147483648;
+    b: i64 = 10;
+    r: i32 = dv<i32>(a, -1);
+    s: i64 = dv<i64>(b, 2);
+    printfmt("{} {}\n", r, cast(s, i32));
+    return 0;
+}

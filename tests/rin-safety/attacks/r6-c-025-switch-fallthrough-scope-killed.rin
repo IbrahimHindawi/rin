@@ -1,0 +1,15 @@
+// A borrow killed at a case end, with the next case falling through and retaking it: the join of
+// entry and the previous case end loses scope_killed, and the back edge of an enclosing loop misses it.
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    for (i: i32 = 0; i < 2; i += 1) {
+        printfmt("{}\n", q*);
+        switch (i) {
+            case 0: { x: i32 = 42; q = x&; break; }
+            case 1: { q = a&; break; }
+        }
+    }
+    return 0;
+}

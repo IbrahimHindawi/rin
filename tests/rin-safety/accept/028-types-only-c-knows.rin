@@ -1,0 +1,45 @@
+import "std/print.rin"
+import "std/cstr.rin"
+
+/* Wrapping where the width is only known instance by instance, and a C string from an
+   array, which stays good whatever happens to the array after. */
+big: proc() -> i32 = { return 2147483647; }
+huge: proc() -> i64 = { return 9223372036854775807; }
+small: proc() -> i32 = { return -2147483647 - 1; }
+add_in: proc<T>(x: *T, y: T) -> void = { x* += y; }
+mul_in: proc<T>(x: *T, y: T) -> void = { x* *= y; }
+div_in: proc<T>(x: *T, y: T) -> void = { x* /= y; }
+neg: proc<T>(x: T) -> T = { return -x; }
+shift: proc<T>(x: T, n: i32) -> T = { return x shl n; }
+shift_in: proc<T>(x: *T, n: i32) -> void = { x* shl= n; }
+
+g: [8]c8 = { 97, 98, 0, 0, 0, 0, 0, 0 };
+wipe: proc() -> u64 = { for (i: u64 = 0; i < 8; i += 1) { g[i] = 120; } return 0; }
+reads: proc(s: ^const c8) -> u64 = { n: u64 = wipe(); return n + cstr_length(s); }
+
+main: proc() -> i32 = {
+    a: i32 = big();
+    add_in<i32>(a&, 1);
+    b: i64 = huge();
+    add_in<i64>(b&, 1);
+    printfmt("{} {}\n", a, b);
+    a = big();
+    mul_in<i32>(a&, 2);
+    printfmt("{}\n", a);
+    a = small();
+    div_in<i32>(a&, -1);
+    printfmt("{}\n", a);
+    f: f32 = 1.5;
+    add_in<f32>(f&, 1.0);
+    div_in<f32>(f&, 2.0);
+    printfmt("{}\n", f);
+    printfmt("{} {} {}\n", neg<i32>(small()), neg<i64>(5), neg<f32>(1.5));
+    printfmt("{} {}\n", shift<i32>(1, 33), shift<i64>(1, 33));
+    c: i32 = 1;
+    shift_in<i32>(c&, 33);
+    d: i64 = 1;
+    shift_in<i64>(d&, 33);
+    printfmt("{} {}\n", c, d);
+    printfmt("{}\n", reads(cstr_of(g)));
+    return 0;
+}

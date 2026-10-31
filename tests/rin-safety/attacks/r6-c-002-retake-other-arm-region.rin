@@ -1,0 +1,13 @@
+// As c-001, with a region: the then arm's pointer dies with frame; pass 2 reads cleared arena memory.
+import "std/print.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    for (i: i32 = 0; i < 2; i += 1) {
+        printfmt("{}\n", q*);
+        if (i == 0) { frame: region = { q = new<i32>(frame, 42); } } else { q = a&; }
+    }
+    return 0;
+}

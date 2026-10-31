@@ -1,0 +1,6 @@
+// expect: a macro's value does not become a pointer
+#define P 16
+main: proc() -> i32 = {
+    p: *i32 = P;
+    return p*;
+}

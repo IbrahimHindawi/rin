@@ -1,0 +1,13 @@
+// file is plain data: copy a's handle, reuse its slot via a second open, then both handles name
+// one FILE. Closing via one and writing via the other is use-after-free, no table write needed.
+import "std/print.rin"
+import "std/file.rin"
+dup_stream: proc(xs: []^FILE, from: u32, to: u32) -> void = { xs[to] = xs[from]; }
+main: proc() -> i32 = {
+    a: file = file_open("c-023a.tmp", "wb");
+    b: file = file_open("c-023b.tmp", "wb");
+    dup_stream(file_table_stream, a.slot, b.slot);
+    file_close(a);
+    file_write_text(b, "use after free\n");
+    return 0;
+}

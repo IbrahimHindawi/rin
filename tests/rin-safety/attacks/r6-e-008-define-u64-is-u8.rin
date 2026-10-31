@@ -1,0 +1,10 @@
+import "std/print.rin"
+// The value text allows the letters a-f, x, u, l, so `u8` is "a number". A type can be renamed.
+#define u64 u8
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    s: []i32 = xs[0..4];
+    i: i32 = 2;
+    printfmt("{}\n", s[i]);
+    return 0;
+}

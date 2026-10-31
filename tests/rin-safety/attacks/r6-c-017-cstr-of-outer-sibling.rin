@@ -1,0 +1,12 @@
+// The rule looks at the call cstr_of is an argument of, not at siblings of an enclosing call:
+// clobber() may run between cstr_of and cstr_length.
+import "std/print.rin"
+import "std/cstr.rin"
+buf: [4]c8 = {};
+clobber: proc() -> u64 = { for (i: i32 = 0; i < 4; i += 1) { buf[i] = cast(65, c8); } return 1; }
+add: proc(a: u64, b: u64) -> u64 = { return a + b; }
+main: proc() -> i32 = {
+    printfmt("{}\n", add(clobber(), cstr_length(cstr_of(buf))));
+    printfmt("{}\n", cstr_length(cstr_of(buf)) + clobber());
+    return 0;
+}

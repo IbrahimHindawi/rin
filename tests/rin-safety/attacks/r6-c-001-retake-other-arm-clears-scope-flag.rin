@@ -1,0 +1,14 @@
+// borrow_retake clears scope_killed on the shared record: the then arm's block-end kill loses
+// its flag when the else arm retakes, so borrows_check_back_edge skips q; q is read on pass 2.
+import "std/print.rin"
+smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    for (i: i32 = 0; i < 2; i += 1) {
+        smash();
+        printfmt("{}\n", q*);
+        if (i == 0) { x: i32 = 42; q = x&; } else { q = a&; }
+    }
+    return 0;
+}

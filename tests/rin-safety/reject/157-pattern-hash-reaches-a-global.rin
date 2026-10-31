@@ -1,0 +1,6 @@
+// expect: in the middle of an operation
+import "std/hash.rin"
+key: struct<T> = { x: T; }
+g: i32 = 0;
+hash: proc<key<T>>(k: key<T>) -> u64 = { g += 1; return 1; }
+main: proc() -> i32 = { return 0; }

@@ -1,0 +1,13 @@
+// A continue carries q dead to the loop head, but the body's end retakes it, clearing scope_killed:
+// conts are joined only into the state after the loop, never the head.
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    for (i: i32 = 0; i < 2; i += 1) {
+        printfmt("{}\n", q*);
+        if (i == 0) { x: i32 = 42; q = x&; continue; }
+        q = a&;
+    }
+    return 0;
+}

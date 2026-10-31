@@ -1,0 +1,20 @@
+// q is dead from a vec move before frame ends, so the region loop's 'if (b->dead) continue' never
+// sets scope_killed; the next pass reads q into a cleared region.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    for (i: i32 = 0; i < 2; i += 1) {
+        printfmt("{}\n", q*);
+        frame: region = {
+            v: *vec<i32> in frame = vec<i32>make(frame, 1);
+            _ = vec<i32>push(v, 7);
+            q = vec<i32>at(v, 0);
+            _ = vec<i32>push(v, 8);
+        }
+    }
+    return 0;
+}

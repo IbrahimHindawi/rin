@@ -1,0 +1,9 @@
+import "std/print.rin"
+// Octal length [030]=24 in C, 30 to the checker; a slice of [0..30] writes past the 24-element array.
+main: proc() -> i32 = {
+    xs: [030]i32 = {};
+    s: []i32 = xs[0..30];
+    s[27] = 777;
+    printfmt("{}\n", s[27]);
+    return 0;
+}

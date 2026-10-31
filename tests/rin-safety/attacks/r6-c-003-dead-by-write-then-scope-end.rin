@@ -1,0 +1,15 @@
+// borrow_kill_written skips a borrow already dead, so a write that kills q before the block
+// ends means the block's end never sets scope_killed; the back-edge check passes q.
+import "std/print.rin"
+S: struct = { f: i32; }
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    for (i: i32 = 0; i < 2; i += 1) {
+        printfmt("{}\n", q*);
+        s: S = { .f = 42 };
+        q = s.f&;
+        s.f = 43;
+    }
+    return 0;
+}

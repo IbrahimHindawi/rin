@@ -1,0 +1,11 @@
+import "std/print.rin"
+// A macro renames a global to a shorter local: the checker sees g1 with 100 elements, C sees the local a1.
+#define g1 a1
+g1: [100]i32 = {};
+main: proc() -> i32 = {
+    a1: [1]i32 = { 3 };
+    i: u64 = 50;
+    g1[i] = 7;
+    printfmt("{}\n", g1[i] + a1[0]);
+    return 0;
+}

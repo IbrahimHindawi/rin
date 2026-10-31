@@ -1,0 +1,9 @@
+import "std/print.rin"
+// `#define null 1` passes preprocessor_line_defines_a_number: null is not runtime and not reserved.
+#define NULL 1
+#define null 1
+main: proc() -> i32 = {
+    p: ?*i32 = null;
+    if (p) { p* = 1; printfmt("{}\n", p*); }
+    return 0;
+}

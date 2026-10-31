@@ -1,0 +1,14 @@
+import "std/print.rin"
+// A directive after the last field (tail_directives) is also emitted verbatim and unchecked.
+S: struct = {
+    x: i32;
+#undef RIN_INDEX
+#define RIN_INDEX(i, n) (i)
+}
+main: proc() -> i32 = {
+    xs: [4]i32 = {};
+    i: u64 = 90000;
+    xs[i] = 7;
+    printfmt("{}\n", xs[i]);
+    return 0;
+}

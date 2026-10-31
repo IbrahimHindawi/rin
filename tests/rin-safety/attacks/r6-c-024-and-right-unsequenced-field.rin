@@ -1,0 +1,16 @@
+// A field read unsequenced beside a changing call on the right of &&, where root_is_sequenced
+// lets the outermost call off: f() may run before dx.tex is read.
+import "std/print.rin"
+node: struct = { w: i32; }
+dx: struct = { tex: ?*node in permanent; }
+g: ?*dx in permanent = null;
+clobber: proc() -> i32 = { if (g) { must(g)*.tex = null; } return 1; }
+read_w: proc(n: *node, k: i32) -> i32 = { return n*.w + k; }
+main: proc() -> i32 = {
+    d: *dx in permanent = new<dx>(permanent, { .tex = new<node>(permanent, { .w = 7 }) });
+    g = d;
+    if (d*.tex != null && read_w(must(d*.tex), clobber()) > 0) {
+        printfmt("{}\n", 1);
+    }
+    return 0;
+}

@@ -1,0 +1,11 @@
+import "std/print.rin"
+// Compound shift in a generic with mixed instances: emit_defined_compound bails on arith_code 255, plain shift is UB.
+shl_eq: proc<T>(x: *T, n: T) -> i32 = { x* shl= n; return 0; }
+main: proc() -> i32 = {
+    a: i32 = 1;
+    b: i64 = 1;
+    _ = shl_eq<i32>(a&, 40);
+    _ = shl_eq<i64>(b&, 2);
+    printfmt("{} {}\n", a, cast(b, i32));
+    return 0;
+}

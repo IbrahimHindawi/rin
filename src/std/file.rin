@@ -12,8 +12,8 @@ file: struct = {
     generation: u32;
 }
 
-file_table_stream: [256]^FILE = {};
-file_table_generation: [256]u32 = {};
+file_table_stream: static [256]^FILE = {};
+file_table_generation: static [256]u32 = {};
 
 /* Whether a file opened: file_open's result is tested with this. */
 file_is_open: proc(f: file) -> b32 = {

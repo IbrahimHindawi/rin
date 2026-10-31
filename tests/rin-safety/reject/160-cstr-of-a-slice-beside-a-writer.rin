@@ -1,0 +1,12 @@
+// expect: could overwrite the buffer
+import "std/cstr.rin"
+poke: proc(s: ^const c8, w: []c8) -> u64 = { w[0] = 1; return cstr_length(s); }
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        b: []c8 in level = new_slice<c8>(level, 4);
+        c: []c8 in level = b[0..4];
+        _ = poke(cstr_of(c), b);
+    }
+    return 0;
+}

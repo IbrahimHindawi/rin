@@ -1,0 +1,11 @@
+import "std/print.rin"
+// Mixed instances make shift_bits=255, so the shift is emitted unmasked: shl by >= width is UB.
+sh: proc<T>(x: T, n: T) -> T = { return x shl n; }
+main: proc() -> i32 = {
+    a: i32 = 1;
+    b: i64 = 1;
+    r: i32 = sh<i32>(a, 40);
+    s: i64 = sh<i64>(b, 2);
+    printfmt("{} {}\n", r, cast(s, i32));
+    return 0;
+}

@@ -1,0 +1,16 @@
+import "std/print.rin"
+// Field pre-directive redefines memops_bytes so a wrapped allocation size is not caught.
+S: struct = {
+#define memops_bytes(size, count) ((size) * (count))
+    x: i32;
+}
+reg: region;
+main: proc() -> i32 = {
+    reg: region = {
+        n: u64 = 0x2000000000000001;
+        s: []i32 in reg = new_slice<i32>(reg, n);
+        s[0] = 7;
+        printfmt("{}\n", s[0]);
+    }
+    return 0;
+}

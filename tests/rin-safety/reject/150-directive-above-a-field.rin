@@ -1,0 +1,6 @@
+// expect: preprocessor line
+S: struct = {
+#undef RIN_INDEX
+    x: i32;
+}
+main: proc() -> i32 = { return 0; }

@@ -1,0 +1,10 @@
+// expect: out of bounds
+import "std/print.rin"
+
+/* C reads 0100 as sixty-four, and the checker must not think it knows better. */
+main: proc() -> i32 = {
+    xs: [0100]i32 = {};
+    xs[99] = 7;
+    printfmt("{}\n", xs[99]);
+    return 0;
+}

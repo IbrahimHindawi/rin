@@ -1,0 +1,17 @@
+// type_collect_regions keys seen by a mangle with no region, so box<?*i32 in frame> is hidden by
+// box<?*i32 in level> and the local need not be where frame is open.
+import "std/print.rin"
+level: region;
+frame: region in level;
+box: struct<T> = { v: T; }
+pair: struct = { a: box<?*i32 in level>; b: box<?*i32 in frame>; }
+main: proc() -> i32 = {
+    level: region = {
+        s: pair = {};
+        frame: region = {
+            s.b.v = new<i32>(frame, 42);
+        }
+        if (s.b.v) { printfmt("{}\n", must(s.b.v)*); }
+    }
+    return 0;
+}

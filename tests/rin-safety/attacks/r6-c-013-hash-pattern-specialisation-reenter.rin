@@ -1,0 +1,30 @@
+// A pattern specialisation is generic, so specialized_from is empty and the rule for hash skips it.
+// Same re-entry as r5-s-014 otherwise.
+import "std/print.rin"
+import "std/hashmap.rin"
+key: struct<T> = { x: T; }
+S: struct = { m: ?*hashmap<key<i64>, i32> in permanent; armed: b32; }
+g: S = {};
+hash: proc<key<T>>(k: key<T>) -> u64 = {
+    if (g.armed && g.m) {
+        g.armed = 0;
+        m: *hashmap<key<i64>, i32> in permanent = must(g.m);
+        for (i: i64 = 0; i < 20000; i += 1) {
+            k2: key<i64> = { .x = 100000 + i };
+            _ = hashmap<key<i64>, i32>set(m, k2, 1);
+            _ = hashmap<key<i64>, i32>remove(m, k2);
+        }
+    }
+    return cast(k.x, u64) * 31;
+}
+equal: proc<key<T>>(a: key<T>, b: key<T>) -> b32 = { return a.x == b.x; }
+main: proc() -> i32 = {
+    m: *hashmap<key<i64>, i32> in permanent = hashmap<key<i64>, i32>make(permanent);
+    g.m = m;
+    for (i: i64 = 0; i < 4000; i += 1) { k: key<i64> = { .x = i }; _ = hashmap<key<i64>, i32>set(m, k, 1); }
+    for (i: i64 = 0; i < 4000; i += 1) { k: key<i64> = { .x = i }; _ = hashmap<key<i64>, i32>remove(m, k); }
+    g.armed = 1;
+    k: key<i64> = { .x = 5000 };
+    printfmt("{}\n", hashmap<key<i64>, i32>has(m, k));
+    return 0;
+}

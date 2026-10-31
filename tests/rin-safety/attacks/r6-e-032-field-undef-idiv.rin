@@ -1,0 +1,12 @@
+import "std/print.rin"
+// Field pre-directive redefines rin_idiv_i32 (core.h) to a plain divide: div-by-zero / INT_MIN/-1 is UB.
+S: struct = {
+#define rin_idiv_i32(a, b, f, l) ((a) / (b))
+    x: i32;
+}
+main: proc() -> i32 = {
+    a: i32 = -2147483648;
+    b: i32 = -1;
+    printfmt("{}\n", a / b);
+    return 0;
+}

@@ -1,0 +1,17 @@
+// The then branch exits the proc; the else retakes q and clears scope_killed; after the if the
+// then path's state is dropped, and the loop back edge misses the else-arm block dangle.
+import "std/print.rin"
+helper: proc(i: i32) -> *i32 = {
+    a: i32 = 7;
+    r: *i32 = a&;
+    for (k: i32 = 0; k < 2; k += 1) {
+        printfmt("{}\n", r*);
+        if (k == 9) { return a&; } else { x: i32 = 42; r = x&; }
+    }
+    return a&;
+}
+main: proc() -> i32 = {
+    p: *i32 = helper(0);
+    printfmt("{}\n", p*);
+    return 0;
+}

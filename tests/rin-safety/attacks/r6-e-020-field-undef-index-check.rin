@@ -1,0 +1,14 @@
+import "std/print.rin"
+// RIN_INDEX is a macro in core.h; a field directive can redefine it without the file-scope check.
+S: struct = {
+#undef RIN_INDEX
+#define RIN_INDEX(i, n) (i)
+    x: i32;
+}
+main: proc() -> i32 = {
+    xs: [4]i32 = {};
+    s: []i32 = xs[0..4];
+    i: u64 = 777777;
+    printfmt("{}\n", s[i]);
+    return 0;
+}

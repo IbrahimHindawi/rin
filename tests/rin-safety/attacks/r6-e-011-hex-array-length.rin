@@ -1,0 +1,8 @@
+import "std/print.rin"
+// [0x10] : parse_nonnegative_i64 sees a non-digit 'x' and returns -1 (count unknown), so literal indices are checked at... let's see.
+main: proc() -> i32 = {
+    xs: [0x10]i32 = {};
+    xs[20] = 7;
+    printfmt("{}\n", xs[20]);
+    return 0;
+}

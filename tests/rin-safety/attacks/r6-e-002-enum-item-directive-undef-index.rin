@@ -1,0 +1,15 @@
+import "std/print.rin"
+// The same through an enum item's pre_directives.
+E: enum = {
+#undef RIN_INDEX
+#define RIN_INDEX(i, n) (i)
+    a,
+    b,
+}
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    i: u64 = 100000000;
+    xs[i] = 7;
+    printfmt("{}\n", xs[i]);
+    return 0;
+}

@@ -1,0 +1,14 @@
+import "std/print.rin"
+// Field pre-directive redefines rin_slice_range (called at the user site) to skip the bounds check.
+S: struct = {
+#define rin_slice_range(sl, a, b, sz, out, f, l) ((void*)memcpy((out), (rin_slice_raw[]){ { ((rin_slice_raw*)(sl))->data + (a)*(sz), (b)-(a) } }, sizeof(rin_slice_raw)))
+    x: i32;
+}
+sub: proc(s: *[]i32) -> []i32 = { return s*[0..100]; }
+main: proc() -> i32 = {
+    xs: [4]i32 = {};
+    s0: []i32 = xs[0..4];
+    s: []i32 = sub(s0&);
+    printfmt("{}\n", s[50]);
+    return 0;
+}

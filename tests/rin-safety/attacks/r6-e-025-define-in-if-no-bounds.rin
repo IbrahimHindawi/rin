@@ -1,0 +1,12 @@
+import "std/print.rin"
+// A #define guarded by #if 1: preprocessor_line_defines_a_number sees the lines but the #if/#endif themselves are "not a number" -> they must be // unsafe marked... test whether #if lines are rejected.
+#if 1
+#define RIN_NO_BOUNDS_CHECKS 1
+#endif
+main: proc() -> i32 = {
+    xs: [4]i32 = {};
+    i: u64 = 90000;
+    xs[i] = 7;
+    printfmt("{}\n", xs[i]);
+    return 0;
+}

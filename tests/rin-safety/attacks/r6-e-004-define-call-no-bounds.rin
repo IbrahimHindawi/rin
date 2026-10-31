@@ -1,0 +1,10 @@
+define("RIN_NO_BOUNDS_CHECKS")
+import "std/print.rin"
+// define("...") goes to prog.defines, which safety_check_program_names does not read.
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    i: u64 = 100000000;
+    xs[i] = 7;
+    printfmt("{}\n", xs[i]);
+    return 0;
+}

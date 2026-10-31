@@ -1,0 +1,8 @@
+import "std/print.rin"
+// `long` is skipped by arith_note, so a shift by >= width emits unmasked: UB on 32-bit long (Windows).
+main: proc() -> i32 = {
+    x: long = 1;
+    y: long = x shl 40;
+    printfmt("{}\n", cast(y, i32));
+    return 0;
+}

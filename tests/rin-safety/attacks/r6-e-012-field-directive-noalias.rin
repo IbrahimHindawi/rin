@@ -1,0 +1,15 @@
+import "std/print.rin"
+// Kill the noalias overlap check via a field pre-directive, then call a noalias proc with aliasing args... needs a noalias proc. Skip bounds; redefine RIN_NOALIAS to nothing.
+S: struct = {
+#undef RIN_RANGE
+#define RIN_RANGE(a, b, n) (a)
+    x: i32;
+}
+main: proc() -> i32 = {
+    xs: [4]i32 = {};
+    a: u64 = 2;
+    b: u64 = 100;
+    s: []i32 = xs[a..b];
+    printfmt("{}\n", s[50]);
+    return 0;
+}

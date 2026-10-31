@@ -1,0 +1,18 @@
+// region_bind_inner stops at an array: R is never bound, and at the call site R is not in the
+// caller's region vars, so type_flow_same treats the two [1]?*i32 as one region. level <- frame.
+import "std/print.rin"
+level: region;
+frame: region in level;
+copy: proc(a: *[1]?*i32 in R, b: *[1]?*i32 in R) -> void = { a[0] = b[0]; }
+main: proc() -> i32 = {
+    level: region = {
+        o: [1]?*i32 in level = {};
+        frame: region = {
+            f: [1]?*i32 in frame = {};
+            f[0] = new<i32>(frame, 42);
+            copy(o&, f&);
+        }
+        if (o[0] != null) { printfmt("{}\n", must(o[0])*); }
+    }
+    return 0;
+}

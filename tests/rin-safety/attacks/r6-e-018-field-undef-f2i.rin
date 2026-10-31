@@ -1,0 +1,12 @@
+import "std/print.rin"
+// Field pre-directive redefines rin_f2i_i32 to a plain cast: out-of-range float->int is UB.
+S: struct = {
+#define rin_f2i_i32(x) ((i32)(x))
+    x: i32;
+}
+main: proc() -> i32 = {
+    f: f64 = 1.0e18;
+    n: i32 = cast(f, i32);
+    printfmt("{}\n", n);
+    return 0;
+}

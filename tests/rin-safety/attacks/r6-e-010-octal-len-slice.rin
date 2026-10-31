@@ -1,0 +1,8 @@
+import "std/print.rin"
+// [010] parses as decimal 10 in the checker, octal 8 in C. Slice of [0..10] over an 8-element array.
+main: proc() -> i32 = {
+    xs: [010]i32 = {};
+    s: []i32 = xs[0..10];
+    printfmt("{}\n", s[9]);
+    return 0;
+}

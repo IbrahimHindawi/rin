@@ -1,0 +1,18 @@
+// region_bind_inner does not look through a generic: R is unbound, matches anything.
+import "std/print.rin"
+level: region;
+frame: region in level;
+box: struct<T> = { v: T; }
+copy: proc(a: *box<?*i32 in R>, b: *box<?*i32 in R>) -> void = { a*.v = b*.v; }
+main: proc() -> i32 = {
+    level: region = {
+        o: box<?*i32 in level> = {};
+        frame: region = {
+            f: box<?*i32 in frame> = {};
+            f.v = new<i32>(frame, 42);
+            copy(o&, f&);
+        }
+        if (o.v) { printfmt("{}\n", must(o.v)*); }
+    }
+    return 0;
+}

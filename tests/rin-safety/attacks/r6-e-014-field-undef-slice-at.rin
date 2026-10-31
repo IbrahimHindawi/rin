@@ -1,0 +1,13 @@
+import "std/print.rin"
+// Field pre-directive redefines rin_slice_at: a slice reached through a pointer is indexed unchecked.
+S: struct = {
+#define rin_slice_at(sl, i, sz, f, l) ((void*)(((rin_slice_raw*)(sl))->data + (i)*(sz)))
+    x: i32;
+}
+read: proc(s: *[]i32, i: u64) -> i32 = { return s*[i]; }
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    s: []i32 = xs[0..4];
+    printfmt("{}\n", read(s&, 1000000));
+    return 0;
+}

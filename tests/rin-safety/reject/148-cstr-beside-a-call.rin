@@ -1,7 +1,13 @@
 // expect: could overwrite the terminator
 import "std/cstr.rin"
-g: [4]char = { 97, 0, 0, 0 };
-clobber: proc() -> i64 = { g[1] = 98; g[2] = 98; g[3] = 98; return 0; }
+level: region;
+clobber: proc(s: []c8) -> u64 = { s[1] = 98; s[2] = 98; s[3] = 98; return 0; }
 main: proc() -> i32 = {
-    return cast(cstr_equals_n(cstr_of(g), "a", cast(clobber(), u64)), i32);
+    r: b32 = 0;
+    level: region = {
+        b: []c8 in level = new_slice<c8>(level, 4);
+        b[0] = 97;
+        r = cstr_equals_n(cstr_of(b), "a", clobber(b));
+    }
+    return cast(r, i32);
 }

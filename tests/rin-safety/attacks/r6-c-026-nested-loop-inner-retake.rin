@@ -1,0 +1,17 @@
+// Back edge of the outer loop: q dies in an inner block, an inner-loop iteration retakes it and
+// clears scope_killed, so the outer back edge misses the dangle at the outer top.
+import "std/print.rin"
+smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[7] == 0); }
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    for (i: i32 = 0; i < 2; i += 1) {
+        smash();
+        printfmt("{}\n", q*);
+        for (j: i32 = 0; j < 1; j += 1) {
+            x: i32 = 42; q = x&;
+        }
+        q = a&;
+    }
+    return 0;
+}

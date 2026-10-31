@@ -1,0 +1,15 @@
+import "std/print.rin"
+// A '#' line above a struct field is emitted verbatim (emit_pre_directives) and only Stmt_Directive
+// and top-level preprocessor_lines are checked. RIN_INDEX becomes the plain index for everything after.
+S: struct = {
+#undef RIN_INDEX
+#define RIN_INDEX(i, n) (i)
+    x: i32;
+}
+main: proc() -> i32 = {
+    xs: [4]i32 = { 1, 2, 3, 4 };
+    i: u64 = 100000000;
+    xs[i] = 7;
+    printfmt("{}\n", xs[i]);
+    return 0;
+}

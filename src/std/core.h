@@ -219,6 +219,57 @@ RIN_MAYBE_UNUSED static inline void rin_no_return(const char *file, int line) {
     abort();
 }
 
+/* cstr_of found a terminator in an array of n chars at `from`. The copy lives until the block
+   ends, and nothing else has its address. */
+RIN_MAYBE_UNUSED static inline const c8 *rin_cstr_copy(c8 *to, const c8 *from, u64 n) {
+    for (u64 i = 0; i < n; i++) {
+        to[i] = from[i];
+        if (from[i] == 0) break;
+    }
+    return to;
+}
+
+/* Where only the C compiler knows an integer's type: a generic's instances that differ, C's
+   long, an enum. It picks by the type; the wrapping is through u64, which truncates back. */
+#define RIN_ANY_INT(x, stem) _Generic((x), char: stem##_c, signed char: stem##_sc, short: stem##_s, int: stem##_i, \
+    long: stem##_l, long long: stem##_ll, unsigned char: stem##_uc, unsigned short: stem##_us, unsigned: stem##_u, \
+    unsigned long: stem##_ul, unsigned long long: stem##_ull)
+#define RIN_ANY_NUM(x, stem) _Generic((x), char: stem##_c, signed char: stem##_sc, short: stem##_s, int: stem##_i, \
+    long: stem##_l, long long: stem##_ll, unsigned char: stem##_uc, unsigned short: stem##_us, unsigned: stem##_u, \
+    unsigned long: stem##_ul, unsigned long long: stem##_ull, float: stem##_f, double: stem##_d)
+#define RIN_ANY_DEFINE_INT(T, tag, IS_SIGNED) \
+    RIN_MAYBE_UNUSED static inline T rin_shl_##tag(T x, int n) { return (T)((u64)x << (n & (int)(sizeof(T) * 8 - 1))); } \
+    RIN_MAYBE_UNUSED static inline T rin_shr_##tag(T x, int n) { return (T)(x >> (n & (int)(sizeof(T) * 8 - 1))); } \
+    RIN_MAYBE_UNUSED static inline T rin_neg_##tag(T x) { return (T)((u64)0 - (u64)x); } \
+    RIN_MAYBE_UNUSED static inline void rin_cadd_##tag(T *p, T v) { *p = (T)((u64)*p + (u64)v); } \
+    RIN_MAYBE_UNUSED static inline void rin_csub_##tag(T *p, T v) { *p = (T)((u64)*p - (u64)v); } \
+    RIN_MAYBE_UNUSED static inline void rin_cmul_##tag(T *p, T v) { *p = (T)((u64)*p * (u64)v); } \
+    RIN_MAYBE_UNUSED static inline void rin_cshl_##tag(T *p, int n) { *p = rin_shl_##tag(*p, n); } \
+    RIN_MAYBE_UNUSED static inline void rin_cshr_##tag(T *p, int n) { *p = rin_shr_##tag(*p, n); } \
+    RIN_MAYBE_UNUSED static inline void rin_cdiv_##tag(T *p, T v, const char *file, int line) { \
+        *p = IS_SIGNED ? (T)rin_idiv_i64((i64)*p, (i64)v, file, line) : (T)rin_idiv_u64((u64)*p, (u64)v, file, line); } \
+    RIN_MAYBE_UNUSED static inline void rin_crem_##tag(T *p, T v, const char *file, int line) { \
+        *p = IS_SIGNED ? (T)rin_irem_i64((i64)*p, (i64)v, file, line) : (T)rin_irem_u64((u64)*p, (u64)v, file, line); }
+RIN_ANY_DEFINE_INT(char, c, ((char)-1 < 0))
+RIN_ANY_DEFINE_INT(signed char, sc, 1)
+RIN_ANY_DEFINE_INT(short, s, 1)
+RIN_ANY_DEFINE_INT(int, i, 1)
+RIN_ANY_DEFINE_INT(long, l, 1)
+RIN_ANY_DEFINE_INT(long long, ll, 1)
+RIN_ANY_DEFINE_INT(unsigned char, uc, 0)
+RIN_ANY_DEFINE_INT(unsigned short, us, 0)
+RIN_ANY_DEFINE_INT(unsigned, u, 0)
+RIN_ANY_DEFINE_INT(unsigned long, ul, 0)
+RIN_ANY_DEFINE_INT(unsigned long long, ull, 0)
+#define RIN_ANY_DEFINE_FLOAT(T, tag) \
+    RIN_MAYBE_UNUSED static inline T rin_neg_##tag(T x) { return -x; } \
+    RIN_MAYBE_UNUSED static inline void rin_cadd_##tag(T *p, T v) { *p += v; } \
+    RIN_MAYBE_UNUSED static inline void rin_csub_##tag(T *p, T v) { *p -= v; } \
+    RIN_MAYBE_UNUSED static inline void rin_cmul_##tag(T *p, T v) { *p *= v; } \
+    RIN_MAYBE_UNUSED static inline void rin_cdiv_##tag(T *p, T v, const char *file, int line) { (void)file; (void)line; *p /= v; }
+RIN_ANY_DEFINE_FLOAT(float, f)
+RIN_ANY_DEFINE_FLOAT(double, d)
+
 /* The same for an expression whose type differs between a generic's instances. */
 #define RIN_WRAP_OP(a, op, b) _Generic((a) op (b), \
     int: (int)((unsigned)(a) op (unsigned)(b)), \

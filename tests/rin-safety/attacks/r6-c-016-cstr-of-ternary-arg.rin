@@ -1,0 +1,10 @@
+// The sibling rule looks at direct cstr_of arguments only: a ternary is not one.
+import "std/print.rin"
+import "std/cstr.rin"
+buf: [4]c8 = {};
+clobber: proc() -> i32 = { for (i: i32 = 0; i < 4; i += 1) { buf[i] = cast(65, c8); } return 1; }
+two: proc(s: ^const c8, n: i32) -> u64 = { return cstr_length(s); }
+main: proc() -> i32 = {
+    printfmt("{}\n", two(buf[0] == 0 ? cstr_of(buf) : "x", clobber()));
+    return 0;
+}

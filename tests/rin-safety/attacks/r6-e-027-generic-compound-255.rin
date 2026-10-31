@@ -1,0 +1,11 @@
+import "std/print.rin"
+// Mixed instances make arith_code=255 on the compound; emit_defined_compound falls back to plain C: i64 signed overflow is UB.
+addto: proc<T>(x: *T, y: T) -> i32 = { x* += y; return 0; }
+main: proc() -> i32 = {
+    a: i32 = 1;
+    b: i64 = 9223372036854775807;
+    _ = addto<i32>(a&, 1);
+    _ = addto<i64>(b&, 1);
+    printfmt("{} {}\n", a, cast(b, i32));
+    return 0;
+}

@@ -1,0 +1,8 @@
+import "std/print.rin"
+// [0024] decimal-parsed as 24, C octal = 20. Index 22 passes the checker, OOB in C.
+main: proc() -> i32 = {
+    xs: [0024]i32 = {};
+    xs[22] = 7;
+    printfmt("{}\n", xs[22]);
+    return 0;
+}

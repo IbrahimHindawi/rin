@@ -1,0 +1,11 @@
+// pq takes the address of q: pq's paths are what q's were. q's retake and death never reach pq,
+// and reading pq** names no dead borrow.
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    pq: **i32 = q&;
+    if (a == 1) { x: i32 = 42; q = x&; }
+    printfmt("{}\n", pq**);
+    return 0;
+}

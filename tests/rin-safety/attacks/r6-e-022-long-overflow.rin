@@ -1,0 +1,8 @@
+import "std/print.rin"
+// arith_note skips `long` (width varies), so `+` on a long emits plain C: signed overflow is UB.
+main: proc() -> i32 = {
+    x: long = 2000000000;
+    y: long = x + x;
+    printfmt("{}\n", cast(y, i32));
+    return 0;
+}

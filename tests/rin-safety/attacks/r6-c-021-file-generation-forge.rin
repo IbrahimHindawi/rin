@@ -1,0 +1,11 @@
+// file_table_generation is a plain-data global in std; the carrier rule blocks only raw-pointer
+// globals and carrier fields, so safe code may write it and defeat the use-after-close generation.
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    a: file = file_open("c-021.tmp", "wb");
+    file_close(a);
+    file_table_generation[a.slot] = a.generation;
+    file_write_text(a, "resurrected after close\n");
+    return 0;
+}

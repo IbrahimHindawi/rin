@@ -1,0 +1,11 @@
+import "std/print.rin"
+// Unary minus in a generic with mixed instances: -MIN is UB if emitted plain.
+neg: proc<T>(x: T) -> T = { return -x; }
+main: proc() -> i32 = {
+    a: i32 = -2147483648;
+    b: i64 = 1;
+    r: i32 = neg<i32>(a);
+    s: i64 = neg<i64>(b);
+    printfmt("{} {}\n", r, cast(s, i32));
+    return 0;
+}

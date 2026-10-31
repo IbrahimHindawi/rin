@@ -1,0 +1,13 @@
+import "std/print.rin"
+// Field pre-directive redefines rin_nonnull so must() on a null passes through.
+S: struct = {
+#define rin_nonnull(p) (p)
+    x: i32;
+}
+g: i32 = 5;
+find: proc(b: b32) -> ?*i32 = { if (b) { return null; } return g&; }
+main: proc() -> i32 = {
+    p: *i32 = must(find(true));
+    printfmt("{}\n", p*);
+    return 0;
+}

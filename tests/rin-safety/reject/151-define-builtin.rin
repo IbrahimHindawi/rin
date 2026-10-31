@@ -1,0 +1,3 @@
+// expect: define(...)
+define("RIN_NO_BOUNDS_CHECKS");
+main: proc() -> i32 = { return 0; }

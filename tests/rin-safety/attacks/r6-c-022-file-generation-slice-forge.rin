@@ -1,0 +1,11 @@
+// Same, through a slice parameter, in case the direct write is caught.
+import "std/print.rin"
+import "std/file.rin"
+setg: proc(xs: []u32, i: u32, v: u32) -> void = { xs[i] = v; }
+main: proc() -> i32 = {
+    a: file = file_open("c-022.tmp", "wb");
+    file_close(a);
+    setg(file_table_generation, a.slot, a.generation);
+    file_write_text(a, "resurrected after close\n");
+    return 0;
+}

@@ -1,0 +1,15 @@
+// A do-while whose body dies q then retakes on a later pass path, defeating the outer for back edge.
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: i32 = 1;
+    q: *i32 = a&;
+    for (i: i32 = 0; i < 2; i += 1) {
+        printfmt("{}\n", q*);
+        k: i32 = 0;
+        do {
+            if (k == 0) { x: i32 = 42; q = x&; } else { q = a&; }
+            k += 1;
+        } while (k < 2);
+    }
+    return 0;
+}

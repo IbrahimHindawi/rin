@@ -1,0 +1,8 @@
+import "std/print.rin"
+// parse_nonnegative_i64 reads "0100" as 100; C reads it as octal 64. A plain literal index below 100 goes unchecked.
+main: proc() -> i32 = {
+    xs: [0100]i32 = {};
+    xs[99] = 7;
+    printfmt("{}\n", xs[99]);
+    return 0;
+}
