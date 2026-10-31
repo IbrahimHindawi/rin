@@ -11,21 +11,28 @@ Safe rin does not try to make any program safe. It makes one way of programming 
 working arena code is already written, and anything outside it is `unsafe` or cannot be written.
 The patterns come from a shipped engine, and a feature earns its place by a pattern needing it:
 
-| Pattern | What makes it safe |
-|---|---|
-| Memory lives as long as its arena | The region is part of a pointer's type |
-| Scratch work | A block region, which ends on every way out |
-| A whole lifetime ends at once | A region's end is one event, in one place |
-| Arrays sized once | A fixed length, checked on every access; they never move |
-| Things refer to each other by index | Indexes are checked against their table |
-| Pointers used briefly | Locals and parameters may not outlive what they point at |
-| GPU buffers and files | Tied to a region, and released when it ends; there is no release call to forget or misuse |
+| Pattern | What makes it safe | In the language |
+|---|---|---|
+| Memory lives as long as its arena | The region is part of a pointer's type, worked out from what is stored | `*T in level`, or nothing on a field |
+| Scratch work | A block region, which ends on every way out | `scratch { }` |
+| A level's state in globals, ended in one place | The end empties every global holding that memory, and no local that may point there can be read after | `level: region global;`, `reset level;` |
+| Arrays sized once | A length known at compile time, checked on every access; they never move | `[N]T`, `new_slice<T>(r, n)` |
+| Things refer to each other by index | An index fits one table, and finds nothing once its slot is reused | `table<T>`, `index<T>` |
+| Pointers used briefly | Locals and parameters may not outlive what they point at | `*T` with no region |
+| GPU buffers and files | Tied to a region, and released when it ends; there is no release call to forget or misuse | `memops_arena_on_end`, `file_open_in` |
+
+What safe rin cannot express, on purpose: lifetimes that overlap without nesting, freeing one object for
+its memory back, data that churns forever in a region that never ends, long-lived data pointing at
+shorter-lived data, threads, closures and coroutines, and type-erased or raw memory. Each of those is an
+index into a table, a copy, or a small `unsafe` core.
 
 There are no destructors, no ownership, no borrow checker and no methods: nothing runs that the
 program does not show, and a region's end is written where it happens.
 
 The checker fails closed. When it cannot work something out it adds a check at run time or refuses
-the program; it never takes not knowing for nothing to check.
+the program; it never takes not knowing for nothing to check. A constant is computed by rin and handed to C
+as a number, so the two cannot disagree. Every expression and statement the emitter writes must have been
+through the checker, or the build stops.
 
 ## The claim
 
@@ -73,7 +80,7 @@ The rules below keep these true. The argument is an induction over execution: ea
 4. **Values.** Every local, field and element has been given a value of its type. Every non-null
    pointer in memory is non-null.
 5. **Raw pointers.** A `^T` in safe code is never read through, stepped or kept past the call it was
-   passed to. It only travels.
+   passed to. It only travels. A raw parameter is not stored in memory, however it gets there.
 
 ## Each error, and what stops it
 
@@ -81,6 +88,7 @@ The rules below keep these true. The argument is an induction over execution: ea
 |---|---|---|---|---|
 | Pointer outlives its region | A value holds pointers only into regions at least as long as its own | `region_flow_rejects`, `inner_flow_rejects` | Regions are a known order; a block ends where it is written | `reject/`, `attacks/r1-*`, `r2-*` |
 | Pointer laundered through a generic, alias or `**T` | Places reached through a pointer are invariant | `type_flow_same` | Generic bodies are checked per instance | `attacks/r2-*`, `r4-*` |
+| Region reset under a pointer | No local or parameter that may point there can be read after, in the proc that resets or any that calls it; a global holding it is emptied; a resetting call stands alone; nothing shorter-lived is open across it | `reset_kills`, `emit_region_forget`, `reset_check_open` | Every call that can reset is found by name; calls through pointers are refused one | `reject/237` on, `attacks/r12-*` |
 | Region re-entered while open | The checker tracks what each proc opens | `opens_collect_*` | Calls through pointers are refused a region | `reject/`, attack probes |
 | Local's address escapes | The stack is the innermost region | Region rules, `borrow_*` | Locals do not outlive the frame | `reject/` |
 | Stale pointer after a move | Borrow tracking kills it; the old buffer also stays valid until the region ends | `borrow_*`, `compute_proc_moves` | Arenas never free one object | `reject/`, `attacks/r3-*` |
@@ -124,7 +132,9 @@ remove a check. So the emitter never relies on a C flag to define these:
 | Signed left shift into the sign bit | Through the unsigned type | same |
 | Float to integer out of range, NaN | Saturates, NaN is 0, as in Rust | `rin_f2i_*` |
 | Reaching the end of a proc without a value | Stops the program | `rin_no_return` |
-| `restrict` broken | A `noalias` proc is safe to call only if it takes plain data, touches no writable global, and calls only procs like itself, so its parameters are the only way in; overlap is checked on entry in every build. Any other needs `unsafe` | `compute_proc_noalias`, `RIN_NOALIAS` |
+| `restrict` broken | `noalias` belongs on a `proc[unsafe]`, and the promise is the author's; overlap is still checked on entry in every build | `RIN_NOALIAS` |
+| A variable-length array | A length is known at compile time, and the generated C makes one an error, in `unsafe` code as well | `resolve_array_count_constants`, `-Wvla` |
+| Arithmetic C types its own way | Arithmetic is on numbers: an enum or a boolean is cast first. A ternary's arms are one type | `type_check_binary_op`, `type_check_ternary` |
 | Unspecified order around a call | A slice is read whole; a subrange reads each bound once; a base read twice must be pure | `rin_slice_at`, `rin_slice_range`, `expr_is_pure` |
 | Width only C knows (`long`, an enum, a generic's differing instances) | C picks the helper by type | `RIN_WRAP_OP`, `RIN_ANY_INT`, `RIN_ANY_NUM` |
 | Overlapping `memcpy` | Array and slice copies use `memmove` | `Stmt_Assign`, `slice<T>copy` |

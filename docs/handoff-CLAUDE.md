@@ -88,29 +88,24 @@ unannotated and checked. Report every remaining `unsafe { }` and why.
 
 ## State of play
 
-Done: the safe compiler, including `unsafe { }` in place of `[trusted]`, local regions
-(`tmp: region of r = { }`), field-path narrowing, `str`, `unwrap(p)`, `std/file.rin`,
-invariance through pointers, and four attack rounds; the whole course ported; the
-engine ported on its `regions` branch (see njinn's `docs/rin-safe-port.md` for where
-that stands).
+Safe rin targets one way of programming, the arena patterns of working engine code, and anything else is
+`unsafe` or cannot be written; `rin/docs/soundness.md` says which patterns, and `rin-safe.md` shows the syntax.
+`gin` is the evidence for the patterns, not a spec: judge a feature by whether a pattern needs it, and prefer
+removing it to defending it. No RAII, destructors, ownership, borrow checker or methods.
+
+Done: fail-closed checking (no type is an error outside a program's own `cinclude`, and the emitter takes only what
+the checker signed off), constants computed by rin, `option<*T>` and `unwrap`, `level: region global;` and
+`reset level;`, `scratch { }`, field regions worked out from what is stored, `table<T>` and `index<T>`, region-end
+cleanup, no `#define` numbers, no VLAs, no program unions, `noalias` only in `unsafe`. The engine runs on a real
+level region, and its level meshes are released by the reset.
 
 Next, in the order that pays:
 
-1. Narrow std's `unsafe { }` bodies: the migration wrapped each old `[trusted]` body
-   whole, and 264 still are, most of them generic. The count of lines inside them is the honest measure of the trusted base.
-2. A stranger's attack round, in a VM, and the soundness argument written out:
-   regions and their invariance, bounds, null, the sealed raw boundary. Staleness is
-   a lint on top of that: memory in a region stays valid when a `vec` moves.
-3. `stable<T>` and `handle<T>` in std; `std/file.rin` is the pattern for the second.
-4. A region-end cleanup hook for GPU buffers and files, only if the engine shows the
-   manual version going wrong. A copy of a COM pointer can go stale after Release.
-5. Known gaps: a `printfmt` brace escape, a C name collision on a struct named
-   `system`, pointer-to-array element codegen, threads, which safe code has no way to
-   start.
+1. Narrow std's `unsafe { }` bodies. The count of lines inside them is the honest measure of the trusted base.
+2. Strangers, in a VM, and the crash-containment test (a terabyte-per-level recursion in the VM), which the user
+   approves first because it can take the machine down with it if the VM's limits fail.
+3. Threads, last.
 
-The claim, and exactly what it excludes, is in `rin/docs/soundness.md`. Nine attack rounds have run. Rounds five to
-nine each found dozens of holes in safe code and all are closed. Round nine was the largest (78 confirmed), so they have
-not slowed down: expect more. The pattern to hunt is fail-open: a check that returns when inference has no answer.
-Each instance of a generic now checks and emits its own copy of the body (`proc_instance_body`), so what the
-checker writes on the tree cannot leak between instances; the old `*_varies` fields are left over from before that.
-Before calling it safe: a fresh round per new rule, `tests/gen_rin_safe.py` with `run_rin_vm.py --compare`, and strangers.
+Thirteen attack rounds have run. From round five on each found dozens of holes in safe code, and all are closed.
+Run a fresh round per new rule, and `tests/gen_rin_safe.py` with `run_rin_vm.py --compare`. Verify with a script
+that fails on a missing line or a skipped program: a filtered log hid a failing suite here twice.
