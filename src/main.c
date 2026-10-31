@@ -979,6 +979,8 @@ typedef struct Program {
     /* `region level > frame > scratch;`: the program's regions, longest-lived
        first. `permanent` is implied before them. See docs/regions.md. */
     Vec_string8 regions;
+    /* `level: region global;`: there all the time, as permanent is, and ended only by `reset`. */
+    Vec_string8 global_regions;
     bool uses_regions; // a region was declared, entered or named somewhere: emit their storage
     /* Array types whose count is a symbolic constant (`[Enum.Member]`) rather
        than a literal. The enum may be declared after — or imported alongside —
@@ -4931,6 +4933,7 @@ static Program parse_program(Parser *p) {
     prog.c_imports = Vec_string8_reserve(p->arena, 8);
     prog.i_imports = Vec_string8_reserve(p->arena, 8);
     prog.regions = Vec_string8_reserve(p->arena, 8);
+    prog.global_regions = Vec_string8_reserve(p->arena, 2);
     prog.i_import_lines = Vec_i32_reserve(p->arena, 8);
     prog.i_import_cols = Vec_i32_reserve(p->arena, 8);
     prog.structs = ptr_array_reserve(p->arena, 8);
@@ -5009,7 +5012,14 @@ static Program parse_program(Parser *p) {
             if (string8_equals_cstr(&base_name, "permanent")) {
                 parser_error_token(p, head_tok, "'permanent' is every program's first region and is not declared");
             }
-            if (parser_match(p, Token_Keyword_In)) {
+            if (parser_peek(p)->kind == Token_Identifier && string8slice_equals_cstr(parser_peek(p)->text, "global")) {
+                Token *global_tok = parser_next(p);
+                if (prog.global_regions.length != prog.regions.length) {
+                    parser_error_token(p, global_tok, "a global region comes first: it outlives every region that opens "
+                                                      "in a block");
+                }
+                Vec_string8_append(p->arena, &prog.global_regions, base_name);
+            } else if (parser_match(p, Token_Keyword_In)) {
                 Token *outer = parser_expect(p, Token_Identifier, "expected the enclosing region's name after 'in', as in 'frame: region in level;'");
                 if (outer) {
                     string8 outer_name = token_to_string8(p->arena, outer);
@@ -7581,6 +7591,7 @@ static void semantic_check_program(Program *prog, memops_arena *arena) {
     /* The program's first region, usable everywhere as the arena that is never
        cleared. */
     Vec_string8_append(arena, &base.globals, string8_from_cstr(arena, "permanent"));
+    for (i32 g = 0; g < prog->global_regions.length; g++) Vec_string8_append(arena, &base.globals, prog->global_regions.data[g]);
 
     for (i32 i = 0; i < prog->preprocessor_lines.length; i++) {
         string8 define_name = preprocessor_define_name(arena, prog->preprocessor_lines.data[i]);
@@ -17637,7 +17648,7 @@ static bool region_available_here(Program *prog, string8 r) {
     if (g_region_check_proc && array_string8_contains(&g_region_check_proc->opens, r) &&
         !array_string8_contains(&g_active_regions, r)) return false;
     if (region_rank(prog, r) < 0) return true; // a region variable
-    if (string8_equals_cstr(&r, "permanent")) return true;
+    if (string8_equals_cstr(&r, "permanent") || array_string8_contains(&prog->global_regions, r)) return true;
     for (i32 i = 0; i < g_active_regions.length; i++) {
         if (region_ge(prog, r, g_active_regions.data[i])) return true;
     }
@@ -18932,6 +18943,10 @@ static void reset_kills(TypeScope *scope, memops_arena *arena) {
         for (i32 j = 0; elsewhere && j < b->regions.length; j++) {
             if (!string8_equals_cstr(&b->regions.data[j], "permanent")) elsewhere = false;
         }
+        /* It says so itself: `dx: *state in permanent`. */
+        TypeExpr *declared = resolve_alias_type(g_narrow_prog, type_scope_lookup(scope, b->name));
+        if (declared && (declared->kind == Type_Ptr || type_slice_elem(declared)) && !declared->is_raw &&
+            string8_equals_cstr(&declared->region, "permanent")) elsewhere = true;
         if (!elsewhere) { b->dead = true; b->scope_killed = true; b->reportable = true; }
     }
     narrow_end_fields(arena, scope, NarrowEnd_All, (string8){0});
@@ -19406,6 +19421,9 @@ static void type_check_stmt(
                 region_error("region '%.*s' is already open here%.0s; give the inner one its own name",
                              s->name, (string8){0}, s->line, s->col);
             }
+        } else if (array_string8_contains(&prog->global_regions, s->name)) {
+            region_error("'%.*s' is a global region: it is open for the whole program and is not entered%.0s; "
+                         "'reset %.*s;' ends what is in it", s->name, (string8){0}, s->line, s->col);
         } else if (string8_equals_cstr(&s->name, "permanent")) {
             type_error_message("'permanent' is open for the whole program and is not entered", s->line, s->col);
         } else if (rank < 0) {
@@ -20046,6 +20064,11 @@ static void type_check_program(Program *prog, memops_arena *arena) {
         TypeExpr *perm = type_new(arena, Type_Region);
         perm->name = string8_from_cstr(arena, "region");
         perm->region = string8_from_cstr(arena, "permanent");
+        for (i32 i = 0; i < prog->global_regions.length; i++) {
+            TypeExpr *open = type_new(arena, Type_Region);
+            open->region = prog->global_regions.data[i];
+            type_scope_add(arena, &globals, prog->global_regions.data[i], open);
+        }
         type_scope_add(arena, &globals, perm->region, perm);
     }
     /* A struct's pointer fields live in memory, so each names its region and
@@ -20810,6 +20833,7 @@ static void emit_expr_condition(memops_arena *arena, string8 *out, Expr *e, Type
    `region scratch of frame { }` block shares frame's arena, so `scratch` emits
    as frame's address while that block is open; the alias stack says so. */
 static Vec_string8 *g_emit_regions = null; // the program's declared regions
+static Vec_string8 *g_emit_global_regions = null;
 static Vec_string8 g_region_alias_names;
 static Vec_string8 g_region_alias_targets;
 
@@ -20824,8 +20848,8 @@ static bool emit_region_name(memops_arena *arena, string8 *out, string8 name) {
             break;
         }
     }
-    /* `permanent` has no block to open it, so its first use does. */
-    if (string8_equals_cstr(&target, "permanent")) {
+    /* `permanent` has no block to open it, so its first use does, and so does a global region's. */
+    if (string8_equals_cstr(&target, "permanent") || (g_emit_global_regions && array_string8_contains(g_emit_global_regions, target))) {
         emit_cstr(arena, out, "rin_region_open(&rin_region_permanent)");
         return true;
     }
@@ -23935,6 +23959,7 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
     }
 
     g_emit_regions = &prog->regions;
+    g_emit_global_regions = &prog->global_regions;
 
     // prototypes for non-generic procs
     for (i32 i = 0; i < prog->procs.length; i++) {
@@ -24633,6 +24658,9 @@ static void program_append_program(memops_arena *arena, Program *dst, Program *s
     }
     for (i32 i = 0; i < src->regions.length; i++) {
         program_append_string_unique(arena, &dst->regions, src->regions.data[i]);
+    }
+    for (i32 i = 0; i < src->global_regions.length; i++) {
+        program_append_string_unique(arena, &dst->global_regions, src->global_regions.data[i]);
     }
     dst->uses_regions = dst->uses_regions || src->uses_regions;
 }

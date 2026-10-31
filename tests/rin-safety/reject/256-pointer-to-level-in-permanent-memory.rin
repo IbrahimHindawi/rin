@@ -1,0 +1,8 @@
+// expect: may end before
+level: region global;
+frame: region in level;
+enemy: struct = { hp: i32; }
+ents: []enemy in level = {};
+load: proc() -> void = { reset level; ents = new_slice<enemy>(level, 4); }
+holder: struct = { e: []enemy in level; }
+main: proc() -> i32 = { h: *holder in permanent = new<holder>(permanent, { .e = ents }); return 0; }

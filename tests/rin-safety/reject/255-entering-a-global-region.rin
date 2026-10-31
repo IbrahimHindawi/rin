@@ -1,0 +1,7 @@
+// always: global region
+level: region global;
+frame: region in level;
+enemy: struct = { hp: i32; }
+ents: []enemy in level = {};
+load: proc() -> void = { reset level; ents = new_slice<enemy>(level, 4); }
+main: proc() -> i32 = { level: region = { } return 0; }

@@ -1,0 +1,8 @@
+// expect: may be
+level: region global;
+frame: region in level;
+enemy: struct = { hp: i32; }
+ents: []enemy in level = {};
+load: proc() -> void = { reset level; ents = new_slice<enemy>(level, 4); }
+use: proc(e: *enemy) -> i32 = { load(); return e*.hp; }
+main: proc() -> i32 = { return 0; }

@@ -1,0 +1,48 @@
+import "std/print.rin"
+
+/* The way a game holds a level: the region is simply there, whatever is running, as permanent is,
+   and `reset` is the one thing that ends what is in it. */
+level: region global;
+frame: region in level;
+
+enemy: struct = { hp: i32; }
+
+game: struct = {
+    enemies: []enemy in level;
+    boss: ?*enemy in level;
+}
+
+g: game = {};
+
+load: proc(n: u64) -> void = {
+    reset level;
+    g.enemies = new_slice<enemy>(level, n);
+    g.enemies[0].hp = cast(n, i32);
+    g.boss = g.enemies[0]&;
+}
+
+first: proc() -> *enemy in level = { return g.enemies[0]&; }
+
+step: proc() -> i32 = {
+    total: i32 = 0;
+    frame: region = {
+        scratch: []i32 in frame = new_slice<i32>(frame, g.enemies.length);
+        for (i: u64 = 0; i < g.enemies.length; i += 1) {
+            scratch[i] = g.enemies[i].hp;
+            total += scratch[i];
+        }
+    }
+    return total;
+}
+
+main: proc() -> i32 = {
+    load(4);
+    e: *enemy in level = first();
+    e*.hp += 1;
+    printfmt("{} {}\n", step(), g.enemies.length);
+    load(2);
+    printfmt("{} {}\n", step(), g.enemies.length);
+    reset level;
+    printfmt("{} {}\n", g.enemies.length, g.boss == null);
+    return 0;
+}
