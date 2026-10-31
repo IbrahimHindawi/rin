@@ -50,8 +50,10 @@ The accept programs and the ported lessons must also run clean under
 `-fsanitize=address,undefined`. On Windows, clang's sanitizers work (`CC=clang`);
 tools/check.py finds the runtime.
 
-Do not run a new attack program on this machine: use a VM or Windows Sandbox;
-`python tests/run_rin_vm.py [program.rin ...]` does it, and opens a Sandbox window.
+Do not run a new attack program on this machine: `python tests/run_rin_vm.py [program.rin ...]`
+runs it in the `archlinux` WSL2 distro, with no window (the guest needs clang, compiler-rt, python,
+a user with uid 1500, and an `/etc/wsl.conf` turning off automount and interop). `--sandbox` runs it
+in a Windows Sandbox instead, which opens a window; ask before using that.
 `rin check` never executes anything. One of them, opening a terabyte arena per
 level of a recursion, crashed Windows twice (bugcheck 0x1A, subtype 0x3453, in
 `MiDeleteFinalPageTables`), which is why a local region now reserves 4 GiB. Keep
@@ -109,4 +111,3 @@ Next, in the order that pays:
 The claim, and exactly what it excludes, is in `rin/docs/soundness.md`. Seven attack rounds have run. Rounds five to
 seven each found dozens of holes in safe code and all are closed, but they have not slowed down, so expect more.
 Before calling it safe: a fresh round per new rule, `tests/gen_rin_safe.py` with `run_rin_vm.py --compare`, and strangers.
-Windows Sandbox opens a window the user sees; ask before running it.

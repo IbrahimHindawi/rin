@@ -8,7 +8,7 @@ To break the language, break an assumption or find a path the table misses, then
 ## The claim
 
 Take a single-threaded program with no `unsafe { }`, no `[unsafe]` proc, no line marked `// unsafe`, no
-`[external]` declaration or `cinclude` of its own, and no global declared without a value (which is C's),
+`[external]` or `[external_emit]` declaration or `cinclude` of its own, and no global declared without a value (which is C's),
 checked by `rin check` and built without `RIN_NO_BOUNDS_CHECKS`. If everything under
 [What is trusted](#what-is-trusted) is correct, then when it runs:
 
@@ -27,7 +27,7 @@ The argument rests on these and checks none of them:
 |---|---|---|
 | The bodies of `unsafe { }` in std | Every safe program inherits the bug | Count them: `tests/run_rin_vm.py` runs the attacks against them |
 | C the program links, and calls from `unsafe` | Anything | Per program |
-| What a program says of C: `proc[external]`, `struct[external]`, a global with no value, `cinclude` | No checker can see past a declaration. `free: proc[external](p: u64)` is callable from safe code, and is a lie | Per program; they are excluded from the claim above |
+| What a program says of C: `proc[external]`, `proc[external_emit]`, `struct[external]`, a global with no value, `cinclude` | No checker can see past a declaration. `free: proc[external](p: u64)` is callable from safe code, and is a lie | Per program; they are excluded from the claim above |
 | The checker and emitter in `src/main.c` | A rule below does not hold | About 23,000 lines |
 | The C compiler, the OS and the hardware | Anything | Out of scope |
 | The stack guard page | A deep recursion could reach other memory | Windows probes by default; `rin build` asks for `-fstack-clash-protection` elsewhere |
@@ -134,7 +134,7 @@ Four things remain assumed of the C compiler, and are worth knowing:
 | `tests/run_rin_safety.py` | A rule that stopped holding |
 | `tests/run_rin_attacks.py` | An earlier hole coming back |
 | `tests/run_rin_poison.py` | A stale pointer or overrun from `unsafe`, under ASan; a check gone from a Release build |
-| `tests/run_rin_vm.py` | Attack programs that check clean, run in a throwaway sandbox |
+| `tests/run_rin_vm.py` | Attack programs that check clean, run in a VM with no way back to the host |
 | `tests/gen_rin_safe.py` with `run_rin_vm.py --compare` | Random safe programs: a sanitizer report, a fault, or `-O0` and `-O2` disagreeing |
 
 None of these prove the claim. They only look for counterexamples, and how hard they have looked is

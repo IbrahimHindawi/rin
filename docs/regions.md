@@ -824,10 +824,12 @@ the guarantee. `tests/run_rin_poison.py` builds with `-DNDEBUG -O2` to keep this
 
 ## Running what may misbehave
 
-`python tests/run_rin_vm.py [program.rin ...]` builds on the host and runs in a
-throwaway Windows Sandbox: no network, no GPU, 8 GiB, programs read-only, and output
-capped at 64 KiB per stream. The poison programs are its controls, so a sandbox in
-which nothing ran cannot pass. The first full run found a hole in safe code: a huge
+`python tests/run_rin_vm.py [program.rin ...]` translates on the host and builds and
+runs in a WSL2 distro, with no window: no Windows drives or programs, no network, an
+unprivileged user, a cgroup per program, and output capped at 64 KiB per stream. With
+`--sandbox` it uses a Windows Sandbox instead, which is the only way to run them on
+Windows, and opens a window. The poison programs are its controls, so a VM in which
+nothing ran cannot pass. The first full run found a hole in safe code: a huge
 `new_slice` count wrapped the arena's size check. That is why sizes now go through
 `memops_bytes`, and why the arena subtracts rather than adds when it compares them.
 
