@@ -1,0 +1,8 @@
+// As 027 for a struct literal, replacing the division helper with C's `/`. UBSan: division by zero.
+S: struct = { a: i32; }
+main: proc() -> i32 = {
+    s: S = {
+#define rin_idiv_i32(a, b, f, l) ((a) / (b))
+    .a = 1 };
+    return s.a / (s.a - 1);
+}

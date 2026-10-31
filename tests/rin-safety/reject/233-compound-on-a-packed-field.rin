@@ -1,0 +1,3 @@
+// expect: packed struct
+P: struct[packed] = { a: u8; b: i32; }
+main: proc() -> i32 = { p: P = {}; p.b += 1; return p.b; }

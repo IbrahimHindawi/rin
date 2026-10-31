@@ -1,0 +1,2 @@
+// As 038: the signed multiply's guard is (u32)(1e30). UBSan: float-cast-overflow.
+main: proc() -> i32 = { x: i32 = 5; return x * 1e30'b32; }

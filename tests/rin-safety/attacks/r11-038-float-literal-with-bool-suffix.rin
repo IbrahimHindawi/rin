@@ -1,0 +1,2 @@
+// A suffix makes the literal's type b32, and lit_check_fits, which refuses a float form, gives up on a type with no int info. `b32 x = 1e30`. UBSan: float-cast-overflow.
+main: proc() -> i32 = { x: b32 = 1e30'b32; return x; }

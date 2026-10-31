@@ -13951,17 +13951,14 @@ static ConstVal const_eval(Expr *e) {
 /* Whether an expression is one C constant: nothing in it happens at run time, so C folds it
    and rin need not guard it. `1 shl n` and `c ? 1 : 0` adapt to their context like a literal
    does, but they are arithmetic on values. Sizeof is a constant only C knows. */
-/* A value rin may rely on: every step of it happens in C's `int`, as const_eval's i64 does it.
-   Past that, C's answer is another one: 0x80000000 is unsigned there, and a sum wraps or is
-   undefined. What rin cannot vouch for gets its guard at run time. */
+/* A value rin may rely on: C is handed exactly this number. */
 static bool const_eval_trusted(Expr *e) {
     if (!e) return false;
     ConstVal c = const_eval(e);
-    if (!c.ok || c.big || c.is_float || c.value > 2147483647 || c.value < -2147483647) return false;
+    if (!c.ok || c.big || c.is_float) return false;
     if (e->kind == Expr_Number) return number_suffix_type(e->number).length == 0;
-    if (e->kind == Expr_Unary) return e->op != Token_Bang && const_eval_trusted(e->inner);
-    if (e->kind == Expr_Binary) return const_eval_trusted(e->left) && const_eval_trusted(e->right);
-    return false;
+    if (e->kind == Expr_Char) return true;
+    return (e->kind == Expr_Binary || e->kind == Expr_Unary) && e->literal_fold;
 }
 
 static bool expr_is_compile_constant(Expr *e, bool *has_size) {
@@ -14444,6 +14441,7 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
 static void narrow_set_type(Program *prog, Expr *e, TypeExpr *type);
 static void type_check_ternary(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena);
 
+static void safety_check_directive_lines(Program *prog, Vec_string8 *lines, const char *path, i32 line_no, i32 col, memops_arena *arena);
 static void raw_keep_check(TypeExpr *dst, Expr *value, TypeScope *scope, Program *prog, memops_arena *arena);
 static void raw_param_store_check(TypeExpr *dst, Expr *value, TypeScope *scope, Program *prog, memops_arena *arena);
 /* How many struct or array literals this value is inside: what one holds is kept. An
@@ -14490,6 +14488,12 @@ static void type_check_initializer_list(
     }
     if (init->kind != Expr_InitList) return;
     init->cast_type = expected;
+    if (g_safe_body && !g_checking_std) {
+        for (i32 i = 0; i < init->arg_directives.length; i++) {
+            Vec_string8 *lines = (Vec_string8 *)init->arg_directives.data[i];
+            if (lines) safety_check_directive_lines(prog, lines, null, init->line, init->col, arena);
+        }
+    }
 
     expected = resolve_alias_type(prog, expected);
     if (g_safe_body && expected && expected->kind != Type_Array && !g_checking_std) {
@@ -15891,8 +15895,8 @@ typedef struct MovesCtx {
 static string8 expr_path(Expr *e, memops_arena *arena);
 static string8 path_root(string8 path);
 static bool call_is_new(Expr *call);
-typedef void (*ExprVisit)(Expr *e, void *ctx, memops_arena *arena);
 typedef void (*StmtVisit)(Stmt *s, void *ctx, memops_arena *arena);
+typedef void (*ExprVisit)(Expr *e, void *ctx, memops_arena *arena);
 static void stmt_walk(Stmt *s, ExprVisit fe, StmtVisit fs, void *ctx, memops_arena *arena);
 
 static i32 moves_param_index(ProcDecl *proc, string8 name) {
@@ -16662,7 +16666,9 @@ static bool type_is_tracked_raw(Program *prog, TypeExpr *type) {
 
 /* Whether a raw pointer came out of memory the checker can see, through a call
    given a checked pointer, a slice, an array or a region, directly or not. */
+static bool type_scope_lookup_local(TypeScope *scope, string8 name);
 static ProcDecl *g_check_proc;
+static void expr_walk(Expr *e, ExprVisit fe, void *ctx, memops_arena *arena);
 static Vec_string8 g_raw_param_locals;
 static Vec_string8 g_static_locals;
 
@@ -16693,6 +16699,7 @@ static bool raw_from_param(Expr *e, TypeScope *scope, Program *prog, memops_aren
             for (i32 i = 0; i < g_check_proc->params.length; i++) {
                 if (string8_equals(&((Param *)g_check_proc->params.data[i])->name, &root->name)) return true;
             }
+            return false;
         }
         return false;
     }
@@ -16708,13 +16715,48 @@ static bool raw_from_param(Expr *e, TypeScope *scope, Program *prog, memops_aren
 /* Which locals may hold one, before any of it is checked: `g = q` can come before the line that
    fills q, and run after it, in a loop. Until nothing changes. */
 typedef struct RawLocalScan { TypeScope *scope; Program *prog; bool changed; } RawLocalScan;
+static bool type_has_pointer_deep(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth);
+
+/* Whether a value is made from a parameter holding a pointer, or from a local that was. What C
+   hands back, `calloc`'s memory, is not what it was given: that is its declaration's to say. */
+static bool expr_mentions_raw_source(Expr *e, RawLocalScan *scan, memops_arena *arena, i32 depth) {
+    if (!e || depth > 64) return false;
+    if (e->kind == Expr_Name) {
+        if (array_string8_contains(&g_raw_param_locals, e->name)) return true;
+        for (i32 i = 0; i < g_check_proc->params.length; i++) {
+            Param *param = (Param *)g_check_proc->params.data[i];
+            if (!string8_equals(&param->name, &e->name)) continue;
+            TypeExpr *pt = resolve_alias_type(scan->prog, type_scope_apply_sub(scan->scope, arena, param->type));
+            return pt && !(pt->kind == Type_Ptr && pt->is_str) && (type_mentions_pointer(scan->prog, pt, 0) || type_has_pointer_deep(scan->prog, pt, arena, 0));
+        }
+        return false;
+    }
+    if (e->kind == Expr_Call && !e->base) {
+        ProcDecl *callee = lookup_proc_decl(scan->prog, e->name);
+        if (callee && callee->is_external) return false;
+    }
+    if (expr_mentions_raw_source(e->inner, scan, arena, depth + 1) || expr_mentions_raw_source(e->left, scan, arena, depth + 1) ||
+        expr_mentions_raw_source(e->right, scan, arena, depth + 1) || expr_mentions_raw_source(e->third, scan, arena, depth + 1) ||
+        expr_mentions_raw_source(e->base, scan, arena, depth + 1) || expr_mentions_raw_source(e->index_expr, scan, arena, depth + 1)) return true;
+    for (i32 i = 0; i < e->args.length; i++) {
+        if (expr_mentions_raw_source((Expr *)e->args.data[i], scan, arena, depth + 1)) return true;
+    }
+    return false;
+}
+
 static void visit_raw_locals(Stmt *s, void *ctx, memops_arena *arena) {
     RawLocalScan *scan = (RawLocalScan *)ctx;
     string8 name = {0};
     if (s->kind == Stmt_Var) name = s->name;
-    else if (s->kind == Stmt_Assign && s->lhs && s->lhs->kind == Expr_Name) name = s->lhs->name;
+    else if (s->kind == Stmt_Assign && s->lhs) {
+        /* `h.p = s` makes h one of them too. */
+        Expr *root = s->lhs;
+        for (i32 hop = 0; root && hop < 32 && (root->kind == Expr_Field || root->kind == Expr_Index); hop++) root = root->base;
+        if (root && root->kind == Expr_Name && type_scope_lookup_local(scan->scope, root->name)) name = root->name;
+        else if (root && root->kind == Expr_Name && s->lhs->kind == Expr_Name) name = root->name;
+    }
     if (name.length == 0 || !s->expr || array_string8_contains(&g_raw_param_locals, name)) return;
-    if (raw_from_param(s->expr, scan->scope, scan->prog, arena, 0)) {
+    if (expr_mentions_raw_source(s->expr, scan, arena, 0)) {
         Vec_string8_append(arena, &g_raw_param_locals, name);
         scan->changed = true;
     }
@@ -18204,6 +18246,12 @@ static bool type_scope_lookup_local(TypeScope *scope, string8 name) {
 static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena) {
     if (!e) return;
     e->checked = true;
+    if (e->kind == Expr_Number && g_safe_body && number_is_float_form(number_digits(e->number))) {
+        string8 float_suffix = number_suffix_type(e->number);
+        if (float_suffix.length > 0 && !string8_equals_cstr(&float_suffix, "f32") && !string8_equals_cstr(&float_suffix, "f64")) {
+            type_error_message("a float literal is not an integer or a boolean: cast it, or write a number of that type", e->line, e->col);
+        }
+    }
     /* Not knowing is not the same as nothing to check. A name only C knows comes from a
        `cinclude`, which is outside the claim; anywhere else, no type means no rule can ask. */
     if (g_safe_body && !g_checking_std && !g_user_cinclude &&
@@ -18392,8 +18440,9 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
                 narrow_set_type(prog, e, inner);
             }
             if (!inner_kind && e->op == Token_Minus) arith_note(&e->arith_code, &e->arith_seen, inner);
-            if (g_safety && inner_kind == Lit_Int && e->op == Token_Minus && !const_eval_trusted(e)) {
-                arith_note(&e->arith_code, &e->arith_seen, type_name_expr(arena, "i64"));
+            if (g_safety && inner_kind == Lit_Int && e->op == Token_Minus) {
+                if (const_eval(e).ok) e->literal_fold = true;
+                else arith_note(&e->arith_code, &e->arith_seen, type_name_expr(arena, "i64"));
             }
         }
         return;
@@ -18540,6 +18589,11 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
     TypeExpr *left = resolve_alias_type(prog, infer_expr_type_k(e->left, scope, prog, arena, &left_kind));
     TypeExpr *right = resolve_alias_type(prog, infer_expr_type_k(e->right, scope, prog, arena, &right_kind));
     if (!left || !right) return;
+    if (g_safe_body && !g_checking_std &&
+        (e->op == Token_Plus || e->op == Token_Minus || e->op == Token_Star || e->op == Token_Slash || e->op == Token_Percent) &&
+        (type_is_boolish(left) || type_is_boolish(right) || type_is_program_enum(prog, left) || type_is_program_enum(prog, right))) {
+        type_error_message("arithmetic is on numbers: C picks its own width for an enum or a boolean, so cast it first", e->line, e->col);
+    }
     if (g_safe_body && (e->op == Token_Plus || e->op == Token_Minus) &&
         ((left->kind == Type_Ptr && left->is_raw) || (right->kind == Type_Ptr && right->is_raw) ||
          left->kind == Type_Array || right->kind == Type_Array)) {
@@ -18663,6 +18717,13 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
             bool is_signed = false;
             u8 width = type_int_info(left, &bits, &is_signed) ? (u8)bits : 0;
             if (left_kind == Lit_Int && right_kind == Lit_Int) e->literal_fold = true;
+            {
+                bool has_size = false;
+                if (g_safe_body && left_kind == Lit_Int && expr_is_compile_constant(e->left, &has_size) && has_size) {
+                    type_error_message("only C knows sizeof's value, and so the width this shift is in: cast it first, "
+                                       "as cast(sizeof(T), u64)", e->line, e->col);
+                }
+            }
             if (left_kind == Lit_Int && width == 0) width = 32;
             if (e->shift_bits == 0) e->shift_bits = width;
             else if (e->shift_bits != width) e->shift_bits = 255;
@@ -18712,9 +18773,28 @@ static void type_check_ternary(Expr *e, TypeScope *scope, Program *prog, memops_
         LitKind right_kind = Lit_None, third_kind = Lit_None;
         infer_expr_type_k(e->right, scope, prog, arena, &right_kind);
         infer_expr_type_k(e->third, scope, prog, arena, &third_kind);
-        if ((third_kind == Lit_Float && type_is_integer(right)) || (right_kind == Lit_Float && type_is_integer(third))) {
+        if ((third_kind == Lit_Float && type_is_integer(right)) || (right_kind == Lit_Float && type_is_integer(third)) ||
+            (third_kind == Lit_Int && type_is_float(right)) || (right_kind == Lit_Int && type_is_float(third))) {
             type_error_ternary_arms(right, third, e->line, e->col, arena);
             return;
+        }
+        /* C takes the two to a type of its own, which is neither arm's: a double from an i32
+           and an f64, a raw pointer from a checked one. So they are one type. */
+        if (!g_checking_std && !right_kind && !third_kind) {
+            bool same = true;
+            if (type_is_numeric(right) || type_is_numeric(third) || type_is_boolish(right) || type_is_boolish(third) ||
+                type_is_program_enum(prog, right) || type_is_program_enum(prog, third)) {
+                TypeExpr a = *right, b = *third;
+                a.is_const = false;
+                b.is_const = false;
+                same = type_expr_equal_resolved(prog, &a, &b);
+            } else if (right->kind == Type_Ptr && third->kind == Type_Ptr) {
+                same = right->is_raw == third->is_raw || type_is_void_pointer(right) || type_is_void_pointer(third);
+            }
+            if (!same) {
+                type_error_ternary_arms(right, third, e->line, e->col, arena);
+                return;
+            }
         }
     }
     LitKind right_kind = Lit_None;
@@ -18925,6 +19005,19 @@ static void type_check_stmt(
             pointer_one_violation("pointer arithmetic", resolve_alias_type(prog, expected), s->line, s->col);
         }
         if (s->assign_op == Token_Equal) safety_check_proc_null(prog, expected, s->expr);
+        if (g_safe_body && !g_checking_std && s->assign_op != Token_Equal) {
+            TypeExpr *le = resolve_alias_type(prog, expected);
+            TypeExpr *re = resolve_alias_type(prog, actual);
+            bool bits = s->assign_op != Token_PlusEqual && s->assign_op != Token_MinusEqual && s->assign_op != Token_StarEqual &&
+                        s->assign_op != Token_SlashEqual && s->assign_op != Token_PercentEqual;
+            if (!bits && le && re && (type_is_boolish(le) || type_is_boolish(re) || type_is_program_enum(prog, le) || type_is_program_enum(prog, re))) {
+                type_error_message("arithmetic is on numbers: C picks its own width for an enum or a boolean, so cast it first", s->line, s->col);
+            }
+            if (expr_place_is_packed(s->lhs, scope, prog, arena, 0)) {
+                type_error_message("a field of a packed struct may not be aligned for its type, so this is written out: "
+                                   "'p.x = p.x + 1'", s->line, s->col);
+            }
+        }
         if (s->assign_op == Token_Equal && region_flow_rejects(prog, expected, actual, s->line, s->col)) {
             // reported, with the regions named
         } else if (!type_allows_compound_assign(prog, s->assign_op, expected, actual)) {
@@ -20900,16 +20993,21 @@ static bool emit_narrow_open(memops_arena *arena, string8 *out, Expr *e) {
     return true;
 }
 
+/* rin computes a constant and hands C the number, so there is no second opinion: C's int,
+   unsigned hex, masked shifts and overflow never come into it. */
+static bool emit_folded_constant(memops_arena *arena, string8 *out, Expr *e) {
+    if (!e->literal_fold) return false;
+    ConstVal folded = const_eval(e);
+    if (!folded.ok || folded.is_float || folded.big) return false;
+    char buf[48];
+    bool fits_int = folded.value <= 2147483647LL && folded.value >= -2147483647LL;
+    snprintf(buf, sizeof(buf), fits_int ? "(%lld)" : "(%lldLL)", (long long)folded.value);
+    emit_cstr(arena, out, buf);
+    return true;
+}
+
 static void emit_binary_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name, bool wrap) {
-    if (e->literal_fold) {
-        ConstVal folded = const_eval(e);
-        if (folded.ok && !folded.is_float && !folded.big && (folded.value > 2147483647LL || folded.value < -2147483647LL)) {
-            char buf[48];
-            snprintf(buf, sizeof(buf), "(%lldLL)", (long long)folded.value);
-            emit_cstr(arena, out, buf);
-            return;
-        }
-    }
+    if (emit_folded_constant(arena, out, e)) return;
     bool narrow = emit_narrow_open(arena, out, e);
     if (wrap || narrow) emit_cstr(arena, out, "(");
     if (e->op == Token_Keyword_Shl && e->shift_signed &&
@@ -21468,6 +21566,7 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
         return;
     }
     if (e->kind == Expr_Unary) {
+        if (emit_folded_constant(arena, out, e)) return;
         bool narrow = emit_narrow_open(arena, out, e);
         if (e->op == Token_Minus && e->arith_code == 255) {
             emit_cstr(arena, out, "RIN_ANY_NUM((");

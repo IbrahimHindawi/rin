@@ -1,0 +1,3 @@
+// Ternary's type is its first arm when the arms are compatible, and only float literals are refused; two typed arms pass. C works it out as double, then converts 1e30 to i32. UBSan: float-cast-overflow.
+g: proc() -> f64 = { return 1e30; }
+main: proc(argc: i32, argv: ^^c8) -> i32 = { b: i32 = 1; c: i32 = argc > 99 ? b : g(); return c; }

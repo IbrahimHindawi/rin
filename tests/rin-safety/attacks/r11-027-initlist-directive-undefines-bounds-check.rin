@@ -1,0 +1,7 @@
+// The parser takes a directive inside `{ }` into arg_directives, and safety_check_directive_lines never looks there; every other position is refused. It redefines RIN_INDEX for all that follows. ASan: stack-buffer-overflow.
+main: proc() -> i32 = {
+    b: [1]i32 = {
+#define RIN_INDEX(i, n) (i)
+    1 };
+    a: [2]i32 = {}; i: i32 = 5; return a[i];
+}

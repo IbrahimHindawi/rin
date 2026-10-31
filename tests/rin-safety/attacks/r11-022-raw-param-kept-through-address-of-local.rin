@@ -1,0 +1,16 @@
+// raw_from_param follows no Expr_Addr, so pp is never noted as holding the parameter, and `pp*` has a local root that is not on the list. r10-039 closed this only for a pointer parameter. ASan: use-after-poison in cstr_length.
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/cstr.rin"
+level: region;
+g: ^const c8 = null;
+keep: proc(s: ^const c8) -> void = { l: ^const c8 = s; pp: *^const c8 = l&; g = pp*; }
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 16);
+        fmt_cstr(f, "hello");
+        keep(fmt_text(f));
+    }
+    printfmt("{}\n", cstr_length(g));
+    return 0;
+}

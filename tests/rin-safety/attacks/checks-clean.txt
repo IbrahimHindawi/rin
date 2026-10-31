@@ -173,7 +173,6 @@ r7-b-009-unsigned-left-i64-overflow.rin
 r7-b-010-generic-div-u64-two-instances.rin
 r7-b-011-generic-rem-u64-two-instances.rin
 r7-b-012-cast-literal-float-no-saturate.rin
-r7-b-014-printf-ternary-format-mismatch.rin
 r7-b-015-printf-mixed-format-mismatch.rin
 r7-b-016-printfmt-precision-on-char.rin
 r7-b-017-fprintfmt-stream-before-arg-closes.rin
@@ -218,3 +217,14 @@ r10-019-negate-literal-kind-int-min.rin
 r10-020-negate-ternary-of-literals.rin
 r10-021-const-eval-hex-is-unsigned-in-c.rin
 r10-022-const-eval-hex-compound-divide.rin
+r11-001-shr-count-divisor-zero.rin
+r11-002-shr-count-divisor-minus-one.rin
+r11-003-shr-count-literal-product-overflows.rin
+r11-004-shr-count-compound-divide.rin
+r11-005-shr-count-default-parameter.rin
+r11-006-literal-fold-hex-unsigned.rin
+r11-007-literal-fold-hex-default-parameter.rin
+r11-008-annotated-u64-literal-divisor-zero.rin
+r11-009-annotated-u64-compound-divide.rin
+r11-010-annotated-u32-divide.rin
+r11-011-annotated-u64-argument.rin

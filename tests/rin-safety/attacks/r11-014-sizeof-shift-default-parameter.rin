@@ -1,0 +1,3 @@
+// As 012 in a default. UBSan: shift exponent too large.
+f: proc(x: i32 = sizeof(i32) shl 40) -> i32 = { return x; }
+main: proc() -> i32 = { return f(); }

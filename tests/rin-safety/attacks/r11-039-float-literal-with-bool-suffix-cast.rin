@@ -1,0 +1,2 @@
+// As 038: cast sees a b32, so plain (i32)(1e30). UBSan: float-cast-overflow.
+main: proc() -> i32 = { return cast(1e30'b32, i32); }

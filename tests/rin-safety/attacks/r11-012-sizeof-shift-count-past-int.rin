@@ -1,0 +1,2 @@
+// sizeof is typed usize, so the shift masks with 63, but lit_annotate casts it to i32: ((i32)sizeof(i32)) << (40 & 63). UBSan: shift exponent too large.
+main: proc() -> i32 = { x: i32 = sizeof(i32) shl 40; return x; }

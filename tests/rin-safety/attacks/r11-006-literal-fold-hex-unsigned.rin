@@ -1,0 +1,2 @@
+// both_literal asks const_eval, not const_eval_trusted: rin sees 5 / 2147483647, so literal_fold writes plain C, where 0x80000000 is unsigned and the divisor is 0. r10-021 closed this only for a non-literal dividend. UBSan: division by zero.
+main: proc() -> i32 = { return 5 / ((1 - 0x80000000) / (0x80000000 - 0x80000001)); }

@@ -1,0 +1,16 @@
+import "std/print.rin"
+
+/* C is handed the number rin computed, so the two cannot disagree, whatever C would have made
+   of 0x80000000 or an amount past a type's width. A value only C knows keeps its guard. */
+main: proc(argc: i32, argv: ^^c8) -> i32 = {
+    x: i32 = 100;
+    printfmt("{}\n", x / (4 - (8 shr 1)  + 1));
+    printfmt("{}\n", (1 - 0x80000000) / (0x80000000 - 0x80000001));
+    w: u64 = 1024 * 1024 * 1024 * 16;
+    printfmt("{}\n", w);
+    printfmt("{}\n", -(2147483647));
+    s: u64 = sizeof(i32) * 3;
+    printfmt("{}\n", s);
+    printfmt("{}\n", 1 + 2 * 3);
+    return 0;
+}

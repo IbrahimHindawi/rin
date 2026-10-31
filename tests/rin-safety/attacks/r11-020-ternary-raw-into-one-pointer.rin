@@ -1,0 +1,3 @@
+// As 015 with pointers: `*T` and `^T` are compatible, the type is the first arm, so check_raw_to_one sees a `*T`. A null `^T` becomes a `*T`, and safe code reads it. UBSan: load of null pointer.
+t: proc(s: ^i32, c: i32) -> i32 = { x: i32 = 1; p: *i32 = x&; q: *i32 = c > 0 ? p : s; return q*; }
+main: proc() -> i32 = { return t(null, 0); }

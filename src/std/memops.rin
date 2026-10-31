@@ -1,4 +1,4 @@
-
+max_alloc_size: const u64 = 0x10000000000;
 cinclude "std/memops_os.h"
 cinclude "stdlib.h"
 cinclude "stdio.h"
@@ -74,7 +74,7 @@ memops_align_forward: proc(ptr: usize, align: usize) -> usize = {
    judge that caps address space refuses a reservation that size even though
    none of it is used, so a refusal halves the request until one fits, down to
    a megabyte. `reserved` says what was granted. */
-memops_arena_initialize: proc(arena: *memops_arena, reserve: u64 = 0x10000000000) -> void = {
+memops_arena_initialize: proc(arena: *memops_arena, reserve: u64 = max_alloc_size) -> void = {
     arena*.pagesize = memops_os_page_size();
     size: u64 = memops_align_forward(cast(reserve, usize), cast(arena*.pagesize, usize));
     unsafe { arena*.base = memops_os_reserve(size); }

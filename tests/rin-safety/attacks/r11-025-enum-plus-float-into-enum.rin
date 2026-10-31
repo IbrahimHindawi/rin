@@ -1,0 +1,4 @@
+// As 024 with a typed float: `E = e + double` passes the float-does-not-become-an-enum rule, and C converts. UBSan: float-cast-overflow.
+E: enum = { A = 1, B = 2147483647 }
+g: proc() -> f64 = { return 1e30; }
+main: proc() -> i32 = { e: E = E.A; f: E = e + g(); return cast(f, i32); }

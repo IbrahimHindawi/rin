@@ -1,0 +1,2 @@
+// As 009 with `U` literals and a binary `/`: (0U-2U)/4U*4U+4U is 0. UBSan: division by zero.
+main: proc() -> i32 = { a: u32 = 10; return cast(a / (((0 - 2) / 4) * 4 + 4), i32); }

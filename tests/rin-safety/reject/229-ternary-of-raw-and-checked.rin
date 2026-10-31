@@ -1,0 +1,3 @@
+// expect: cannot mix
+r: proc() -> ^i32 = { return null; }
+main: proc() -> i32 = { x: i32 = 1; c: b32 = 0; p: *i32 = c ? x& : r(); return p*; }

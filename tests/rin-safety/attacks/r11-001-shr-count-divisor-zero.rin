@@ -1,0 +1,2 @@
+// const_eval folds `8 shr 33` to 0 in i64, but the emitter masks the count: 8 >> (33 & 31) = 4. const_eval_trusted calls the divisor 4, so plain `/`, and C divides by 4 - 4. UBSan: division by zero.
+main: proc() -> i32 = { x: i32 = 5; return x / (4 - (8 shr 33)); }

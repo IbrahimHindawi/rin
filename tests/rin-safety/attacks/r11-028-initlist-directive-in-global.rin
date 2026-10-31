@@ -1,0 +1,5 @@
+// As 027 in a global's initializer, so every proc below it loses its checks. ASan: stack-buffer-overflow.
+b: [1]i32 = {
+#define RIN_INDEX(i, n) (i)
+    1 };
+main: proc() -> i32 = { a: [2]i32 = {}; i: i32 = 5; return a[i]; }

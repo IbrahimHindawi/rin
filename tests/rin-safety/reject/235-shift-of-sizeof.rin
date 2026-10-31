@@ -1,0 +1,2 @@
+// expect: only C knows
+main: proc() -> i32 = { return sizeof(i32) shl 40; }

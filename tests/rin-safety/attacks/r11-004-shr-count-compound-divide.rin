@@ -1,0 +1,2 @@
+// As 001 through /=: emit_defined_compound returns false on a trusted divisor, so plain `/=`. UBSan: division by zero.
+main: proc() -> i32 = { x: i32 = 5; x /= (4 - (8 shr 33)); return x; }

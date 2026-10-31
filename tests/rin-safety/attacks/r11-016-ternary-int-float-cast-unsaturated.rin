@@ -1,0 +1,3 @@
+// As 015: cast sees an i32, so no rin_f2i. UBSan: float-cast-overflow.
+g: proc() -> f64 = { return 1e30; }
+main: proc(argc: i32, argv: ^^c8) -> i32 = { b: i32 = 1; return cast(argc > 99 ? b : g(), i32); }

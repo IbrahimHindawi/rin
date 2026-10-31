@@ -1,0 +1,2 @@
+// literal_fold believes const_eval's 1000000000, so the product is plain int, and C computes 1000000000 * (1 + 4). UBSan: signed integer overflow.
+main: proc() -> i32 = { return 1000000000 * (1 + (8 shr 33)); }

@@ -1,0 +1,2 @@
+// As 012, and with width 64 and unsigned, no `(u32)` wrap either: (i32)4 << 31. UBSan: left shift not representable.
+main: proc() -> i32 = { x: i32 = sizeof(i32) shl 31; return x; }

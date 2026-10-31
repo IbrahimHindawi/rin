@@ -1,0 +1,9 @@
+// expect: a preprocessor line
+S: struct = { a: i32; b: i32; }
+main: proc() -> i32 = {
+    s: S = {
+#define RIN_INDEX(i, n) (i)
+        .a = 1, .b = 2
+    };
+    return s.a;
+}

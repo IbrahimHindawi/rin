@@ -1,0 +1,2 @@
+// As 033 at 64 bits: the type says u8, C has long long. UBSan: signed integer overflow.
+main: proc() -> i32 = { a: u8 = 255; b: b64 = 9223372036854775807; c: u8 = a * b; return c; }

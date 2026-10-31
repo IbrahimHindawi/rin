@@ -1,0 +1,2 @@
+// expect: arithmetic is on numbers
+main: proc() -> i32 = { b: b32 = 1; x: i8 = 100; x += b; return x; }

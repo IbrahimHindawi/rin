@@ -1,0 +1,3 @@
+// expect: arithmetic is on numbers
+E: enum = { a, b, }
+main: proc() -> i32 = { e: E = E.b; x: i8 = 100; y: i32 = x * e; return y; }

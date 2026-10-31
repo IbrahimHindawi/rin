@@ -1,0 +1,3 @@
+// No pointer to a packed field, says safety_check_place_for_view, but emit_defined_compound writes one for its guard: *(u32 *)&(p.b). UBSan: store to misaligned address.
+P: struct[packed] = { a: u8; b: i32; }
+main: proc() -> i32 = { p: P = {}; p.b += 1; return p.b; }

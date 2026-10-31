@@ -1,0 +1,3 @@
+// As 008 in an argument, which annotates the literals to the parameter's u64. UBSan: division by zero.
+t: proc(a: u64) -> u64 = { return a; }
+main: proc() -> i32 = { return cast(t(10 / (((0 - 2) / 4) * 4 + 4)), i32); }

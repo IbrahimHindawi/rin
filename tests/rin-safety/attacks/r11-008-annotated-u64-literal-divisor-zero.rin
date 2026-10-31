@@ -1,0 +1,2 @@
+// const_eval folds in signed i64 and gets divisor 4 ((0-2)/4 = 0), then lit_annotate makes every literal ULL, where (0-2)/4*4+4 wraps to 0. UBSan: division by zero.
+main: proc() -> i32 = { x: u64 = 10 / (((0 - 2) / 4) * 4 + 4); return cast(x, i32); }

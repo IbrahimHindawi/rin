@@ -1,0 +1,3 @@
+// As 001: trusted as 3, C has 3 - 4 = -1, so no MIN / -1 guard. UBSan: division overflow.
+small: proc() -> i32 = { return -2147483647 - 1; }
+main: proc() -> i32 = { x: i32 = small(); return x / (3 - (8 shr 33)); }

@@ -1,0 +1,3 @@
+// As 015: the index check is `(u64)(double)`, so a float reaches an index the checker refuses. UBSan: float-cast-overflow.
+g: proc() -> f64 = { return 1e30; }
+main: proc(argc: i32, argv: ^^c8) -> i32 = { b: i32 = 1; a: [2]i32 = {}; return a[argc > 99 ? b : g()]; }

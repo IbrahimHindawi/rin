@@ -1,0 +1,2 @@
+// As 033 through +=: emit_defined_compound leaves bits < 32 plain, and check_numeric_conversion has no int info for b32 to refuse it. UBSan: signed integer overflow.
+main: proc() -> i32 = { a: i8 = 127; b: b32 = 2147483647; a += b; return a; }

@@ -1,0 +1,2 @@
+// expect: float literal
+main: proc() -> i32 = { x: b32 = 1e30'b32; return 0; }
