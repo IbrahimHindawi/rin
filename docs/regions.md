@@ -770,6 +770,18 @@ the author's own agents. The soundness of this rests on few enough rules to writ
 argument out: regions and their invariance, bounds, null, the sealed raw boundary. The
 staleness rule is extra, since memory in a region stays valid when a `vec` moves.
 
+**`[trusted]` is gone.** Earlier sections of this document describe it; this
+supersedes them. There was an attribute saying a whole proc's body was unchecked and
+its signature honest. Now, as in Rust, there are two spellings. `[unsafe]` on a proc
+means it is dangerous to call, and only an `unsafe { }` block or another `[unsafe]`
+proc may call it, as with a C proc that touches pointers. `unsafe { }` inside any
+other proc means this statement does what the rules cannot check, and its author
+answers for the signature. So what is trusted is lines, which can be counted and
+narrowed, and not whole procs. A proc with a block answers for its signature to its
+callers, the way a `[trusted]` one did: a body with a raw pointer in it can move what
+its statements do not show, so its moves come from its signature. std was migrated
+mechanically, its bodies wrapped whole, and narrowing them is still to do.
+
 **Not done.** Dynamic regions; guard pages in debug builds; `stable<T>` and
 `handle<T>` in std; a string type safe code can hold by value, since
 `string8slice` carries a raw pointer and is trusted-only, which leaves safe

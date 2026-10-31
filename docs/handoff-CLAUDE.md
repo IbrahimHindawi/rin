@@ -36,9 +36,9 @@ storage through).
 
 ## Verifying, in this order
 
-    python tests/run_rin_safety.py            # 7 accept, 68 reject; must be 75/75
+    python tests/run_rin_safety.py            # accept and reject programs; all must pass
     python tests/run_rin_safety.py --unsafe   # the rejects must check clean with the rules off
-    python tests/run_rin_attacks.py           # 215 attack programs: rejected, or clean by design
+    python tests/run_rin_attacks.py           # the attack corpus: rejected, or clean by design
     RIN_UNSAFE=1 python tests/run_rin_torture.py --cc clang   # 9/9, the old compiler suite
     RIN_UNSAFE=1 python tests/run_rin_execute.py --cc clang   # 23/23
     # in rin-dod, with RIN pointing at the fresh build:
@@ -46,8 +46,14 @@ storage through).
     RIN=<path>/rin CC=gcc python tools/check.py --sanitize safe
 
 The accept programs and the ported lessons must also run clean under
-`-fsanitize=address,undefined`; on this machine's clang the ASan runtime was
-missing, so sanitizer runs use gcc.
+`-fsanitize=address,undefined`. On Windows, clang's sanitizers work (`CC=clang`);
+tools/check.py finds the runtime.
+
+Do not run a new attack program on this machine: use a VM or Windows Sandbox.
+`rin check` never executes anything. One of them, opening a terabyte arena per
+level of a recursion, crashed Windows twice (bugcheck 0x1A, subtype 0x3453, in
+`MiDeleteFinalPageTables`), which is why a local region now reserves 4 GiB. Keep
+agents to a few at a time, and commit often.
 
 ## Rules of the road
 
@@ -73,34 +79,31 @@ ports mirror the original tree under a `safe` folder with the original
 `world_make(r: region level)`; fields are `*vec<T> in level`; lookups that
 can miss return `?*T`; the frame arena is `frame: region in level;` opened
 once per frame; the type-erased byte column is the one legitimate
-`[trusted]` core, kept small with honest signatures; every other proc is
-unannotated and checked. Report every remaining `[trusted]` and why.
+`unsafe { }` core, kept small with honest signatures; every other proc is
+unannotated and checked. Report every remaining `unsafe { }` and why.
 
 ## State of play
 
-Done: the safe compiler (regions, `?*T`, borrows and staleness, carriers,
-integer semantics, elision, the moves analysis, the `name: region = { }`
-syntax), std annotated and attacked, 75 tests, 215 attack programs, and the
-whole course ported: 100 programs, 23,039 lines, 134 `[trusted]` procs of
-1,444, none `[unsafe]`.
+Done: the safe compiler, including `unsafe { }` in place of `[trusted]`, local regions
+(`tmp: region of r = { }`), field-path narrowing, `str`, `must(p)`, `std/file.rin`,
+invariance through pointers, and four attack rounds; the whole course ported; the
+engine ported on its `regions` branch (see njinn's `docs/rin-safe-port.md` for where
+that stands).
 
 Next, in the order that pays:
 
-1. Replace `[trusted]` with Rust-style `unsafe { }` blocks inside otherwise
-   checked procs, keeping `[unsafe]` for "dangerous to call". Counts trusted
-   lines instead of trusted procs. Do this before the engine port.
-2. `stable<T>` (chunked, never moves, hands out `*T in R`) and `handle<T>`
-   (index plus generation over a region pool) in std.
-3. Port the engine on a `regions` branch: survey first, platform layer stays
-   trusted with honest signatures, everything else checked. The list of
-   remaining `[trusted]` and of places the checker was wrong is the result.
-4. A region-end cleanup hook for GPU buffers and files, only if the engine
-   shows the manual version going wrong.
-5. Known gaps: field-path narrowing, a string type safe code can hold by
-   value, `hashset` and `dlist` iteration, a `printfmt` brace escape, a C
-   name collision on a struct named `system`, pointer-to-array element
-   codegen (`vec<[3]u64>at(w, 1)*[2]` does not compile as C).
+1. Narrow std's `unsafe { }` bodies: the migration wrapped each old `[trusted]` body
+   whole. The count of lines inside them is the honest measure of the trusted base.
+2. A stranger's attack round, in a VM, and the soundness argument written out:
+   regions and their invariance, bounds, null, the sealed raw boundary. Staleness is
+   a lint on top of that: memory in a region stays valid when a `vec` moves.
+3. `stable<T>` and `handle<T>` in std; `std/file.rin` is the pattern for the second.
+4. A region-end cleanup hook for GPU buffers and files, only if the engine shows the
+   manual version going wrong. A copy of a COM pointer can go stale after Release.
+5. Known gaps: a `printfmt` brace escape, a C name collision on a struct named
+   `system`, pointer-to-array element codegen, threads, which safe code has no way to
+   start.
 
-The claim that holds today: a rin program with no `[trusted]` or `[unsafe]`
-of its own is memory safe at compile time, provided std is correct. What it
-still needs is a stranger's attack round that finds nothing.
+The claim that holds today: a rin program with no `unsafe { }` or `[unsafe]` of its own
+has no known memory error after four attack rounds, provided std and the C it calls
+are correct. What it still needs is that argument and strangers.
