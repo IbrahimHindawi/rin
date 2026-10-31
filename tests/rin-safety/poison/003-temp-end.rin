@@ -1,0 +1,19 @@
+// expect: use-after-poison
+import "std/print.rin"
+import "std/memops.rin"
+
+/* A mark taken and rewound by hand. */
+main: proc() -> i32 = {
+    v: i32 = 0;
+    unsafe {
+        a: memops_arena = {};
+        memops_arena_initialize(a&, 0x100000);
+        t: memops_arena_temp = memops_arena_temp_begin(a&);
+        p: ^i32 = cast(memops_arena_push(a&, sizeof(i32), alignof(i32)), ^i32);
+        p* = 7;
+        memops_arena_temp_end(t);
+        v = p*;
+    }
+    printfmt("{}\n", v);
+    return 0;
+}

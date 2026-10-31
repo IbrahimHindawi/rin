@@ -640,7 +640,7 @@ string8_builder_begin: proc[unsafe](arena: *memops_arena) -> string8_builder = {
         exit(1);
     }
     b.arena = arena;
-    b.start = arena*.base + arena*.used;
+    b.start = cast(memops_arena_push(arena, 0, alignof(u8)), ^u8);
     b.length = 0;
     return b;
 }
@@ -656,7 +656,7 @@ string8_builder_reserve_: proc(b: *string8_builder, count: u64) -> *u8 = { unsaf
         printf("rin runtime: string8 builder lost the arena head (interleaved allocation)\n");
         exit(1);
     }
-    p: *u8 = cast(memops_arena_push(b*.arena, count, alignof(u8)), *u8);
+    p: *u8 = cast(memops_arena_extend(b*.arena, count), *u8);
     if (p == null) {
         printf("rin runtime: string8 builder allocation failure\n");
         exit(1);

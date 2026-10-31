@@ -39,6 +39,7 @@ storage through).
     python tests/run_rin_safety.py            # accept and reject programs; all must pass
     python tests/run_rin_safety.py --unsafe   # the rejects must check clean with the rules off
     python tests/run_rin_attacks.py           # the attack corpus: rejected, or clean by design
+    python tests/run_rin_poison.py            # stale memory dies under ASan; accepts stay clean
     RIN_UNSAFE=1 python tests/run_rin_torture.py --cc clang   # 9/9, the old compiler suite
     RIN_UNSAFE=1 python tests/run_rin_execute.py --cc clang   # 23/23
     # in rin-dod, with RIN pointing at the fresh build:

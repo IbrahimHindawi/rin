@@ -2,6 +2,58 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+/* Arena poisoning. Memory an arena has not handed out, or has taken back, is
+   poisoned: under AddressSanitizer a touch of it reports use-after-poison, and
+   allocations get a poisoned gap between them. RIN_ARENA_SCRIBBLE, for a build
+   without the sanitizer, overwrites it with 0xDD instead, so a stale read shows
+   as garbage rather than as the value it used to be. Neither costs anything
+   otherwise: safe code cannot reach this memory, so what they catch is a mistake
+   in an `unsafe` block, in std, or in the checker. */
+#if defined(__SANITIZE_ADDRESS__)
+#define MEMOPS_OS_ASAN 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define MEMOPS_OS_ASAN 1
+#endif
+#endif
+
+#ifdef MEMOPS_OS_ASAN
+void __asan_poison_memory_region(void const volatile *addr, size_t size);
+void __asan_unpoison_memory_region(void const volatile *addr, size_t size);
+#endif
+#ifdef RIN_ARENA_SCRIBBLE
+#include <string.h>
+#endif
+
+static inline void memops_os_poison(void *ptr, uint64_t size) {
+#ifdef RIN_ARENA_SCRIBBLE
+    memset(ptr, 0xDD, (size_t)size);
+#endif
+#ifdef MEMOPS_OS_ASAN
+    __asan_poison_memory_region(ptr, (size_t)size);
+#else
+    (void)ptr;
+    (void)size;
+#endif
+}
+
+static inline void memops_os_unpoison(void *ptr, uint64_t size) {
+#ifdef MEMOPS_OS_ASAN
+    __asan_unpoison_memory_region(ptr, (size_t)size);
+#else
+    (void)ptr;
+    (void)size;
+#endif
+}
+
+static inline uint64_t memops_os_redzone(void) {
+#ifdef MEMOPS_OS_ASAN
+    return 32;
+#else
+    return 0;
+#endif
+}
+
 #ifdef _WIN32
 /* The three kernel32 functions memops needs, declared here instead of
    including <windows.h>. Every rin program includes std, and <windows.h>

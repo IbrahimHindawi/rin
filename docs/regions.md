@@ -795,3 +795,22 @@ pointers to array elements in generated C; a mechanical check that a
 rounds are the next best thing; a brace escape in `printfmt`; and a C name
 collision when a struct is called `system`, which the emitter does not
 mangle.
+
+## Arena poisoning
+
+The rules keep safe code away from memory a region has taken back. Poisoning is for
+what the rules do not cover: an `unsafe` block, std, or a mistake in the checker.
+`memops_arena` poisons memory when it commits it, unpoisons exactly what `push` hands
+out, and poisons what `clear`, `temp_end`, `set_pos` and `pop` take back, so region
+ends need nothing of their own. In a build with AddressSanitizer a touch of that
+memory reports `use-after-poison`, and every `push` leaves a 32-byte poisoned gap in
+front of what it returns, so running off the end of an allocation reports too.
+`memops_arena_extend` grows the newest allocation with no gap, for the string builder,
+whose pieces must stay contiguous.
+
+Without the sanitizer, `-DRIN_ARENA_SCRIBBLE` overwrites the same memory with `0xDD`,
+which makes a stale read show as garbage. A build with neither pays nothing.
+
+`python tests/run_rin_poison.py` checks that four programs which reach freed memory
+through `unsafe` die with that report, and that every accept program still prints what
+it should under the sanitizer.

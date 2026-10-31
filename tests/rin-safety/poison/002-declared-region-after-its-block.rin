@@ -1,0 +1,17 @@
+// expect: use-after-poison
+import "std/print.rin"
+
+level: region;
+
+/* The same through a declared region, whose arena stays open for the next entry. */
+main: proc() -> i32 = {
+    stale: ^i32 = null;
+    level: region = {
+        p: *i32 in level = new<i32>(level, 7);
+        unsafe { stale = cast(p, ^i32); }
+    }
+    v: i32 = 0;
+    unsafe { v = stale*; }
+    printfmt("{}\n", v);
+    return 0;
+}

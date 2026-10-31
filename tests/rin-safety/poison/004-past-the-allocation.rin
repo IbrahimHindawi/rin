@@ -1,0 +1,18 @@
+// expect: use-after-poison
+import "std/print.rin"
+import "std/memops.rin"
+
+/* One element past an allocation, into the gap before the next one. */
+main: proc() -> i32 = {
+    v: i32 = 0;
+    unsafe {
+        a: memops_arena = {};
+        memops_arena_initialize(a&, 0x100000);
+        p: ^i32 = cast(memops_arena_push(a&, sizeof(i32) * 4, alignof(i32)), ^i32);
+        q: ^i32 = cast(memops_arena_push(a&, sizeof(i32) * 4, alignof(i32)), ^i32);
+        q* = 1;
+        v = p[4];
+    }
+    printfmt("{}\n", v);
+    return 0;
+}

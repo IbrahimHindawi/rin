@@ -1,0 +1,15 @@
+// expect: use-after-poison
+import "std/print.rin"
+
+/* A raw pointer smuggled out of a local region past its end. */
+main: proc() -> i32 = {
+    stale: ^i32 = null;
+    tmp: region of permanent = {
+        p: *i32 in tmp = new<i32>(tmp, 7);
+        unsafe { stale = cast(p, ^i32); }
+    }
+    v: i32 = 0;
+    unsafe { v = stale*; }
+    printfmt("{}\n", v);
+    return 0;
+}

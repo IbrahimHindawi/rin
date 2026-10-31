@@ -1,0 +1,30 @@
+import "std/print.rin"
+import "std/string8.rin"
+import "std/memops.rin"
+
+/* Poisoning takes memory back at the end of a region and gives it out again on the
+   next entry: this reuses the same addresses, and a builder keeps its pieces together. */
+level: region;
+
+one_pass: proc(n: i32) -> i32 = {
+    total: i32 = 0;
+    level: region = {
+        xs: []i32 in level = new_slice<i32>(level, 64);
+        for (i: i32 = 0; i < 64; i += 1) { xs[i] = n + i; }
+        for (i: i32 = 0; i < 64; i += 1) { total += xs[i]; }
+    }
+    return total;
+}
+
+main: proc() -> i32 = {
+    printfmt("{} {}\n", one_pass(1), one_pass(2));
+    unsafe {
+        a: memops_arena = {};
+        memops_arena_initialize(a&, 0x100000);
+        b: string8_builder = string8_builder_begin(a&);
+        string8_builder_append_byte(b&, 104);
+        string8_builder_append_byte(b&, 105);
+        printfmt("{}\n", cast(b.start[0], i32) + cast(b.start[1], i32));
+    }
+    return 0;
+}
