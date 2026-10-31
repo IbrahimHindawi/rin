@@ -113,7 +113,6 @@ r5-e-028-new-slice-field-of-call.rin
 r5-e-029-const-eval-mod-unsigned.rin
 r5-e-030-const-eval-u64-div-wrap.rin
 r5-e-031-const-eval-shift-left-high.rin
-r5-e-032-named-const-slice-coerce.rin
 r5-e-033-named-const-array-var-index.rin
 r5-e-040-new-slice-field-call-read.rin
 r5-e-041-const-eval-sub-div-u64-oob.rin
@@ -150,17 +149,11 @@ r7-a-013-external-array-memset.rin
 r7-a-014-external-struct-return-nonnull.rin
 r7-a-015-external-int-as-pointer.rin
 r7-a-016-external-global-array-lie.rin
-r7-a-023-main-nonnull-param.rin
-r7-a-024-main-slice-param.rin
-r7-a-025-main-array-param.rin
-r7-a-026-main-returns-pointer.rin
 r7-a-031-external-builtin-unreachable.rin
 r7-a-032-external-emit-lying-proto.rin
 r7-a-033-external-alloca.rin
-r7-a-055-return-array.rin
 r7-a-060-array-of-array-index.rin
 r7-a-061-alias-array-of-array-order.rin
-r7-a-063-negative-length-array.rin
 r7-a-091-enum-count-bare-shadow.rin
 r7-a-092-procparam-count.rin
 r7-a-107-str-zero-field.rin
@@ -176,9 +169,7 @@ r7-a-163-procptr-variadic-type.rin
 r7-a-171-macro-number-array-length.rin
 r7-a-189-reflect-stub-bad-name-field.rin
 r7-a-192-enum-oob-table-and-switch.rin
-r7-a-193-enum-u8-index-array-by-count.rin
 r7-a-195-switch-no-default-nonnull-init.rin
-r7-a-199-ternary-zero.rin
 r7-a-209-external-struct-slice-forged.rin
 r7-b-001-int-times-float-removes-bounds-check.rin
 r7-b-002-int-op-float-wrong-answer.rin

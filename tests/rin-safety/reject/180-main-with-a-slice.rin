@@ -1,0 +1,2 @@
+// expect: C calls main itself
+main: proc(xs: []i32) -> i32 = { return xs[0]; }

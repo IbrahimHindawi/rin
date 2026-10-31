@@ -15793,6 +15793,97 @@ static void visit_find_unsafe_block(Stmt *s, void *ctx, memops_arena *arena) {
     if (s->kind == Stmt_Unsafe) *(bool *)ctx = true;
 }
 
+static bool path_is_std(const char *path);
+
+/* What C would refuse or get wrong, said here in rin's terms: a program `rin check`
+   accepts should build, whichever C compiler and flags build it. */
+static void array_counts_check(Program *prog, TypeExpr *t, bool in_struct, i32 line, i32 col, i32 depth) {
+    if (!t || depth > 32) return;
+    if (t->kind == Type_Array) {
+        for (i32 i = 0; i < prog->globals.length; i++) {
+            Stmt *g = (Stmt *)prog->globals.data[i];
+            if (!string8_equals(&g->name, &t->array_count)) continue;
+            if (g->expr && g->expr->kind == Expr_Unary && g->expr->op == Token_Minus) {
+                type_error_message("an array's length cannot be negative", line, col);
+            } else if (in_struct) {
+                type_error_message("a struct's array length must be a constant to C, and a rin const is a variable "
+                                   "there: write the number, or '#define' it", line, col);
+            }
+            break;
+        }
+    }
+    array_counts_check(prog, t->elem, in_struct, line, col, depth + 1);
+}
+
+static void c_refuses_visit_stmt(Stmt *s, void *ctx, memops_arena *arena) {
+    if (s->kind == Stmt_Var) array_counts_check((Program *)ctx, s->type, false, s->line, s->col, 0);
+}
+
+static void c_refuses_visit_expr(Expr *e, void *ctx, memops_arena *arena) {
+    if (e->kind != Expr_Ternary) return;
+    Expr *branches[2] = { e->right, e->third };
+    for (i32 i = 0; i < 2; i++) {
+        if (branches[i] && (branches[i]->kind == Expr_ZeroInit || branches[i]->kind == Expr_InitList)) {
+            type_error_message("a '{ }' has no type of its own, so it cannot be a branch of '?:'; use 'if', or a value",
+                               branches[i]->line, branches[i]->col);
+        }
+    }
+}
+
+static void safety_check_what_c_refuses(Program *prog, memops_arena *arena) {
+    if (!g_safety) return;
+    for (i32 i = 0; i < prog->enums.length; i++) {
+        EnumDecl *d = (EnumDecl *)prog->enums.data[i];
+        if (path_is_std(d->source_path) || d->underlying.length == 0) continue;
+        if (!string8_equals_cstr(&d->underlying, "i32") && !string8_equals_cstr(&d->underlying, "u32")) {
+            g_diag_source_path = d->source_path;
+            type_error_message("a C enum is 32 bits, and rin asserts this width rather than dictating it, so only "
+                               "'enum[i32]' and 'enum[u32]' can build: keep the small value in a field of that width",
+                               d->line, d->col);
+        }
+    }
+    for (i32 i = 0; i < prog->structs.length; i++) {
+        StructDecl *d = (StructDecl *)prog->structs.data[i];
+        if (path_is_std(d->source_path)) continue;
+        g_diag_source_path = d->source_path;
+        for (i32 j = 0; j < d->fields.length; j++) {
+            Field *f = (Field *)d->fields.data[j];
+            array_counts_check(prog, f->type, true, f->line, f->col, 0);
+        }
+    }
+    for (i32 i = 0; i < prog->procs.length; i++) {
+        ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+        if (path_is_std(p->source_path) || p->is_external) continue;
+        g_diag_source_path = p->source_path;
+        TypeExpr *ret = resolve_alias_type(prog, p->ret_type);
+        if (ret && ret->kind == Type_Array) {
+            type_error_message("C cannot return an array: put it in a struct, or pass a '[]T' to fill", p->line, p->col);
+        }
+        if (string8_equals_cstr(&p->name, "main")) {
+            bool ok = p->ret_type && string8_equals_cstr(&p->ret_type->name, "i32");
+            if (p->params.length == 2) {
+                TypeExpr *count = ((Param *)p->params.data[0])->type;
+                TypeExpr *values = ((Param *)p->params.data[1])->type;
+                ok = ok && count->kind == Type_Name && string8_equals_cstr(&count->name, "i32") &&
+                     values->kind == Type_Ptr && values->is_raw && values->elem && values->elem->kind == Type_Ptr &&
+                     values->elem->is_raw && values->elem->elem && string8_equals_cstr(&values->elem->elem->name, "c8");
+            } else if (p->params.length != 0) {
+                ok = false;
+            }
+            if (!ok) {
+                type_error_message("C calls main itself, with what it has: it is 'proc() -> i32' or "
+                                   "'proc(argc: i32, argv: ^^c8) -> i32'", p->line, p->col);
+            }
+        }
+        for (i32 j = 0; j < p->params.length; j++) {
+            array_counts_check(prog, ((Param *)p->params.data[j])->type, false, p->line, p->col, 0);
+        }
+        for (i32 j = 0; j < p->body.length; j++) {
+            stmt_walk((Stmt *)p->body.data[j], c_refuses_visit_expr, c_refuses_visit_stmt, prog, arena);
+        }
+    }
+}
+
 static void compute_proc_moves(Program *prog, memops_arena *arena) {
     if (!g_safety) return;
     i32 n = prog->procs.length;
@@ -19069,6 +19160,7 @@ static void type_check_generic_proc_instances(
                 TypeExpr *given = (TypeExpr *)sub.args.data[k];
                 if (given && given->kind == Type_Array) {
                     char message[256];
+                    g_diag_source_path = p->source_path;
                     snprintf(message, sizeof(message), "an array cannot be a generic's type yet: C would get the wrong "
                              "type for it, so put it in a struct: '%.*s' with '%s'", (int)p->name.length, p->name.data,
                              sub_instances.data[j].data ? (const char *)sub_instances.data[j].data : "?");
@@ -19125,6 +19217,7 @@ static void type_check_program(Program *prog, memops_arena *arena) {
     compute_proc_moves(prog, arena);
     compute_proc_noalias(prog, arena);
     safety_check_program_names(prog, arena);
+    safety_check_what_c_refuses(prog, arena);
     {
         /* `permanent`, the region that is open for the whole program. */
         TypeExpr *perm = type_new(arena, Type_Region);
