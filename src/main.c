@@ -798,6 +798,7 @@ struct Stmt {
     const char *import_chain;
     bool is_external;
     bool is_static;
+    bool checked; // the checker has been here
     bool is_uninitialized; // '= ?': deliberately left with indeterminate contents
     bool is_discard;       // '_ = expr;': a Stmt_Expr whose value is thrown away on purpose
     bool is_array_copy;    // `xs = ys` or `xs: [4]T = ys`: C does not assign arrays
@@ -3848,6 +3849,7 @@ static Stmt *stmt_new(memops_arena *arena, StmtKind kind) {
     s->kind = kind;
     s->source_path = g_source_path;
     s->assign_op = Token_Equal;
+    s->checked = g_new_exprs_are_checked;
     return s;
 }
 
@@ -6468,11 +6470,15 @@ static bool param_default_is_constant(Program *prog, Expr *e, memops_arena *aren
             if (e->op != Token_Minus && e->op != Token_Bang && e->op != Token_Tilde) return false;
             return param_default_is_constant(prog, e->inner, arena);
         case Expr_Binary:
+            /* A default is written at each call from its source text, past what the checker decides. */
+            if (g_safety) return false;
             return param_default_is_constant(prog, e->left, arena) && param_default_is_constant(prog, e->right, arena);
         case Expr_Ternary:
+            if (g_safety) return false;
             return param_default_is_constant(prog, e->left, arena) && param_default_is_constant(prog, e->right, arena) &&
                    param_default_is_constant(prog, e->third, arena);
         case Expr_Cast:
+            if (g_safety) return false;
             return param_default_is_constant(prog, e->inner, arena);
         default:
             return false;
@@ -19168,6 +19174,7 @@ static void type_check_stmt(
     memops_arena *arena
 ) {
     if (!s) return;
+    s->checked = true;
     /* `load();`, `n = load();`, `n: i32 = load();`: nothing beside it. */
     if (s->expr && s->expr->kind == Expr_Call &&
         (s->kind == Stmt_Expr || s->kind == Stmt_Var || (s->kind == Stmt_Assign && s->lhs && s->lhs->kind == Expr_Name))) {
@@ -20351,6 +20358,7 @@ static void type_check_program(Program *prog, memops_arena *arena) {
     }
     for (i32 i = 0; i < prog->globals.length; i++) {
         Stmt *g = (Stmt *)prog->globals.data[i];
+        g->checked = true;
         const char *prev_diag_source_path = g_diag_source_path;
         const char *prev_diag_import_chain = g_diag_import_chain;
         if (g->source_path) {
@@ -20504,6 +20512,7 @@ static Stmt *printfmt_expr_stmt(memops_arena *arena, Expr *expr, Stmt *source) {
     Stmt *stmt = memops_arena_push_struct(arena, Stmt);
     memset(stmt, 0, sizeof(Stmt));
     stmt->kind = Stmt_Expr;
+    stmt->checked = true; // a print made from a printfmt the checker saw
     stmt->expr = expr;
     stmt->source_path = source ? source->source_path : null;
     stmt->import_chain = source ? source->import_chain : null;
@@ -21781,7 +21790,7 @@ static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, s
     if (!e) return;
     /* The guards are written from what the checker decided. Where it never came, there is
        nothing to write them from, so nothing is written. */
-    if (g_safety && !g_emit_unevaluated && !e->checked && (e->kind == Expr_Binary || e->kind == Expr_Index || e->kind == Expr_Unary || e->kind == Expr_Cast)) {
+    if (g_safety && !g_emit_unevaluated && !e->checked) {
         type_error_message("internal: the checker never saw this expression, so its guards are unknown; please report this", e->line, e->col);
         exit(1);
     }
@@ -22164,6 +22173,10 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
 /* A loop or a switch is where a `break` or `continue` lands, so each marks how
    many region cleanups were open when it began. */
 static void emit_stmt(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, string8 generic_name) {
+    if (s && g_safety && !s->checked) {
+        type_error_message("internal: the checker never saw this statement, so what it writes is unknown; please report this", s->line, s->col);
+        exit(1);
+    }
     if (!s) return;
     bool loop = s->kind == Stmt_For || s->kind == Stmt_While || s->kind == Stmt_DoWhile;
     bool mark = loop || s->kind == Stmt_Switch;
