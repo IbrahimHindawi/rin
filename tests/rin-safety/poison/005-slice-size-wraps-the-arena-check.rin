@@ -1,0 +1,17 @@
+// expect: maximum size exceeded
+import "std/print.rin"
+
+/* Found in the sandbox: no unsafe at all. The size fits a u64, but added to what the
+   arena has used it wrapped to a small number, passed the check, and handed back a
+   slice far longer than its memory. */
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        first: []i32 in level = new_slice<i32>(level, 16);
+        n: u64 = 0; n -= 1; n = n / 4;
+        xs: []i32 in level = new_slice<i32>(level, n);
+        xs[1000000] = 5;
+        printfmt("{}\n", xs[1000000]);
+    }
+    return 0;
+}

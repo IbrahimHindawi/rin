@@ -1,0 +1,15 @@
+// expect: allocation size overflows
+import "std/print.rin"
+import "std/vec.rin"
+
+/* The same through a container's own count. */
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        n: u64 = 1; n = n shl 62;
+        v: *vec<i32> in level = vec<i32>make(level, n);
+        vec<i32>push(v, 5);
+        printfmt("{}\n", v*.length);
+    }
+    return 0;
+}

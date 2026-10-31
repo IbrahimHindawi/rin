@@ -17,8 +17,8 @@ dsu_make: proc[unsafe](arena: *memops_arena, n: u64) -> dsu = {
     if (n == 0) {
         return d;
     }
-    d.parent = cast(memops_arena_push(arena, sizeof(u64) * n, alignof(u64)), ^u64);
-    d.size = cast(memops_arena_push(arena, sizeof(u64) * n, alignof(u64)), ^u64);
+    d.parent = cast(memops_arena_push(arena, memops_bytes(sizeof(u64), n), alignof(u64)), ^u64);
+    d.size = cast(memops_arena_push(arena, memops_bytes(sizeof(u64), n), alignof(u64)), ^u64);
     if (d.parent == null || d.size == null) {
         printf("rin runtime: dsu allocation failure\n");
         exit(1);

@@ -83,7 +83,7 @@ map<T>expand: proc<T>(arena: *memops_arena, hashmap: *map<T>) -> b32 = { unsafe 
     if (new_capacity < hashmap*.border) {
         return 0;
     }
-    new_entries: *map_entry<T> = cast(memops_arena_push_zero(arena, sizeof(map_entry<T>) * new_capacity, alignof(map_entry<T>)), *map_entry<T>);
+    new_entries: *map_entry<T> = cast(memops_arena_push_zero(arena, memops_bytes(sizeof(map_entry<T>), new_capacity), alignof(map_entry<T>)), *map_entry<T>);
     if (new_entries == null) {
         return 0;
     }
@@ -106,7 +106,7 @@ map<T>create: proc<T>(arena: *memops_arena) -> *map<T> = { unsafe {
     }
     hashmap*.length = 0;
     hashmap*.border = I_RUNTIME_MAP_INITIAL_CAPACITY;
-    hashmap*.entries = cast(memops_arena_push_zero(arena, sizeof(map_entry<T>) * hashmap*.border, alignof(map_entry<T>)), *map_entry<T>);
+    hashmap*.entries = cast(memops_arena_push_zero(arena, memops_bytes(sizeof(map_entry<T>), hashmap*.border), alignof(map_entry<T>)), *map_entry<T>);
     if (hashmap*.entries == null) {
         printf("rin runtime: map entries allocation failure\n");
         exit(1);
@@ -118,7 +118,7 @@ map<T>make: proc<T>(r: region R) -> *map<T> in R = { unsafe {
     m: *map<T> in R = cast(memops_arena_push_zero(r, sizeof(map<T>), alignof(map<T>)), *map<T> in R);
     m*.arena = r;
     m*.border = I_RUNTIME_MAP_INITIAL_CAPACITY;
-    m*.entries = cast(memops_arena_push_zero(r, sizeof(map_entry<T>) * m*.border, alignof(map_entry<T>)), *map_entry<T>);
+    m*.entries = cast(memops_arena_push_zero(r, memops_bytes(sizeof(map_entry<T>), m*.border), alignof(map_entry<T>)), *map_entry<T>);
     if (m*.entries == null) {
         printf("rin runtime: map entries allocation failure\n");
         exit(1);

@@ -15,7 +15,7 @@ deque: struct<T> = {
 
 deque<T>grow: proc<T>(arena: *memops_arena, d: *deque<T>) -> void = { unsafe {
     border: u64 = d*.border == 0 ? 16 : d*.border * 2;
-    data: ^T = cast(memops_arena_push(arena, sizeof(T) * border, alignof(T)), ^T);
+    data: ^T = cast(memops_arena_push(arena, memops_bytes(sizeof(T), border), alignof(T)), ^T);
     if (data == null) {
         printf("rin runtime: deque allocation failure\n");
         exit(1);

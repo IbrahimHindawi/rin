@@ -76,8 +76,8 @@ hashmap<K, V>grow: proc<K, V>(arena: *memops_arena, m: *hashmap<K, V>) -> void =
     while (capacity * 3 <= (m*.length + 1) * 8) {
         capacity *= 2;
     }
-    m*.keys = cast(memops_arena_push(arena, sizeof(K) * capacity, alignof(K)), ^K);
-    m*.values = cast(memops_arena_push(arena, sizeof(V) * capacity, alignof(V)), ^V);
+    m*.keys = cast(memops_arena_push(arena, memops_bytes(sizeof(K), capacity), alignof(K)), ^K);
+    m*.values = cast(memops_arena_push(arena, memops_bytes(sizeof(V), capacity), alignof(V)), ^V);
     m*.states = cast(memops_arena_push_zero(arena, capacity, 1), ^u8);
     if (m*.keys == null || m*.values == null || m*.states == null) {
         printf("rin runtime: hashmap allocation failure\n");

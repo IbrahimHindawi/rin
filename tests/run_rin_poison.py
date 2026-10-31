@@ -101,6 +101,18 @@ def scribbled(cc: str) -> str | None:
     return None
 
 
+# A Release build defines NDEBUG and optimises. The bounds checks must survive both.
+def release_keeps_bounds(cc: str) -> str | None:
+    source = SUITE / "poison" / "008-index-past-the-end.rin"
+    exe, why = build(source, cc, ["-DNDEBUG", "-O2"], "release")
+    if exe is None:
+        return why
+    ran = run([str(exe)])
+    if ran.returncode == 0 or "out of bounds" not in ran.stdout:
+        return f"exit {ran.returncode}, the check is gone:\n{ran.stdout}"
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--cc", default="clang")
@@ -122,12 +134,12 @@ def main() -> int:
         print(f"{'FAIL' if problem else 'ok  '} accept/{source.name} (asan)")
         if problem:
             print(problem)
-    problem = scribbled(args.cc)
-    total += 1
-    failures += 1 if problem else 0
-    print(f"{'FAIL' if problem else 'ok  '} RIN_ARENA_SCRIBBLE")
-    if problem:
-        print(problem)
+    for label, problem in (("RIN_ARENA_SCRIBBLE", scribbled(args.cc)), ("bounds in a Release build", release_keeps_bounds(args.cc))):
+        total += 1
+        failures += 1 if problem else 0
+        print(f"{'FAIL' if problem else 'ok  '} {label}")
+        if problem:
+            print(problem)
     print(f"{total - failures}/{total} passed")
     return 1 if failures else 0
 

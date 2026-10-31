@@ -29,6 +29,25 @@ memops_arena_temp: struct = {
     used: u64;
 }
 
+/* What n elements of a size come to. A wrapped product would be a small allocation
+   with a huge count beside it, so it stops the program, as running out of the
+   arena does. */
+memops_bytes: proc(size: u64, count: u64) -> u64 = {
+    if (size != 0 && count > 0xFFFFFFFFFFFFFFFF / size) {
+        unsafe { printf("rin runtime: allocation size overflows\n"); }
+        exit(1);
+    }
+    return size * count;
+}
+
+memops_bytes_plus_one: proc(count: u64) -> u64 = {
+    if (count == 0xFFFFFFFFFFFFFFFF) {
+        unsafe { printf("rin runtime: allocation size overflows\n"); }
+        exit(1);
+    }
+    return count + 1;
+}
+
 memops_is_power_of_two: proc(x: usize) -> b32 = {
     return (x & (x - 1)) == 0;
 }
@@ -74,15 +93,17 @@ memops_arena_carve_: proc[unsafe](arena: *memops_arena, alloc_size: u64, align: 
     curr_addr: usize = base_addr + cast(arena*.used, usize);
     aligned_addr: usize = memops_align_forward(curr_addr + cast(gap, usize), cast(align, usize));
     diff: u64 = cast(aligned_addr - curr_addr, u64);
-    needed: u64 = arena*.used + alloc_size + diff;
     committed: u64 = arena*.pagesize * arena*.npages;
 
     /* Before committing: past the reservation, the commit would be asking for
-       pages the arena does not own. */
-    if (needed > arena*.reserved) {
+       pages the arena does not own. Subtracted, not added: a huge size added to
+       `used` wraps to a small number and passes. */
+    room: u64 = arena*.reserved - arena*.used;
+    if (diff > room || alloc_size > room - diff) {
         printf("memops_arena maximum size exceeded!\n");
         exit(1);
     }
+    needed: u64 = arena*.used + alloc_size + diff;
 
     if (needed > committed) {
         missing_bytes: u64 = needed - committed;

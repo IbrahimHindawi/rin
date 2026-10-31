@@ -814,3 +814,20 @@ which makes a stale read show as garbage. A build with neither pays nothing.
 `python tests/run_rin_poison.py` checks that four programs which reach freed memory
 through `unsafe` die with that report, and that every accept program still prints what
 it should under the sanitizer.
+
+## Bounds checks stay on
+
+Bounds checks run in every build. They used to compile away under `NDEBUG`, so a
+Release build had none and the claim about safe code held only in Debug. Only
+`-DRIN_NO_BOUNDS_CHECKS` removes them now, and a program built that way has given up
+the guarantee. `tests/run_rin_poison.py` builds with `-DNDEBUG -O2` to keep this true.
+
+## Running what may misbehave
+
+`python tests/run_rin_vm.py [program.rin ...]` builds on the host and runs in a
+throwaway Windows Sandbox: no network, no GPU, 8 GiB, programs read-only, and output
+capped at 64 KiB per stream. The poison programs are its controls, so a sandbox in
+which nothing ran cannot pass. The first full run found a hole in safe code: a huge
+`new_slice` count wrapped the arena's size check. That is why sizes now go through
+`memops_bytes`, and why the arena subtracts rather than adds when it compares them.
+

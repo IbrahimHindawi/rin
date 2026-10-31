@@ -15,7 +15,7 @@ vec<T>reserve: proc<T>(arena: *memops_arena, length: u64) -> vec<T> = { unsafe {
     if (length == 0) {
         return arr;
     }
-    arr.data = cast(memops_arena_push_zero(arena, sizeof(T) * length, alignof(T)), *T);
+    arr.data = cast(memops_arena_push_zero(arena, memops_bytes(sizeof(T), length), alignof(T)), *T);
     if (arr.data == null) {
         printf("rin runtime: vec reserve allocation failure\n");
         exit(1);
@@ -32,7 +32,7 @@ vec<T>make: proc<T>(r: region R, reserve: u64) -> *vec<T> in R = { unsafe {
     v: *vec<T> in R = cast(memops_arena_push_zero(r, sizeof(vec<T>), alignof(vec<T>)), *vec<T> in R);
     v*.arena = r;
     if (reserve > 0) {
-        v*.data = cast(memops_arena_push_zero(r, sizeof(T) * reserve, alignof(T)), *T);
+        v*.data = cast(memops_arena_push_zero(r, memops_bytes(sizeof(T), reserve), alignof(T)), *T);
         v*.border = reserve;
     }
     return v;
@@ -59,7 +59,7 @@ vec<T>resize: proc<T>(arena: *memops_arena, array: *vec<T>) -> ^T = { unsafe {
     } else {
         array*.border *= 2;
     }
-    array*.data = cast(memops_arena_realloc_(arena, sizeof(T) * array*.border, array*.data, sizeof(T) * old_border, alignof(T)), *T);
+    array*.data = cast(memops_arena_realloc_(arena, memops_bytes(sizeof(T), array*.border), array*.data, sizeof(T) * old_border, alignof(T)), *T);
     if (array*.data == null) {
         printf("rin runtime: vec resize allocation failure\n");
         exit(1);
@@ -73,7 +73,7 @@ vec<T>resize: proc<T>(arena: *memops_arena, array: *vec<T>) -> ^T = { unsafe {
 vec<T>append: proc[unsafe]<T>(arena: *memops_arena, array: *vec<T>, elem: T) -> *T = {
     if (array*.data == null) {
         array*.border = 1;
-        array*.data = cast(memops_arena_push(arena, sizeof(T) * array*.border, alignof(T)), *T);
+        array*.data = cast(memops_arena_push(arena, memops_bytes(sizeof(T), array*.border), alignof(T)), *T);
     }
     if (array*.length >= array*.border) {
         vec<T>resize(arena, array);

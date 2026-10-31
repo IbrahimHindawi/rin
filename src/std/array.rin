@@ -11,7 +11,7 @@ array<T>reserve: proc<T>(arena: *memops_arena, length: u64) -> array<T> = { unsa
     if (length == 0) {
         return arr;
     }
-    arr.data = cast(memops_arena_push_zero(arena, sizeof(T) * length, alignof(T)), *T);
+    arr.data = cast(memops_arena_push_zero(arena, memops_bytes(sizeof(T), length), alignof(T)), *T);
     if (arr.data == null) {
         printf("rin runtime: array reserve allocation failure\n");
         exit(1);

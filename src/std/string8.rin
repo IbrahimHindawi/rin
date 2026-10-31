@@ -37,7 +37,7 @@ string8_reserve: proc[unsafe](arena: *memops_arena, capacity: u64) -> string8 = 
         printf("rin runtime: string8 reserve with null arena\n");
         exit(1);
     }
-    s.data = cast(memops_arena_push_zero(arena, capacity + 1, alignof(u8)), *u8);
+    s.data = cast(memops_arena_push_zero(arena, memops_bytes_plus_one(capacity), alignof(u8)), *u8);
     if (s.data == null) {
         printf("rin runtime: string8 reserve allocation failure\n");
         exit(1);
@@ -53,7 +53,7 @@ string8_grow: proc(arena: *memops_arena, s: *string8, min_capacity: u64) -> void
     }
     if (s*.capacity >= min_capacity) {
         if (s*.data == null) {
-            s*.data = cast(memops_arena_push_zero(arena, s*.capacity + 1, alignof(u8)), *u8);
+            s*.data = cast(memops_arena_push_zero(arena, memops_bytes_plus_one(s*.capacity), alignof(u8)), *u8);
             if (s*.data == null) {
                 printf("rin runtime: string8 grow allocation failure\n");
                 exit(1);
@@ -73,9 +73,9 @@ string8_grow: proc(arena: *memops_arena, s: *string8, min_capacity: u64) -> void
     old_capacity: u64 = s*.capacity;
     old_data: ^u8 = s*.data;
     if (old_data == null) {
-        s*.data = cast(memops_arena_push_zero(arena, new_capacity + 1, alignof(u8)), *u8);
+        s*.data = cast(memops_arena_push_zero(arena, memops_bytes_plus_one(new_capacity), alignof(u8)), *u8);
     } else {
-        s*.data = cast(memops_arena_realloc_(arena, new_capacity + 1, old_data, old_capacity + 1, alignof(u8)), *u8);
+        s*.data = cast(memops_arena_realloc_(arena, memops_bytes_plus_one(new_capacity), old_data, old_capacity + 1, alignof(u8)), *u8);
     }
     if (s*.data == null) {
         printf("rin runtime: string8 grow allocation failure\n");

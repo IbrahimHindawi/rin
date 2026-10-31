@@ -27,7 +27,7 @@ heap<T>push: proc<T>(arena: *memops_arena, h: *heap<T>, x: T) -> void = { unsafe
     if (h*.length == h*.border) {
         old_border: u64 = h*.border;
         h*.border = old_border == 0 ? 16 : old_border * 2;
-        h*.data = cast(memops_arena_realloc_(arena, sizeof(T) * h*.border, h*.data, sizeof(T) * old_border, alignof(T)), ^T);
+        h*.data = cast(memops_arena_realloc_(arena, memops_bytes(sizeof(T), h*.border), h*.data, sizeof(T) * old_border, alignof(T)), ^T);
         if (h*.data == null) {
             printf("rin runtime: heap allocation failure\n");
             exit(1);

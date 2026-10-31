@@ -50,7 +50,8 @@ The accept programs and the ported lessons must also run clean under
 `-fsanitize=address,undefined`. On Windows, clang's sanitizers work (`CC=clang`);
 tools/check.py finds the runtime.
 
-Do not run a new attack program on this machine: use a VM or Windows Sandbox.
+Do not run a new attack program on this machine: use a VM or Windows Sandbox;
+`python tests/run_rin_vm.py [program.rin ...]` does it, and opens a Sandbox window.
 `rin check` never executes anything. One of them, opening a terabyte arena per
 level of a recursion, crashed Windows twice (bugcheck 0x1A, subtype 0x3453, in
 `MiDeleteFinalPageTables`), which is why a local region now reserves 4 GiB. Keep

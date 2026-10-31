@@ -14015,7 +14015,7 @@ static void expr_start_position(Expr *e, i32 *line, i32 *col) {
 
 /* How `x[i]` and `x[a..b]` are bounds-checked. A constant index into an array
    is decided now; anything else into an array or a slice is checked at run
-   time, unless NDEBUG is defined. A raw pointer has no length to check. */
+   time, unless RIN_NO_BOUNDS_CHECKS is defined. A raw pointer has no length to check. */
 static void type_check_index_bounds(Expr *e, TypeExpr *base, Program *prog, memops_arena *arena) {
     if (base && base->kind == Type_Ptr && base->elem && type_is_void_type(prog, base->elem)) {
         /* C rejects it as well; rin says why, at the .rin line. An external
@@ -18720,12 +18720,17 @@ static void emit_new_call(memops_arena *arena, string8 *out, Expr *e, TypeSub su
     emit_type(arena, out, t, sub);
     emit_cstr(arena, out, " *)memops_arena_push_zero(");
     emit_expr_value(arena, out, (Expr *)e->args.data[0], sub, generic_name);
-    emit_cstr(arena, out, ", sizeof(");
-    emit_type(arena, out, t, sub);
-    emit_cstr(arena, out, ")");
+    emit_cstr(arena, out, ", ");
     if (slice && e->args.length >= 2) {
-        emit_cstr(arena, out, " * (u64)(");
+        /* Checked: a wrapped product would be a small block with a huge length. */
+        emit_cstr(arena, out, "memops_bytes(sizeof(");
+        emit_type(arena, out, t, sub);
+        emit_cstr(arena, out, "), (u64)(");
         emit_expr_value(arena, out, (Expr *)e->args.data[1], sub, generic_name);
+        emit_cstr(arena, out, "))");
+    } else {
+        emit_cstr(arena, out, "sizeof(");
+        emit_type(arena, out, t, sub);
         emit_cstr(arena, out, ")");
     }
     emit_cstr(arena, out, ", _Alignof(");
@@ -19286,8 +19291,8 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
             emit_range(arena, out, e, sub, generic_name);
             return;
         }
-        /* RIN_INDEX checks the index and yields it; core.h compiles it away
-           under NDEBUG. A slice is indexed through its data. */
+        /* RIN_INDEX checks the index and yields it, in every build unless
+           RIN_NO_BOUNDS_CHECKS is defined. A slice is indexed through its data. */
         bool known = !e->index_varies && e->index_base != IndexBase_Unknown;
         bool slice_base = known && e->index_base == IndexBase_Slice;
         bool checked = known && e->index_checked;

@@ -1,0 +1,14 @@
+// expect: allocation size overflows
+import "std/print.rin"
+
+/* The count times the element size wraps to exactly zero. */
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        n: u64 = 1; n = n shl 62;
+        xs: []i32 in level = new_slice<i32>(level, n);
+        xs[1000000] = 5;
+        printfmt("{}\n", xs[1000000]);
+    }
+    return 0;
+}

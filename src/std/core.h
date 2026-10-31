@@ -96,12 +96,13 @@ RIN_MAYBE_UNUSED static inline void rin_print_i64(i64 x) { printf("%" PRId64, x)
 
 /* rin's bounds checks. Indexing an array with a value only known at run time,
    or indexing a slice, goes through RIN_INDEX; a subrange `x[a..b]` goes
-   through RIN_RANGE. Both are checked unless NDEBUG is defined -- C's own
-   switch, which a Release build already sets -- and then they are the plain
-   index. A failed check names the rin line, because the generated C carries
+   through RIN_RANGE. Both are checked in every build, Release included: the
+   safety rules rest on them, so they do not hang on NDEBUG. Only defining
+   RIN_NO_BOUNDS_CHECKS, on purpose, makes them the plain index, and such a
+   program has given up the guarantee. A failed check names the rin line, because the generated C carries
    #line directives, and aborts. A negative index is checked as unsigned, so it
    fails the same comparison as one past the end. */
-#ifdef NDEBUG
+#ifdef RIN_NO_BOUNDS_CHECKS
 #define RIN_INDEX(i, n) (i)
 #define RIN_RANGE(a, b, n) (a)
 #else
