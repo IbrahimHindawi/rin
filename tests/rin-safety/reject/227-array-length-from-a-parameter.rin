@@ -1,0 +1,3 @@
+// always: known at compile time
+f: proc(n: i32) -> i32 = { a: [n]i32 = {}; return a[0]; }
+main: proc() -> i32 = { return f(3); }

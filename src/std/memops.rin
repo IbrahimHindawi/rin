@@ -13,7 +13,16 @@ memops_os_poison: proc[external](ptr: ^void, size: u64) -> void = {}
 memops_os_unpoison: proc[external](ptr: ^void, size: u64) -> void = {}
 memops_os_redzone: proc[external]() -> u64 = {}
 
+/* What goes when a region ends beyond its memory: a file, a GPU buffer. It lives in the arena
+   it belongs to, and there is no release call to forget or to make too soon. */
+memops_arena_end: struct = {
+    next: ^memops_arena_end;
+    call: ?*proc(arg: ^void) -> void;
+    arg: ^void;
+}
+
 memops_arena: struct = {
+    on_end: ^memops_arena_end;
     base: ^u8;
     cursor: ^u8;
     previous: ^u8;
@@ -176,7 +185,27 @@ memops_arena_realloc_: proc[unsafe](arena: *memops_arena, new_alloc_size: u64, o
     return new_ptr;
 }
 
+/* Asks for `call(arg)` when the arena ends, latest first. For a proc in std or the engine that
+   makes a resource in a region: safe code takes the region, and never sees this. */
+memops_arena_on_end: proc[unsafe](arena: *memops_arena, call: *proc(arg: ^void) -> void, arg: ^void) -> void = {
+    end: ^memops_arena_end = cast(memops_arena_push_zero(arena, sizeof(memops_arena_end), alignof(memops_arena_end)), ^memops_arena_end);
+    end*.next = arena*.on_end;
+    end*.call = call;
+    end*.arg = arg;
+    arena*.on_end = end;
+}
+
+/* Those asked for since `used`, which is everything at the arena's end. */
+memops_arena_run_ends_: proc[unsafe](arena: *memops_arena, used: u64) -> void = {
+    while (arena*.on_end != null && cast(arena*.on_end, ^u8) >= arena*.base + used) {
+        end: ^memops_arena_end = arena*.on_end;
+        arena*.on_end = end*.next;
+        if (end*.call) { end*.call(end*.arg); }
+    }
+}
+
 memops_arena_clear: proc[unsafe](arena: *memops_arena) -> void = {
+    memops_arena_run_ends_(arena, 0);
     old_used: u64 = arena*.used;
     arena*.cursor = arena*.base;
     arena*.used = 0;
@@ -191,6 +220,7 @@ memops_arena_temp_begin: proc[unsafe](arena: *memops_arena) -> memops_arena_temp
 }
 
 memops_arena_temp_end: proc[unsafe](temp: memops_arena_temp) -> void = {
+    memops_arena_run_ends_(temp.arena, temp.used);
     old_used: u64 = temp.arena*.used;
     temp.arena*.used = temp.used;
     temp.arena*.cursor = temp.arena*.base + temp.used;

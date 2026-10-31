@@ -1,0 +1,6 @@
+// always: known at compile time
+main: proc(argc: i32, argv: ^^c8) -> i32 = {
+    n: i32 = argc;
+    a: [n]i32 = {};
+    return a[0];
+}

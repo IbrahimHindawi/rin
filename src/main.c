@@ -10724,6 +10724,15 @@ static void resolve_array_count_constants(memops_arena *arena, Program *prog) {
                 type->array_count = string8_from_cstr(arena, count_buf);
                 break;
             }
+            /* No variable-length arrays, anywhere: a stack allocation sized at run time is a
+               stack overflow nothing can check. Only a C header can name a constant rin
+               cannot see, or a preprocessor line marked as the author's own. */
+            bool named_number = type->array_count.length > 0 && is_alpha(type->array_count.data[0]) ? false : true;
+            if (!named_number && !g_user_cinclude && !program_defines_object_macro(prog, type->array_count, arena)) {
+                semantic_error_name("an array's length must be known at compile time: a number, a const or an enum's "
+                                    "count; for a length known only at run time, use new_slice. Not so for",
+                                    type->array_count, type->line, type->col);
+            }
             continue;
         }
 
@@ -23435,6 +23444,9 @@ static void emit_generated_file_banner(memops_arena *arena, string8 *out, const 
     emit_cstr(arena, out, " (");
     emit_cstr(arena, out, kind);
     emit_cstr(arena, out, "). Do not edit. */\n");
+    /* A variable-length array is a stack allocation sized at run time. rin refuses them, and here C does
+       too, in unsafe code and from a C header's names as well. */
+    emit_cstr(arena, out, "#if defined(__clang__) || defined(__GNUC__)\n#pragma GCC diagnostic error \"-Wvla\"\n#endif\n");
 }
 
 /* Every name introduced by a `<...>` list, from any declaration in the expanded

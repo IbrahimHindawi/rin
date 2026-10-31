@@ -1,5 +1,6 @@
 cinclude "stdio.h"
 import "cstd.rin"
+import "memops.rin"
 
 /* A file safe code can hold. A `file` is an index and a generation, plain data
    with nothing to dangle, so it goes anywhere: a local, a field, a global, a
@@ -70,6 +71,21 @@ file_close: proc(f: file) -> void = {
     file_table_stream[f.slot] = null;
     file_table_generation[f.slot] += 1;
 }
+
+file_end_: proc(arg: ^void) -> void = { unsafe {
+    file_close(cast(arg, ^file)[0]);
+} }
+
+/* A file that closes when the region ends, whichever way it ends. */
+file_open_in: proc(r: region R, path: ^const char, mode: ^const char) -> file = { unsafe {
+    f: file = file_open(path, mode);
+    if (file_is_open(f)) {
+        kept: ^file = cast(memops_arena_push_zero(r, sizeof(file), alignof(file)), ^file);
+        kept[0] = f;
+        memops_arena_on_end(r, file_end_, kept);
+    }
+    return f;
+} }
 
 /* How many bytes were read, up to out's length. */
 file_read: proc(f: file, out: []u8) -> u64 = {

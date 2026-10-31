@@ -149,7 +149,6 @@ r7-a-033-external-alloca.rin
 r7-a-060-array-of-array-index.rin
 r7-a-061-alias-array-of-array-order.rin
 r7-a-091-enum-count-bare-shadow.rin
-r7-a-092-procparam-count.rin
 r7-a-107-str-zero-field.rin
 r7-a-120-align-small-attr.rin
 r7-a-121-print-char-precision.rin

@@ -1,0 +1,48 @@
+import "std/print.rin"
+import "std/file.rin"
+
+/* A resource tied to a region goes when the region does, however it ends: there is no release
+   call to forget, or to make too soon. */
+level: region;
+order: i32 = 0;
+
+note: proc(arg: ^void) -> void = { unsafe { order = order * 10 + cast(arg, ^i32)[0]; } }
+
+noted: proc(r: region R, n: i32) -> void = { unsafe {
+    kept: ^i32 = cast(memops_arena_push_zero(r, sizeof(i32), alignof(i32)), ^i32);
+    kept[0] = n;
+    memops_arena_on_end(r, note, kept);
+} }
+
+early: proc() -> i32 = {
+    tmp: region of permanent = {
+        noted(tmp, 3);
+        return 1;
+    }
+    return 0;
+}
+
+main: proc(argc: i32, argv: ^^c8) -> i32 = {
+    f: file = {};
+    level: region = {
+        noted(level, 1);
+        noted(level, 2);
+        unsafe { f = file_open_in(level, argv[0], "rb"); }
+        printfmt("{} {}\n", file_is_open(f), order);
+    }
+    printfmt("{} {}\n", file_is_open(f), order);
+
+    order = 0;
+    r: i32 = early();
+    printfmt("{} {}\n", r, order);
+
+    order = 0;
+    for (i: i32 = 0; i < 3; i += 1) {
+        tmp: region of permanent = {
+            noted(tmp, i + 1);
+            if (i == 1) { break; }
+        }
+    }
+    printfmt("{}\n", order);
+    return 0;
+}
