@@ -1,0 +1,19 @@
+// expect: out of bounds
+import "std/print.rin"
+
+/* The check and the write see the same slice, the one the call left. */
+level: region;
+box: struct = { xs: []i32 in level; }
+shrink: proc(r: region level, b: *box in level) -> u64 = {
+    b*.xs = new_slice<i32>(r, 1);
+    return 3000;
+}
+main: proc() -> i32 = {
+    level: region = {
+        b: *box in level = new<box>(level);
+        b*.xs = new_slice<i32>(level, 4000);
+        b*.xs[shrink(level, b)] = 5;
+        printfmt("{}\n", b*.xs.length);
+    }
+    return 0;
+}

@@ -1,0 +1,10 @@
+// expect: division by zero
+import "std/print.rin"
+
+main: proc(argc: i32, argv: ^^char) -> i32 = {
+    n: u64 = cast(argc - argc, u64);
+    m: u64 = 7;
+    m %= n;
+    printfmt("{}\n", m);
+    return 0;
+}

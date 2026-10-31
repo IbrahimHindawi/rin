@@ -1,0 +1,13 @@
+// expect: promises its noalias parameters overlap nothing
+level: region;
+holder: struct = { p: *i32 in level; }
+f: proc(a: noalias *i32 in level, h: *holder in level) -> i32 = { a* = 1; h*.p* = 2; return a*; }
+main: proc() -> i32 = {
+    r: i32 = 0;
+    level: region = {
+        x: *i32 in level = new<i32>(level);
+        h: *holder in level = new<holder>(level, { .p = x });
+        r = f(x, h);
+    }
+    return r;
+}

@@ -1,0 +1,26 @@
+import "std/print.rin"
+
+/* A call beside an index may replace the slice being indexed. The slice is read whole,
+   so whichever one the program gets, it is checked against its own length. */
+level: region;
+box: struct = { xs: []i32 in level; }
+grow: proc(r: region level, b: *box in level) -> u64 = {
+    b*.xs = new_slice<i32>(r, 10);
+    return 5;
+}
+replace: proc(r: region level, p: *[]i32 in level) -> u64 = {
+    p* = new_slice<i32>(r, 10);
+    return 5;
+}
+main: proc() -> i32 = {
+    level: region = {
+        b: *box in level = new<box>(level);
+        b*.xs = new_slice<i32>(level, 10);
+        b*.xs[grow(level, b)] = 5;
+        t: []i32 in level = new_slice<i32>(level, 10);
+        t[replace(level, t&)] = 6;
+        s: []i32 in level = b*.xs[2..4];
+        printfmt("{} {} {}\n", b*.xs.length, t.length, s.length);
+    }
+    return 0;
+}

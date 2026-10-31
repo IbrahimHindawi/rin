@@ -129,7 +129,104 @@ RIN_MAYBE_UNUSED static inline u64 rin_range_check(u64 a, u64 b, u64 n, const ch
 }
 #define RIN_INDEX(i, n) rin_index_check((u64)(i), (u64)(n), __FILE__, __LINE__)
 #define RIN_RANGE(a, b, n) rin_range_check((u64)(a), (u64)(b), (u64)(n), __FILE__, __LINE__)
+#define rin_index_check_(i, n, file, line) rin_index_check((i), (n), (file), (line))
+#define rin_range_check_(a, b, n, file, line) rin_range_check((a), (b), (n), (file), (line))
 #endif
+
+/* A slice is read whole, so its data and its length are from the same moment. C
+   leaves open the order of `b->xs.data`, `b->xs.length` and a call beside them, and
+   a call may replace the slice: a new pointer checked against the old length would
+   pass and write out of bounds. A slice is laid out { data, length }. */
+typedef struct rin_slice_raw { u8 *data; u64 length; } rin_slice_raw;
+RIN_MAYBE_UNUSED static inline void *rin_slice_at(const void *slice, u64 i, u64 size, const char *file, int line) {
+    rin_slice_raw s;
+    memcpy(&s, slice, sizeof(s));
+#ifndef RIN_NO_BOUNDS_CHECKS
+    rin_index_check_(i, s.length, file, line);
+#endif
+    return s.data + i * size;
+}
+RIN_MAYBE_UNUSED static inline void *rin_slice_range(const void *slice, u64 a, u64 b, u64 size, void *out, const char *file, int line) {
+    rin_slice_raw s;
+    memcpy(&s, slice, sizeof(s));
+#ifndef RIN_NO_BOUNDS_CHECKS
+    rin_range_check_(a, b, s.length, file, line);
+#endif
+    s.data += a * size;
+    s.length = b - a;
+    memcpy(out, &s, sizeof(s));
+    return out;
+}
+RIN_MAYBE_UNUSED static inline void *rin_array_range(const void *data, u64 a, u64 b, u64 n, u64 size, void *out, const char *file, int line) {
+    rin_slice_raw s;
+#ifndef RIN_NO_BOUNDS_CHECKS
+    rin_range_check_(a, b, n, file, line);
+#endif
+    s.data = (u8 *)data + a * size;
+    s.length = b - a;
+    memcpy(out, &s, sizeof(s));
+    return out;
+}
+
+/* rin's integers are defined, in every build and with any C flags: signed + - *
+   wrap, a division by zero stops the program, MIN / -1 wraps, and a float cast to an
+   integer saturates with NaN as 0, as in Rust. The emitter goes through the unsigned
+   type or through these, because C's overflow is undefined and an optimiser may use
+   that to remove a bounds check. */
+#define RIN_IDIV_DEFINE(T, U) \
+    RIN_MAYBE_UNUSED static inline T rin_idiv_##T(T a, T b, const char *file, int line) { \
+        if (b == 0) { fprintf(stderr, "%s:%d: division by zero\n", file, line); abort(); } \
+        if ((T)-1 < 0 && b == (T)-1) return (T)((U)0 - (U)a); \
+        return (T)(a / b); \
+    } \
+    RIN_MAYBE_UNUSED static inline T rin_irem_##T(T a, T b, const char *file, int line) { \
+        if (b == 0) { fprintf(stderr, "%s:%d: division by zero\n", file, line); abort(); } \
+        if ((T)-1 < 0 && b == (T)-1) return 0; \
+        return (T)(a % b); \
+    } \
+    RIN_MAYBE_UNUSED static inline void rin_idiv_set_##T(T *a, T b, const char *file, int line) { *a = rin_idiv_##T(*a, b, file, line); } \
+    RIN_MAYBE_UNUSED static inline void rin_irem_set_##T(T *a, T b, const char *file, int line) { *a = rin_irem_##T(*a, b, file, line); }
+RIN_IDIV_DEFINE(i8, u8)
+RIN_IDIV_DEFINE(i16, u16)
+RIN_IDIV_DEFINE(i32, u32)
+RIN_IDIV_DEFINE(i64, u64)
+RIN_IDIV_DEFINE(u8, u8)
+RIN_IDIV_DEFINE(u16, u16)
+RIN_IDIV_DEFINE(u32, u32)
+RIN_IDIV_DEFINE(u64, u64)
+RIN_MAYBE_UNUSED static inline void rin_umul_set_u16(u16 *a, u16 b) { *a = (u16)((u32)*a * (u32)b); }
+
+#define RIN_F2I_DEFINE(T, LOW, MAX, TOO_BIG) \
+    RIN_MAYBE_UNUSED static inline T rin_f2i_##T(double x) { \
+        if (x != x) return 0; \
+        if (x >= (TOO_BIG)) return (T)(MAX); \
+        if (x <= (double)(LOW)) return (T)(LOW); \
+        return (T)x; \
+    }
+RIN_F2I_DEFINE(i8, -128, 127, 128.0)
+RIN_F2I_DEFINE(i16, -32768, 32767, 32768.0)
+RIN_F2I_DEFINE(i32, -2147483647 - 1, 2147483647, 2147483648.0)
+RIN_F2I_DEFINE(i64, -9223372036854775807LL - 1, 9223372036854775807LL, 9223372036854775808.0)
+RIN_F2I_DEFINE(u8, 0, 255, 256.0)
+RIN_F2I_DEFINE(u16, 0, 65535, 65536.0)
+RIN_F2I_DEFINE(u32, 0, 4294967295u, 4294967296.0)
+RIN_F2I_DEFINE(u64, 0, 18446744073709551615ull, 18446744073709551616.0)
+
+/* The same for an expression whose type differs between a generic's instances. */
+#define RIN_WRAP_OP(a, op, b) _Generic((a) op (b), \
+    int: (int)((unsigned)(a) op (unsigned)(b)), \
+    long: (long)((unsigned long)(a) op (unsigned long)(b)), \
+    long long: (long long)((unsigned long long)(a) op (unsigned long long)(b)), \
+    default: (a) op (b))
+#define RIN_DIV_ANY(a, b, name) _Generic((a) / (b), \
+    float: (a) / (b), double: (a) / (b), long double: (a) / (b), \
+    int: rin_##name##_i32((i32)(a), (i32)(b), __FILE__, __LINE__), \
+    unsigned: rin_##name##_u32((u32)(a), (u32)(b), __FILE__, __LINE__), \
+    default: rin_##name##_i64((i64)(a), (i64)(b), __FILE__, __LINE__))
+#define RIN_REM_ANY(a, b) _Generic((a) % (b), \
+    int: rin_irem_i32((i32)(a), (i32)(b), __FILE__, __LINE__), \
+    unsigned: rin_irem_u32((u32)(a), (u32)(b), __FILE__, __LINE__), \
+    default: rin_irem_i64((i64)(a), (i64)(b), __FILE__, __LINE__))
 
 /* `noalias` parameters (docs/noalias-variadic.md). RIN_RESTRICT is C's
    restrict, spelled the way every compiler accepts in C whatever the standard
@@ -153,7 +250,7 @@ RIN_MAYBE_UNUSED static inline u64 rin_range_check(u64 a, u64 b, u64 n, const ch
 #define RIN_NOALIAS_PARAM 1
 #define RIN_NOALIAS_WRITE 2
 #define RIN_NOALIAS_ANY (~(u64)0)
-#ifdef NDEBUG
+#ifdef RIN_NO_BOUNDS_CHECKS
 #define RIN_NOALIAS(...) ((void)0)
 #else
 #include <stdarg.h>

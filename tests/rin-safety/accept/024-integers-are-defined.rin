@@ -1,0 +1,50 @@
+import "std/print.rin"
+
+/* Overflow wraps, a float cast saturates, MIN / -1 wraps, in every build. Sanitizers
+   run over this too, so none of it may reach C's undefined behaviour. */
+level: region;
+big: proc() -> i32 = { return 2147483647; }
+small: proc() -> i32 = { return -2147483647 - 1; }
+minus_one: proc() -> i32 = { return -1; }
+infinite: proc() -> f64 = { x: f64 = 1e300; return x * 1e300; }
+not_a_number: proc() -> f64 = { x: f64 = infinite(); return x - x; }
+
+sum: proc<T>(a: T, b: T) -> T = { return a + b; }
+quot: proc<T>(a: T, b: T) -> T = { return a / b; }
+
+main: proc() -> i32 = {
+    printfmt("{} {} {}\n", big() + 1, small() - 1, big() * 2);
+    printfmt("{} {}\n", -small(), small() / minus_one());
+    printfmt("{}\n", small() % minus_one());
+    x: i32 = big();
+    x += 1;
+    printfmt("{}\n", x);
+    x = small();
+    x -= 1;
+    printfmt("{}\n", x);
+    x = big();
+    x *= 2;
+    printfmt("{}\n", x);
+    x = small();
+    x /= minus_one();
+    printfmt("{}\n", x);
+    x = 1;
+    n: i32 = 40;
+    x shl= n;
+    printfmt("{}\n", x);
+    l: i64 = 9223372036854775807;
+    l += 1;
+    printfmt("{}\n", l);
+    a: u16 = 65535;
+    b: u16 = 65535;
+    printfmt("{}\n", a * b);
+    a *= b;
+    printfmt("{}\n", a);
+    f: f64 = 1e300;
+    printfmt("{} {} {}\n", cast(f, i32), cast(-f, i32), cast(not_a_number(), i32));
+    printfmt("{} {} {}\n", cast(f, u8), cast(-f, u8), cast(300.5, i32));
+    printfmt("{} {}\n", cast(f, u64) > cast(f, u32), cast(infinite(), i64) > 0);
+    printfmt("{} {}\n", sum<i32>(big(), 1), sum<f32>(1.5, 2.0));
+    printfmt("{} {}\n", quot<i32>(small(), minus_one()), quot<f32>(1.0, 2.0));
+    return 0;
+}

@@ -1,0 +1,4 @@
+// expect: promises its noalias parameters overlap nothing
+g: i32 = 0;
+via_global: proc(a: noalias *i32) -> i32 = { a* = 1; g = 2; return a*; }
+main: proc() -> i32 = { return via_global(g&); }

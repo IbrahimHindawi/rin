@@ -714,6 +714,12 @@ struct Expr {
        happen. 0 when unknown, 255 when generic instances disagree. */
     u8 shift_bits;
     u8 shift_signed; // the shifted type is signed: emitted through the unsigned type
+    /* The integer type of an arithmetic expression or a float cast: see arith_note. */
+    u8 arith_code;
+    bool arith_seen;
+    u8 cast_code;
+    bool cast_seen;
+    bool index_stable; // a local nothing can change behind: its slice needs no whole read
     /* `s[a..b]`: the end of a subrange, on an Expr_Index whose index_expr is
        the start. */
     Expr *index_end;
@@ -787,6 +793,8 @@ struct Stmt {
     Expr *lhs;
     Expr *expr;
     TokenKind assign_op;
+    u8 arith_code; // of the place a compound assignment writes: see arith_note
+    bool arith_seen;
     Stmt *for_init;
     Expr *for_cond;
     Stmt *for_step;
@@ -896,6 +904,7 @@ struct ProcDecl {
        not be taken, since a call through a pointer could not be checked. */
     Vec_string8 opens;
     bool answers_for_signature; // has an unsafe block: its body cannot show what it moves
+    bool noalias_contained; // reaches memory only through its parameters and what it allocates
     u64 moves; // bit i: a call through parameter i may move storage; see compute_proc_moves
     /* `proc<T>` is one entry; `proc<T, U, V>` is three. A non-generic proc has
        none. Structs are still single-parameter, so StructDecl keeps a bare
@@ -11163,6 +11172,25 @@ static bool type_is_boolish(TypeExpr *type) {
 /* Width and signedness of an integer type, for the literal and conversion rules.
    False for a type rin does not know the width of, and for the boolean types,
    which convert by truthiness rather than by value -- both are left alone. */
+/* What an expression's type means for the C it becomes. 0: nothing known yet; 1: a
+   float; 255: differs between a generic's instances; otherwise width * 2 + signed. */
+static bool type_int_info(TypeExpr *type, i32 *bits, bool *is_signed);
+static bool type_is_float(TypeExpr *type);
+static void arith_note(u8 *code, bool *seen, TypeExpr *type) {
+    i32 bits = 0;
+    bool is_signed = false;
+    u8 now = 0;
+    /* C's long is 32 bits on Windows and 64 elsewhere, so no fixed width speaks for it. */
+    bool c_long = type && type->kind == Type_Name && (string8_equals_cstr(&type->name, "long") ||
+                                                      string8_equals_cstr(&type->name, "LONG") ||
+                                                      string8_equals_cstr(&type->name, "ULONG"));
+    if (type && type_is_float(type)) now = 1;
+    else if (!c_long && type_int_info(type, &bits, &is_signed)) now = (u8)(bits * 2 + (is_signed ? 1 : 0));
+    if (now == 0) return;
+    if (!*seen) { *code = now; *seen = true; }
+    else if (*code != now) *code = 255;
+}
+
 static bool type_int_info(TypeExpr *type, i32 *bits, bool *is_signed) {
     if (!type || type->kind != Type_Name) return false;
     static const struct { const char *name; i32 bits; bool is_signed; } table[] = {
@@ -15611,6 +15639,104 @@ static void compute_proc_moves(Program *prog, memops_arena *arena) {
     }
 }
 
+/* ---- noalias, which C's restrict makes a promise the optimiser relies on. A proc is
+   contained when its body reaches memory only through its parameters and what it
+   allocates: no global that could be written, no unsafe block, and every callee
+   contained or C with no pointers. If its parameters also hold no pointers of their
+   own, then the parameters are the only paths to that memory, and the overlap check
+   on entry covers them. Any other noalias proc is a promise the checker cannot
+   verify, so it is called from inside 'unsafe { }'. */
+typedef struct NoaliasWalk { Program *prog; ProcDecl *proc; bool *clean; } NoaliasWalk;
+
+static void noalias_visit_expr(Expr *e, void *ctx, memops_arena *arena) {
+    NoaliasWalk *w = (NoaliasWalk *)ctx;
+    if (!e) return;
+    if (e->kind == Expr_Name) {
+        /* A parameter hides a global for the whole body; a local only from where it is declared. */
+        if (moves_param_index(w->proc, e->name) >= 0) return;
+        for (i32 i = 0; i < w->prog->globals.length; i++) {
+            Stmt *g = (Stmt *)w->prog->globals.data[i];
+            if (string8_equals(&g->name, &e->name) && !(g->type && g->type->is_const)) *w->clean = false;
+        }
+        return;
+    }
+    if (e->kind != Expr_Call || call_is_new(e)) return;
+    if (e->base) { *w->clean = false; return; }
+    if (call_name_is_builtin(e->name)) return;
+    ProcDecl *decl = lookup_proc_decl(w->prog, e->name);
+    if (!decl || decl->is_unsafe || decl->answers_for_signature || decl->is_variadic) { *w->clean = false; return; }
+    if (decl->is_external ? proc_touches_pointers(w->prog, decl) : !decl->noalias_contained) *w->clean = false;
+}
+
+static void compute_proc_noalias(Program *prog, memops_arena *arena) {
+    if (!g_safety) return;
+    for (i32 i = 0; i < prog->procs.length; i++) {
+        ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+        p->noalias_contained = !p->is_external && !p->is_unsafe && !p->answers_for_signature && !p->is_variadic;
+    }
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (i32 i = 0; i < prog->procs.length; i++) {
+            ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+            if (!p->noalias_contained) continue;
+            bool clean = true;
+            NoaliasWalk w = { prog, p, &clean };
+            for (i32 j = 0; j < p->body.length; j++) stmt_walk((Stmt *)p->body.data[j], noalias_visit_expr, null, &w, arena);
+            if (!clean) { p->noalias_contained = false; changed = true; }
+        }
+    }
+}
+
+static bool proc_noalias_needs_unsafe(Program *prog, ProcDecl *decl, memops_arena *arena) {
+    bool any = false;
+    for (i32 i = 0; i < decl->params.length; i++) {
+        TypeExpr *t = ((Param *)decl->params.data[i])->type;
+        if (t && t->is_noalias) any = true;
+    }
+    if (!any) return false;
+    if (!decl->noalias_contained) return true;
+    for (i32 i = 0; i < decl->params.length; i++) {
+        TypeExpr *t = resolve_alias_type(prog, ((Param *)decl->params.data[i])->type);
+        if (!t || t->kind == Type_Region) continue;
+        TypeExpr *elem = type_slice_elem(t);
+        if (t->kind == Type_Ptr) {
+            if (t->is_raw) return true;
+            elem = t->elem;
+        }
+        if (!type_is_plain_data(prog, elem ? elem : t, arena, 0)) return true;
+    }
+    return false;
+}
+
+/* `f(x&, x&)`: the same place twice, where one of them is noalias and may be written. */
+static string8 noalias_arg_root(Expr *arg) {
+    if (arg && arg->kind == Expr_Addr) arg = arg->inner;
+    return arg && arg->kind == Expr_Name ? arg->name : (string8){0};
+}
+
+static void noalias_check_same_args(Program *prog, ProcDecl *decl, Expr *call) {
+    for (i32 i = 0; i < decl->params.length && i < call->args.length; i++) {
+        string8 a = noalias_arg_root((Expr *)call->args.data[i]);
+        if (a.length == 0) continue;
+        TypeExpr *ti = resolve_alias_type(prog, ((Param *)decl->params.data[i])->type);
+        if (!ti) continue;
+        TypeExpr *ei = type_slice_elem(ti) ? type_slice_elem(ti) : (ti->kind == Type_Ptr ? ti->elem : null);
+        if (!ei) continue;
+        for (i32 j = i + 1; j < decl->params.length && j < call->args.length; j++) {
+            string8 b = noalias_arg_root((Expr *)call->args.data[j]);
+            if (b.length == 0 || !string8_equals(&a, &b)) continue;
+            TypeExpr *tj = resolve_alias_type(prog, ((Param *)decl->params.data[j])->type);
+            if (!tj) continue;
+            TypeExpr *ej = type_slice_elem(tj) ? type_slice_elem(tj) : (tj->kind == Type_Ptr ? tj->elem : null);
+            if (!ej || !(ti->is_noalias || tj->is_noalias) || (ei->is_const && ej->is_const)) continue;
+            type_error_message("the same memory is passed twice to a proc that promises its noalias parameter does not "
+                               "overlap the others", call->line, call->col);
+            return;
+        }
+    }
+}
+
 /* ---- Borrowed pointers taken from containers. See docs/regions.md.
 
    A borrowed `*T` or `[]T` local taken from a container -- `vec<T>at(w*.hp, i)`,
@@ -16661,6 +16787,14 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
                      "'%.*s' is an unsafe proc; it may be called only inside 'unsafe { }', or from a proc marked [unsafe]",
                      (int)decl->name.length, decl->name.data);
             type_error_message(message, call->line, call->col);
+        } else if (proc_noalias_needs_unsafe(prog, decl, arena)) {
+            char message[640];
+            snprintf(message, sizeof(message),
+                     "'%.*s' promises its noalias parameters overlap nothing, and the checker cannot show that: it must take "
+                     "only plain data, touch no globals, and call only procs that do the same. Call it inside 'unsafe { }', "
+                     "where the promise is yours",
+                     (int)decl->name.length, decl->name.data);
+            type_error_message(message, call->line, call->col);
         } else if (decl->is_external && proc_touches_pointers(prog, decl)) {
             char message[512];
             snprintf(message, sizeof(message),
@@ -16670,6 +16804,7 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
             type_error_message(message, call->line, call->col);
         }
     }
+    if (g_safe_body) noalias_check_same_args(prog, decl, call);
     if (decl->is_generic) {
         i32 wanted = decl->type_params.length > 0 ? decl->type_params.length : 1;
         if (call->type_args.length != wanted) {
@@ -16839,6 +16974,10 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         /* A proc used as a value: a call through the pointer could not be
            checked against the regions open at that point. */
         ProcDecl *as_value = lookup_proc_decl(prog, e->name);
+        if (as_value && g_safe_body && proc_noalias_needs_unsafe(prog, as_value, arena)) {
+            region_error("'%.*s' has noalias parameters the checker cannot vouch for, and a call through a pointer would "
+                         "skip that: %.*s it is called by name from inside 'unsafe { }'", e->name, (string8){0}, e->line, e->col);
+        }
         if (as_value && g_safe_body && (as_value->is_unsafe || (as_value->is_external && proc_touches_pointers(prog, as_value)))) {
             region_error("'%.*s' is %.*s, and a call through a pointer would not be checked; it is called by name from "
                          "inside 'unsafe { }'", e->name, as_value->is_unsafe ? string8_from_cstr(arena, "an unsafe proc")
@@ -16872,6 +17011,17 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
             type_error_cast(prog, cast_type, actual, e->line, e->col, arena);
         } else {
             lit_into(prog, cast_type, e->inner, false, scope, arena);
+        }
+        {
+            /* From a float, the target decides how it saturates. An enum holds an i32. */
+            TypeExpr *ra = resolve_alias_type(prog, actual);
+            TypeExpr *rc = resolve_alias_type(prog, cast_type);
+            if (ra && rc && type_is_float(ra)) {
+                static TypeExpr enum_target;
+                bool is_enum = rc->kind == Type_Name && !type_is_float(rc) && lookup_enum_decl(prog, rc->name) != null;
+                if (is_enum) { enum_target.kind = Type_Name; enum_target.name = string8_from_cstr(arena, "i32"); }
+                arith_note(&e->cast_code, &e->cast_seen, is_enum ? &enum_target : rc);
+            }
         }
         return;
     }
@@ -16908,6 +17058,7 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
             if (!inner_kind && type_int_info(inner, &bits, &is_signed) && bits < 32) {
                 narrow_set_type(prog, e, inner);
             }
+            if (!inner_kind && e->op == Token_Minus) arith_note(&e->arith_code, &e->arith_seen, inner);
         }
         return;
     }
@@ -16915,6 +17066,12 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         type_check_expr(e->base, scope, prog, arena);
         type_check_expr(e->index_expr, scope, prog, arena);
         type_check_expr(e->index_end, scope, prog, arena);
+        if (e->base && e->base->kind == Expr_Name && !array_string8_contains(&g_addr_taken, e->base->name)) {
+            e->index_stable = type_scope_lookup(scope, e->base->name) != null;
+            for (i32 i = 0; i < prog->globals.length; i++) {
+                if (string8_equals(&((Stmt *)prog->globals.data[i])->name, &e->base->name)) e->index_stable = false;
+            }
+        }
         TypeExpr *base = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
         if (base && base->kind != Type_Ptr && base->kind != Type_Array && !type_slice_elem(base)) {
             type_error_index_base(base, e->line, e->col, arena);
@@ -17115,6 +17272,14 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
     if ((e->op == Token_Plus || e->op == Token_Minus) &&
         (type_is_one_pointer(left) || type_is_one_pointer(right))) {
         pointer_one_violation("pointer arithmetic", type_is_one_pointer(left) ? left : right, e->line, e->col);
+    }
+
+    if ((e->op == Token_Plus || e->op == Token_Minus || e->op == Token_Star || e->op == Token_Slash || e->op == Token_Percent) &&
+        left->kind != Type_Ptr && left->kind != Type_Array && right->kind != Type_Ptr && right->kind != Type_Array) {
+        /* Two literals, sizeof among them, stay one C constant of C's own type. */
+        if (!(left_kind != Lit_None && right_kind != Lit_None)) {
+            arith_note(&e->arith_code, &e->arith_seen, left_kind == Lit_Int ? right : left);
+        }
     }
 
     bool ok = false;
@@ -17338,6 +17503,7 @@ static void type_check_stmt(
                                s->expr->kind != Expr_ZeroInit && s->expr->kind != Expr_InitList && s->expr->kind != Expr_CompoundInit;
             if (er && er->kind == Type_Array) s->type = expected;
         }
+        if (s->assign_op != Token_Equal) arith_note(&s->arith_code, &s->arith_seen, resolve_alias_type(prog, expected));
         safety_check_carrier_value("an assignment", prog, expected, arena, s->line, s->col);
         if (g_safe_body && s->lhs && s->lhs->kind != Expr_Name) {
             if (type_is_checked_pointer(prog, expected) && type_region_of(prog, expected).length == 0) {
@@ -17969,6 +18135,7 @@ static void type_check_program(Program *prog, memops_arena *arena) {
     g_safe_body = g_safety;
     compute_proc_opens(prog, arena);
     compute_proc_moves(prog, arena);
+    compute_proc_noalias(prog, arena);
     {
         /* `permanent`, the region that is open for the whole program. */
         TypeExpr *perm = type_new(arena, Type_Region);
@@ -18993,6 +19160,57 @@ static void emit_binary_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub
         if (narrow) emit_cstr(arena, out, ")");
         return;
     }
+    if (e->arith_code > 1) {
+        bool add_like = e->op == Token_Plus || e->op == Token_Minus || e->op == Token_Star;
+        bool div_like = e->op == Token_Slash || e->op == Token_Percent;
+        ConstVal divisor = div_like ? const_eval(e->right) : (ConstVal){0};
+        bool safe_divisor = divisor.ok && !divisor.is_float && !divisor.big && divisor.value != 0 && divisor.value != -1;
+        i32 bits = e->arith_code / 2;
+        bool is_signed = e->arith_code & 1;
+        const char *op_text = e->op == Token_Plus ? " + " : e->op == Token_Minus ? " - " : " * ";
+        char buf[96];
+        if (add_like && e->arith_code == 255) {
+            emit_cstr(arena, out, "RIN_WRAP_OP(");
+            emit_expr(arena, out, e->left, sub, generic_name);
+            emit_cstr(arena, out, e->op == Token_Plus ? ", +, " : e->op == Token_Minus ? ", -, " : ", *, ");
+            emit_expr(arena, out, e->right, sub, generic_name);
+            emit_cstr(arena, out, ")");
+            if (wrap || narrow) emit_cstr(arena, out, ")");
+            if (narrow) emit_cstr(arena, out, ")");
+            return;
+        }
+        if (add_like && ((is_signed && bits >= 32) || (!is_signed && bits == 16 && e->op == Token_Star))) {
+            /* Through the unsigned type, which wraps; a u16 product would be computed in int. */
+            i32 through = bits == 16 ? 32 : bits;
+            snprintf(buf, sizeof(buf), "((%c%d)((u%d)(", is_signed ? 'i' : 'u', bits, through);
+            emit_cstr(arena, out, buf);
+            emit_expr(arena, out, e->left, sub, generic_name);
+            snprintf(buf, sizeof(buf), ")%s(u%d)(", op_text, through);
+            emit_cstr(arena, out, buf);
+            emit_expr(arena, out, e->right, sub, generic_name);
+            emit_cstr(arena, out, ")))");
+            if (wrap || narrow) emit_cstr(arena, out, ")");
+            if (narrow) emit_cstr(arena, out, ")");
+            return;
+        }
+        if (div_like && !safe_divisor) {
+            const char *name = e->op == Token_Slash ? "idiv" : "irem";
+            if (e->arith_code == 255) {
+                snprintf(buf, sizeof(buf), e->op == Token_Slash ? "RIN_DIV_ANY(" : "RIN_REM_ANY(");
+            } else {
+                /* Narrower than int, C computes it in int, where only zero is a problem. */
+                snprintf(buf, sizeof(buf), "rin_%s_%c%d(", name, (is_signed || bits < 32) ? 'i' : 'u', bits < 32 ? 32 : bits);
+            }
+            emit_cstr(arena, out, buf);
+            emit_expr(arena, out, e->left, sub, generic_name);
+            emit_cstr(arena, out, ", ");
+            emit_expr(arena, out, e->right, sub, generic_name);
+            emit_cstr(arena, out, e->arith_code == 255 ? (e->op == Token_Slash ? ", idiv)" : ")") : ", __FILE__, __LINE__)");
+            if (wrap || narrow) emit_cstr(arena, out, ")");
+            if (narrow) emit_cstr(arena, out, ")");
+            return;
+        }
+    }
     emit_expr(arena, out, e->left, sub, generic_name);
     emit_binary_op(arena, out, e->op);
     bool masked_shift = (e->op == Token_Keyword_Shl || e->op == Token_Keyword_Shr) &&
@@ -19010,6 +19228,70 @@ static void emit_binary_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub
     }
     if (wrap || narrow) emit_cstr(arena, out, ")");
     if (narrow) emit_cstr(arena, out, ")");
+}
+
+/* `x += y` and friends where C leaves the result undefined: signed overflow, a
+   division by zero, a shift by the width. The place is written once: a pointer to the
+   unsigned type may alias the signed one. False when the plain C means the same. */
+static bool emit_defined_compound(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, string8 generic_name) {
+    if (s->assign_op == Token_Equal || !s->expr || s->arith_code <= 1 || s->arith_code == 255) return false;
+    i32 bits = s->arith_code / 2;
+    bool is_signed = s->arith_code & 1;
+    char buf[96];
+    TokenKind op = s->assign_op;
+#define EMIT_PLACE() do { if (s->lhs) emit_expr(arena, out, s->lhs, sub, generic_name); else emit_c_ident(arena, out, s->name); } while (0)
+    if (op == Token_PlusEqual || op == Token_MinusEqual || op == Token_StarEqual) {
+        if (!is_signed && bits == 16 && op == Token_StarEqual) {
+            emit_cstr(arena, out, "rin_umul_set_u16((u16 *)&(");
+            EMIT_PLACE();
+            emit_cstr(arena, out, "), (u16)(");
+            emit_expr_value(arena, out, s->expr, sub, generic_name);
+            emit_cstr(arena, out, "))");
+            return true;
+        }
+        if (!is_signed || bits < 32) return false;
+        snprintf(buf, sizeof(buf), "*(u%d *)&(", bits);
+        emit_cstr(arena, out, buf);
+        EMIT_PLACE();
+        emit_cstr(arena, out, ")");
+        emit_assign_op(arena, out, op);
+        snprintf(buf, sizeof(buf), "(u%d)(", bits);
+        emit_cstr(arena, out, buf);
+        emit_expr_value(arena, out, s->expr, sub, generic_name);
+        emit_cstr(arena, out, ")");
+        return true;
+    }
+    if (op == Token_SlashEqual || op == Token_PercentEqual) {
+        ConstVal divisor = const_eval(s->expr);
+        if (divisor.ok && !divisor.is_float && !divisor.big && divisor.value != 0 && divisor.value != -1) return false;
+        snprintf(buf, sizeof(buf), "rin_%s_set_%c%d((%c%d *)&(", op == Token_SlashEqual ? "idiv" : "irem",
+                 is_signed ? 'i' : 'u', bits, is_signed ? 'i' : 'u', bits);
+        emit_cstr(arena, out, buf);
+        EMIT_PLACE();
+        snprintf(buf, sizeof(buf), "), (%c%d)(", is_signed ? 'i' : 'u', bits);
+        emit_cstr(arena, out, buf);
+        emit_expr_value(arena, out, s->expr, sub, generic_name);
+        emit_cstr(arena, out, "), __FILE__, __LINE__)");
+        return true;
+    }
+    if (op == Token_ShlEqual || op == Token_ShrEqual) {
+        if (op == Token_ShlEqual && is_signed) {
+            snprintf(buf, sizeof(buf), "*(u%d *)&(", bits);
+            emit_cstr(arena, out, buf);
+            EMIT_PLACE();
+            emit_cstr(arena, out, ")");
+        } else {
+            EMIT_PLACE();
+        }
+        emit_assign_op(arena, out, op);
+        emit_cstr(arena, out, "((");
+        emit_expr_value(arena, out, s->expr, sub, generic_name);
+        snprintf(buf, sizeof(buf), ") & %d)", bits - 1);
+        emit_cstr(arena, out, buf);
+        return true;
+    }
+#undef EMIT_PLACE
+    return false;
 }
 
 static void emit_expr_condition(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
@@ -19096,6 +19378,30 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
 static void emit_range(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
     TypeExpr *type = (e->coerce_to && !e->coerce_varies) ? e->coerce_to : range_type_for(e, sub, arena);
     bool slice_base = e->index_base == IndexBase_Slice;
+    if (type && e->index_checked && !e->index_varies) {
+        /* Each bound once, and the slice whole: what is checked is what is built. */
+        string8 mangled = type_mangle(arena, type, sub);
+        emit_cstr(arena, out, "(*(");
+        emit_string8(arena, out, mangled);
+        emit_cstr(arena, out, slice_base ? " *)rin_slice_range(&(" : " *)rin_array_range((");
+        emit_expr(arena, out, e->base, sub, generic_name);
+        emit_cstr(arena, out, "), (u64)(");
+        emit_expr(arena, out, e->index_expr, sub, generic_name);
+        emit_cstr(arena, out, "), (u64)(");
+        emit_expr(arena, out, e->index_end, sub, generic_name);
+        emit_cstr(arena, out, "), ");
+        if (!slice_base) {
+            emit_cstr(arena, out, "(u64)(");
+            emit_string8(arena, out, e->index_count);
+            emit_cstr(arena, out, "), ");
+        }
+        emit_cstr(arena, out, "sizeof(*");
+        emit_postfix_base(arena, out, e->base, sub, generic_name);
+        emit_cstr(arena, out, slice_base ? ".data), &(" : "), &(");
+        emit_string8(arena, out, mangled);
+        emit_cstr(arena, out, "){0}, __FILE__, __LINE__))");
+        return;
+    }
     emit_cstr(arena, out, "((");
     if (type) emit_string8(arena, out, type_mangle(arena, type, sub));
     emit_cstr(arena, out, "){ ");
@@ -19267,7 +19573,15 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
         emit_cstr(arena, out, "((");
         emit_type(arena, out, e->cast_type, sub);
         emit_cstr(arena, out, ")(");
+        ConstVal literal = const_eval(e->inner);
+        bool saturate = e->cast_code > 1 && e->cast_code != 255 && !literal.ok;
+        if (saturate) {
+            char buf[48];
+            snprintf(buf, sizeof(buf), "rin_f2i_%c%d((double)(", (e->cast_code & 1) ? 'i' : 'u', e->cast_code / 2);
+            emit_cstr(arena, out, buf);
+        }
         emit_expr(arena, out, e->inner, sub, generic_name);
+        if (saturate) emit_cstr(arena, out, "))");
         emit_cstr(arena, out, "))");
         return;
     }
@@ -19279,6 +19593,16 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
     }
     if (e->kind == Expr_Unary) {
         bool narrow = emit_narrow_open(arena, out, e);
+        if (e->op == Token_Minus && e->arith_code > 1 && e->arith_code != 255 && (e->arith_code & 1) && e->arith_code / 2 >= 32) {
+            char buf[48];
+            i32 bits = e->arith_code / 2;
+            snprintf(buf, sizeof(buf), "((i%d)((u%d)0 - (u%d)(", bits, bits, bits);
+            emit_cstr(arena, out, buf);
+            emit_expr(arena, out, e->inner, sub, generic_name);
+            emit_cstr(arena, out, ")))");
+            if (narrow) emit_cstr(arena, out, ")");
+            return;
+        }
         if (e->op == Token_Bang) emit_cstr(arena, out, "!");
         else if (e->op == Token_Minus) emit_cstr(arena, out, "-");
         else if (e->op == Token_Tilde) emit_cstr(arena, out, "~");
@@ -19296,6 +19620,18 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
         bool known = !e->index_varies && e->index_base != IndexBase_Unknown;
         bool slice_base = known && e->index_base == IndexBase_Slice;
         bool checked = known && e->index_checked;
+        if (slice_base && checked && !e->index_stable) {
+            emit_cstr(arena, out, "(*(__typeof__(");
+            emit_postfix_base(arena, out, e->base, sub, generic_name);
+            emit_cstr(arena, out, ".data))rin_slice_at(&(");
+            emit_expr(arena, out, e->base, sub, generic_name);
+            emit_cstr(arena, out, "), (u64)(");
+            emit_expr(arena, out, e->index_expr, sub, generic_name);
+            emit_cstr(arena, out, "), sizeof(*");
+            emit_postfix_base(arena, out, e->base, sub, generic_name);
+            emit_cstr(arena, out, ".data), __FILE__, __LINE__))");
+            return;
+        }
         emit_postfix_base(arena, out, e->base, sub, generic_name);
         emit_cstr(arena, out, slice_base ? ".data[" : "[");
         if (checked) emit_cstr(arena, out, "RIN_INDEX(");
@@ -19595,6 +19931,10 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
             emit_cstr(arena, out, ");\n");
             return;
         }
+        if (emit_defined_compound(arena, out, s, sub, generic_name)) {
+            emit_cstr(arena, out, ";\n");
+            return;
+        }
         if (s->lhs) emit_expr(arena, out, s->lhs, sub, generic_name);
         else emit_c_ident(arena, out, s->name);
         emit_assign_op(arena, out, s->assign_op);
@@ -19631,7 +19971,8 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
         }
         emit_cstr(arena, out, "; ");
         if (s->for_step) {
-            if (s->for_step->kind == Stmt_Assign) {
+            if (s->for_step->kind == Stmt_Assign && emit_defined_compound(arena, out, s->for_step, sub, generic_name)) {
+            } else if (s->for_step->kind == Stmt_Assign) {
                 if (s->for_step->lhs) emit_expr(arena, out, s->for_step->lhs, sub, generic_name);
                 else emit_string8(arena, out, s->for_step->name);
                 emit_assign_op(arena, out, s->for_step->assign_op);
