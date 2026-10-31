@@ -1,0 +1,12 @@
+// std/core.h:322: if (n > 16) n = 16. Parameters past the 16th are never compared. y and z overlap
+// the noalias x and nothing stops it. The optimised build returns 1 where memory holds 2.
+f: proc(a0: []i32, a1: []i32, a2: []i32, a3: []i32, a4: []i32, a5: []i32, a6: []i32, a7: []i32, a8: []i32, a9: []i32, a10: []i32, a11: []i32, a12: []i32, a13: []i32, a14: []i32, x: noalias []i32, y: []i32, z: []i32) -> i32 = {
+    x[0] = 1;
+    y[0] = 2;
+    return x[0];
+}
+main: proc() -> i32 = {
+    xs: [4]i32 = {};
+    e: []i32 = xs[2..4];
+    return f(e, e, e, e, e, e, e, e, e, e, e, e, e, e, e, xs[0..2], xs[0..2], xs[0..2]);
+}

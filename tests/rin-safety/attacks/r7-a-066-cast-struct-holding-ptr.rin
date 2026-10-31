@@ -1,0 +1,10 @@
+// type_mentions_pointer stops at a struct.
+import "std/print.rin"
+S: struct = { p: *i32 in permanent; }
+U: struct = { x: u64; }
+main: proc() -> i32 = {
+    u: U = { .x = 16 };
+    s: S = cast(u, S);
+    printfmt("{}\n", s.p*);
+    return 0;
+}

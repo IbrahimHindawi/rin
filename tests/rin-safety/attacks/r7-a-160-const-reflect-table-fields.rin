@@ -1,0 +1,8 @@
+// A pointer into a const table with an array, if any; and a *const char array.
+L: struct = { t: [4]c8; }
+G: const L = { .t = { 'a', 'b', 'c', 0 } };
+w: proc(x: [4]c8) -> void = { x[3] = 'z'; }
+main: proc() -> i32 = {
+    w(G.t);
+    return 0;
+}

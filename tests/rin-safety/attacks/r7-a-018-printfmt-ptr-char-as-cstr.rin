@@ -1,0 +1,8 @@
+// printfmt_spec_for_type gives %s to any pointer to c8, including a checked pointer to one char.
+import "std/print.rin"
+main: proc() -> i32 = {
+    c: char = 'x';
+    p: *char = c&;
+    printfmt("{}\n", p);
+    return 0;
+}

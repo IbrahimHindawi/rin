@@ -1,0 +1,7 @@
+// printf "%.5c": C says precision on %c is undefined.
+import "std/print.rin"
+main: proc() -> i32 = {
+    c: char = 'x';
+    printfmt("{:.5}\n", c);
+    return 0;
+}

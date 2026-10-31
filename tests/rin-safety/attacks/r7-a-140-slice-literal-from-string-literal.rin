@@ -1,0 +1,7 @@
+// A string literal is the raw data of a slice with any length.
+import "std/print.rin"
+main: proc() -> i32 = {
+    s: []const char = { "abc", 100000 };
+    printfmt("{}\n", s[99999]);
+    return 0;
+}

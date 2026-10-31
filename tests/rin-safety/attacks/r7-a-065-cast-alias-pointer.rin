@@ -1,0 +1,7 @@
+import "std/print.rin"
+P: alias = *i32;
+main: proc() -> i32 = {
+    p: P = cast(16, P);
+    printfmt("{}\n", p*);
+    return 0;
+}

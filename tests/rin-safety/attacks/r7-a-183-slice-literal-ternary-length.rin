@@ -1,0 +1,8 @@
+// A negative length and a call in the literal.
+import "std/print.rin"
+n: proc() -> u64 = { return 100000; }
+main: proc() -> i32 = {
+    s: []const char = { "abc", n() };
+    for (i: u64 = 0; i < s.length; i += 1) { printfmt("{}", s[i]); }
+    return 0;
+}

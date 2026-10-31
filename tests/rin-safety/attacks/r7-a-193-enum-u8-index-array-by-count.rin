@@ -1,0 +1,8 @@
+import "std/print.rin"
+E: enum[u8] = { a, b, count }
+t: [E.count]i32 = {};
+main: proc() -> i32 = {
+    e: E = cast(255, E);
+    printfmt("{}\n", t[e]);
+    return 0;
+}

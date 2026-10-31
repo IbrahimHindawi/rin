@@ -1,0 +1,3 @@
+// expect: belongs to rin's runtime
+rin_region_stack_top: i32;
+main: proc() -> i32 = { rin_region_stack_top = -5; return 0; }

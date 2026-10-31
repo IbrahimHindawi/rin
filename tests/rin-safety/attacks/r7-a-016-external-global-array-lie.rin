@@ -1,0 +1,8 @@
+// A global with no initializer is C's; nothing checks its length.
+import "std/print.rin"
+stdout: [100000]FILE;
+main: proc() -> i32 = {
+    p: *FILE = stdout[99999]&;
+    x: FILE = p*;
+    return 0;
+}

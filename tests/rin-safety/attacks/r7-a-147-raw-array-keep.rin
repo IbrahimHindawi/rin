@@ -1,0 +1,13 @@
+// Array of raw pointers as a local, "as harmless as a raw pointer local".
+import "std/print.rin"
+import "std/fmt.rin"
+level: region;
+main: proc() -> i32 = {
+    k: [1]^const c8 = { "x" };
+    level: region = {
+        f: *fmt in level = fmt_make(level, 4096);
+        k[0] = fmt_text(f);
+    }
+    print_cstr(k[0]);
+    return 0;
+}

@@ -1,0 +1,9 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [2]i32 = { 1, 2 };
+    t: []i32 = a;
+    s: []i32 = a;
+    s = { t.data, 100000 };
+    s[99999] = 7;
+    return 0;
+}

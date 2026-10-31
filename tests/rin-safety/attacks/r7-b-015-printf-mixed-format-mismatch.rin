@@ -1,0 +1,8 @@
+// printf("%" PRIu64 "\n", (rin_idiv_i32(c, d, ...))): an int where the format reads a u64.
+import "std/print.rin"
+main: proc() -> i32 = {
+    c: i32 = -7;
+    d: u64 = 2;
+    printfmt("{}\n", c / d);
+    return 0;
+}

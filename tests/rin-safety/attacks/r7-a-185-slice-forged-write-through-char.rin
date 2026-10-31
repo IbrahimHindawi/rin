@@ -1,0 +1,12 @@
+// Writable data needs a raw char without const: vec<T>resize wants an arena; fmt's data.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 8);
+        s: []char in level = { .data = f*.data, .length = 100000000 };
+        s[99999999] = 'x';
+    }
+    return 0;
+}

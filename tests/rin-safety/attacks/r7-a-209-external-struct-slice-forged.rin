@@ -1,0 +1,6 @@
+// External struct with a slice field; {} then length set from safe code (not the slice's own file).
+import "std/print.rin"
+inner: struct[external] = {}
+main: proc() -> i32 = {
+    return 0;
+}

@@ -1,0 +1,14 @@
+// Same through a slice field: forge a length.
+import "std/print.rin"
+level: region;
+inner: struct = { a: u64; b: u64; }
+inner2: struct = { s: []i32 in level; }
+u: union = { x: inner; s: inner2; }
+main: proc() -> i32 = {
+    level: region = {
+        v: u = {};
+        v.x.a = 16; v.x.b = 100000;
+        printfmt("{}\n", v.s.s[9999]);
+    }
+    return 0;
+}

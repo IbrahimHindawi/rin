@@ -1,0 +1,8 @@
+import "std/print.rin"
+E: enum = { one = 1 }
+f: proc(E_one: u64, a: [E.one]i32, i: u64) -> i32 = { return a[i]; }
+main: proc() -> i32 = {
+    b: [E.one]i32 = {};
+    printfmt("{}\n", f(100000, b, 99999));
+    return 0;
+}

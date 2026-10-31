@@ -1,0 +1,12 @@
+// Left operand i32, right i64: the result type is i64, the arithmetic is through u32.
+// Expected 4294967297 4294967296 -4294967295, gets 1 0 1.
+import "std/print.rin"
+main: proc() -> i32 = {
+    i: i32 = 1;
+    d: i64 = 0x100000000;
+    x: i64 = i + d;
+    y: i64 = i * d;
+    z: i64 = i - d;
+    printfmt("{} {} {}\n", x, y, z);
+    return 0;
+}

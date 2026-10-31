@@ -1,0 +1,9 @@
+// A struct whose member is an external struct with a non-null, nested in a rin struct.
+import "std/print.rin"
+rin_slice_raw: struct[external] = { data: *u8 in permanent; length: u64; }
+O: struct = { r: rin_slice_raw; }
+main: proc() -> i32 = {
+    o: O = {};
+    printfmt("{}\n", o.r.data*);
+    return 0;
+}

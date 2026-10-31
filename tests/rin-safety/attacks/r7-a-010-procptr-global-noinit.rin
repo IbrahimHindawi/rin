@@ -1,0 +1,6 @@
+// A global with no initializer is the one C owns; here rin's own global of proc pointer type zeroed.
+g: *proc() -> void = {};
+main: proc() -> i32 = {
+    g();
+    return 0;
+}

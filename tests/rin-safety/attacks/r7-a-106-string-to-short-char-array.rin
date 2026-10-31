@@ -1,0 +1,6 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [2]char = "abcdefgh";
+    printfmt("{}\n", cstr_of(a));
+    return 0;
+}

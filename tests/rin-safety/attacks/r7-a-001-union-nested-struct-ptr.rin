@@ -1,0 +1,14 @@
+// A union whose member is a struct holding a pointer. type_mentions_pointer does not look inside structs.
+import "std/print.rin"
+level: region;
+inner: struct = { p: *i32 in level; }
+u: union = { x: u64; s: inner; }
+main: proc() -> i32 = {
+    level: region = {
+        q: *i32 in level = new<i32>(level);
+        v: u = { .s = { .p = q } };
+        v.x = 16;
+        printfmt("{}\n", v.s.p*);
+    }
+    return 0;
+}

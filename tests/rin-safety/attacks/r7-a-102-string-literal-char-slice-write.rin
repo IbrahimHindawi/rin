@@ -1,0 +1,5 @@
+main: proc() -> i32 = {
+    s: []char = "abc";
+    s[0] = 'x';
+    return 0;
+}

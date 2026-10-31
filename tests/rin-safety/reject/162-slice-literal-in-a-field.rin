@@ -1,0 +1,6 @@
+// expect: a slice's pointer and length
+H: struct = { s: []i32 in permanent; }
+main: proc() -> i32 = {
+    h: *H in permanent = new<H>(permanent, { .s = { .length = 8 } });
+    return h*.s[7];
+}

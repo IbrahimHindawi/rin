@@ -1,0 +1,4 @@
+main: proc(p: *i32) -> *i32 = {
+    p* = 1;
+    return p;
+}

@@ -1,0 +1,13 @@
+// rin_idiv_i32(u, big): the double converts implicitly to the i32 parameter, undefined in C for
+// 1e300, with no rin_f2i in the way. k / 2.5 is rin_idiv_u64(k, 2.5): 4, not 3.6.
+import "std/print.rin"
+main: proc() -> i32 = {
+    u: u8 = 3;
+    big: f64 = 1e300;
+    r: f64 = u / big;
+    k: u64 = 9;
+    printfmt("{}\n", r);
+    s: f64 = k / 2.5;
+    printfmt("{}\n", s);
+    return 0;
+}

@@ -1,0 +1,7 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    s: []const char = { "abc", 100000 };
+    t: []const char = s[90000..99999];
+    printfmt("{}\n", t[0]);
+    return 0;
+}

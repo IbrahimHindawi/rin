@@ -1,0 +1,12 @@
+// The union-nested-struct confusion, one level deeper: union inside a struct field.
+import "std/print.rin"
+inner: struct = { p: *i32 in permanent; }
+u: union = { x: u64; s: inner; }
+O: struct = { u: u; n: i32; }
+main: proc() -> i32 = {
+    q: *i32 in permanent = new<i32>(permanent, 7);
+    o: O = { .u = { .s = { .p = q } }, .n = 1 };
+    o.u.x = 16;
+    printfmt("{}\n", o.u.s.p*);
+    return 0;
+}

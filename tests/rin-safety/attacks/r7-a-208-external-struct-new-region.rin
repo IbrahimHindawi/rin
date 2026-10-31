@@ -1,0 +1,11 @@
+import "std/print.rin"
+level: region;
+rin_slice_raw: struct[external] = { data: *u8 in level; length: u64; }
+main: proc() -> i32 = {
+    level: region = {
+        o: *rin_slice_raw in level = new<rin_slice_raw>(level);
+        o*.length = 1;
+        printfmt("{}\n", o*.data*);
+    }
+    return 0;
+}

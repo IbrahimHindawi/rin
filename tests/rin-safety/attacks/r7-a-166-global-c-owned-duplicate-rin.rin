@@ -1,0 +1,8 @@
+// Two declarations of a global, one C-owned.
+import "std/print.rin"
+g: [1]i32 = { 1 };
+g: [100000]i32;
+main: proc() -> i32 = {
+    printfmt("{}\n", g[99999]);
+    return 0;
+}

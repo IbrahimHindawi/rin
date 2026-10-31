@@ -1,0 +1,8 @@
+// An external declaration naming a generated instance, with a lying signature.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+rin_index_check: proc[external](i: u64, n: u64) -> u64 = {}
+main: proc() -> i32 = {
+    return 0;
+}

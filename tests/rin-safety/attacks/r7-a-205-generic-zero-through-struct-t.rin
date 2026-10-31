@@ -1,0 +1,12 @@
+// T = struct holding a non-null; {} in a generic body.
+import "std/print.rin"
+I: struct = { p: *i32 in permanent; }
+z: proc<T>() -> T = {
+    x: T = {};
+    return x;
+}
+main: proc() -> i32 = {
+    i: I = z<I>();
+    printfmt("{}\n", i.p*);
+    return 0;
+}

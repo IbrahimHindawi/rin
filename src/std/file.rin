@@ -14,6 +14,18 @@ file: struct = {
 
 file_table_stream: static [256]^FILE = {};
 file_table_generation: static [256]u32 = {};
+/* What was done last to each stream: C wants a seek or a flush between a read and a write. */
+file_table_last: static [256]u8 = {};
+
+file_about_to_read: proc(f: file) -> void = {
+    if (f.slot < 256 && file_table_last[f.slot] == 2) { unsafe { fflush(cast(file_stream(f), *FILE)); } }
+    if (f.slot < 256) { file_table_last[f.slot] = 1; }
+}
+
+file_about_to_write: proc(f: file) -> void = {
+    if (f.slot < 256 && file_table_last[f.slot] == 1) { unsafe { fseek(cast(file_stream(f), *FILE), 0, 1); } }
+    if (f.slot < 256) { file_table_last[f.slot] = 2; }
+}
 
 /* Whether a file opened: file_open's result is tested with this. */
 file_is_open: proc(f: file) -> b32 = {
@@ -38,6 +50,7 @@ file_open: proc(path: ^const char, mode: ^const char) -> file = { unsafe {
         if (file_table_stream[i] == null) {
             stream: ^FILE = cast(fopen(path, mode), ^FILE);
             if (stream == null) { return result; }
+            file_table_last[i] = 0;
             file_table_stream[i] = stream;
             file_table_generation[i] += 1;
             result.slot = i;
@@ -61,26 +74,32 @@ file_close: proc(f: file) -> void = {
 /* How many bytes were read, up to out's length. */
 file_read: proc(f: file, out: []u8) -> u64 = {
     if (out.length == 0) { return 0; }
+    file_about_to_read(f);
     unsafe { return cast(fread(out.data, 1, cast(out.length, usize), cast(file_stream(f), *FILE)), u64); }
 }
 
 /* How many bytes were written. */
 file_write: proc(f: file, bytes: []const u8) -> u64 = {
     if (bytes.length == 0) { return 0; }
+    file_about_to_write(f);
     unsafe { return cast(fwrite(bytes.data, 1, cast(bytes.length, usize), cast(file_stream(f), *FILE)), u64); }
 }
 
 file_write_text: proc(f: file, text: ^const char) -> void = {
     if (text == null) { return; }
+    file_about_to_write(f);
     unsafe { fputs(text, cast(file_stream(f), *FILE)); }
 }
 
 /* -1 at the end of the file. */
 file_read_byte: proc(f: file) -> i32 = {
+    file_about_to_read(f);
     unsafe { return fgetc(cast(file_stream(f), *FILE)); }
 }
 
 file_flush: proc(f: file) -> void = {
+    /* Only an output stream may be flushed. */
+    if (f.slot < 256 && file_table_last[f.slot] != 2) { return; }
     unsafe { fflush(cast(file_stream(f), *FILE)); }
 }
 
@@ -94,5 +113,8 @@ file_size: proc(f: file) -> i64 = { unsafe {
 } }
 
 file_seek: proc(f: file, offset: i64) -> b32 = {
+    /* C's long may be narrower, and a truncated offset would land somewhere else. */
+    if (cast(cast(offset, long), i64) != offset) { return 0; }
+    if (f.slot < 256) { file_table_last[f.slot] = 0; }
     unsafe { return fseek(cast(file_stream(f), *FILE), cast(offset, long), 0) == 0; }
 }

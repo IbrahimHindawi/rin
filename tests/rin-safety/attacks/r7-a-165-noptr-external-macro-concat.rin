@@ -1,0 +1,6 @@
+// core.h's macros are callable as external procs: pastes tokens to name anything.
+concat: proc[external](a: i32, b: i32) -> i32 = {}
+rin_region_stack_top: i32 = {};
+main: proc() -> i32 = {
+    return 0;
+}

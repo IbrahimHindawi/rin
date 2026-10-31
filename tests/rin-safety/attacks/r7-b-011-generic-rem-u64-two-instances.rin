@@ -1,0 +1,10 @@
+// std/core.h:284 RIN_REM_ANY: default: rin_irem_i64. 0xFFFFFFFFFFFFFFFE % 5 is 4, comes out
+// (i64)-2 % 5 == -2, printed 18446744073709551614. x % n used as an index stops as out of range.
+import "std/print.rin"
+md: proc<T>(a: T, b: T) -> T = { return a % b; }
+main: proc() -> i32 = {
+    a: u64 = 0xFFFFFFFFFFFFFFFE'u64;
+    printfmt("{}\n", md<u64>(a, 5));
+    printfmt("{}\n", md<i32>(-8, 3));
+    return 0;
+}

@@ -1,0 +1,10 @@
+import "std/print.rin"
+I: struct = { p: *i32 in permanent; }
+O: struct = { i: I; n: i32; }
+main: proc() -> i32 = {
+    q: *i32 in permanent = new<i32>(permanent);
+    o: O = { .i = { .p = q }, .n = 1 };
+    o.i = {};
+    printfmt("{}\n", o.i.p*);
+    return 0;
+}

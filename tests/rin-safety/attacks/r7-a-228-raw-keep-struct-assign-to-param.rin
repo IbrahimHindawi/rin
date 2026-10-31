@@ -1,0 +1,14 @@
+// Wrapping cstr_of(local array) in a struct literal written through an out-pointer.
+import "std/print.rin"
+import "std/cstr.rin"
+holder: struct = { k: [1]^const c8; }
+fill: proc(out: *holder) -> void = {
+    a: [8]c8 = { 'h', 'i', 0 };
+    out* = { .k = { cstr_of(a) } };
+}
+main: proc() -> i32 = {
+    h: holder = { .k = { "" } };
+    fill(h&);
+    print_cstr(h.k[0]);
+    return 0;
+}

@@ -1,0 +1,15 @@
+// The wrapper hides the source, with a fmt in permanent so the global compiles, then in a local region.
+import "std/print.rin"
+import "std/fmt.rin"
+gf: ?*fmt in permanent = null;
+get: proc() -> ^const c8 = {
+    if (gf) { return fmt_text(gf); }
+    return "";
+}
+main: proc() -> i32 = {
+    gf = fmt_make(permanent, 4);
+    k: ^const c8 = get();
+    for (i: i32 = 0; i < 100; i += 1) { fmt_char(must(gf), 'x'); }
+    print_cstr(k);
+    return 0;
+}

@@ -1,0 +1,10 @@
+// An array length spelled with an enum member, a local named like its C spelling.
+import "std/print.rin"
+E: enum = { one = 1 }
+g: [E.one]i32 = {};
+idx: i32 = 99999;
+main: proc() -> i32 = {
+    E_one: u64 = 100000;
+    printfmt("{}\n", g[idx]);
+    return 0;
+}

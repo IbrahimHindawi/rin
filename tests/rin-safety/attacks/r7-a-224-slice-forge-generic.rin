@@ -1,0 +1,11 @@
+// A generic that builds a slice literal with a length argument.
+import "std/print.rin"
+mk: proc<T>(n: u64) -> slice<T> = {
+    s: slice<T> = { .length = n };
+    return s;
+}
+main: proc() -> i32 = {
+    s: []i32 = mk<i32>(100000);
+    printfmt("{}\n", s[99999]);
+    return 0;
+}

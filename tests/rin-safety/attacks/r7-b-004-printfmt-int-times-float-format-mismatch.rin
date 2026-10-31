@@ -1,0 +1,9 @@
+// printf("%f\n", (i32)...): the checker infers f64 and picks %f, the C argument is an int.
+// A varargs mismatch is undefined.
+import "std/print.rin"
+main: proc() -> i32 = {
+    i: i32 = 3;
+    f: f64 = 0.5;
+    printfmt("{}\n", i * f);
+    return 0;
+}

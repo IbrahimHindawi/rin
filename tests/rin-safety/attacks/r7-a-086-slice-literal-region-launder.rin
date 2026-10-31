@@ -1,0 +1,18 @@
+// Keep a stack array past its frame: the raw data read travels into a literal naming a region.
+import "std/print.rin"
+level: region;
+keep: proc(t: []i32) -> []i32 in level = {
+    s: []i32 in level = { .data = t.data, .length = t.length };
+    return s;
+}
+leak: proc() -> []i32 in level = {
+    a: [100]i32 = {};
+    return keep(a);
+}
+main: proc() -> i32 = {
+    level: region = {
+        s: []i32 in level = leak();
+        printfmt("{}\n", s[50]);
+    }
+    return 0;
+}

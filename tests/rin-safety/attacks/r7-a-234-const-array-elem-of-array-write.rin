@@ -1,0 +1,8 @@
+// const struct, inner array through two slices, write.
+S: struct = { a: [2][2]i32; }
+G: const S = { .a = { { 1, 2 }, { 3, 4 } } };
+main: proc() -> i32 = {
+    s: []i32 = G.a[1];
+    s[0] = 6;
+    return 0;
+}

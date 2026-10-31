@@ -1,0 +1,7 @@
+get: proc() -> ?*proc() -> void = { return null; }
+main: proc() -> i32 = {
+    f: ?*proc() -> void = get();
+    f();
+    get()();
+    return 0;
+}

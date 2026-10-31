@@ -1,0 +1,10 @@
+// A pointer to a misaligned field: UB in C for *i32.
+import "std/print.rin"
+P: struct[packed] = { a: u8; b: u64; }
+main: proc() -> i32 = {
+    x: P = {};
+    p: *u64 = x.b&;
+    p* = 7;
+    printfmt("{}\n", p*);
+    return 0;
+}

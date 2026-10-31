@@ -1,0 +1,8 @@
+// A C-owned global that is null, declared non-null.
+import "std/print.rin"
+cinclude "getopt.h"
+optarg: *char;
+main: proc() -> i32 = {
+    printfmt("{}\n", optarg*);
+    return 0;
+}

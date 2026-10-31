@@ -1,0 +1,8 @@
+// An array cast to an integer works in C by decay; plain data by the rule.
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [4]i32 = {};
+    x: u64 = cast(a, u64);
+    printfmt("{}\n", x);
+    return 0;
+}

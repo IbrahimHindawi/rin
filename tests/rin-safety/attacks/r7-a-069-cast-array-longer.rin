@@ -1,0 +1,8 @@
+// Array cast to a longer array of plain data.
+import "std/print.rin"
+f: proc(x: [1000]i32) -> i32 = { return x[999]; }
+main: proc() -> i32 = {
+    a: [1]i32 = {};
+    printfmt("{}\n", f(cast(a, [1000]i32)));
+    return 0;
+}

@@ -1,0 +1,11 @@
+// printf("%d\n", (k ? i : d)): the checker takes the first arm's type, C's type is i64.
+// A format mismatch is undefined. The second line, with the wide arm first, is correct.
+import "std/print.rin"
+main: proc() -> i32 = {
+    k: b32 = 1;
+    i: i32 = 1;
+    d: i64 = 0x100000000;
+    printfmt("{}\n", k ? i : d);
+    printfmt("{}\n", k ? d : i);
+    return 0;
+}

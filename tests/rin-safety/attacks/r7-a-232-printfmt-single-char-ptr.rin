@@ -1,0 +1,10 @@
+// %s given a pointer to a single char (not NUL-terminated).
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        p: *c8 in level = new<c8>(level, 'A');
+        printfmt("{}\n", p);
+    }
+    return 0;
+}

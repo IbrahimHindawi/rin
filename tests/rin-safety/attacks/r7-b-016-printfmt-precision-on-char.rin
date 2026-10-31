@@ -1,0 +1,10 @@
+// printf("%5.2c|%05c|%05s\n", ...): C leaves a precision on %c, and the 0 flag on %c and %s,
+// undefined. %x with a negative i8 passes an int the format reads as unsigned.
+import "std/print.rin"
+main: proc() -> i32 = {
+    c: c8 = cast(65, c8);
+    s: ^const char = "hi";
+    printfmt("{:5.2}|{:05}|{:05}\n", c, c, s);
+    printfmt("{:x}\n", cast(-1, i8));
+    return 0;
+}

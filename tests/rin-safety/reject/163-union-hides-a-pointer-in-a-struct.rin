@@ -1,0 +1,8 @@
+// expect: pointer
+inner: struct = { p: *i32 in permanent; }
+u: union = { x: u64; s: inner; }
+main: proc() -> i32 = {
+    v: u = {};
+    v.x = 16;
+    return v.s.p*;
+}

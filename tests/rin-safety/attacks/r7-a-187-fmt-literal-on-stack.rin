@@ -1,0 +1,11 @@
+// fmt's a carrier; a struct literal in a region.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = new<fmt>(level, { .data = "abc", .capacity = 100000000 });
+        fmt_char(f, 'x');
+    }
+    return 0;
+}

@@ -1,0 +1,8 @@
+// A struct with a proc pointer, zeroed: type_has_nonnull_pointer sees Type_Proc as not a pointer?
+import "std/print.rin"
+S: struct = { f: *proc() -> void; a: i32; }
+main: proc() -> i32 = {
+    s: S = {};
+    s.f();
+    return 0;
+}

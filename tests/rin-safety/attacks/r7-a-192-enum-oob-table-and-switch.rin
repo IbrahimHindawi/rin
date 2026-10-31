@@ -1,0 +1,10 @@
+// Duds expected: bounds check, no UB in C for a cast out-of-range enum.
+import "std/print.rin"
+E: enum = { a, b }
+main: proc() -> i32 = {
+    t: [2]i32 = { 1, 2 };
+    e: E = cast(99999, E);
+    switch (e) { case E.a: { } case E.b: { } default: { printfmt("{}\n", t[e]); } }
+    printfmt("{}\n", e);
+    return 0;
+}

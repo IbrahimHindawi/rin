@@ -1,0 +1,12 @@
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    k: ^const c8 = "";
+    a: [8]c8 = { 'h', 'i', 0 };
+    if (a[0] != 0) {
+        k = cstr_of(a);
+    }
+    b: [64]c8 = {};
+    print_cstr(k);
+    return 0;
+}

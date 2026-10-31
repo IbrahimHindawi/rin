@@ -1,0 +1,11 @@
+// The array's private copy is a compound literal in this frame.
+import "std/print.rin"
+import "std/cstr.rin"
+get: proc() -> ^const c8 = {
+    a: [8]c8 = { 'h', 'i', 0 };
+    return cstr_of(a);
+}
+main: proc() -> i32 = {
+    print_cstr(get());
+    return 0;
+}

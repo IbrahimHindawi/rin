@@ -1,0 +1,9 @@
+// A proc pointer type with ... ; printf has pointers; a variadic one without.
+import "std/print.rin"
+v: proc(a: i32, ...) -> i32 = { return a; }
+main: proc() -> i32 = {
+    fp: *proc(i32, ...) -> i32 = v;
+    a: [4]i32 = {};
+    printfmt("{}\n", fp(1, a, "x", 1.5));
+    return 0;
+}

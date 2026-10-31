@@ -1,0 +1,8 @@
+// A wrapper hides it from str's rule? A raw is not a str; the literal-only rule.
+import "std/print.rin"
+get: proc() -> ^const c8 = { a: [8]c8 = { 'h', 0 }; return cstr_of(a); }
+main: proc() -> i32 = {
+    k: ^const c8 = get();
+    print_cstr(k);
+    return 0;
+}

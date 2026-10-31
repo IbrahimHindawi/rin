@@ -1,0 +1,12 @@
+import "std/print.rin"
+main: proc(argc: i32, argv: ^^char) -> i32 = {
+    n: i32 = 1;
+    switch (argc) {
+        case 2: { }
+            s: []i32 = { };
+        case 1: {
+            printfmt("{}\n", s.length);
+        }
+    }
+    return 0;
+}

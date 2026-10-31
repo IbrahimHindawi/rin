@@ -1,0 +1,17 @@
+// fprintf(file_stream(gf), fmt, shut()): the order of the two calls is C's to choose. clang for
+// Linux, macOS and MinGW reads file_stream first, shut() fcloses it, and fprintf gets a closed FILE.
+// clang for MSVC goes right to left and stops cleanly, which is why r4-131 of this shape looks clean.
+import "std/print.rin"
+import "std/file.rin"
+gf: file = {};
+shut: proc() -> i32 = {
+    file_close(gf);
+    other: file = file_open("b-017-other.txt", "wb");
+    file_write_text(other, "x");
+    return 5;
+}
+main: proc() -> i32 = {
+    gf = file_open("b-017.txt", "wb");
+    fprintfmt(gf, "{}\n", shut());
+    return 0;
+}

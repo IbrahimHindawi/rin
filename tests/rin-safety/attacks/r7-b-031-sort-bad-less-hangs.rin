@@ -1,0 +1,19 @@
+// std/sort.rin:37: if less says every element below the last is under the pivot, i reaches n-1, j
+// stays n-1, j + 1 == n, xs[j+1..n] is empty and xs stays whole: the outer while never ends.
+// No memory error, every index is checked. A hang rather than a stop. This less is built so the
+// pivot is 0 and the last element is the one maximum.
+import "std/sort.rin"
+import "std/print.rin"
+top: const i32 = 1000000;
+less: proc(a: i32, b: i32) -> b32 = {
+    return b == 0 && a != top;
+}
+main: proc() -> i32 = {
+    xs: [20]i32 = {};
+    xs[19] = top;
+    for (i: i32 = 0; i < 19; i += 1) { xs[i] = i + 1; }
+    xs[10] = 0;
+    sort<i32>(xs, less);
+    printfmt("{}\n", xs[0]);
+    return 0;
+}

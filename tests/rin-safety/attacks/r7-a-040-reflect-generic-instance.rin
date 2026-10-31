@@ -1,0 +1,11 @@
+import "std/print.rin"
+import "std/reflect.rin"
+box: struct<T> = { v: T; }
+show: proc<T>() -> void = {
+    t: *const reflect = T<>&;
+    printfmt("{}\n", t*.size);
+}
+main: proc() -> i32 = {
+    show<i32>();
+    return 0;
+}

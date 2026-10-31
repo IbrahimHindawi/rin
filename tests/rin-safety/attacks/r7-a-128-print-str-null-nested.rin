@@ -1,0 +1,7 @@
+import "std/print.rin"
+S: struct = { s: str; }
+main: proc() -> i32 = {
+    x: S = {};
+    printfmt("{:5.2}\n", x.s);
+    return 0;
+}

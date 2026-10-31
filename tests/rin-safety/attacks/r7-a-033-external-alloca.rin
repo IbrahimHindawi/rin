@@ -1,0 +1,6 @@
+// alloca with an integer signature: moves the stack, no pointers visible.
+__builtin_alloca: proc[external](n: u64) -> void = {}
+main: proc() -> i32 = {
+    __builtin_alloca(100000000);
+    return 0;
+}

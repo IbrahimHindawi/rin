@@ -1,0 +1,7 @@
+import "std/print.rin"
+G: const i32 = 5;
+main: proc() -> i32 = {
+    p: *i32 = G&;
+    p* = 6;
+    return 0;
+}

@@ -1,0 +1,12 @@
+// std/core.h:279 RIN_DIV_ANY: with two instances the code is 255, and unsigned long long falls
+// to default: rin_idiv_i64((i64)a, (i64)b). First line expected 9223372036854775807, gets
+// 18446744073709551615. Second: (i64)-2 / (i64)-3 is 0, should be 1.
+import "std/print.rin"
+dv: proc<T>(a: T, b: T) -> T = { return a / b; }
+main: proc() -> i32 = {
+    a: u64 = 0xFFFFFFFFFFFFFFFE'u64;
+    printfmt("{}\n", dv<u64>(a, 2));
+    printfmt("{}\n", dv<u64>(a, 0xFFFFFFFFFFFFFFFD'u64));
+    printfmt("{}\n", dv<i32>(-8, 2));
+    return 0;
+}

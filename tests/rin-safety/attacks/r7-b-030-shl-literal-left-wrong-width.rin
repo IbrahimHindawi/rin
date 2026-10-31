@@ -1,0 +1,10 @@
+// s1: u64 = 1 shl 40 emits (i32)((u32)(1ULL) << (40 & 31)): 256. The literal took i32's width
+// although the emitter prints it as 1ULL and the target is u64.
+import "std/print.rin"
+main: proc() -> i32 = {
+    s1: u64 = 1 shl 40;
+    n: i32 = 40;
+    s2: u64 = 1 shl n;
+    printfmt("{} {}\n", s1, s2);
+    return 0;
+}

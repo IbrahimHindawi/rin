@@ -1,0 +1,9 @@
+// u16 * anything goes through u32 and back to u16. Expected 8589934592, gets 0.
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: u16 = 2;
+    d: u64 = 0x100000000'u64;
+    r: u64 = a * d;
+    printfmt("{}\n", r);
+    return 0;
+}

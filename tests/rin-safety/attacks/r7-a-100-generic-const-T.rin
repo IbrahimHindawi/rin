@@ -1,0 +1,7 @@
+// T = const i32 then write through a T place.
+G: const i32 = 5;
+w: proc<T>(p: *T, v: T) -> void = { p* = v; }
+main: proc() -> i32 = {
+    w<const i32>(G&, 7);
+    return 0;
+}

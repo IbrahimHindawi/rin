@@ -1,0 +1,14 @@
+// Expected 1.5 3.5 1.5 then 6. Gets 0 3 1.5, then a false "division by zero" at i / f,
+// because the emitter picks the helper from the left operand only.
+import "std/print.rin"
+main: proc() -> i32 = {
+    i: i32 = 3;
+    f: f64 = 0.5;
+    a: f64 = i * f;      // (i32)((u32)(i) * (u32)(f)) == 0
+    b: f64 = i + 0.5;    // (i32)((u32)(i) + (u32)(0.5)) == 3
+    j: f64 = f * i;      // correct: order matters
+    printfmt("{} {} {}\n", a, b, j);
+    c: f64 = i / f;      // rin_idiv_i32(i, f, ...): f converts to 0
+    printfmt("{}\n", c);
+    return 0;
+}

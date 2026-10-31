@@ -1,0 +1,12 @@
+// fmt's fields, from another file.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 8);
+        f*.capacity = 100000000;
+        for (i: i32 = 0; i < 100000; i += 1) { fmt_char(f, 'x'); }
+    }
+    return 0;
+}

@@ -1,0 +1,22 @@
+import "std/print.rin"
+import "std/fmt.rin"
+level: region;
+gf: ?*fmt in level = null;
+keep: ^const c8 = "";
+get: proc() -> ^const c8 = {
+    if (gf) { return fmt_text(gf); }
+    return "";
+}
+fill: proc() -> void = {
+    level: region = {
+        gf = fmt_make(level, 4096);
+        fmt_cstr(must(gf), "hello");
+        keep = get();
+        gf = null;
+    }
+}
+main: proc() -> i32 = {
+    fill();
+    print_cstr(keep);
+    return 0;
+}

@@ -1,0 +1,14 @@
+// Forge a writable slice through a union+struct, then write out of bounds.
+import "std/print.rin"
+level: region;
+inner: struct = { s: []i32 in level; }
+u: union = { a: [2]u64; si: inner; }
+main: proc() -> i32 = {
+    level: region = {
+        real: []i32 in level = new_slice<i32>(level, 4);
+        v: u = { .si = { .s = real } };
+        v.a[1] = 100000;
+        v.si.s[99999] = 7;
+    }
+    return 0;
+}

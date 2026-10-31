@@ -1,0 +1,8 @@
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        fs: []*proc() -> void in level = new_slice<*proc() -> void>(level, 4);
+        fs[0]();
+    }
+    return 0;
+}

@@ -1,0 +1,8 @@
+// Alias element: is the C dimension order kept?
+import "std/print.rin"
+row: alias = [1000]i32;
+main: proc() -> i32 = {
+    a: [2]row = {};
+    printfmt("{}\n", a[1][999]);
+    return 0;
+}

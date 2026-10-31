@@ -1,0 +1,11 @@
+// std's own #define, overwritten by a number.
+#define max_alloc_size 16
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        p: *i32 in level = new<i32>(level, 1);
+        printfmt("{}\n", p*);
+    }
+    return 0;
+}

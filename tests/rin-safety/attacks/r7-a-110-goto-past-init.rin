@@ -1,0 +1,9 @@
+// goto over a declaration of a non-null pointer: invariant 4.
+import "std/print.rin"
+main: proc() -> i32 = {
+    n: i32 = 1;
+    goto skip;
+    p: *i32 = n&;
+    skip: printfmt("{}\n", p*);
+    return 0;
+}

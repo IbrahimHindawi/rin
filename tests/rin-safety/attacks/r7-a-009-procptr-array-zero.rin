@@ -1,0 +1,5 @@
+main: proc() -> i32 = {
+    fs: [4]*proc() -> void = {};
+    fs[0]();
+    return 0;
+}

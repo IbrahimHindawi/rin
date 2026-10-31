@@ -1,0 +1,10 @@
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        p: *char in level = new<char>(level);
+        p* = 'a';
+        printfmt("{}\n", p);
+    }
+    return 0;
+}

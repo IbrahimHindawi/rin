@@ -1,0 +1,7 @@
+// Calling a ?*proc in a zeroed struct field with no test.
+S: struct = { f: ?*proc() -> void; }
+main: proc() -> i32 = {
+    s: S = {};
+    s.f();
+    return 0;
+}

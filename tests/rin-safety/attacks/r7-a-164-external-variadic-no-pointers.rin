@@ -1,0 +1,7 @@
+// A variadic C proc with only numbers declared: va_arg's type is C's business.
+import "std/print.rin"
+printf: proc[external](fmt: i32, ...) -> i32 = {}
+main: proc() -> i32 = {
+    printf(0, 1, 2);
+    return 0;
+}

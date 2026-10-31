@@ -1,0 +1,22 @@
+// std/fmt.rin:214-219: 1e30 and inf: whole saturates, frac stays huge, scaled saturates, whole += 1
+// wraps to 0: prints 0.<garbage>. The comment says the integer part is lost, not that the number
+// comes out near zero. NaN prints 0.00.
+import "std/fmt.rin"
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 128);
+        big: f64 = 1e30;
+        fmt_f64(f, big, 2);
+        print_cstr(fmt_text(f)); print_cstr("\n");
+        fmt_reset(f);
+        z: f64 = 0.0;
+        fmt_f64(f, 1.0 / z, 2);
+        print_cstr(fmt_text(f)); print_cstr("\n");
+        fmt_reset(f);
+        fmt_f64(f, z / z, 2);
+        print_cstr(fmt_text(f)); print_cstr("\n");
+    }
+    return 0;
+}

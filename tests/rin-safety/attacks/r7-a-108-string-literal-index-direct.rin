@@ -1,0 +1,6 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    i: i32 = 100000;
+    printfmt("{}\n", "abc"[i]);
+    return 0;
+}

@@ -1,0 +1,6 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    c: char = 'x';
+    print<*char>(c&);
+    return 0;
+}

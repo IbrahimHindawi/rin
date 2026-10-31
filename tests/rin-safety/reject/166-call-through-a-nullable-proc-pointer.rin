@@ -1,0 +1,6 @@
+// expect: may be null
+main: proc() -> i32 = {
+    f: ?*proc() -> void = null;
+    f();
+    return 0;
+}

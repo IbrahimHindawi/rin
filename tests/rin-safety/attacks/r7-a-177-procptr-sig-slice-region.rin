@@ -1,0 +1,7 @@
+// array elem inside proc signature with nullable pointers: proc_signature_same only compares top level pointers; nested ptr nullable in struct by-name?
+B: struct<T> = { v: T; }
+inner: proc(b: B<?*i32 in permanent>) -> void = { }
+main: proc() -> i32 = {
+    fp: *proc(B<*i32 in permanent>) -> void = inner;
+    return 0;
+}

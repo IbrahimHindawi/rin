@@ -1,0 +1,9 @@
+level: region;
+S: struct = { f: *proc() -> void; }
+main: proc() -> i32 = {
+    level: region = {
+        s: *S in level = new<S>(level);
+        s*.f();
+    }
+    return 0;
+}

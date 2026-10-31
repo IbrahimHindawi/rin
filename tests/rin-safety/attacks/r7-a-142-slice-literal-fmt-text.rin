@@ -1,0 +1,12 @@
+// fmt_text's raw pointer into a region, into a slice with a forged length.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 8);
+        s: []const char in level = { .data = fmt_text(f), .length = 100000000 };
+        printfmt("{}\n", s[99999999]);
+    }
+    return 0;
+}

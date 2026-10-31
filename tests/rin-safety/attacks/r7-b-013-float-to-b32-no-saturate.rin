@@ -1,0 +1,16 @@
+// cast(f, b32) is (b32)(f), and b32 c = half is plain C: 1e300 does not fit, undefined.
+// 0.5 converts to 0, so a truthy float reads as false. A u64 truncates the same way.
+import "std/print.rin"
+main: proc() -> i32 = {
+    f: f64 = 1e300;
+    half: f64 = 0.5;
+    l: u64 = 0x100000000'u64;
+    i: i32 = 256;
+    a: b32 = cast(f, b32);
+    b: b8 = cast(f, b8);
+    c: b32 = half;
+    d: b32 = l;
+    e: b8 = i;
+    printfmt("{} {} {} {} {}\n", a, b, c, d, e);
+    return 0;
+}

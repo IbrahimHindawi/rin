@@ -1,0 +1,9 @@
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        p: *c8 in level = new<c8>(level, 'A');
+        print_cstr(p);
+    }
+    return 0;
+}

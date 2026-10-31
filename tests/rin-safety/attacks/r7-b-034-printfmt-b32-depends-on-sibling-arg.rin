@@ -1,0 +1,12 @@
+// A b32 prints 1 in the one-printf path, and true through print<b32> when another argument on
+// the line has its own print (src/main.c printfmt_try_single_call).
+import "std/print.rin"
+P: struct = { x: i32; }
+print: proc<P>(p: P) -> void = { printfmt("P"); }
+main: proc() -> i32 = {
+    k: b32 = 1;
+    p: P = { .x = 1 };
+    printfmt("{}\n", k);
+    printfmt("{} {}\n", k, p);
+    return 0;
+}

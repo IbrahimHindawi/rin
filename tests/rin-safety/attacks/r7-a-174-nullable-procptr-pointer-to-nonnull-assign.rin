@@ -1,0 +1,8 @@
+// A ?*proc assigned to *proc.
+hi: proc() -> void = {}
+main: proc() -> i32 = {
+    n: ?*proc() -> void = null;
+    f: *proc() -> void = n;
+    f();
+    return 0;
+}

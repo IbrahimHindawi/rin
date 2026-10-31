@@ -1,0 +1,9 @@
+import "std/print.rin"
+mk: proc(p: ^const char) -> []const char in permanent = {
+    return { .data = p, .length = 100000 };
+}
+main: proc() -> i32 = {
+    s: []const char in permanent = mk("abc");
+    printfmt("{}\n", s[99999]);
+    return 0;
+}

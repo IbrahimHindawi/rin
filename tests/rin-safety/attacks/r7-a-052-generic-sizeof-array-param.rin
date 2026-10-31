@@ -1,0 +1,11 @@
+// Param array assign inside a generic. Copy size lies.
+import "std/print.rin"
+g: proc<T>(x: T, y: T) -> void = {
+    x = y;
+}
+main: proc() -> i32 = {
+    a: [1]i32 = {};
+    b: [1000]i32 = {};
+    g(a, b);
+    return 0;
+}

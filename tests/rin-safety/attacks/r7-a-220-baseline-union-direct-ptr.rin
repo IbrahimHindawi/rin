@@ -1,0 +1,8 @@
+// Baseline: a union DIRECTLY holding a checked pointer should be rejected as a carrier.
+import "std/print.rin"
+level: region;
+u: union = { x: u64; p: *i32 in level; }
+main: proc() -> i32 = {
+    level: region = { v: u = {}; v.x = 16; printfmt("{}\n", v.p*); }
+    return 0;
+}

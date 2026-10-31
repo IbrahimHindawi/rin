@@ -1,0 +1,9 @@
+// A {}-zeroed str field: printed as a C string, or indexed.
+import "std/print.rin"
+S: struct = { s: str; }
+main: proc() -> i32 = {
+    x: S = {};
+    print<^const char>(x.s);
+    print_cstr(x.s);
+    return 0;
+}

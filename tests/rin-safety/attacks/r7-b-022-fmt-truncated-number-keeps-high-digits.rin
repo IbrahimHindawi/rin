@@ -1,0 +1,20 @@
+// std/fmt.rin:137 says a truncated number must not leave its most significant digits behind.
+// fmt_bytes copies as many as fit: capacity 3 with 12345 holds "12". fmt_i64 can leave "-" alone.
+// fmt_hex with min_digits 40 silently gives 24.
+import "std/fmt.rin"
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 3);
+        fmt_u64(f, 12345);
+        print_cstr(fmt_text(f)); print_cstr("\n");
+        g: *fmt in level = fmt_make(level, 2);
+        fmt_i64(g, -5);
+        print_cstr(fmt_text(g)); print_cstr("\n");
+        h: *fmt in level = fmt_make(level, 64);
+        fmt_hex(h, 255, 40, 0);
+        print_cstr(fmt_text(h)); print_cstr("\n");
+    }
+    return 0;
+}

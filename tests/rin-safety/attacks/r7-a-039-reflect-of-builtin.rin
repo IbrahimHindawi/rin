@@ -1,0 +1,6 @@
+import "std/print.rin"
+import "std/reflect.rin"
+main: proc() -> i32 = {
+    printfmt("{}\n", i32<>&*.size);
+    return 0;
+}

@@ -1,0 +1,6 @@
+main: proc() -> i32 = {
+    a: []const char = "abc";
+    b: []char = a;
+    b[0] = 'x';
+    return 0;
+}

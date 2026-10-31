@@ -1,0 +1,10 @@
+// A number in the place of a C limit used by the runtime or stdio.
+#define BUFSIZ 1
+#define EOF 0
+#define SIZE_MAX 4
+#define UINT64_MAX 4
+import "std/print.rin"
+main: proc() -> i32 = {
+    printfmt("{}\n", 1);
+    return 0;
+}

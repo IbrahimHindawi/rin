@@ -1,0 +1,11 @@
+// T inferred from the first argument, second shorter.
+import "std/print.rin"
+g: proc<T>(x: T, y: T) -> i32 = {
+    return y[999];
+}
+main: proc() -> i32 = {
+    a: [1000]i32 = {};
+    b: [1]i32 = {};
+    printfmt("{}\n", g(a, b));
+    return 0;
+}

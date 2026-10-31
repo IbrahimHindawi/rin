@@ -1,0 +1,8 @@
+// {} over an external struct is allowed (type_has_nonnull_pointer stops at external). core.h's type.
+import "std/print.rin"
+rin_slice_raw: struct[external] = { data: *u8 in permanent; length: u64; }
+main: proc() -> i32 = {
+    x: rin_slice_raw = {};
+    printfmt("{}\n", x.data*);
+    return 0;
+}

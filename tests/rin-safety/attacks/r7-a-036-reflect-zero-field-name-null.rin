@@ -1,0 +1,8 @@
+// A zeroed reflect_field has null name, read as raw; and null info.
+import "std/print.rin"
+import "std/reflect.rin"
+main: proc() -> i32 = {
+    x: reflect_field = {};
+    printfmt("{}\n", x.name[0]);
+    return 0;
+}

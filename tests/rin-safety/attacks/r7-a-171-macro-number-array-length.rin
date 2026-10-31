@@ -1,0 +1,8 @@
+// #define lengths and a local name; text compare of the type.
+import "std/print.rin"
+#define L 1
+g: [L]i32 = {};
+f: proc(a: [L]i32, i: i32) -> i32 = { return a[i]; }
+main: proc() -> i32 = {
+    return f(g, 5);
+}

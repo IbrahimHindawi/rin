@@ -1,0 +1,16 @@
+// std/fmt.rin:211 scale *= 10 wraps past 19 decimals. decimals 64: scale 0, scaled >= scale,
+// whole += 1, so 1.5 prints "2." . decimals 20: wrong digits. u64-max decimals: 2^64 iterations.
+import "std/fmt.rin"
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 128);
+        fmt_f64(f, 1.5, 64);
+        print_cstr(fmt_text(f)); print_cstr("\n");
+        fmt_reset(f);
+        fmt_f64(f, 1.5, 20);
+        print_cstr(fmt_text(f)); print_cstr("\n");
+    }
+    return 0;
+}

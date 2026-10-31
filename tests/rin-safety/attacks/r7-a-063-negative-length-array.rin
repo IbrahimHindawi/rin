@@ -1,0 +1,7 @@
+import "std/print.rin"
+N: const i32 = -1;
+main: proc() -> i32 = {
+    a: [N]i32 = {};
+    printfmt("{}\n", a[0]);
+    return 0;
+}

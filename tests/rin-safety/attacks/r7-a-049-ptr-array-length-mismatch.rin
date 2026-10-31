@@ -1,0 +1,7 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [1]i32 = { 1 };
+    p: *[1000]i32 = a&;
+    printfmt("{}\n", p*[999]);
+    return 0;
+}

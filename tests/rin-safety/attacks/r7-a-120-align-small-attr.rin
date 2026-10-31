@@ -1,0 +1,13 @@
+// aligned attribute smaller than natural on a struct.
+import "std/print.rin"
+P: struct[align(1)] = { b: u64; }
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        c: *u8 in level = new<u8>(level, 1);
+        p: *P in level = new<P>(level);
+        p*.b = 2;
+        printfmt("{}\n", p*.b);
+    }
+    return 0;
+}

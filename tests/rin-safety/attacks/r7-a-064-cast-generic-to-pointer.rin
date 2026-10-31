@@ -1,0 +1,10 @@
+// A cast whose target is T, instantiated at a pointer.
+import "std/print.rin"
+conv: proc<T>(x: u64) -> T = {
+    return cast(x, T);
+}
+main: proc() -> i32 = {
+    p: *i32 = conv<*i32>(16);
+    printfmt("{}\n", p*);
+    return 0;
+}

@@ -1,0 +1,15 @@
+// C 7.21.5.3p7: input straight after output with no flush or seek between is undefined, and fflush
+// on an input stream is undefined too (7.21.5.2). std/file.rin lets safe code do both.
+import "std/file.rin"
+import "std/print.rin"
+main: proc() -> i32 = {
+    f: file = file_open("b-025.txt", "wb+");
+    file_write_text(f, "abc");
+    printfmt("{}\n", file_read_byte(f));
+    file_write_text(f, "d");
+    file_close(f);
+    g: file = file_open("b-025.txt", "rb");
+    file_flush(g);
+    file_close(g);
+    return 0;
+}

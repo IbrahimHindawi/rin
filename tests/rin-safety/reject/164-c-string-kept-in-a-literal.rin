@@ -1,0 +1,8 @@
+// expect: lasts only for the call
+import "std/cstr.rin"
+holder: struct = { k: [1]^const c8; }
+make: proc() -> holder = {
+    a: [8]c8 = { 97, 0, 0, 0, 0, 0, 0, 0 };
+    return { .k = { cstr_of(a) } };
+}
+main: proc() -> i32 = { h: holder = make(); return cast(cstr_length(h.k[0]), i32); }

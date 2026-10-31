@@ -1,0 +1,8 @@
+import "std/print.rin"
+G: [4]const i32 = { 1, 2, 3, 4 };
+w: proc(x: [4]i32) -> void = { x[0] = 7; }
+main: proc() -> i32 = {
+    w(G);
+    printfmt("{}\n", G[0]);
+    return 0;
+}

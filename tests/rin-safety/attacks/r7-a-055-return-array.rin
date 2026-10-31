@@ -1,0 +1,11 @@
+// An array return: how does it reach C?
+import "std/print.rin"
+f: proc() -> [4000]i32 = {
+    a: [4000]i32 = {};
+    return a;
+}
+main: proc() -> i32 = {
+    b: [4000]i32 = f();
+    printfmt("{}\n", b[3999]);
+    return 0;
+}

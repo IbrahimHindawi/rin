@@ -1,0 +1,11 @@
+// new of a struct with a slice field, forged length via the struct literal.
+import "std/print.rin"
+level: region;
+H: struct = { s: []i32 in level; n: i32; }
+main: proc() -> i32 = {
+    level: region = {
+        h: *H in level = new<H>(level, { .s = { .length = 100000 }, .n = 1 });
+        printfmt("{}\n", h*.s[99999]);
+    }
+    return 0;
+}

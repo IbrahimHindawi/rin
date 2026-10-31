@@ -1,0 +1,23 @@
+import "std/print.rin"
+
+/* An operation is carried out in the type of both sides, as C works it out: a float on
+   either side makes it a float, and the wider integer wins. */
+i_val: proc() -> i32 = { return 3; }
+wide: proc() -> i64 = { return 4294967296; }
+narrow: proc() -> i8 = { return 100; }
+big: proc() -> i32 = { return 2147483647; }
+half: proc() -> f64 = { return 0.5; }
+under: proc(a: i8, n: i32) -> b32 = { return a + n < n; }
+
+main: proc() -> i32 = {
+    printfmt("{} {}\n", i_val() * half(), i_val() + 0.5);
+    printfmt("{} {}\n", i_val() + wide(), i_val() * wide());
+    printfmt("{}\n", wide() / cast(i_val(), u64));
+    printfmt("{}\n", under(narrow(), big()));
+    f: f64 = 1e300;
+    printfmt("{} {}\n", cast(1e300, i32), cast(-1e300, i32));
+    printfmt("{}\n", cast(f, b32));
+    s: u64 = 1 shl 40;
+    printfmt("{}\n", s);
+    return 0;
+}

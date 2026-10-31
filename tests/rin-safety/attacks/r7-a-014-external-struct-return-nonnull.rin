@@ -1,0 +1,12 @@
+// proc_touches_pointers does not look inside a struct by value.
+import "std/print.rin"
+level: region;
+div_t: struct[external] = { quot: *i32 in level; rem: i32; }
+div: proc[external](a: i32, b: i32) -> div_t = {}
+main: proc() -> i32 = {
+    level: region = {
+        d: div_t = div(7, 2);
+        printfmt("{}\n", d.quot*);
+    }
+    return 0;
+}

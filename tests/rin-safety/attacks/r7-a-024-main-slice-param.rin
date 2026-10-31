@@ -1,0 +1,5 @@
+import "std/print.rin"
+main: proc(xs: []i32) -> i32 = {
+    printfmt("{}\n", xs[0]);
+    return 0;
+}

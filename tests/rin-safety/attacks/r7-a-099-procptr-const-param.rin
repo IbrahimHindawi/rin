@@ -1,0 +1,8 @@
+// A proc pointer promising const, holding a proc that writes.
+G: const i32 = 5;
+w: proc(p: *i32) -> void = { p* = 7; }
+main: proc() -> i32 = {
+    fp: *proc(*const i32) -> void = w;
+    fp(G&);
+    return 0;
+}

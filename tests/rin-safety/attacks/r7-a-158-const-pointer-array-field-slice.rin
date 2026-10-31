@@ -1,0 +1,11 @@
+// *const S with an array field: the array decays and loses const.
+S: struct = { a: [4]i32; }
+G: const S = { .a = { 1, 2, 3, 4 } };
+w: proc(p: *const S) -> void = {
+    s: []i32 = p*.a;
+    s[0] = 6;
+}
+main: proc() -> i32 = {
+    w(G&);
+    return 0;
+}

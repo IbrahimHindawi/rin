@@ -1,0 +1,8 @@
+// A proc pointer returning ?*proc called as if non-null, deeper signature.
+inner: proc() -> ?*i32 = { return null; }
+main: proc() -> i32 = {
+    fp: *proc() -> *i32 = inner;
+    p: *i32 = fp();
+    p* = 1;
+    return 0;
+}

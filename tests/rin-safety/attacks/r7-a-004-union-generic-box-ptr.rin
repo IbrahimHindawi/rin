@@ -1,0 +1,13 @@
+import "std/print.rin"
+level: region;
+box: struct<T> = { v: T; }
+u: union = { x: u64; s: box<*i32 in level>; }
+main: proc() -> i32 = {
+    level: region = {
+        q: *i32 in level = new<i32>(level);
+        v: u = { .s = { .v = q } };
+        v.x = 16;
+        printfmt("{}\n", v.s.v*);
+    }
+    return 0;
+}

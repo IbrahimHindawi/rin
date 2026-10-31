@@ -1,0 +1,23 @@
+// std/equal.rin:5 memcmp over sizeof(T): the 7 padding bytes of pad are indeterminate in a local,
+// so list<T>take can miss an equal item, and it reads uninitialised bytes. 0.0 and -0.0 compare
+// unequal under it.
+import "std/list.rin"
+import "std/print.rin"
+pad: struct = { a: u8; b: u64; }
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        l: *list<pad> in level = list<pad>make(level);
+        x: pad = { .a = 1, .b = 2 };
+        list<pad>push(l, x);
+        y: pad = { .a = 1, .b = 2 };
+        n: ?*node<pad> = list<pad>take(l, y);
+        printfmt("{}\n", n != null);
+        m: *list<f64> in level = list<f64>make(level);
+        list<f64>push(m, 0.0);
+        z: f64 = -0.0;
+        k: ?*node<f64> = list<f64>take(m, z);
+        printfmt("{}\n", k != null);
+    }
+    return 0;
+}

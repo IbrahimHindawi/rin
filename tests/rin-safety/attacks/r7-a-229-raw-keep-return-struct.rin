@@ -1,0 +1,13 @@
+// Return a struct holding cstr_of of a local array.
+import "std/print.rin"
+import "std/cstr.rin"
+holder: struct = { k: [1]^const c8; }
+make: proc() -> holder = {
+    a: [8]c8 = { 'h', 'i', 0 };
+    return { .k = { cstr_of(a) } };
+}
+main: proc() -> i32 = {
+    h: holder = make();
+    print_cstr(h.k[0]);
+    return 0;
+}

@@ -1,0 +1,6 @@
+// external_emit writes a C prototype, so an integer-only signature can lie about a pointer API.
+longjmp: proc[external_emit](buf: u64, v: i32) -> void = {}
+main: proc() -> i32 = {
+    longjmp(4096, 1);
+    return 0;
+}

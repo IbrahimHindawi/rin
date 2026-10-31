@@ -1,0 +1,8 @@
+import "std/print.rin"
+id: proc<T>(x: T) -> T = { return x; }
+main: proc() -> i32 = {
+    a: [4]i32 = { 1, 2, 3, 4 };
+    b: [4]i32 = id(a);
+    printfmt("{}\n", b[3]);
+    return 0;
+}

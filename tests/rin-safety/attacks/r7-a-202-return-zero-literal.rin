@@ -1,0 +1,7 @@
+import "std/print.rin"
+I: struct = { p: *i32 in permanent; }
+f: proc() -> I = { return {}; }
+main: proc() -> i32 = {
+    printfmt("{}\n", f().p*);
+    return 0;
+}

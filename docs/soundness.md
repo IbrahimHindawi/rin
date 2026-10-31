@@ -7,8 +7,9 @@ To break the language, break an assumption or find a path the table misses, then
 
 ## The claim
 
-Take a single-threaded program with no `unsafe { }` and no `[unsafe]` proc of its own, checked
-by `rin check` and built without `RIN_NO_BOUNDS_CHECKS`. If everything under
+Take a single-threaded program with no `unsafe { }`, no `[unsafe]` proc, no line marked `// unsafe`, no
+`[external]` declaration or `cinclude` of its own, and no global declared without a value (which is C's),
+checked by `rin check` and built without `RIN_NO_BOUNDS_CHECKS`. If everything under
 [What is trusted](#what-is-trusted) is correct, then when it runs:
 
 - no read or write touches memory outside a live object of the expected type, and
@@ -26,6 +27,7 @@ The argument rests on these and checks none of them:
 |---|---|---|
 | The bodies of `unsafe { }` in std | Every safe program inherits the bug | Count them: `tests/run_rin_vm.py` runs the attacks against them |
 | C the program links, and calls from `unsafe` | Anything | Per program |
+| What a program says of C: `proc[external]`, `struct[external]`, a global with no value, `cinclude` | No checker can see past a declaration. `free: proc[external](p: u64)` is callable from safe code, and is a lie | Per program; they are excluded from the claim above |
 | The checker and emitter in `src/main.c` | A rule below does not hold | About 23,000 lines |
 | The C compiler, the OS and the hardware | Anything | Out of scope |
 | The stack guard page | A deep recursion could reach other memory | Windows probes by default; `rin build` asks for `-fstack-clash-protection` elsewhere |
@@ -42,7 +44,7 @@ The rules below keep these true. The argument is an induction over execution: ea
 1. **Pointers.** A `*T in R` points at a live `T`, in `R` or something that outlives `R`. A `?*T`
    is that or null. A pointer with no region named is a parameter or local that cannot outlive
    what it was made from.
-2. **Slices.** A `[]T` has `length` live `T`s at `data`, or a length of 0.
+2. **Slices.** A `[]T` has `length` live `T`s at `data`, or a length of 0. A slice's fields cannot be written, or stated in a literal: only an array, a subrange or `new_slice` makes one.
 3. **Regions.** Memory in a region stays valid until the block that opened the region ends, and
    that block's end is the only thing that takes it back. No region is open twice.
 4. **Values.** Every local, field and element has been given a value of its type. Every non-null
@@ -104,11 +106,17 @@ remove a check. So the emitter never relies on a C flag to define these:
 | Overlapping `memcpy` | Array and slice copies use `memmove` | `Stmt_Assign`, `slice<T>copy` |
 | Strict aliasing | Safe code has no cast that could break it | Cast rule |
 
-Three things remain assumed of the C compiler, and are worth knowing:
+| Writing to a const object | A pointer, slice or array parameter made from a const place must say const | `safety_check_place_for_view` |
+| A misaligned pointer | No pointer or slice to a field of a packed struct | same |
+| Reading and writing a stream with nothing between | std seeks or flushes, and flushes only output | `std/file.rin` |
+| A printf conversion that does not fit | Arguments are cast to what was worked out; `%s` takes only a C string, once; no flags C leaves undefined | `printfmt_try_single_call` |
+
+Four things remain assumed of the C compiler, and are worth knowing:
 
 - A conversion from a wider integer to a narrower signed one wraps. C calls this
   implementation-defined rather than undefined, and every compiler rin targets wraps.
 - A signed right shift is arithmetic, for the same reason.
+- Floats follow IEEE 754 (C's Annex F): division by zero and out-of-range `f64` to `f32` give infinity.
 - A loop with no side effects may be removed by a C compiler. That can change whether a program
   hangs, but touches no memory.
 

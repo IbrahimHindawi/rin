@@ -1,0 +1,13 @@
+import "std/print.rin"
+import "std/fmt.rin"
+level: region;
+holder: struct = { k: [1]^const c8; }
+g: holder = { .k = { "" } };
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 4096);
+        g = { .k = { fmt_text(f) } };
+    }
+    print_cstr(g.k[0]);
+    return 0;
+}

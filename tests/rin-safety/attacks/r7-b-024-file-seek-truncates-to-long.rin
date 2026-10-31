@@ -1,0 +1,16 @@
+// std/file.rin:97 cast(offset, long): 32 bits on Windows. 0x100000005 seeks to 5 and returns true.
+// A negative offset can land positive: -4294967295 seeks to 1 and returns true.
+import "std/file.rin"
+import "std/print.rin"
+main: proc() -> i32 = {
+    f: file = file_open("b-024.txt", "wb+");
+    file_write_text(f, "abcdefghij");
+    ok: b32 = file_seek(f, 0x100000005);
+    printfmt("{}\n", ok);
+    printfmt("{}\n", file_read_byte(f));
+    ok = file_seek(f, -4294967295);
+    printfmt("{}\n", ok);
+    printfmt("{}\n", file_read_byte(f));
+    file_close(f);
+    return 0;
+}

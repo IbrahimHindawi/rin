@@ -1,0 +1,9 @@
+// A union with a non-null struct arm and a plain arm, zeroed.
+import "std/print.rin"
+I: struct = { p: *i32 in permanent; }
+u: union = { i: I; x: i32; }
+main: proc() -> i32 = {
+    v: u = { .x = 1 };
+    printfmt("{}\n", v.i.p*);
+    return 0;
+}

@@ -1,0 +1,9 @@
+// Writable slice over a const array via .data.
+import "std/print.rin"
+G: const [4]i32 = { 1, 2, 3, 4 };
+main: proc() -> i32 = {
+    t: []const i32 = G;
+    s: []i32 = { .data = t.data, .length = 4 };
+    s[0] = 9;
+    return 0;
+}

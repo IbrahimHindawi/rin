@@ -1,0 +1,10 @@
+// A non-void proc that may reach its end through a switch.
+import "std/print.rin"
+f: proc(x: i32) -> *i32 = {
+    switch (x) { case 0: { return null; } }
+}
+main: proc() -> i32 = {
+    p: *i32 = f(1);
+    printfmt("{}\n", p*);
+    return 0;
+}

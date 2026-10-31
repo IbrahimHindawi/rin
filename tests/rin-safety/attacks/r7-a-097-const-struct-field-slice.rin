@@ -1,0 +1,7 @@
+S: struct = { a: [4]i32; }
+G: const S = { .a = { 1, 2, 3, 4 } };
+main: proc() -> i32 = {
+    s: []i32 = G.a;
+    s[0] = 6;
+    return 0;
+}

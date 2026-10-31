@@ -1,0 +1,6 @@
+// expect: expected
+main: proc() -> i32 = {
+    half: f64 = 0.5;
+    c: b32 = half;
+    return cast(c, i32);
+}

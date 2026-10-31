@@ -1,0 +1,8 @@
+import "std/print.rin"
+w: proc(a: [4]u64) -> u64 = { return a[1]; }
+P: struct[packed] = { a: u8; b: [4]u64; }
+main: proc() -> i32 = {
+    x: P = {};
+    printfmt("{}\n", w(x.b));
+    return 0;
+}

@@ -1,0 +1,10 @@
+// must turning a raw pointer into a non-null checked pointer.
+import "std/print.rin"
+import "std/reflect.rin"
+E: enum = { a, b }
+main: proc() -> i32 = {
+    t: *const reflect = E<>&;
+    f: *const reflect_field = must(t*.variant.fields);
+    printfmt("{}\n", f*.offset);
+    return 0;
+}

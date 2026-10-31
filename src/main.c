@@ -720,9 +720,11 @@ struct Expr {
     bool arith_seen;
     u8 cast_code;
     bool cast_seen;
+    bool cast_bool; // a float to a boolean: whether it is not zero
     bool cast_from_int_too; // a generic cast, from a float in one instance and not in another
     bool index_stable; // a local nothing can change behind: its slice needs no whole read
     bool literal_fold; // two plain literals, which C would compute in int
+    bool cstr_guard; // printf's `s ? s : "(null)"`, emitted so that s runs once
     string8 cstr_copy_count; // cstr_of of an array this long, in safe code: handed back as a private copy
     /* `s[a..b]`: the end of a subrange, on an Expr_Index whose index_expr is
        the start. */
@@ -11563,6 +11565,8 @@ static bool type_compatible(Program *prog, TypeExpr *dst, TypeExpr *src) {
     }
     if (dst->kind == Type_Region) return false;
     if (g_safe_body && dst->kind == Type_Ptr && src->kind == Type_Ptr && !dst->is_raw && !dst->is_nullable && src->is_nullable) return false;
+    /* A boolean means not zero; C's conversion of 0.5, or of 1 << 32, is not that. */
+    if (g_safe_body && type_is_boolish(dst) && dst->kind == Type_Name && type_is_float(src)) return false;
     /* Into `*void` loses nothing, but out of it would make any type from any other. */
     if (g_safe_body && type_is_void_pointer(src) && !src->is_null_literal && !src->is_raw && !type_is_void_pointer(dst) &&
         (dst->kind == Type_Ptr || dst->kind == Type_Proc)) return false;
@@ -12675,7 +12679,7 @@ static void type_error_proc_argument(
    and `alignof` used to belong on this list; they are now their own node kind
    and cannot reach the call path. */
 static bool call_name_is_builtin(string8 name) {
-    return string8_equals_cstr(&name, "printfmt") || string8_equals_cstr(&name, "fprintfmt") || string8_equals_cstr(&name, "must");
+    return string8_equals_cstr(&name, "rin_file_printf") || string8_equals_cstr(&name, "printfmt") || string8_equals_cstr(&name, "fprintfmt") || string8_equals_cstr(&name, "must");
 }
 
 static void type_error_call_undeclared(
@@ -14171,6 +14175,7 @@ static void type_check_index_bounds(Expr *e, TypeExpr *base, Program *prog, memo
 
 static void safety_check_zeroed(const char *what, Program *prog, TypeExpr *type, memops_arena *arena, i32 line, i32 col);
 
+static void safety_check_place_for_view(TypeExpr *dst, Expr *value, TypeScope *scope, Program *prog, memops_arena *arena);
 static void check_assignment_compatible(
     const char *context,
     Program *prog,
@@ -14191,6 +14196,7 @@ static void check_assignment_compatible(
         }
     }
     if (!dst || !src) return;
+    safety_check_place_for_view(dst, src_expr, scope, prog, arena);
     if (region_flow_rejects(prog, dst, src, line, col)) return;
     if (!type_compatible(prog, dst, src)) {
         type_error_incompatible(context, prog, dst, src, line, col, arena);
@@ -14207,7 +14213,33 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
 static void narrow_set_type(Program *prog, Expr *e, TypeExpr *type);
 static void type_check_ternary(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena);
 
+static void raw_keep_check(TypeExpr *dst, Expr *value, TypeScope *scope, Program *prog, memops_arena *arena);
+/* How many struct or array literals this value is inside: what one holds is kept. An
+   argument is checked by the same proc, and is only passed. */
+static i32 g_init_list_depth = 0;
+static void type_check_initializer_list(Expr *init, TypeExpr *expected, TypeScope *scope, Program *prog, memops_arena *arena);
 static void type_check_initializer_against(
+    Expr *init,
+    TypeExpr *expected,
+    TypeScope *scope,
+    Program *prog,
+    memops_arena *arena
+) {
+    if (!init || !expected) return;
+    if (init->kind == Expr_InitList) {
+        g_init_list_depth += 1;
+        type_check_initializer_list(init, expected, scope, prog, arena);
+        g_init_list_depth -= 1;
+        return;
+    }
+    if (g_init_list_depth > 0) raw_keep_check(type_scope_apply_sub(scope, arena, expected), init, scope, prog, arena);
+    i32 outer_depth = g_init_list_depth;
+    g_init_list_depth = 0;
+    type_check_initializer_list(init, expected, scope, prog, arena);
+    g_init_list_depth = outer_depth;
+}
+
+static void type_check_initializer_list(
     Expr *init,
     TypeExpr *expected,
     TypeScope *scope,
@@ -14225,6 +14257,11 @@ static void type_check_initializer_against(
     init->cast_type = expected;
 
     expected = resolve_alias_type(prog, expected);
+    if (g_safe_body && expected && type_slice_elem(expected) && init->args.length > 0) {
+        type_error_message("a slice's pointer and length are not written out, or its length could be anything: make it "
+                           "from an array, a subrange or new_slice", init->line, init->col);
+        return;
+    }
     if (expected && expected->kind == Type_Array) {
         i64 array_count = type_array_count_value(expected);
         i64 positional_index = 0;
@@ -14455,6 +14492,7 @@ static bool proc_touches_pointers(Program *prog, ProcDecl *decl) {
    it is not a carrier. */
 static bool type_is_proc_pointer(Program *prog, TypeExpr *type);
 
+static bool type_has_pointer_deep_forward(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth);
 static bool type_is_carrier_depth(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth) {
     if (!type) return false;
     if (depth > 16) return true;
@@ -14479,7 +14517,7 @@ static bool type_is_carrier_depth(Program *prog, TypeExpr *type, memops_arena *a
         for (i32 i = 0; i < decl->fields.length; i++) {
             Field *field = (Field *)decl->fields.data[i];
             TypeExpr *ft = field->type && sub.has ? substitute_type_sub(arena, field->type, sub) : field->type;
-            if (ft && type_mentions_pointer(prog, ft, 0)) return true;
+            if (ft && (type_mentions_pointer(prog, ft, 0) || type_has_pointer_deep_forward(prog, ft, arena, 0))) return true;
         }
     }
     for (i32 i = 0; i < decl->fields.length; i++) {
@@ -15764,12 +15802,17 @@ static bool path_is_std(const char *path) {
     return strncmp(rest, "std", 3) == 0 && (rest[3] == '/' || rest[3] == '\\');
 }
 
-static bool name_is_runtime(string8 name) {
+static bool name_has_runtime_prefix(string8 name) {
     static const char *const prefixes[] = { "rin_", "RIN_", "memops_arena", "memops_os_", "memops_bytes", "memops_align", "memops_is_" };
     for (u64 i = 0; i < sizeof(prefixes) / sizeof(prefixes[0]); i++) {
         u64 n = strlen(prefixes[i]);
         if (name.length >= n && memcmp(name.data, prefixes[i], n) == 0) return true;
     }
+    return false;
+}
+
+static bool name_is_runtime(string8 name) {
+    if (name_has_runtime_prefix(name)) return true;
     static const char *const exact[] = { "abort", "printf", "fprintf", "stderr", "memcpy", "memmove", "memset" };
     for (u64 i = 0; i < sizeof(exact) / sizeof(exact[0]); i++) {
         if (string8_equals_cstr(&name, exact[i])) return true;
@@ -15801,6 +15844,20 @@ static bool name_is_type(Program *prog, string8 name, memops_arena *arena) {
     if (lookup_enum_decl(prog, name)) return true;
     for (i32 i = 0; i < prog->aliases.length; i++) {
         if (string8_equals(&((AliasDecl *)prog->aliases.data[i])->name, &name)) return true;
+    }
+    return false;
+}
+
+/* `E_one`: how the generated C spells a member of E. */
+static bool name_is_enum_member(Program *prog, string8 name) {
+    for (i32 i = 0; i < prog->enums.length; i++) {
+        EnumDecl *decl = (EnumDecl *)prog->enums.data[i];
+        if (name.length <= decl->name.length + 1 || memcmp(name.data, decl->name.data, decl->name.length) != 0 ||
+            name.data[decl->name.length] != '_') continue;
+        string8 rest = { name.data + decl->name.length + 1, name.length - decl->name.length - 1 };
+        for (i32 j = 0; j < decl->items.length; j++) {
+            if (string8_equals(&((EnumItem *)decl->items.data[j])->name, &rest)) return true;
+        }
     }
     return false;
 }
@@ -15872,6 +15929,7 @@ static void safety_check_local_name(Program *prog, string8 name, i32 line, i32 c
     if (!g_safety || g_checking_std || name.length == 0) return;
     const char *why = null;
     if (name_is_runtime(name)) why = "belongs to rin's runtime, which the generated C calls by name";
+    else if (name_is_enum_member(prog, name)) why = "is what the generated C calls an enum's member, and an array's length may be spelled with it";
     else if (name_is_type(prog, name, arena)) why = "is a type, and the generated C spells the type by name wherever it needs its size";
     else if (name_is_generated_type(prog, name, arena)) why = "is what the generated C calls a type";
     else {
@@ -15893,16 +15951,25 @@ static void safety_check_program_names(Program *prog, memops_arena *arena) {
     if (!g_safety) return;
     for (i32 i = 0; i < prog->procs.length; i++) {
         ProcDecl *p = (ProcDecl *)prog->procs.data[i];
-        if (p->is_external || path_is_std(p->source_path) || !name_is_c_runtime_symbol(p->name)) continue;
+        if (path_is_std(p->source_path) || !(name_is_c_runtime_symbol(p->name) || name_is_enum_member(prog, p->name))) continue;
+        /* `memset: proc[external]` is C's memset, declared; it replaces nothing. */
+        if (p->is_external && !name_has_runtime_prefix(p->name)) continue;
         g_diag_source_path = p->source_path;
         type_error_message("this name belongs to rin's runtime, which the generated C calls by name; a proc of "
                            "this name would replace it", p->line, p->col);
     }
     for (i32 i = 0; i < prog->globals.length; i++) {
         Stmt *g = (Stmt *)prog->globals.data[i];
-        if (g->is_external || path_is_std(g->source_path) || !name_is_c_runtime_symbol(g->name)) continue;
+        if (path_is_std(g->source_path) || !(name_is_c_runtime_symbol(g->name) || name_is_enum_member(prog, g->name))) continue;
+        if (g->is_external && !name_has_runtime_prefix(g->name)) continue;
         g_diag_source_path = g->source_path;
         type_error_message("this name belongs to rin's runtime, which the generated C calls by name", g->line, g->col);
+    }
+    for (i32 i = 0; i < prog->structs.length; i++) {
+        StructDecl *decl = (StructDecl *)prog->structs.data[i];
+        if (path_is_std(decl->source_path) || !name_is_runtime(decl->name)) continue;
+        g_diag_source_path = decl->source_path;
+        type_error_message("this name belongs to rin's runtime, which the generated C uses by name", decl->line, decl->col);
     }
     /* std calls hash and equal in the middle of an operation on a container, holding its
        capacity and tables, so these may not reach the container or anything else. */
@@ -16422,6 +16489,10 @@ static void borrow_kill_written(string8 written) {
 
 /* A parameter through which the callee may change what it points at. */
 /* Pointers anywhere inside a type, through struct fields and arrays. */
+static bool type_has_pointer_deep(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth);
+static bool type_has_pointer_deep_forward(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth) {
+    return type_has_pointer_deep(prog, type, arena, depth);
+}
 static bool type_has_pointer_deep(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth) {
     if (!type) return false;
     if (depth > 16) return true;
@@ -17112,6 +17183,71 @@ static bool cstr_array_is_copied(TypeExpr *at) {
     return count > 0 && count <= 4096;
 }
 
+static bool type_scope_lookup_local(TypeScope *scope, string8 name);
+/* `g.xs`, `p*.xs[i].ys`: whether the place is in a const object, or reached through a pointer to const. */
+static bool expr_place_is_const(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena, i32 depth) {
+    if (!e || depth > 16) return false;
+    if (e->kind == Expr_Name) {
+        for (i32 i = 0; i < prog->globals.length; i++) {
+            Stmt *g = (Stmt *)prog->globals.data[i];
+            if (string8_equals(&g->name, &e->name)) return g->type && g->type->is_const && !type_scope_lookup_local(scope, e->name);
+        }
+        TypeExpr *t = type_scope_lookup(scope, e->name);
+        return t && t->is_const;
+    }
+    if (e->kind == Expr_Field) return expr_place_is_const(e->base, scope, prog, arena, depth + 1);
+    if (e->kind == Expr_Index) {
+        TypeExpr *bt = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
+        if (bt && bt->kind == Type_Ptr) return bt->elem && bt->elem->is_const;
+        if (bt && type_slice_elem(bt)) return type_slice_elem(bt)->is_const;
+        return expr_place_is_const(e->base, scope, prog, arena, depth + 1);
+    }
+    return false;
+}
+
+/* A field of a packed struct may not be aligned for its type, which a pointer promises it is. */
+static bool expr_place_is_packed(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena, i32 depth) {
+    if (!e || depth > 16) return false;
+    if (e->kind == Expr_Field) {
+        TypeExpr *bt = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
+        if (bt && bt->kind == Type_Ptr) bt = resolve_alias_type(prog, bt->elem);
+        TypeSub sub = {0};
+        StructDecl *decl = bt ? lookup_aggregate_decl(prog, bt, &sub, arena) : null;
+        if (decl && decl->packed) return true;
+        return expr_place_is_packed(e->base, scope, prog, arena, depth + 1);
+    }
+    if (e->kind == Expr_Index) {
+        TypeExpr *bt = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
+        if (bt && bt->kind == Type_Array) return expr_place_is_packed(e->base, scope, prog, arena, depth + 1);
+    }
+    return false;
+}
+
+/* A pointer, a slice or an array parameter made from a place: through a non-const one, safe
+   code would write to memory that may be read-only; through a packed one, it may be misaligned. */
+static void safety_check_place_for_view(TypeExpr *dst, Expr *value, TypeScope *scope, Program *prog, memops_arena *arena) {
+    if (!g_safe_body || !dst || !value) return;
+    TypeExpr *d = resolve_alias_type(prog, dst);
+    if (!d) return;
+    TypeExpr *elem = d->kind == Type_Ptr || d->kind == Type_Array ? d->elem : type_slice_elem(d);
+    if (!elem) return;
+    Expr *place = value;
+    if (place->kind == Expr_Addr) place = place->inner;
+    else if (place->kind == Expr_Index && place->index_end) place = place->base;
+    else {
+        TypeExpr *vt = resolve_alias_type(prog, infer_expr_type(value, scope, prog, arena));
+        if (!vt || vt->kind != Type_Array) return;
+    }
+    /* `const vec3`: the const is on the alias, and the array under it has plain elements. */
+    if (!elem->is_const && !dst->is_const && !d->is_const && expr_place_is_const(place, scope, prog, arena, 0)) {
+        type_error_message("this memory is const, and may be read-only: what points at it must say const too", value->line, value->col);
+    }
+    if (expr_place_is_packed(place, scope, prog, arena, 0)) {
+        type_error_message("a field of a packed struct may not be aligned for its type, so a pointer or slice to it is not safe; copy it",
+                           value->line, value->col);
+    }
+}
+
 typedef struct OpenCstrScan { Program *prog; TypeScope *scope; bool found; } OpenCstrScan;
 static void visit_open_cstr(Expr *e, void *ctx, memops_arena *arena) {
     OpenCstrScan *scan = (OpenCstrScan *)ctx;
@@ -17165,7 +17301,25 @@ static void safety_check_open_cstr(ProcDecl *decl, Expr *call, TypeScope *scope,
     }
 }
 
+static void safety_check_nullable_callee(Expr *call, TypeScope *scope, Program *prog, memops_arena *arena) {
+    if (!g_safe_body) return;
+    TypeExpr *callee = call->base ? infer_expr_type(call->base, scope, prog, arena) : type_scope_lookup(scope, call->name);
+    TypeExpr *r = resolve_alias_type(prog, callee);
+    if (r && r->kind == Type_Ptr && r->is_nullable && !r->narrowed) {
+        type_error_message("this proc pointer may be null: test it first, as 'if (f) { f(); }'", call->line, call->col);
+    }
+}
+
+static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, memops_arena *arena);
 static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_arena *arena) {
+    i32 outer_depth = g_init_list_depth;
+    g_init_list_depth = 0;
+    type_check_call_inner(call, scope, prog, arena);
+    g_init_list_depth = outer_depth;
+}
+
+static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, memops_arena *arena) {
+    safety_check_nullable_callee(call, scope, prog, arena);
     /* Indirect call through an expression -- a proc pointer in a field, an array
        element, and so on. Argument checking is the same as for a proc-pointer
        variable; only finding the callee's type differs. */
@@ -17194,6 +17348,7 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
             type_check_initializer_against(arg, expected, scope, prog, arena);
             type_check_expr(arg, scope, prog, arena);
             TypeExpr *actual = infer_expr_type(arg, scope, prog, arena);
+            safety_check_place_for_view(expected, arg, scope, prog, arena);
             if (expected && actual && region_flow_rejects(prog, expected, actual, arg ? arg->line : call->line, arg ? arg->col : call->col)) {
                 // reported
             } else if (expected && actual && !type_compatible(prog, expected, actual)) {
@@ -17306,6 +17461,7 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
             type_check_initializer_against(arg, expected, scope, prog, arena);
             type_check_expr(arg, scope, prog, arena);
             TypeExpr *actual = infer_expr_type(arg, scope, prog, arena);
+            safety_check_place_for_view(expected, arg, scope, prog, arena);
             if (expected && actual && region_flow_rejects(prog, expected, actual, arg ? arg->line : call->line, arg ? arg->col : call->col)) {
                 // reported
             } else if (expected && actual && !type_compatible(prog, expected, actual)) {
@@ -17431,6 +17587,7 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
         }
         if (g_safety) expected = regions_substitute(arena, expected, &region_bindings);
         Expr *arg = (Expr *)call->args.data[i];
+        safety_check_place_for_view(expected, arg, scope, prog, arena);
         /* With the callee's region variables bound, its parameter types must
            obey the rule in the caller's terms: this is where a generic
            container's element regions meet the region it is made in. */
@@ -17631,7 +17788,9 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
             /* From a float, the target decides how it saturates. An enum holds an i32. */
             TypeExpr *ra = resolve_alias_type(prog, actual);
             TypeExpr *rc = resolve_alias_type(prog, cast_type);
-            if (ra && rc && type_is_float(ra)) {
+            if (ra && rc && type_is_float(ra) && type_is_boolish(rc)) {
+                e->cast_bool = true;
+            } else if (ra && rc && type_is_float(ra)) {
                 static TypeExpr enum_target;
                 bool is_enum = rc->kind == Type_Name && !type_is_float(rc) && lookup_enum_decl(prog, rc->name) != null;
                 if (is_enum) { enum_target.kind = Type_Name; enum_target.name = string8_from_cstr(arena, "i32"); }
@@ -17902,7 +18061,11 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
             }
         }
         if (!(left_kind != Lit_None && right_kind != Lit_None)) {
-            arith_note(&e->arith_code, &e->arith_seen, left_kind == Lit_Int ? right : left);
+            /* The type both sides are carried out in, as C works it out: a float on either
+               side makes it a float, the wider integer wins. */
+            LitKind result_kind = Lit_None;
+            TypeExpr *both = resolve_alias_type(prog, binary_numeric_result(prog, arena, left, left_kind, right, right_kind, &result_kind));
+            arith_note(&e->arith_code, &e->arith_seen, both ? both : (left_kind == Lit_Int ? right : left));
         }
     }
 
@@ -17929,6 +18092,7 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
             i32 bits = 0;
             bool is_signed = false;
             u8 width = type_int_info(left, &bits, &is_signed) ? (u8)bits : 0;
+            if (left_kind == Lit_Int && right_kind == Lit_Int) e->literal_fold = true;
             if (left_kind == Lit_Int && width == 0) width = 32;
             if (e->shift_bits == 0) e->shift_bits = width;
             else if (e->shift_bits != width) e->shift_bits = 255;
@@ -19091,6 +19255,8 @@ static const char *printfmt_spec_for_type(Program *prog, TypeExpr *type) {
     type = resolve_alias_type(prog, type);
     if (type->kind == Type_Ptr) {
         TypeExpr *elem = type->elem ? resolve_alias_type(prog, type->elem) : null;
+        /* %s reads to a terminator, and a '*c8' points at one char. */
+        if (g_safety && !type->is_raw && !type->is_str) return null;
         if (elem && elem->kind == Type_Name && string8_equals_cstr(&elem->name, "c8")) {
             return "%s";
         }
@@ -19135,6 +19301,15 @@ static void printfmt_append_conversion(memops_arena *arena, string8 *out, string
     bool is_small_int = spec[1] == 'd' || spec[1] == 'u';
     string8_append_byte(arena, out, '%');
     if (written) width.length--;
+    /* C leaves a zero flag or a precision on %c, and a zero flag on %s, undefined. */
+    if (spec[1] == 'c' || spec[1] == 's') {
+        while (width.length > 0 && width.data[0] == '0') { width.data++; width.length--; }
+        if (spec[1] == 'c') {
+            for (u64 k = 0; k < width.length; k++) {
+                if (width.data[k] == '.') { width.length = k; break; }
+            }
+        }
+    }
     string8_append_bytes(arena, out, width.data, width.length);
     if (written && (last == 'g' || last == 'e') && is_float) {
         string8_append_byte(arena, out, last);
@@ -19168,6 +19343,11 @@ static void printfmt_append_print_arg(memops_arena *arena, Vec_voidptr *out, Stm
     if (resolved && type_slice_elem(resolved)) {
         printfmt_error_at(source ? source->source_path : null, arg->line, arg->col,
                           "printfmt does not print a slice; print its elements, or for chars, 'cstr_of(s)'");
+        return;
+    }
+    if (g_safety && resolved && resolved->kind == Type_Ptr && !resolved->is_raw && !resolved->is_str) {
+        printfmt_error_at(source ? source->source_path : null, arg->line, arg->col,
+                          "printfmt does not print a '*c8', which points at one char: print 'p*'");
         return;
     }
     if (resolved && resolved->kind == Type_Ptr && !printfmt_spec_for_type(prog, type)) {
@@ -19322,11 +19502,30 @@ static bool printfmt_try_single_call(
                 guard->left = cmp;
                 guard->right = arg;
                 guard->third = fallback;
+                guard->cstr_guard = true;
                 guard->line = arg->line;
                 guard->col = arg->col;
                 ptr_array_append(arena, &printf_call->args, guard);
             } else {
-                ptr_array_append(arena, &printf_call->args, arg);
+                /* What was worked out here is what printf is told, whatever the arms of a
+                   ternary or the sides of an operator turn out to be. A hex conversion
+                   wants an unsigned. */
+                Expr *passed = arg;
+                u8 last = width.length > 0 ? width.data[width.length - 1] : 0;
+                bool hex = last == 'x' || last == 'X';
+                bool shaped = arg->kind == Expr_Ternary || arg->kind == Expr_Binary || arg->kind == Expr_Call;
+                TypeExpr *rt = resolve_alias_type(prog, type);
+                i32 bits = 0;
+                bool is_signed = false;
+                if (rt && rt->kind == Type_Name && type_int_info(rt, &bits, &is_signed) && (hex || shaped)) {
+                    Expr *cast_expr = expr_new(arena, Expr_Cast);
+                    cast_expr->inner = arg;
+                    cast_expr->line = arg->line;
+                    cast_expr->col = arg->col;
+                    cast_expr->cast_type = hex ? type_name_expr(arena, bits > 32 ? "u64" : "u32") : rt;
+                    passed = cast_expr;
+                }
+                ptr_array_append(arena, &printf_call->args, passed);
             }
 
             arg_index++;
@@ -19384,10 +19583,10 @@ static void rewrite_printfmt_call_stmt(Stmt *stmt, TypeScope *scope, Program *pr
                               "fprintfmt writes numbers, characters and C strings; this argument prints only through print");
             continue;
         }
-        Expr *stream = printfmt_call_expr(arena, "file_stream", file->line, file->col);
-        ptr_array_append(arena, &stream->args, file);
+        /* The stream is found inside the call, after every argument has run: one of them may
+           close the file, and C does not say which order they go in. */
         Vec_voidptr args = ptr_array_reserve(arena, e->args.length + 2);
-        ptr_array_append(arena, &args, stream);
+        ptr_array_append(arena, &args, file);
         if (is_text) {
             Expr *percent_s = expr_new(arena, Expr_String);
             percent_s->line = e->line;
@@ -19397,7 +19596,7 @@ static void rewrite_printfmt_call_stmt(Stmt *stmt, TypeScope *scope, Program *pr
         }
         for (i32 j = 0; j < e->args.length; j++) ptr_array_append(arena, &args, e->args.data[j]);
         e->args = args;
-        e->name = string8_from_cstr(arena, "fprintf");
+        e->name = string8_from_cstr(arena, "rin_file_printf");
     }
 }
 
@@ -20404,8 +20603,34 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
         emit_type(arena, out, e->cast_type, sub);
         emit_cstr(arena, out, ")(");
         ConstVal literal = const_eval(e->inner);
-        bool saturate = e->cast_code > 1 && e->cast_code != 255 && !e->cast_from_int_too && !literal.ok;
-        if (e->cast_code > 1 && !saturate && !literal.ok) {
+        if (e->cast_bool) {
+            emit_cstr(arena, out, "(");
+            emit_expr(arena, out, e->inner, sub, generic_name);
+            emit_cstr(arena, out, ") != 0))");
+            return;
+        }
+        if (e->cast_code > 1 && e->cast_code != 255 && e->inner && e->inner->kind == Expr_Number && literal.is_float) {
+            /* A constant, which may be in a global's initializer, where no call can go. */
+            string8 digits = number_digits(e->inner->number);
+            char text[64];
+            snprintf(text, sizeof(text), "%.*s", (int)digits.length, digits.data);
+            double v = strtod(text, null);
+            i32 bits = e->cast_code / 2;
+            bool is_signed = e->cast_code & 1;
+            double top = ldexp(1.0, is_signed ? bits - 1 : bits);
+            double low = is_signed ? -top : 0.0;
+            char buf[64];
+            if (!is_signed && v >= top) snprintf(buf, sizeof(buf), "%lluULL", bits == 64 ? ~0ULL : (1ULL << bits) - 1);
+            else if (!is_signed) snprintf(buf, sizeof(buf), "%lluULL", v <= 0.0 ? 0ULL : (unsigned long long)v);
+            else if (v >= top) snprintf(buf, sizeof(buf), "%lldLL", (long long)(bits == 64 ? 9223372036854775807LL : (1LL << (bits - 1)) - 1));
+            else if (v <= low) snprintf(buf, sizeof(buf), "(-%lldLL - 1)", (long long)(bits == 64 ? 9223372036854775807LL : (1LL << (bits - 1)) - 1));
+            else snprintf(buf, sizeof(buf), "%lldLL", (long long)v);
+            emit_cstr(arena, out, buf);
+            emit_cstr(arena, out, "))");
+            return;
+        }
+        bool saturate = e->cast_code > 1 && e->cast_code != 255 && !e->cast_from_int_too && !(literal.ok && !literal.is_float);
+        if (e->cast_code > 1 && !saturate && !(literal.ok && !literal.is_float)) {
             /* A generic: this instance's target, and the source decides at compile time. */
             TypeExpr *target = sub.has ? substitute_type_sub(arena, e->cast_type, sub) : e->cast_type;
             i32 bits = 0;
@@ -20520,6 +20745,12 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
     }
     if (e->kind == Expr_Binary) {
         emit_binary_expr(arena, out, e, sub, generic_name, true);
+        return;
+    }
+    if (e->kind == Expr_Ternary && e->cstr_guard) {
+        emit_cstr(arena, out, "rin_cstr_or_null(");
+        emit_expr(arena, out, e->right, sub, generic_name);
+        emit_cstr(arena, out, ")");
         return;
     }
     if (e->kind == Expr_Ternary) {
@@ -22606,6 +22837,15 @@ static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
     }
     emit_cstr(arena, out, "\n");
 
+    if (lookup_proc_decl(prog, string8_from_cstr(arena, "file_stream"))) {
+        emit_cstr(arena, out, "#include <stdarg.h>\n"
+                              "RIN_MAYBE_UNUSED static int rin_file_printf(file f, const char *format, ...) {\n"
+                              "    va_list args;\n"
+                              "    va_start(args, format);\n"
+                              "    int written = vfprintf((FILE *)file_stream(f), format, args);\n"
+                              "    va_end(args);\n"
+                              "    return written;\n}\n");
+    }
     if (g_uses_must) {
         emit_cstr(arena, out, "RIN_MAYBE_UNUSED static const void *rin_nonnull(const void *p) {\n"
                               "    if (!p) {\n"

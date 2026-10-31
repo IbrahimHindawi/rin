@@ -1,0 +1,6 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    s: str = cast(16, str);
+    printfmt("{}\n", s);
+    return 0;
+}

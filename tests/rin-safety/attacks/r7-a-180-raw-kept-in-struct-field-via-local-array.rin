@@ -1,0 +1,15 @@
+// A raw pointer from a region's fmt in a local struct holding an array, past the region.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region;
+holder: struct = { k: [1]^const c8; }
+main: proc() -> i32 = {
+    h: holder = { .k = { "" } };
+    level: region = {
+        f: *fmt in level = fmt_make(level, 4096);
+        fmt_cstr(f, "hello");
+        h = { .k = { fmt_text(f) } };
+    }
+    print_cstr(h.k[0]);
+    return 0;
+}

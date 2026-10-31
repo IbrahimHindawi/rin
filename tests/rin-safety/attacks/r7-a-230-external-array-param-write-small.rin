@@ -1,0 +1,9 @@
+// A C proc taking an array param (a pointer in C), write far past a small caller array.
+import "std/print.rin"
+memset: proc[external](dst: [1]u8, v: i32, n: usize) -> void = {}
+main: proc() -> i32 = {
+    a: [1]u8 = {};
+    memset(a, 65, 100000);
+    printfmt("{}\n", a[0]);
+    return 0;
+}

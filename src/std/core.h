@@ -152,7 +152,7 @@ RIN_MAYBE_UNUSED static inline void *rin_slice_range(const void *slice, u64 a, u
 #ifndef RIN_NO_BOUNDS_CHECKS
     rin_range_check_(a, b, s.length, file, line);
 #endif
-    s.data += a * size;
+    if (a != 0) s.data += a * size;
     s.length = b - a;
     memcpy(out, &s, sizeof(s));
     return out;
@@ -162,7 +162,7 @@ RIN_MAYBE_UNUSED static inline void *rin_array_range(const void *data, u64 a, u6
 #ifndef RIN_NO_BOUNDS_CHECKS
     rin_range_check_(a, b, n, file, line);
 #endif
-    s.data = (u8 *)data + a * size;
+    s.data = a != 0 ? (u8 *)data + a * size : (u8 *)data;
     s.length = b - a;
     memcpy(out, &s, sizeof(s));
     return out;
@@ -229,6 +229,8 @@ RIN_MAYBE_UNUSED static inline const c8 *rin_cstr_copy(c8 *to, const c8 *from, u
     return to;
 }
 
+RIN_MAYBE_UNUSED static inline const c8 *rin_cstr_or_null(const c8 *s) { return s ? s : "(null)"; }
+
 /* Where only the C compiler knows an integer's type: a generic's instances that differ, C's
    long, an enum. It picks by the type; the wrapping is through u64, which truncates back. */
 #define RIN_ANY_INT(x, stem) _Generic((x), char: stem##_c, signed char: stem##_sc, short: stem##_s, int: stem##_i, \
@@ -280,10 +282,14 @@ RIN_ANY_DEFINE_FLOAT(double, d)
     float: (a) / (b), double: (a) / (b), long double: (a) / (b), \
     int: rin_##name##_i32((i32)(a), (i32)(b), __FILE__, __LINE__), \
     unsigned: rin_##name##_u32((u32)(a), (u32)(b), __FILE__, __LINE__), \
+    unsigned long: rin_##name##_u64((u64)(a), (u64)(b), __FILE__, __LINE__), \
+    unsigned long long: rin_##name##_u64((u64)(a), (u64)(b), __FILE__, __LINE__), \
     default: rin_##name##_i64((i64)(a), (i64)(b), __FILE__, __LINE__))
 #define RIN_REM_ANY(a, b) _Generic((a) % (b), \
     int: rin_irem_i32((i32)(a), (i32)(b), __FILE__, __LINE__), \
     unsigned: rin_irem_u32((u32)(a), (u32)(b), __FILE__, __LINE__), \
+    unsigned long: rin_irem_u64((u64)(a), (u64)(b), __FILE__, __LINE__), \
+    unsigned long long: rin_irem_u64((u64)(a), (u64)(b), __FILE__, __LINE__), \
     default: rin_irem_i64((i64)(a), (i64)(b), __FILE__, __LINE__))
 
 /* `noalias` parameters (docs/noalias-variadic.md). RIN_RESTRICT is C's
@@ -313,13 +319,13 @@ RIN_ANY_DEFINE_FLOAT(double, d)
 #else
 #include <stdarg.h>
 RIN_MAYBE_UNUSED static inline void rin_noalias_check(const char *file, int line, int n, ...) {
-    const u8 *ptr[16];
-    u64 bytes[16];
-    const char *name[16];
-    int flags[16];
+    const u8 *ptr[64];
+    u64 bytes[64];
+    const char *name[64];
+    int flags[64];
     va_list args;
     va_start(args, n);
-    if (n > 16) n = 16;
+    if (n > 64) { fprintf(stderr, "%s:%d: more than 64 pointer parameters beside a noalias one\n", file, line); abort(); }
     for (int i = 0; i < n; i++) {
         ptr[i] = (const u8 *)va_arg(args, const void *);
         bytes[i] = va_arg(args, u64);

@@ -1,0 +1,13 @@
+// A declared region's arena, as a C-owned global: write its fields.
+import "std/print.rin"
+level: region;
+rin_region_level: memops_arena;
+main: proc() -> i32 = {
+    level: region = {
+        x: *i32 in level = new<i32>(level, 1);
+        rin_region_level.used = 0;
+        y: *i32 in level = new<i32>(level, 2);
+        printfmt("{} {}\n", x*, y*);
+    }
+    return 0;
+}

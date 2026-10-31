@@ -1,0 +1,11 @@
+import "std/print.rin"
+import "std/fmt.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = new<fmt>(level);
+        fmt_char(f, 'x');
+        printfmt("{}\n", fmt_done(f));
+    }
+    return 0;
+}

@@ -1,0 +1,11 @@
+// std/memops.rin:52: 0 is a power of two. memops.rin:58 align 0: a-1 is all ones, modulo == p,
+// p += 0 - p: returns 0. align 3 aligns to nothing. Near the top of the range it wraps to 0.
+import "std/memops.rin"
+import "std/print.rin"
+main: proc() -> i32 = {
+    printfmt("{}\n", memops_is_power_of_two(0));
+    printfmt("{}\n", memops_align_forward(100, 0));
+    printfmt("{}\n", memops_align_forward(10, 3));
+    printfmt("{}\n", memops_align_forward(0xFFFFFFFFFFFFFFFF'u64, 16));
+    return 0;
+}

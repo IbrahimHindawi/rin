@@ -1,0 +1,11 @@
+// Forge a proc pointer through a struct inside a union.
+import "std/print.rin"
+inner: struct = { f: *proc() -> void; }
+u: union = { x: u64; s: inner; }
+hi: proc() -> void = {}
+main: proc() -> i32 = {
+    v: u = { .s = { .f = hi } };
+    v.x = 16;
+    v.s.f();
+    return 0;
+}

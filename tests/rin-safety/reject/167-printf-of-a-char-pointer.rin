@@ -1,0 +1,7 @@
+// expect: does not print a '*c8'
+main: proc() -> i32 = {
+    a: [1]char = { 120 };
+    p: *char = a[0]&;
+    printfmt("{}\n", p);
+    return 0;
+}

@@ -1,0 +1,6 @@
+import "std/print.rin"
+rd: proc(s: []i32) -> i32 = { return s[99999]; }
+main: proc() -> i32 = {
+    printfmt("{}\n", rd({ .length = 100000 }));
+    return 0;
+}

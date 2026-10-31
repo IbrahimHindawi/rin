@@ -1,0 +1,8 @@
+// A rin-generated table named as a C-owned global of a bigger array.
+import "std/print.rin"
+P: struct = { x: i32; }
+P_reflect: [100000]u64;
+main: proc() -> i32 = {
+    printfmt("{}\n", P_reflect[99999]);
+    return 0;
+}

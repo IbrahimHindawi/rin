@@ -1,0 +1,12 @@
+// printf("%s\n", ((next_name() != 0) ? next_name() : "(null)")): the argument runs twice. Here
+// the first printfmt prints b, not a, and the second stops out of bounds on the fourth call.
+// r4-189 is this shape, with null on the second call, which %s then reads.
+import "std/print.rin"
+names: [3]str = { "a", "b", "c" };
+at: u64 = 0;
+next_name: proc() -> str = { at += 1; return names[at - 1]; }
+main: proc() -> i32 = {
+    printfmt("{}\n", next_name());
+    printfmt("{}\n", next_name());
+    return 0;
+}

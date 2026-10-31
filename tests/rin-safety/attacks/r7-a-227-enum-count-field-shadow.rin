@@ -1,0 +1,11 @@
+// The enum C-name used as a struct field array bound, shadowed by a local.
+import "std/print.rin"
+E: enum = { n = 1 }
+S: struct = { a: [E.n]i32; }
+main: proc() -> i32 = {
+    E_n: u64 = 100000;
+    s: S = {};
+    i: u64 = 99999;
+    printfmt("{}\n", s.a[i]);
+    return 0;
+}

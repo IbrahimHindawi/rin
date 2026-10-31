@@ -1,0 +1,11 @@
+// Copy via a pointer-to-length through a struct field chain.
+import "std/print.rin"
+H: struct = { s: []i32; }
+bump: proc(p: *u64) -> void = { p* = 100000; }
+main: proc() -> i32 = {
+    a: [2]i32 = { 1, 2 };
+    s: []i32 = a;
+    bump(s.length&);
+    printfmt("{}\n", s[99999]);
+    return 0;
+}

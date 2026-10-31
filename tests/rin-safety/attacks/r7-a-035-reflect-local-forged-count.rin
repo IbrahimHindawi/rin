@@ -1,0 +1,13 @@
+// A local reflect, zeroed then forged by field writes.
+import "std/print.rin"
+import "std/reflect.rin"
+P: struct = { x: i32; }
+main: proc() -> i32 = {
+    one: *const reflect_field = must(reflect_find_field(P<>&, "x"));
+    x: reflect = {};
+    x.count = 100000;
+    x.variant.fields = one;
+    f: ?*const reflect_field = reflect_field_at(x&, 99999);
+    if (f) { printfmt("{}\n", f*.offset); }
+    return 0;
+}

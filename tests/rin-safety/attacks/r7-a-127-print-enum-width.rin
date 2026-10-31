@@ -1,0 +1,7 @@
+import "std/print.rin"
+E: enum = { a, b }
+main: proc() -> i32 = {
+    e: E = cast(99, E);
+    printfmt("{:5}\n", e);
+    return 0;
+}

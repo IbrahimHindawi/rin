@@ -1,0 +1,12 @@
+// std/cstr.rin:208: value wraps and the proc returns 1. The comment says each reports success
+// separately because 0 is a legitimate result; 18446744073709551616 parses as 0, success.
+import "std/cstr.rin"
+import "std/print.rin"
+main: proc() -> i32 = {
+    out: i64 = 7;
+    ok: b32 = cstr_parse_i64("18446744073709551616", out&);
+    printfmt("{} {}\n", ok, out);
+    ok = cstr_parse_i64("9223372036854775808", out&);
+    printfmt("{} {}\n", ok, out);
+    return 0;
+}

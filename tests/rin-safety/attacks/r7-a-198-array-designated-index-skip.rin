@@ -1,0 +1,8 @@
+// An array literal with designators, skipping elements.
+import "std/print.rin"
+main: proc() -> i32 = {
+    q: *i32 in permanent = new<i32>(permanent);
+    a: [2]*i32 in permanent = { [1] = q };
+    printfmt("{}\n", a[0]*);
+    return 0;
+}

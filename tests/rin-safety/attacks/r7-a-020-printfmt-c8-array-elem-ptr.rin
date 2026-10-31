@@ -1,0 +1,6 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [4]char = { 'a', 'b', 'c', 'd' };
+    printfmt("{}\n", a[3]&);
+    return 0;
+}

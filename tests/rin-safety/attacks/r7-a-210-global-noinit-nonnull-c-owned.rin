@@ -1,0 +1,8 @@
+// A C-owned global that C never defined with a value: a non-null pointer from stdlib.
+import "std/print.rin"
+_environ: ?*i32;
+__argv: *char in permanent;
+main: proc() -> i32 = {
+    printfmt("{}\n", __argv*);
+    return 0;
+}

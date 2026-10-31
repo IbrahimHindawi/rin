@@ -1,0 +1,9 @@
+// Empty struct: table has count 0; fields arm is null or dangling.
+import "std/print.rin"
+import "std/reflect.rin"
+E: struct = {}
+main: proc() -> i32 = {
+    t: *const reflect = E<>&;
+    printfmt("{}\n", t*.variant.fields*.offset);
+    return 0;
+}

@@ -1,0 +1,10 @@
+// rin_idiv_i32(c, d, ...): d truncates to 0 and the program stops on "division by zero" although
+// d is not zero. With d = 0x100000001 it would divide by 1 and return 10; the right answer is 0.
+import "std/print.rin"
+main: proc() -> i32 = {
+    c: i32 = 10;
+    d: u64 = 0x100000000'u64;
+    r: u64 = c / d;
+    printfmt("{}\n", r);
+    return 0;
+}

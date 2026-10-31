@@ -1,0 +1,10 @@
+// Table: "length is not written by safe code". Through its address?
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [2]i32 = { 1, 2 };
+    s: []i32 = a;
+    p: *u64 = s.length&;
+    p* = 100000;
+    printfmt("{}\n", s[99999]);
+    return 0;
+}

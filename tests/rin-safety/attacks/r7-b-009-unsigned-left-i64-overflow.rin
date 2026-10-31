@@ -1,0 +1,12 @@
+// u32 + i64 stays plain C: the sum is computed in signed long long. 1 + INT64_MAX is undefined.
+// No route through unsigned, because the code for "u32" needs none.
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: u32 = 1;
+    n: i64 = 9223372036854775807;
+    r: i64 = a + n;
+    b: u8 = 2;
+    s: i64 = b * n;
+    printfmt("{} {}\n", r, s);
+    return 0;
+}

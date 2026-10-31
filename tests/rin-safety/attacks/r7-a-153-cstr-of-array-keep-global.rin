@@ -1,0 +1,13 @@
+import "std/print.rin"
+import "std/cstr.rin"
+holder: struct = { k: [1]^const c8; }
+g: holder = { .k = { "" } };
+fill: proc() -> void = {
+    a: [8]c8 = { 'h', 'i', 0 };
+    g = { .k = { cstr_of(a) } };
+}
+main: proc() -> i32 = {
+    fill();
+    print_cstr(g.k[0]);
+    return 0;
+}

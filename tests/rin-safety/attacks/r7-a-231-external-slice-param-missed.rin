@@ -1,0 +1,9 @@
+// Does an external proc taking []T (a carrier/pointer) count? Should be rejected.
+import "std/print.rin"
+cwrite: proc[external](dst: []u8, n: usize) -> void = {}
+main: proc() -> i32 = {
+    a: [4]u8 = {};
+    s: []u8 = a;
+    cwrite(s, 100000);
+    return 0;
+}

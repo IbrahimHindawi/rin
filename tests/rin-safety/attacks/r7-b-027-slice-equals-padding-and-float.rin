@@ -1,0 +1,19 @@
+// std/slice.rin:113 memcmp over padding and float bits. Two slices of equal values may compare
+// unequal. The comment says correct for plain data; a struct with padding is plain data.
+import "std/slice.rin"
+import "std/print.rin"
+pad: struct = { a: u8; b: u64; }
+main: proc() -> i32 = {
+    p: [1]pad = {};
+    p[0].a = 1;
+    p[0].b = 2;
+    y: pad = { .a = 1, .b = 2 };
+    q: [1]pad = {};
+    q[0] = y;
+    printfmt("{}\n", slice<pad>equals(p, q));
+    a: [1]f64 = {};
+    b: [1]f64 = {};
+    b[0] = -0.0;
+    printfmt("{}\n", slice<f64>equals(a, b));
+    return 0;
+}

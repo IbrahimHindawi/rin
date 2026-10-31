@@ -1,0 +1,9 @@
+// Slice literal: real data, forged length.
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [2]i32 = { 1, 2 };
+    t: []i32 = a;
+    s: []i32 = { .data = t.data, .length = 100000 };
+    printfmt("{}\n", s[99999]);
+    return 0;
+}

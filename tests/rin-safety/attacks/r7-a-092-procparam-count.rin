@@ -1,0 +1,7 @@
+// A proc's parameter as its array's length.
+import "std/print.rin"
+f: proc(n: u64, a: [n]i32) -> i32 = { return a[n - 1]; }
+g: proc(n: u64, a: [n]i32) -> i32 = { return f(n + 100000, a); }
+main: proc() -> i32 = {
+    return 0;
+}

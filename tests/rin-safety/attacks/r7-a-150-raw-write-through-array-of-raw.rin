@@ -1,0 +1,14 @@
+// fmt_text's text kept and then overwritten: terminator gone. Non-const raw from vec.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region;
+holder: struct = { k: [1]^const c8; }
+main: proc() -> i32 = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 4);
+        h: holder = { .k = { fmt_text(f) } };
+        for (i: i32 = 0; i < 100; i += 1) { fmt_char(f, 'x'); }
+        print_cstr(h.k[0]);
+    }
+    return 0;
+}

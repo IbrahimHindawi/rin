@@ -1,0 +1,14 @@
+// A vec with no storage: vec_i32_items does array[0].data + (0), rin_slice_range does s.data += 0.
+// NULL + 0 is undefined in C before C2y, and clang's -fsanitize=pointer-overflow reports it.
+import "std/vec.rin"
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 0);
+        e: []i32 = vec<i32>items(v);
+        f: []i32 = e[0..0];
+        printfmt("{}\n", f.length);
+    }
+    return 0;
+}

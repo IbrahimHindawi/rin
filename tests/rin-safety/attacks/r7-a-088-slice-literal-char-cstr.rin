@@ -1,0 +1,8 @@
+// []char with a forged length to cstr_of or a print.
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    s: []char = { .length = 100000 };
+    printfmt("{}\n", s[50]);
+    return 0;
+}

@@ -1,0 +1,9 @@
+import "std/print.rin"
+level: region;
+main: proc() -> i32 = {
+    level: region = {
+        p: *[]i32 in level = new<[]i32>(level, { .length = 100000 });
+        printfmt("{}\n", p*[99999]);
+    }
+    return 0;
+}

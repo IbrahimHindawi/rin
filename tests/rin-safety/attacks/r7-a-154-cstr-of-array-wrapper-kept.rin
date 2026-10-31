@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "std/cstr.rin"
+get: proc() -> ^const c8 = { a: [8]c8 = { 'h', 0 }; return cstr_of(a); }
+main: proc() -> i32 = {
+    k: ^const c8 = get();
+    print_cstr(k);
+    return 0;
+}

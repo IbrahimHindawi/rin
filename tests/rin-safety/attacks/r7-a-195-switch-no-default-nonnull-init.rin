@@ -1,0 +1,11 @@
+// A non-void proc reaching its end: returns a struct holding a non-null.
+import "std/print.rin"
+S: struct = { p: *i32 in permanent; }
+f: proc(x: i32) -> S = {
+    if (x == 0) { return { .p = new<i32>(permanent) }; }
+}
+main: proc() -> i32 = {
+    s: S = f(1);
+    printfmt("{}\n", s.p*);
+    return 0;
+}

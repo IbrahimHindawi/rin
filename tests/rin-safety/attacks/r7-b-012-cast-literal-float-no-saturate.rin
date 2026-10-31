@@ -1,0 +1,10 @@
+// A cast of a float literal skips rin_f2i: u64 idx = ((u64)(1e300)). Undefined in C. This build of
+// clang happens to fold it to a large value and the bounds check fires; nothing promises that.
+import "std/print.rin"
+main: proc() -> i32 = {
+    idx: u64 = cast(1e300, u64);
+    xs: [4]i32 = {};
+    xs[idx] = 7;
+    printfmt("{}\n", xs[0]);
+    return 0;
+}

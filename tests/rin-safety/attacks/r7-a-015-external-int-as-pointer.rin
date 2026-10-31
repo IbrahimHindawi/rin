@@ -1,0 +1,6 @@
+// A pointer-free signature that lies: free takes an integer.
+free: proc[external](p: u64) -> void = {}
+main: proc() -> i32 = {
+    free(4096);
+    return 0;
+}
