@@ -30,7 +30,6 @@ r3-01d-vec-pop-empty.rin
 r3-01e-vec-items-empty-index.rin
 r3-01f-vec-growth-items.rin
 r3-01g-vec-big-struct.rin
-r3-01h-vec-u8-and-array-elem.rin
 r3-01i-vec-get-option.rin
 r3-01j-vec-make-huge.rin
 r3-02-hashmap-fresh-ops.rin
@@ -55,7 +54,6 @@ r3-08d-newslice-overflow-mul.rin
 r3-08e-new-zero-size.rin
 r3-09-alignment.rin
 r3-10d-print-enum-bad.rin
-r3-13-vec-array-elem-c.rin
 r3-15-vec-push-self-element.rin
 r2-fp7-struct-value-with-region-ptr-declared-inside.rin
 r4-131-fprintfmt-arg-closes.rin
@@ -106,9 +104,6 @@ r5-c-042-noalias-region-pointer-pass.rin
 r5-c-048-must-of-tmp-returned-struct.rin
 r5-c-080-generic-mangle-region-ptr.rin
 r5-e-009-named-count-const-index.rin
-r5-e-015-generic-index-count-first-instance.rin
-r5-e-016-generic-box-index-count.rin
-r5-e-017-generic-coerce-count.rin
 r5-e-019-const-eval-int-overflow-index.rin
 r5-e-020-const-eval-u64-wrap-index.rin
 r5-e-021-const-eval-u32-wrap-index.rin
@@ -126,7 +121,6 @@ r5-e-042-const-eval-i32-mul-wrap.rin
 r5-e-043-named-const-literal-oob.rin
 r5-s-007-map-find-null-key.rin
 r5-s-015-cstr-of-unseq-clobber.rin
-r5-s-025-runtime-equal-array-param.rin
 r5-s-035-vec-append-self-grow.rin
 r5-s-045-cstr-ends-with-short.rin
 r5-s-046-lower-bound-empty.rin
@@ -163,7 +157,6 @@ r7-a-026-main-returns-pointer.rin
 r7-a-031-external-builtin-unreachable.rin
 r7-a-032-external-emit-lying-proto.rin
 r7-a-033-external-alloca.rin
-r7-a-053-vec-of-array.rin
 r7-a-055-return-array.rin
 r7-a-060-array-of-array-index.rin
 r7-a-061-alias-array-of-array-order.rin
@@ -217,5 +210,4 @@ r7-b-028-memops-helpers-zero-align.rin
 r7-b-029-null-plus-zero.rin
 r7-b-030-shl-literal-left-wrong-width.rin
 r7-b-031-sort-bad-less-hangs.rin
-r7-b-033-const-laundered-by-std.rin
 r7-b-034-printfmt-b32-depends-on-sibling-arg.rin

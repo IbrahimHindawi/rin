@@ -204,8 +204,17 @@ cstr_parse_i64: proc(s: ^const c8, out: *i64) -> b32 = { unsafe {
     }
     digits: u64 = 0;
     value: u64 = 0;
+    /* The most an i64 can hold, one more when negative. Past it the number has no answer. */
+    limit: u64 = 9223372036854775807;
+    if (negative != 0) {
+        limit += 1;
+    }
     while (s[i] >= cast(48, c8) && s[i] <= cast(57, c8)) {
-        value = value * 10 + cast(cast(s[i], u8) - 48, u64);
+        digit: u64 = cast(cast(s[i], u8) - 48, u64);
+        if (value > (limit - digit) / 10) {
+            return 0;
+        }
+        value = value * 10 + digit;
         digits += 1;
         i += 1;
     }

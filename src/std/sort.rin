@@ -48,6 +48,11 @@ sort: proc<T>(xs: []T, less: *proc(a: T, b: T) -> b32) -> void = {
             i += 1;
             j -= 1;
         }
+        // Only a comparator that contradicts itself gets here, and the loop would never
+        // end: insertion sort always does, and the order is then as good as `less` allows.
+        if (j + 1 >= n) {
+            break;
+        }
         // xs[0..j+1] holds nothing greater than the pivot, xs[j+1..n] nothing less.
         if (j + 1 < n - j - 1) {
             sort<T>(xs[0..j + 1], less);

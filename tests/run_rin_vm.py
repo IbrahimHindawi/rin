@@ -125,7 +125,7 @@ def say(**fields):
 
 def compile_one(item):
     stem = item["stem"]
-    common = ["-std=c11", "-g", "-Wno-everything", "-ffp-contract=off", f"gen/{stem}.c", "-I", "gen", "-I", "src", "-I", "src/std", "-lm"]
+    common = ["-std=c11", "-g", *job["quiet"], "-ffp-contract=off", f"gen/{stem}.c", "-I", "gen", "-I", "src", "-I", "src/std", "-lm"]
     builds = [([*job["asan"], *common], stem)]
     if item["compare"]:
         builds.append((["-O2", *common], f"{stem}__o2"))
@@ -180,6 +180,10 @@ with concurrent.futures.ThreadPoolExecutor(job["runners"]) as pool:
 say(stage="done")
 """
 
+# Warnings are noise here, but a wrong type must stay the error it is by default: the emitter
+# getting one wrong is a bug to see, and silencing it makes a binary that means nothing.
+C_QUIET = ["-Wno-everything", "-Werror=int-conversion", "-Werror=incompatible-pointer-types",
+           "-Werror=incompatible-function-pointer-types", "-Werror=implicit-function-declaration"]
 ASAN = ["-fsanitize=address,undefined", "-fno-sanitize-recover=all"]
 # 0xC0000005 access violation, 0xC0000374 heap corruption. Not 0xC0000409: abort() exits with
 # it on Windows, and a checked failure is meant to end that way. On Linux the same: abort is 134
@@ -212,7 +216,7 @@ def build(source: Path, job: Path, gen: Path, cc: str | None, compare: bool = Fa
         return f"rin compile failed:\n{translate.stdout[:800]}"
     if cc is None:
         return None
-    common =["-std=c11", "-g", "-Wno-everything", "-ffp-contract=off", "-D_CRT_SECURE_NO_WARNINGS", str(c_path),
+    common =["-std=c11", "-g", *C_QUIET, "-ffp-contract=off", "-D_CRT_SECURE_NO_WARNINGS", str(c_path),
               "-I", str(ROOT / "src"), "-I", str(ROOT / "src" / "std")]
     compiled = run([cc, *ASAN, *common, "-o", str(job / f"{source.stem}.exe")])
     if compiled.returncode != 0:
@@ -258,7 +262,7 @@ def run_in_wsl(stems: list[str], compare: set[str], gen: Path, results: Path, ti
     """Sends the C in and writes what comes back where the sandbox guest would have. The guest is
     what is under test, so its lines are data: only a name we asked for gets a file."""
     expected = set(stems) | {f"{stem}__o2" for stem in compare}
-    job = {"uid": WSL_RUNNER_UID, "timeout": timeout, "memory": GUEST_MEMORY, "runners": GUEST_RUNNERS, "asan": ASAN,
+    job = {"uid": WSL_RUNNER_UID, "timeout": timeout, "memory": GUEST_MEMORY, "runners": GUEST_RUNNERS, "asan": ASAN, "quiet": C_QUIET,
            "programs": [{"stem": stem, "compare": stem in compare} for stem in stems]}
     # No shell on the way in: `--exec`, or wsl hands this line to a shell that expands it first.
     script = "rm -rf /var/tmp/rin_vm && mkdir -p /var/tmp/rin_vm && cd /var/tmp/rin_vm && tar -xf - && exec python3 -u guest.py"

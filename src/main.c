@@ -750,6 +750,10 @@ struct Expr {
     TypeExpr *coerce_from;
     bool coerce_varies;
     string8 coerce_count;
+    /* A generic body is checked once per instance, and where the conversion differs
+       between them the emitter finds each one here, by the instance's key. */
+    Vec_string8 coerce_keys;
+    Vec_voidptr coerce_instances;
     i32 line;
     i32 col;
 };
@@ -910,6 +914,7 @@ struct ProcDecl {
        not be taken, since a call through a pointer could not be checked. */
     Vec_string8 opens;
     bool answers_for_signature; // has an unsafe block: its body cannot show what it moves
+    bool no_move; // proc[no_move]: std says this trusted body moves nothing
     string8 specialized_from; // `hash: proc<point>`: hash
     bool noalias_contained; // reaches memory only through its parameters and what it allocates
     u64 moves; // bit i: a call through parameter i may move storage; see compute_proc_moves
@@ -2390,6 +2395,9 @@ typedef struct DeclAttributes {
     string8 underlying;  /* enum[u32] and friends, empty when unset */
     string8 callconv;
     bool must_use;       /* enum[must_use]: a result of this type may not be ignored */
+    /* proc[no_move], std's alone: this trusted body hands out a pointer into what a
+       parameter holds, and moves nothing it reaches, which its signature cannot show. */
+    bool no_move;
     /* proc[trusted]: the body may use raw pointers, casts and C, and the author
        vouches for its signature; anyone may call it. proc[unsafe]: the same
        body, but calling it is itself unsafe. See docs/regions.md. */
@@ -2636,7 +2644,11 @@ static TypeExpr *parse_type_inner(Parser *p) {
         t->line = lb->line;
         t->col = lb->col;
         t->args = ptr_array_reserve(p->arena, 1);
-        ptr_array_append(p->arena, &t->args, parse_type(p));
+        TypeExpr *slice_elem = parse_type(p);
+        if (slice_elem && slice_elem->kind == Type_Array) {
+            parser_error_token(p, lb, "an array cannot be a generic's type yet: C would get the wrong type for it, so put it in a struct");
+        }
+        ptr_array_append(p->arena, &t->args, slice_elem);
         parse_region_suffix(p, t);
         return t;
     }
@@ -2754,6 +2766,12 @@ static TypeExpr *parse_type_inner(Parser *p) {
             ptr_array_append(p->arena, &args, arg);
         } while (parser_match(p, Token_Comma));
         parser_expect_generic_close(p);
+        for (i32 i = 0; i < args.length; i++) {
+            if (((TypeExpr *)args.data[i])->kind == Type_Array) {
+                parser_error_token(p, name_tok, "an array cannot be a generic's type yet: C would get the wrong type for it, so put it in a struct");
+                break;
+            }
+        }
 
         TypeExpr *t = type_new(p->arena, Type_Generic);
         t->name = name;
@@ -4409,10 +4427,12 @@ static DeclAttributes parse_decl_attributes(Parser *p, bool is_enum) {
                                        "'unsafe { }' in its body");
         } else if (string8slice_equals_cstr(tok->text, "unsafe")) {
             attrs.is_unsafe = true;
+        } else if (string8slice_equals_cstr(tok->text, "no_move")) {
+            attrs.no_move = true;
         } else {
             parser_error_token(p, tok,
                 "unknown attribute; expected one of external, external_emit, "
-                "no_layout_check, packed, align(N), callconv(NAME), must_use, trusted, unsafe");
+                "no_layout_check, packed, align(N), callconv(NAME), must_use, trusted, unsafe, no_move");
         }
     } while (parser_match(p, Token_Comma));
     parser_expect(p, Token_RBracket, "expected ']' after attributes");
@@ -4730,6 +4750,7 @@ static ProcDecl *parse_proc_decl(Parser *p, Token *name_tok) {
         decl->emit_external_proto = proc_attrs.emit_external_proto;
     }
     decl->is_unsafe = proc_attrs.is_unsafe;
+    decl->no_move = proc_attrs.no_move;
 
     if (parser_match(p, Token_LAngle)) {
         Token *first = parser_peek(p);
@@ -8066,7 +8087,15 @@ static void emit_type(memops_arena *arena, string8 *out, TypeExpr *type, TypeSub
     if (type->kind == Type_Name) {
         TypeExpr *substituted = type_sub_lookup(sub, type->name);
         if (substituted) {
-            emit_type_qualifiers(arena, out, type);
+            /* Onto the filled-in type, not in front of it: `const T` with T a pointer
+               is the pointer const, `X * const`, not what it points at. */
+            if ((type->is_const && !substituted->is_const) || (type->is_volatile && !substituted->is_volatile)) {
+                TypeExpr *qualified = memops_arena_push_struct(arena, TypeExpr);
+                *qualified = *substituted;
+                qualified->is_const = qualified->is_const || type->is_const;
+                qualified->is_volatile = qualified->is_volatile || type->is_volatile;
+                substituted = qualified;
+            }
             emit_type(arena, out, substituted, (TypeSub){0});
             return;
         }
@@ -8139,6 +8168,14 @@ static string8 type_mangle_impl(memops_arena *arena, TypeExpr *type, TypeSub sub
     if (type->kind == Type_Name) {
         TypeExpr *substituted = type_sub_lookup(sub, type->name);
         if (substituted) {
+            /* `const T` names the const instance: slice<const T> is not slice<T>. */
+            if ((type->is_const && !substituted->is_const) || (type->is_volatile && !substituted->is_volatile)) {
+                TypeExpr *qualified = memops_arena_push_struct(arena, TypeExpr);
+                *qualified = *substituted;
+                qualified->is_const = qualified->is_const || type->is_const;
+                qualified->is_volatile = qualified->is_volatile || type->is_volatile;
+                substituted = qualified;
+            }
             return type_mangle(arena, substituted, (TypeSub){0});
         }
         emit_string8(arena, &out, type->name);
@@ -10128,7 +10165,11 @@ static TypeExpr *substitute_type_sub(memops_arena *arena, TypeExpr *src, TypeSub
 static TypeExpr *substitute_type_param(memops_arena *arena, TypeExpr *src, string8 param, TypeExpr *arg) {
     if (!src) return null;
     if (src->kind == Type_Name && string8_equals(&src->name, &param)) {
-        return clone_type_expr(arena, arg);
+        /* `const T` stays const whatever T is, or a generic launders const away. */
+        TypeExpr *filled = clone_type_expr(arena, arg);
+        if (src->is_const) filled->is_const = true;
+        if (src->is_volatile) filled->is_volatile = true;
+        return filled;
     }
     TypeExpr *dst = type_new(arena, src->kind);
     dst->name = src->name;
@@ -13915,7 +13956,29 @@ static bool expr_is_pure(Expr *e) {
     }
 }
 
+typedef struct CoerceInstance {
+    TypeExpr *to;
+    TypeExpr *from;
+    string8 count;
+} CoerceInstance;
+
+/* The instance whose body is being checked, for a conversion to be filed under. */
+static TypeSub g_check_sub;
+static memops_arena *g_check_arena;
+static string8 type_sub_key(memops_arena *arena, TypeSub sub);
+
 static void coerce_set(Program *prog, Expr *e, TypeExpr *type, TypeExpr *from, string8 count) {
+    if (g_check_sub.has && g_check_arena) {
+        string8 key = type_sub_key(g_check_arena, g_check_sub);
+        if (string8_vec_find(&e->coerce_keys, key) < 0) {
+            CoerceInstance *inst = memops_arena_push_struct(g_check_arena, CoerceInstance);
+            inst->to = type;
+            inst->from = from;
+            inst->count = count;
+            Vec_string8_append(g_check_arena, &e->coerce_keys, key);
+            ptr_array_append(g_check_arena, &e->coerce_instances, inst);
+        }
+    }
     if (e->coerce_varies) return;
     if (!e->coerce_to) {
         e->coerce_to = type;
@@ -15741,7 +15804,7 @@ static void compute_proc_moves(Program *prog, memops_arena *arena) {
             stmt_walk((Stmt *)p->body.data[j], null, visit_find_unsafe_block, &p->answers_for_signature, arena);
         }
         bool trusted = p->answers_for_signature || p->is_unsafe || p->is_external;
-        if (!trusted) continue;
+        if (!trusted || p->no_move) continue;
         for (i32 j = 0; j < p->params.length && j < 62; j++) {
             if (type_param_shallow_may_move(prog, ((Param *)p->params.data[j])->type, arena)) p->moves |= 1ull<< j;
         }
@@ -15975,6 +16038,9 @@ static void safety_check_program_names(Program *prog, memops_arena *arena) {
        capacity and tables, so these may not reach the container or anything else. */
     for (i32 i = 0; i < prog->procs.length; i++) {
         ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+        if (p->no_move && !path_is_std(p->source_path)) {
+            safety_error("'no_move' is std's: it is a promise about a body the checker cannot read", p->line, p->col);
+        }
         if (path_is_std(p->source_path) || p->is_external) continue;
         /* `hash: proc<point>`, or a pattern, `hash: proc<key<T>>`. */
         string8 base = p->specialized_from.length > 0 ? p->specialized_from : (p->generic_pattern ? p->name : (string8){0});
@@ -16544,6 +16610,7 @@ static TypeSub call_generic_sub(Program *prog, ProcDecl *decl, Expr *call, memop
 /* A generic's `*T` or `[]T` is what its instance makes it: `slice<f32>zero` moves
    nothing, whatever `slice<vec<f32>>zero` might. */
 static bool call_param_may_move(Program *prog, ProcDecl *decl, Expr *call, i32 i, memops_arena *arena) {
+    if (decl && decl->no_move) return false;
     TypeSub sub = call_generic_sub(prog, decl, call, arena);
     if (sub.has && i < decl->params.length) {
         TypeExpr *pt = substitute_type_sub(arena, ((Param *)decl->params.data[i])->type, sub);
@@ -16553,7 +16620,7 @@ static bool call_param_may_move(Program *prog, ProcDecl *decl, Expr *call, i32 i
 }
 
 static bool decl_param_may_move(Program *prog, ProcDecl *decl, i32 i, memops_arena *arena) {
-    if (!decl || i >= decl->params.length) return false;
+    if (!decl || i >= decl->params.length || decl->no_move) return false;
     bool trusted = decl->answers_for_signature || decl->is_unsafe || decl->is_external;
     TypeExpr *pt = ((Param *)decl->params.data[i])->type;
     if (trusted) return param_type_may_move(prog, pt, true, arena);
@@ -18818,6 +18885,8 @@ static void type_check_proc_body(
     TypeSub sub,
     memops_arena *arena
 ) {
+    g_check_sub = sub;
+    g_check_arena = arena;
     const char *prev_diag_source_path = g_diag_source_path;
     const char *prev_diag_import_chain = g_diag_import_chain;
     if (p->source_path) {
@@ -18994,6 +19063,18 @@ static void type_check_generic_proc_instances(
         for (i32 j = 0; j < instances.length; j++) {
             TypeExpr *arg = mangle_type_for(arena, sub_instances.data[j]);
             TypeSub sub = proc_sub_for_instance(arena, p, instances.data[j], arg);
+            /* Spelled in the call or worked out from an argument. An alias is fine: it
+               stays a typedef in C, which has the whole type. */
+            for (i32 k = 0; k < sub.args.length; k++) {
+                TypeExpr *given = (TypeExpr *)sub.args.data[k];
+                if (given && given->kind == Type_Array) {
+                    char message[256];
+                    snprintf(message, sizeof(message), "an array cannot be a generic's type yet: C would get the wrong "
+                             "type for it, so put it in a struct: '%.*s' with '%s'", (int)p->name.length, p->name.data,
+                             sub_instances.data[j].data ? (const char *)sub_instances.data[j].data : "?");
+                    type_error_message(message, p->line, p->col);
+                }
+            }
             type_check_proc_body(prog, p, globals, sub, arena);
         }
     }
@@ -20481,6 +20562,21 @@ static string8 slice_const_source_name(memops_arena *arena, TypeExpr *slice, Typ
    slice conversion is written field by field. */
 static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
     if (!e) return;
+    if (e->coerce_varies && sub.has && e->coerce_keys.length > 0) {
+        i32 found = string8_vec_find(&e->coerce_keys, type_sub_key(arena, sub));
+        if (found >= 0) {
+            /* This instance's conversion, for the length of this one emission. */
+            CoerceInstance *inst = (CoerceInstance *)e->coerce_instances.data[found];
+            Expr saved = *e;
+            e->coerce_to = inst->to;
+            e->coerce_from = inst->from;
+            e->coerce_count = inst->count;
+            e->coerce_varies = false;
+            emit_expr(arena, out, e, sub, generic_name);
+            *e = saved;
+            return;
+        }
+    }
     if (e->coerce_to && !e->coerce_varies && !e->index_end && e->coerce_count.length == 0 && e->coerce_from) {
         string8 from = type_mangle(arena, e->coerce_from, sub);
         string8 widened = slice_const_source_name(arena, e->coerce_to, sub);

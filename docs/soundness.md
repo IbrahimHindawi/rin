@@ -26,6 +26,7 @@ The argument rests on these and checks none of them:
 | Trusted | What goes wrong if it is wrong | How much there is |
 |---|---|---|
 | The bodies of `unsafe { }` in std | Every safe program inherits the bug | Count them: `tests/run_rin_vm.py` runs the attacks against them |
+| `proc[no_move]` in std | It says a trusted body moves nothing, so pointers taken before the call stay good. Only std may say it | Read `vec<T>at`, `last` and `items` |
 | C the program links, and calls from `unsafe` | Anything | Per program |
 | What a program says of C: `proc[external]`, `proc[external_emit]`, `struct[external]`, a global with no value, `cinclude` | No checker can see past a declaration. `free: proc[external](p: u64)` is callable from safe code, and is a lie | Per program; they are excluded from the claim above |
 | The checker and emitter in `src/main.c` | A rule below does not hold | About 23,000 lines |

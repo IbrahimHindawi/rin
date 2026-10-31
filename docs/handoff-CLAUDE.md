@@ -104,7 +104,8 @@ Next, in the order that pays:
 3. `stable<T>` and `handle<T>` in std; `std/file.rin` is the pattern for the second.
 4. A region-end cleanup hook for GPU buffers and files, only if the engine shows the
    manual version going wrong. A copy of a COM pointer can go stale after Release.
-5. Known gaps: a `printfmt` brace escape, a C name collision on a struct named
+5. Known gaps: programs `rin check` accepts and C then refuses, so no binary exists (a `main` with a wrong
+   signature, a negative array length, returning an array: `run_rin_vm.py` lists them), a `printfmt` brace escape, a C name collision on a struct named
    `system`, pointer-to-array element codegen, threads, which safe code has no way to
    start.
 

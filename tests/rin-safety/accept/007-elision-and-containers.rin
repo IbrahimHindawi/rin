@@ -24,7 +24,7 @@ first_alive: proc(w: *world) -> ?*v2 = {
     return null;
 }
 pick: proc(a: *v2, b: *v2, first: b32) -> *v2 = { return first ? a : b; }
-head: proc(v: *const vec<i32>) -> ?*i32 = { if (v*.length == 0) { return null; } return vec<i32>at(v, 0); }
+head: proc(v: *vec<i32>) -> ?*i32 = { if (v*.length == 0) { return null; } return vec<i32>at(v, 0); }
 rest: proc(s: []i32) -> []i32 = { return s[1..s.length]; }
 
 main: proc() -> i32 = {

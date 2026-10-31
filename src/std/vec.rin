@@ -84,7 +84,15 @@ vec<T>append: proc[unsafe]<T>(arena: *memops_arena, array: *vec<T>, elem: T) -> 
     return result;
 }
 
-vec<T>at: proc<T>(array: *const vec<T>, index: u64) -> *T = {
+vec<T>at: proc[no_move]<T>(array: *vec<T>, index: u64) -> *T = {
+    if (array == null || index >= array*.length) {
+        unsafe { printf("rin runtime: vec index out of bounds\n"); }
+        exit(1);
+    }
+    unsafe { return array*.data[index]&; }
+}
+
+vec<T>at_const: proc<T>(array: *const vec<T>, index: u64) -> *const T = {
     if (array == null || index >= array*.length) {
         unsafe { printf("rin runtime: vec index out of bounds\n"); }
         exit(1);
@@ -99,7 +107,15 @@ vec<T>get: proc<T>(array: *const vec<T>, index: u64) -> option<T> = {
     unsafe { return option<T>some(array*.data[index]); }
 }
 
-vec<T>last: proc<T>(array: *const vec<T>) -> *T = {
+vec<T>last: proc[no_move]<T>(array: *vec<T>) -> *T = {
+    if (array == null || array*.length == 0) {
+        unsafe { printf("rin runtime: vec last on an empty vec\n"); }
+        exit(1);
+    }
+    unsafe { return array*.data[array*.length - 1]&; }
+}
+
+vec<T>last_const: proc<T>(array: *const vec<T>) -> *const T = {
     if (array == null || array*.length == 0) {
         unsafe { printf("rin runtime: vec last on an empty vec\n"); }
         exit(1);
@@ -114,7 +130,11 @@ vec<T>pop: proc<T>(array: *vec<T>) -> T = {
 }
 
 // The elements as a slice, valid until the next append moves them.
-vec<T>items: proc<T>(array: *const vec<T>) -> []T = {
+vec<T>items: proc[no_move]<T>(array: *vec<T>) -> []T = {
+    unsafe { return array*.data[0..array*.length]; }
+}
+
+vec<T>items_const: proc<T>(array: *const vec<T>) -> []const T = {
     unsafe { return array*.data[0..array*.length]; }
 }
 

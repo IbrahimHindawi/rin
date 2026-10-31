@@ -198,17 +198,87 @@ fmt_hex: proc(f: *fmt, value: u64, min_digits: u64, upper: b32) -> void = {
     unsafe { fmt_bytes(f, out[0]&, n); }
 }
 
+/* A whole number too big for a u64, every digit of it. Dividing a float by 2^32 is
+   exact, and so is taking the whole part back off, so nothing here rounds. */
+fmt_f64_big: proc(f: *fmt, value: f64) -> void = {
+    limit: f64 = 4294967296.0;
+    limbs: [34]u32 = {};
+    count: u64 = 0;
+    v: f64 = value;
+    while (v >= 1.0 && count < 34) {
+        whole: f64 = v / limit;
+        if (whole < 9007199254740992.0) {
+            whole = cast(cast(whole, u64), f64);
+        }
+        limbs[count] = cast(v - whole * limit, u32);
+        count += 1;
+        v = whole;
+    }
+    /* Then to base 10^9, least significant first. */
+    chunks: [36]u32 = {};
+    chunk_count: u64 = 0;
+    while (count > 0 && chunk_count < 36) {
+        rest: u64 = 0;
+        for (i: u64 = count; i > 0; i -= 1) {
+            current: u64 = (rest shl 32) + cast(limbs[i - 1], u64);
+            limbs[i - 1] = cast(current / 1000000000, u32);
+            rest = current % 1000000000;
+        }
+        chunks[chunk_count] = cast(rest, u32);
+        chunk_count += 1;
+        while (count > 0 && limbs[count - 1] == 0) {
+            count -= 1;
+        }
+    }
+    fmt_u64(f, cast(chunks[chunk_count - 1], u64));
+    for (i: u64 = chunk_count - 1; i > 0; i -= 1) {
+        place: u64 = 100000000;
+        chunk: u64 = cast(chunks[i - 1], u64);
+        while (place > 0) {
+            fmt_char(f, cast(48 + cast((chunk / place) % 10, i32), c8));
+            place /= 10;
+        }
+    }
+}
+
 /* Fixed-point, which is all the call sites need -- %.2f and friends. Not a
-   general float formatter: very large magnitudes lose the integer part to the
-   u64 cast, and there is no exponent form. */
+   general float formatter: there is no exponent form, and past 18 decimals
+   the rest are zeros. */
 fmt_f64: proc(f: *fmt, value: f64, decimals: u64) -> void = {
     v: f64 = value;
+    if (v != v) {
+        fmt_char(f, cast(110, c8));
+        fmt_char(f, cast(97, c8));
+        fmt_char(f, cast(110, c8));
+        return;
+    }
     if (v < 0.0) {
         fmt_char(f, cast(45, c8));
         v = -v;
     }
+    if (v > 1.7976931348623157e308) {
+        fmt_char(f, cast(105, c8));
+        fmt_char(f, cast(110, c8));
+        fmt_char(f, cast(102, c8));
+        return;
+    }
+    if (v >= 18446744073709551616.0) {
+        fmt_f64_big(f, v);
+        if (decimals > 0) {
+            fmt_char(f, cast(46, c8));
+            for (i: u64 = 0; i < decimals; i += 1) {
+                fmt_char(f, cast(48, c8));
+            }
+        }
+        return;
+    }
+    /* 10^18 is the last power of ten that leaves room to round in a u64. */
+    exact: u64 = decimals;
+    if (exact > 18) {
+        exact = 18;
+    }
     scale: u64 = 1;
-    for (i: u64 = 0; i < decimals; i += 1) {
+    for (i: u64 = 0; i < exact; i += 1) {
         scale *= 10;
     }
     whole: u64 = cast(v, u64);
@@ -228,6 +298,9 @@ fmt_f64: proc(f: *fmt, value: f64, decimals: u64) -> void = {
     while (place > 0) {
         fmt_char(f, cast(48 + cast((scaled / place) % 10, i32), c8));
         place /= 10;
+    }
+    for (i: u64 = exact; i < decimals; i += 1) {
+        fmt_char(f, cast(48, c8));
     }
 }
 

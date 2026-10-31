@@ -1,0 +1,7 @@
+// always: an array cannot be a generic's type
+at: proc(s: []i32, i: u64) -> i32 = { return s[i]; }
+get: proc<A>(a: A, i: u64) -> i32 = { return at(a, i); }
+main: proc() -> i32 = {
+    big: [400]i32 = {};
+    return get<[400]i32>(big, 3);
+}

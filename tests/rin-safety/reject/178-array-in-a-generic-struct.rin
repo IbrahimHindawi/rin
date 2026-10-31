@@ -1,0 +1,6 @@
+// always: an array cannot be a generic's type
+Box: struct<A> = { v: A; }
+main: proc() -> i32 = {
+    b: Box<[4]i32> = {};
+    return b.v[9];
+}

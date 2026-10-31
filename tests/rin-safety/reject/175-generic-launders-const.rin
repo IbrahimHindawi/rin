@@ -1,0 +1,8 @@
+// always: ptr_const_i32
+G: const i32 = 1;
+same: proc<T>(x: *const T) -> *const T = { return x; }
+main: proc() -> i32 = {
+    p: *i32 = same<i32>(G&);
+    p* = 2;
+    return 0;
+}

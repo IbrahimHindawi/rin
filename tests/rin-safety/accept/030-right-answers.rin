@@ -1,0 +1,50 @@
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/cstr.rin"
+import "std/vec.rin"
+
+level: region;
+
+/* What std says about numbers it used to get wrong, and const through a vec. */
+show_f64: proc(value: f64, decimals: u64) -> void = {
+    level: region = {
+        f: *fmt in level = fmt_make(level, 512);
+        fmt_f64(f, value, decimals);
+        unsafe { printf("%s\n", f*.data); }
+    }
+}
+
+show_parse: proc(text: ^const c8) -> void = {
+    n: i64 = 7;
+    ok: b32 = cstr_parse_i64(text, n&);
+    printfmt("{} {}\n", ok, n);
+}
+
+first: proc(v: *const vec<i32>) -> i32 = {
+    items: []const i32 = vec<i32>items_const(v);
+    return vec<i32>at_const(v, 0)* + vec<i32>last_const(v)* + items[0];
+}
+
+main: proc() -> i32 = {
+    zero: f64 = 0.0;
+    show_f64(1e30, 0);
+    show_f64(18446744073709551616.0, 2);
+    show_f64(-1e20, 1);
+    show_f64(zero / zero, 2);
+    show_f64(1.0 / zero, 2);
+    show_f64(-1.0 / zero, 2);
+    show_f64(0.5, 20);
+    show_f64(1.25, 1);
+    show_parse("9223372036854775807");
+    show_parse("9223372036854775808");
+    show_parse("-9223372036854775808");
+    show_parse("-9223372036854775809");
+    show_parse("18446744073709551617");
+    level: region = {
+        v: *vec<i32> in level = vec<i32>make(level, 4);
+        _ = vec<i32>push(v, 5);
+        vec<i32>at(v, 0)* = 6;
+        printfmt("{}\n", first(v));
+    }
+    return 0;
+}
