@@ -114,7 +114,8 @@ reflect_type_kind_name: proc(kind: i32) -> ^const char = {
     return "unknown";
 }
 
-reflect_is_struct: proc(type: *const reflect) -> b32 = {
+reflect_is_struct: proc(type: ?*const reflect) -> b32 = {
+    if (type == null) { return 0; }
     return type != null && type*.kind == reflect_kind_struct;
 }
 
