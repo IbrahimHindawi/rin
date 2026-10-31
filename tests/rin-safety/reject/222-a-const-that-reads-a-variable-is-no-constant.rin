@@ -1,0 +1,5 @@
+// always: a global initializer must be a constant
+K: i32 = 4;
+N: const i32 = K;
+g: i32 = N;
+main: proc() -> i32 = { return g; }

@@ -1,0 +1,29 @@
+import "std/print.rin"
+
+/* C never hears of N: it gets the value. So N may be a field's name as well, and it can go
+   wherever C wants a constant. Its address is still a real one. */
+N: const i32 = 4;
+M: const i32 = N;
+BIG: const u64 = 14695981039346656037'u64;
+HALF: const f32 = 0.5;
+g: i32 = N;
+gm: [M]i32 = {};
+
+S: struct = { N: i32; }
+
+f: proc(a: i32 = N) -> i32 = { return a * 2; }
+
+main: proc() -> i32 = {
+    s: S = { .N = 7 };
+    p: *const i32 = N&;
+    l: [M]i32 = {};
+    l[3] = N;
+    x: i32 = 4;
+    switch (x) {
+        case N: { printfmt("case\n"); }
+        default: { printfmt("default\n"); }
+    }
+    printfmt("{} {} {} {} {}\n", s.N, N, p*, g, f());
+    printfmt("{} {} {}\n", l[3], BIG, HALF);
+    return 0;
+}

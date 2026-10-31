@@ -750,6 +750,9 @@ struct Expr {
     TypeExpr *coerce_to;
     TypeExpr *coerce_from;
     bool coerce_varies;
+    /* A read of `N: const i32 = 4`: C gets the value, and never hears of the name. A
+       #define would rewrite every `N` after it, a field's and a header's included. */
+    Stmt *const_literal;
     string8 coerce_count;
     i32 line;
     i32 col;
@@ -5833,6 +5836,7 @@ static void semantic_check_global_array_counts(Program *prog, TypeExpr *type,
     }
 }
 
+static Stmt *const_global_literal(Program *prog, string8 name);
 static void semantic_check_global_initializer(Program *prog, Expr *e, Scope *scope,
                                               const char *source_path) {
     if (!e) return;
@@ -5847,7 +5851,7 @@ static void semantic_check_global_initializer(Program *prog, Expr *e, Scope *sco
             if (e->reflect_base.data) return;
             /* An enum member reaches here as a bare name once resolved. Only a
                real global is a problem, so only that is reported. */
-            if (scope_has(&scope->globals, e->name)) {
+            if (scope_has(&scope->globals, e->name) && !const_global_literal(prog, e->name)) {
                 semantic_error_name_path(
                     "a global initializer must be a constant; this reads another global",
                     e->name, source_path, e->line, e->col);
@@ -6406,7 +6410,8 @@ static bool param_default_is_constant(Program *prog, Expr *e, memops_arena *aren
         case Expr_AlignofType:
             return true;
         case Expr_Name:
-            return string8_equals_cstr(&e->name, "null") || program_defines_object_macro(prog, e->name, arena);
+            return string8_equals_cstr(&e->name, "null") || program_defines_object_macro(prog, e->name, arena) ||
+                   const_global_literal(prog, e->name) != null;
         case Expr_Unary:
             if (e->op != Token_Minus && e->op != Token_Bang && e->op != Token_Tilde) return false;
             return param_default_is_constant(prog, e->inner, arena);
@@ -6437,7 +6442,7 @@ static bool type_mentions_name_in(TypeExpr *type, Vec_string8 *names) {
 static void semantic_check_param_default(Program *prog, ProcDecl *proc, Param *param, memops_arena *arena) {
     Expr *d = param->default_value;
     if (!param_default_is_constant(prog, d, arena)) {
-        semantic_error_name_path("a parameter default must be a constant (a literal, null, a #define name, or "
+        semantic_error_name_path("a parameter default must be a constant (a literal, null, a const, or "
                                  "operators over those), because it is evaluated at each call; not so for "
                                  "the default of",
                                  param->name, proc->source_path, d ? d->line : param->line, d ? d->col : param->col);
@@ -10696,7 +10701,15 @@ static void resolve_array_count_constants(memops_arena *arena, Program *prog) {
             for (i32 g = 0; g < prog->globals.length; g++) {
                 Stmt *global = (Stmt *)prog->globals.data[g];
                 if (!string8_equals(&global->name, &type->array_count)) continue;
-                if (!global->type || !global->type->is_const || !global->expr || global->expr->kind != Expr_Number) break;
+                for (i32 hop = 0; hop < 16 && global && global->expr && global->expr->kind == Expr_Name; hop++) {
+                    Stmt *next = null;
+                    for (i32 h = 0; h < prog->globals.length; h++) {
+                        Stmt *other = (Stmt *)prog->globals.data[h];
+                        if (string8_equals(&other->name, &global->expr->name)) next = other;
+                    }
+                    global = next;
+                }
+                if (!global || !global->type || !global->type->is_const || !global->expr || global->expr->kind != Expr_Number) break;
                 if (number_is_float_form(number_digits(global->expr->number))) break;
                 ConstVal length = const_eval(global->expr);
                 if (!length.ok || length.big || length.value < 0) break;
@@ -13929,6 +13942,33 @@ static bool expr_is_compile_constant(Expr *e, bool *has_size) {
     if (e->kind == Expr_Unary) return expr_is_compile_constant(e->inner, has_size);
     if (e->kind == Expr_Binary) return expr_is_compile_constant(e->left, has_size) && expr_is_compile_constant(e->right, has_size);
     return false;
+}
+
+static bool expr_is_const_value(Program *prog, Expr *e, i32 depth) {
+    if (!e || depth > 16) return false;
+    if (e->kind == Expr_Number || e->kind == Expr_Char) return true;
+    if (e->kind == Expr_Unary) return e->op != Token_Bang && expr_is_const_value(prog, e->inner, depth + 1);
+    if (e->kind == Expr_Binary) return const_eval(e).ok;
+    if (e->kind == Expr_Name) {
+        for (i32 i = 0; i < prog->globals.length; i++) {
+            Stmt *g = (Stmt *)prog->globals.data[i];
+            if (string8_equals(&g->name, &e->name)) {
+                TypeExpr *t = resolve_alias_type(prog, g->type);
+                return t && t->is_const && (type_is_numeric(t) || type_is_boolish(t)) && expr_is_const_value(prog, g->expr, depth + 1);
+            }
+        }
+    }
+    return false;
+}
+
+static Stmt *const_global_literal(Program *prog, string8 name) {
+    Expr named = { .kind = Expr_Name, .name = name };
+    if (!expr_is_const_value(prog, &named, 0)) return null;
+    for (i32 i = 0; i < prog->globals.length; i++) {
+        Stmt *g = (Stmt *)prog->globals.data[i];
+        if (string8_equals(&g->name, &name)) return g;
+    }
+    return null;
 }
 
 static bool expr_stays_literal(Expr *e) {
@@ -18138,6 +18178,7 @@ static bool type_scope_lookup_local(TypeScope *scope, string8 name) {
 
 static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena) {
     if (!e) return;
+    if (e->kind == Expr_Name && !type_scope_lookup_local(scope, e->name)) e->const_literal = const_global_literal(prog, e->name);
     if (e->kind == Expr_Name && g_safe_body && g_region_check_proc && !type_scope_lookup_local(scope, e->name)) {
         for (i32 i = 0; i < prog->globals.length; i++) {
             Stmt *g = (Stmt *)prog->globals.data[i];
@@ -18209,6 +18250,7 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
             type_error_address_target(e->inner, e->line, e->col);
         }
         type_check_expr(e->inner, scope, prog, arena);
+        if (e->inner) e->inner->const_literal = null; // its address is the C variable's
         if (g_safe_body) {
             string8 carrier = assign_writes_carrier_field(e->inner, scope, prog, arena);
             if (carrier.length > 0) {
@@ -21284,6 +21326,16 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
             return;
         }
         if (emit_region_name(arena, out, e->name)) return;
+        if (e->const_literal) {
+            TypeExpr plain = *e->const_literal->type;
+            plain.is_const = false;
+            emit_cstr(arena, out, "((");
+            emit_type(arena, out, &plain, (TypeSub){0});
+            emit_cstr(arena, out, ")(");
+            emit_expr(arena, out, e->const_literal->expr, (TypeSub){0}, (string8){0});
+            emit_cstr(arena, out, "))");
+            return;
+        }
         emit_string8(arena, out, c_ident(arena, reflect_runtime_c_name(arena, e->name)));
         return;
     }
@@ -21613,6 +21665,8 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
             emit_string8(arena, out, s->align);
             emit_cstr(arena, out, ") ");
         }
+        /* Its reads may all be the value itself, leaving only the storage for an address. */
+        if (s->is_static && s->type && s->type->is_const) emit_cstr(arena, out, "RIN_MAYBE_UNUSED ");
         if (s->is_static) emit_cstr(arena, out, "static ");
         emit_decl(arena, out, s->type, s->name, sub);
         /* '= ?' lowers to a plain C declaration, so it costs exactly what the
