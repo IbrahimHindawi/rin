@@ -1,0 +1,14 @@
+// expect: region
+import "std/table.rin"
+level: region;
+frame: region in level;
+main: proc() -> i32 = {
+    level: region = {
+        t: *table<*i32 in level> in level = table<*i32 in level>make(level, 2);
+        frame: region = {
+            p: *i32 in frame = new<i32>(frame);
+            i: index<*i32 in level> = table<*i32 in level>add(t, p);
+        }
+    }
+    return 0;
+}

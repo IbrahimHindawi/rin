@@ -1,0 +1,55 @@
+import "std/print.rin"
+import "std/table.rin"
+
+/* Things refer to each other by index. An index fits one table, and one that has gone
+   finds nothing, however its slot has been reused since. */
+level: region;
+
+enemy: struct = { hp: i32; }
+item: struct = { cost: i32; }
+
+hit: proc(t: *table<enemy>, who: index<enemy>) -> i32 = {
+    e: ?*enemy = table<enemy>get(t, who);
+    if (!e) { return -1; }
+    e*.hp -= 3;
+    return e*.hp;
+}
+
+total: proc(t: *const table<enemy>) -> i32 = {
+    sum: i32 = 0;
+    for (slot: u32 = 0; slot < table<enemy>capacity(t); slot += 1) {
+        e: ?*const enemy = table<enemy>get_const(t, table<enemy>index_at(t, slot));
+        if (e) { sum += e*.hp; }
+    }
+    return sum;
+}
+
+main: proc() -> i32 = {
+    level: region = {
+        enemies: *table<enemy> in level = table<enemy>make(level, 2);
+        items: *table<item> in level = table<item>make(level, 2);
+        nobody: index<enemy> = {};
+
+        wolf: index<enemy> = table<enemy>add(enemies, { .hp = 10 });
+        printfmt("{} {}\n", hit(enemies, wolf), hit(enemies, nobody));
+
+        printfmt("{}\n", table<enemy>remove(enemies, wolf));
+        printfmt("{}\n", table<enemy>remove(enemies, wolf));
+
+        boar: index<enemy> = table<enemy>add(enemies, { .hp = 20 });
+        printfmt("{} {} {}\n", wolf.slot == boar.slot, hit(enemies, wolf), hit(enemies, boar));
+
+        bear: index<enemy> = table<enemy>add(enemies, { .hp = 30 });
+        full: index<enemy> = table<enemy>add(enemies, { .hp = 40 });
+        printfmt("{} {} {}\n", hit(enemies, bear), hit(enemies, full), table<enemy>count(enemies));
+        printfmt("{}\n", total(enemies));
+
+        forged: index<enemy> = { .slot = 4000000000, .generation = 1 };
+        printfmt("{}\n", hit(enemies, forged));
+
+        sword: index<item> = table<item>add(items, { .cost = 5 });
+        s: ?*item = table<item>get(items, sword);
+        if (s) { printfmt("{}\n", s*.cost); }
+    }
+    return 0;
+}

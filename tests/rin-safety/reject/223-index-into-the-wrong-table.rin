@@ -1,0 +1,13 @@
+// always: expected
+import "std/table.rin"
+level: region;
+enemy: struct = { hp: i32; }
+item: struct = { cost: i32; }
+main: proc() -> i32 = {
+    level: region = {
+        enemies: *table<enemy> in level = table<enemy>make(level, 2);
+        sword: index<item> = {};
+        e: ?*enemy = table<enemy>get(enemies, sword);
+    }
+    return 0;
+}

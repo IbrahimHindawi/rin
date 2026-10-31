@@ -1,0 +1,108 @@
+import "memops.rin"
+
+/* A table of slots, and an index that only fits it.
+
+   Things that refer to each other do so by index, not by pointer: an index stays
+   meaningful when what it names has gone, because the table can say so. `index<enemy>`
+   does not fit a `table<item>`, and an index whose slot has since been reused finds
+   nothing rather than the wrong thing.
+
+   A table is sized once, so what is in it never moves. A slot's generation is odd while
+   it is in use and even while it is free, so a zeroed index, generation 0, never finds
+   anything: `{}` is "no entity". */
+index: struct<T> = {
+    slot: u32;
+    generation: u32;
+}
+
+table: struct<T> = {
+    data: ^T;
+    generations: ^u32;
+    next_free: ^u32;
+    capacity: u32;
+    count: u32;
+    free_head: u32;
+}
+
+table<T>make: proc<T>(r: region R, capacity: u32) -> *table<T> in R = { unsafe {
+    t: *table<T> in R = cast(memops_arena_push_zero(r, sizeof(table<T>), alignof(table<T>)), *table<T> in R);
+    t*.capacity = capacity;
+    if (capacity > 0) {
+        t*.data = cast(memops_arena_push_zero(r, memops_bytes(sizeof(T), capacity), alignof(T)), ^T);
+        t*.generations = cast(memops_arena_push_zero(r, memops_bytes(sizeof(u32), capacity), alignof(u32)), ^u32);
+        t*.next_free = cast(memops_arena_push_zero(r, memops_bytes(sizeof(u32), capacity), alignof(u32)), ^u32);
+        for (i: u32 = 0; i < capacity; i += 1) {
+            t*.next_free[i] = i + 1;
+        }
+    }
+    return t;
+} }
+
+/* A full table gives back the empty index, which finds nothing. */
+table<T>add: proc[no_move]<T>(t: *table<T>, value: T) -> index<T> = { unsafe {
+    none: index<T> = {};
+    if (t*.free_head >= t*.capacity) {
+        return none;
+    }
+    slot: u32 = t*.free_head;
+    t*.free_head = t*.next_free[slot];
+    t*.generations[slot] += 1;
+    t*.data[slot] = value;
+    t*.count += 1;
+    out: index<T> = {};
+    out.slot = slot;
+    out.generation = t*.generations[slot];
+    return out;
+} }
+
+table<T>has: proc[no_move]<T>(t: *const table<T>, i: index<T>) -> b32 = { unsafe {
+    if (i.slot >= t*.capacity || (i.generation & 1) == 0) {
+        return 0;
+    }
+    return t*.generations[i.slot] == i.generation;
+} }
+
+table<T>get: proc[no_move]<T>(t: *table<T>, i: index<T>) -> ?*T = { unsafe {
+    if (!table<T>has(t, i)) {
+        return null;
+    }
+    return t*.data[i.slot]&;
+} }
+
+table<T>get_const: proc[no_move]<T>(t: *const table<T>, i: index<T>) -> ?*const T = { unsafe {
+    if (!table<T>has(t, i)) {
+        return null;
+    }
+    return t*.data[i.slot]&;
+} }
+
+/* False if it was already gone. */
+table<T>remove: proc[no_move]<T>(t: *table<T>, i: index<T>) -> b32 = { unsafe {
+    if (!table<T>has(t, i)) {
+        return 0;
+    }
+    t*.generations[i.slot] += 1;
+    t*.next_free[i.slot] = t*.free_head;
+    t*.free_head = i.slot;
+    t*.count -= 1;
+    return 1;
+} }
+
+table<T>count: proc[no_move]<T>(t: *const table<T>) -> u32 = {
+    return t*.count;
+}
+
+table<T>capacity: proc[no_move]<T>(t: *const table<T>) -> u32 = {
+    return t*.capacity;
+}
+
+/* To go through everything in use: for each slot below the capacity, this is its index,
+   or the empty one if the slot is free. */
+table<T>index_at: proc[no_move]<T>(t: *const table<T>, slot: u32) -> index<T> = { unsafe {
+    out: index<T> = {};
+    if (slot < t*.capacity && (t*.generations[slot] & 1) == 1) {
+        out.slot = slot;
+        out.generation = t*.generations[slot];
+    }
+    return out;
+} }
