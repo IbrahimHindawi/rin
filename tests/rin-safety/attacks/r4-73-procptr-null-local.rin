@@ -1,0 +1,2 @@
+import "std/print.rin"
+main: proc() -> i32 = { f: *proc() -> i32 = null; printfmt("{}\n", f()); return 0; }

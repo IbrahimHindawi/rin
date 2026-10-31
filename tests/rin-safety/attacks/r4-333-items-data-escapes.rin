@@ -1,0 +1,21 @@
+import "std/print.rin"
+import "std/vec.rin"
+import "std/slice.rin"
+level: region;
+frame: region in level;
+H: struct = { x: i32; }
+clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_slice<i32>(t, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } } }
+main: proc() -> i32 = {
+    p: ^const c8 = "x";
+    level: region = {
+        tmp: region of level = {
+            v: *vec<c8> in tmp = vec<c8>make(tmp, 4);
+            _ = vec<c8>push(v, 97);
+            _ = vec<c8>push(v, 0);
+            p = vec<c8>items(v).data;
+        }
+        clobber(level);
+        print_cstr(p);
+    }
+    return 0;
+}

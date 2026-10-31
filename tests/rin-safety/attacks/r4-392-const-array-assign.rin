@@ -1,0 +1,4 @@
+import "std/print.rin"
+k: [3]const i32 = { 1, 2, 3 };
+z: [3]i32 = {};
+main: proc() -> i32 = { k = z; printfmt("{}\n", k[0]); return 0; }

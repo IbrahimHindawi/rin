@@ -1,0 +1,7 @@
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    buf: [4]c8 = { 65, 65, 65, 65 };
+    printfmt("{}\n", cstr_append(buf, "b"));
+    return 0;
+}

@@ -1,0 +1,12 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+a: H = { .x = 1 };
+W: struct = { h: *H in permanent; }
+Box: struct<T> = { v: T; }
+import "std/vec.rin"
+main: proc() -> i32 = {
+    v: *vec<W> in permanent = vec<W>make(permanent, 1);
+    _ = vec<W>push(v, {});
+    printfmt("{}\n", vec<W>at(v, 0)*.h*.x);
+    return 0;
+}

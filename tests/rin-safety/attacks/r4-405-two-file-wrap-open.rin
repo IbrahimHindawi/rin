@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "own_a.rin"
+Mine: struct = { o: *Own in permanent; }
+main: proc() -> i32 = {
+    m: Mine = { .o = own_make(permanent) };
+    m.o*.n = 100000;
+    return 0;
+}

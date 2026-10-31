@@ -1,0 +1,4 @@
+import "std/print.rin"
+a: region in b;
+b: region in a;
+main: proc() -> i32 = { return 0; }

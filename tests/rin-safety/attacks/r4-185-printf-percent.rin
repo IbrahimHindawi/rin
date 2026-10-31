@@ -1,0 +1,9 @@
+import "std/print.rin"
+E: enum = { a, b, }
+main: proc() -> i32 = {
+    printfmt("%s%s%s%s%n\n");
+    printfmt("%s%n {}\n", 1);
+    printfmt("%s%n {}\n", E.a);
+    printfmt("{} %s%n {}\n", "x", 1.5);
+    return 0;
+}

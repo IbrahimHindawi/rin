@@ -1,0 +1,14 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    f: file = file_open("r4-tmp-414.txt", "wb");
+    printfmt("{}\n", file_seek(f, -1));
+    printfmt("{}\n", file_seek(f, 0x7FFFFFFFFFFFFFFF));
+    b: [4]u8 = {};
+    printfmt("{}\n", file_read(f, b));
+    printfmt("{}\n", file_read_byte(f));
+    printfmt("{}\n", file_size(f));
+    file_close(f);
+    file_close(f);
+    return 0;
+}

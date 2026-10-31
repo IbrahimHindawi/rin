@@ -1,0 +1,11 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    big: u64 = 0xFFFFFFFFFFFFFFFF;
+    neg: i64 = -1;
+    c: c8 = 65;
+    s8: i8 = -1;
+    printfmt("{:x} {:x} {:x} {:x} {:x} {:x}\n", big, neg, 1.5, "s", c, s8);
+    printfmt("{:.6g} {:.6g} {:e} {:.2e} {:.6g}\n", big, neg, "s", c, 2.5);
+    printfmt("{:5x} {:.3x} {:.100g} {:400.400g}\n", 1, 2, 3.0, 4.0);
+    return 0;
+}

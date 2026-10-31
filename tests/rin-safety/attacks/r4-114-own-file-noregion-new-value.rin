@@ -1,0 +1,5 @@
+import "std/print.rin"
+K: struct = { p: ?*i32; }
+smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
+go: proc() -> *K in permanent = { x: i32 = 42; return new<K>(permanent, { .p = x& }); }
+main: proc() -> i32 = { k: *K in permanent = go(); smash(); printfmt("{}\n", must(k*.p)*); return 0; }

@@ -1,0 +1,7 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    f: file = file_open("r4-tmp-132.txt", "zzz");
+    printfmt("{}\n", file_is_open(f));
+    return 0;
+}

@@ -104,11 +104,13 @@ cstr_copy: proc[trusted](dst: []c8, src: ^const c8) -> u64 = {
     return n;
 }
 
-cstr_append: proc(dst: []c8, src: ^const c8) -> u64 = {
+cstr_append: proc[trusted](dst: []c8, src: ^const c8) -> u64 = {
     if (dst.data == null || dst.length == 0) {
         return 0;
     }
-    used: u64 = cstr_length(dst.data);
+    // Not cstr_length: nothing says this array is terminated.
+    used: u64 = 0;
+    while (used < dst.length && dst[used] != 0) { used += 1; }
     if (used + 1 >= dst.length) {
         return used;
     }

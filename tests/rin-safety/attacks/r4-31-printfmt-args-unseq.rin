@@ -1,0 +1,14 @@
+import "std/print.rin"
+H: struct = { x: i32; next: ?*H in permanent; }
+S: struct = { h: ?*H in permanent; n: i32; }
+g: S = {};
+clr: proc() -> i32 = { g.h = null; return 1; }
+clr0: proc() -> i32 = { g.h = null; return 0; }
+take: proc(a: i32) -> i32 = { return a; }
+take2: proc(a: i32, b: i32) -> i32 = { return a + b; }
+fill: proc() -> void = { g.h = new<H>(permanent, { .x = 7, .next = null }); }
+main: proc() -> i32 = {
+    fill();
+    if (g.h) { printfmt("{} {}\n", clr(), g.h*.x); }
+    return 0;
+}

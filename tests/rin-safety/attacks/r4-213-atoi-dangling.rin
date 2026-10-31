@@ -1,0 +1,10 @@
+import "std/print.rin"
+import "std/cstr.rin"
+cinclude "stdlib.h"
+atoi: proc[external, trusted](s: ^const c8) -> i32 = {}
+main: proc() -> i32 = {
+    p: ^const c8 = "1";
+    if (1) { b: [4]c8 = {}; b[0] = 57; p = cstr_of(b); }
+    printfmt("{}\n", atoi(p));
+    return 0;
+}

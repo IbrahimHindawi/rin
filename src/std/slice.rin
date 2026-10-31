@@ -113,7 +113,7 @@ slice<T>equals: proc[trusted]<T>(a: slice<T>, b: slice<T>) -> b32 = {
     return memcmp(a.data, b.data, sizeof(T) * a.length) == 0;
 }
 
-slice<T>copy_to: proc[trusted]<T>(dst: ^T, s: slice<T>) -> void = {
+slice<T>copy_to: proc[unsafe]<T>(dst: ^T, s: slice<T>) -> void = {
     if (dst == null || s.data == null || s.length == 0) {
         return;
     }

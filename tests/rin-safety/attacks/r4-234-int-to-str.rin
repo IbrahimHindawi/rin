@@ -1,0 +1,5 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+a: H = { .x = 1 };
+Box: struct<T> = { v: T; }
+main: proc() -> i32 = { q: str = 0x41414141; printfmt("{}\n", q); return 0; }

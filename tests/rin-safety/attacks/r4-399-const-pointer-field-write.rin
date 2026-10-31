@@ -1,0 +1,5 @@
+import "std/print.rin"
+S: struct = { x: i32; }
+k: const S = { .x = 1 };
+w: proc(p: *const S) -> void = { p*.x = 2; }
+main: proc() -> i32 = { w(k&); printfmt("{}\n", k.x); return 0; }

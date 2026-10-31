@@ -1,0 +1,15 @@
+import "std/print.rin"
+level: region;
+x: region in level;
+y: region in level;
+Hold: struct = { p: ?*i32 in x; }
+main: proc() -> i32 = {
+    level: region = {
+        x: region = {
+            y: region = {
+                h: *Hold in y = new<Hold>(y);
+            }
+        }
+    }
+    return 0;
+}

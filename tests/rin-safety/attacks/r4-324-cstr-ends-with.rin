@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    printfmt("{}\n", cstr_ends_with(null, null));
+    printfmt("{}\n", cstr_equals_n("abc", "abd", 1000));
+    printfmt("{}\n", cstr_find("abc", ""));
+    return 0;
+}

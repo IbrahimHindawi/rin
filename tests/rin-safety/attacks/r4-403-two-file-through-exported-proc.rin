@@ -1,0 +1,12 @@
+import "std/print.rin"
+import "own_a.rin"
+main: proc() -> i32 = {
+    k: *Own in permanent = own_make(permanent);
+    b: [4]c8 = {};
+    b[0] = 97;
+    if (1) { c: [4]c8 = {}; c[0] = 98; own_set_name(k, cstr_of(c)); }
+    y: [64]i64 = {};
+    for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; }
+    print_cstr(k*.name);
+    return 0;
+}

@@ -1,0 +1,12 @@
+import "std/print.rin"
+import "std/slice.rin"
+H: struct = { x: i32; }
+A: struct = { hs: [2]*H in permanent; }
+a: H = { .x = 1 };
+wipe: proc<T>(s: []T) -> void = { slice<T>zero(s); }
+main: proc() -> i32 = {
+    xs: [1]A = { { .hs = { a&, a& } } };
+    wipe<A>(xs);
+    printfmt("{}\n", xs[0].hs[0]*.x);
+    return 0;
+}

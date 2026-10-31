@@ -22,7 +22,7 @@ file_is_open: proc[trusted](f: file) -> b32 = {
 }
 
 /* The FILE behind a file, for fprintfmt and the procs below. */
-file_stream: proc[trusted](f: file) -> ^FILE = {
+file_stream: proc[unsafe](f: file) -> ^FILE = {
     if (!file_is_open(f)) {
         printf("rin runtime: file used after it closed, or that never opened\n");
         exit(1);

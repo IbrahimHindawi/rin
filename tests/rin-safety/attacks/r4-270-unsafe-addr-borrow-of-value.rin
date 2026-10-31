@@ -1,0 +1,9 @@
+import "std/print.rin"
+smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
+main: proc() -> i32 = {
+    p: ?*i32 = null;
+    if (1) { x: i32 = 42; unsafe { p = x&; } }
+    smash();
+    if (p) { printfmt("{}\n", p*); }
+    return 0;
+}

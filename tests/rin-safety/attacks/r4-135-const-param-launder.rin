@@ -1,0 +1,5 @@
+import "std/print.rin"
+k: const i32 = 5;
+w: proc(p: *i32) -> void = { p* = 1; }
+ww: proc(p: *const i32) -> void = { w(p); }
+main: proc() -> i32 = { ww(k&); printfmt("{}\n", k); return 0; }

@@ -1,0 +1,8 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+A: struct = { p: [1]*H in permanent; }
+main: proc() -> i32 = {
+    b: []A in permanent = new_slice<A>(permanent, 1);
+    printfmt("{}\n", b[0].p[0]*.x);
+    return 0;
+}

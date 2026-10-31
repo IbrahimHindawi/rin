@@ -1,0 +1,12 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+S: struct = { h: *H in permanent; }
+a: H = { .x = 1 };
+gs: S = { .h = a& };
+main: proc() -> i32 = {
+    w: ?*H in permanent = null;
+    must(w) = a&;
+    must(gs.h&)* = {};
+    printfmt("{}\n", gs.h*.x);
+    return 0;
+}

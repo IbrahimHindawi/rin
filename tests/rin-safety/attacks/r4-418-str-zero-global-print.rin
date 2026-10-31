@@ -1,0 +1,10 @@
+import "std/print.rin"
+import "std/cstr.rin"
+s: str = {};
+K: struct = { name: str; }
+k: K = {};
+main: proc() -> i32 = {
+    printfmt("{} {} {}\n", s, k.name, cstr_length(k.name));
+    print_cstr(s);
+    return 0;
+}

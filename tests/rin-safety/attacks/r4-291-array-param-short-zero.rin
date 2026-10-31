@@ -1,0 +1,3 @@
+import "std/print.rin"
+f: proc(xs: [1]i32) -> void = { xs = {}; }
+main: proc() -> i32 = { a: [1]i32 = { 1 }; b: i32 = 2; f(a); printfmt("{} {}\n", a[0], b); return 0; }

@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    p: *^FILE = file_table_stream[0]&;
+    p* = null;
+    printfmt("ok\n");
+    return 0;
+}

@@ -1,0 +1,3 @@
+import "std/print.rin"
+k: const i32 = 5;
+main: proc() -> i32 = { p: *i32 = k&; p* = 1; printfmt("{}\n", k); return 0; }

@@ -1,0 +1,9 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+nul: proc(pp: *?*H in permanent) -> void = { pp* = null; }
+main: proc() -> i32 = {
+    x: *H in permanent = new<H>(permanent, { .x = 1 });
+    nul(x&);
+    printfmt("{}\n", x*.x);
+    return 0;
+}

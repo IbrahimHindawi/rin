@@ -1,0 +1,10 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+a: H = { .x = 1 };
+Box: struct<T> = { v: T; }
+import "std/option.rin"
+main: proc() -> i32 = {
+    o: option<*H in permanent> = option<*H in permanent>some(null);
+    printfmt("{}\n", o.value*.x);
+    return 0;
+}

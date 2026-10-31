@@ -1,0 +1,3 @@
+import "std/print.rin"
+D: struct = { f: *proc() -> i32; }
+main: proc() -> i32 = { d: *D in permanent = new<D>(permanent); printfmt("{}\n", d*.f()); return 0; }

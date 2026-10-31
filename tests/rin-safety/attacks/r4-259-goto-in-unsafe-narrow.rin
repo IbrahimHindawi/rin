@@ -1,0 +1,8 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    p: ?*i32 = null;
+    if (!p) { unsafe { goto done; } }
+    printfmt("mid\n");
+    done: label = { printfmt("{}\n", p*); }
+    return 0;
+}

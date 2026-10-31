@@ -1,0 +1,6 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    p: ?*i32 = null;
+    do { if (!p) { continue; } } while (p*);
+    return 0;
+}

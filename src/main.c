@@ -10227,7 +10227,11 @@ static TypeExpr *lookup_field_type(Program *prog, TypeExpr *base_type, string8 f
     if (!base_type) return null;
     base_type = resolve_alias_type(prog, base_type);
     TypeExpr *reflect_field = reflect_builtin_field_type(base_type, field_name, arena);
-    if (reflect_field) return reflect_field;
+    if (reflect_field) {
+        /* Reflection's names are string literals in the generated C. */
+        if (reflect_field->kind == Type_Ptr && reflect_field->is_raw) reflect_field->is_str = true;
+        return reflect_field;
+    }
     for (i32 i = 0; i < prog->structs.length; i++) {
         StructDecl *decl = (StructDecl *)prog->structs.data[i];
         if (base_type->kind == Type_Name && !decl->is_generic) {
@@ -10761,6 +10765,7 @@ typedef enum LitKind {
 static bool type_is_numeric(TypeExpr *type);
 static string8 narrow_path(Expr *e, memops_arena *arena);
 static i32 g_field_narrows; // the current proc's narrowed field paths, so most procs pay nothing
+static bool g_raw_field_read_ok = false; // the left of `x.data == null`
 static Program *g_narrow_prog;
 static bool type_is_integer(TypeExpr *type);
 static TypeExpr *resolve_alias_type(Program *prog, TypeExpr *type);
@@ -14108,6 +14113,8 @@ static void type_check_index_bounds(Expr *e, TypeExpr *base, Program *prog, memo
     index_set(e, IndexBase_Array, true, base->array_count);
 }
 
+static void safety_check_zeroed(const char *what, Program *prog, TypeExpr *type, memops_arena *arena, i32 line, i32 col);
+
 static void check_assignment_compatible(
     const char *context,
     Program *prog,
@@ -14147,6 +14154,7 @@ static void type_check_initializer_against(
     expected = type_scope_apply_sub(scope, arena, expected);
     if (init->kind == Expr_ZeroInit) {
         init->cast_type = expected;
+        safety_check_zeroed("a value", prog, expected, arena, init->line, init->col);
         return;
     }
     if (init->kind != Expr_InitList) return;
@@ -14679,23 +14687,134 @@ static void safety_check_zeroed(const char *what, Program *prog, TypeExpr *type,
 /* The region rule as a flow check, with a message that names the regions,
    since the C-level type names the error would otherwise print are the same
    on both sides. Returns true when it reported. */
+/* Whether a place of type `a` may be reached through a pointer to `b`, so that a
+   write through either is a write to both: the two must say the same thing about
+   every pointer inside. A pointer in `a` naming no region can only be read, so it
+   promises nothing; a region still to be bound by the call matches anything. */
+static bool type_flow_same(Program *prog, TypeExpr *a, TypeExpr *b, i32 depth) {
+    if (!a || !b || depth > 8) return true;
+    a = resolve_alias_type(prog, a);
+    b = resolve_alias_type(prog, b);
+    if (!a || !b) return true;
+    if (a->kind == Type_Ptr && b->kind == Type_Ptr) {
+        if (type_is_void_pointer(a) || type_is_void_pointer(b)) return true;
+        if (a->is_raw != b->is_raw || a->is_str != b->is_str || a->is_nullable != b->is_nullable) return false;
+        if (!a->is_raw && a->region.length > 0 && !string8_equals(&a->region, &b->region) &&
+            (region_rank(prog, a->region) >= 0 || array_string8_contains(&g_region_vars, a->region))) return false;
+        return type_flow_same(prog, a->elem, b->elem, depth + 1);
+    }
+    if (type_slice_elem(a) && type_slice_elem(b)) {
+        if (a->region.length > 0 && !string8_equals(&a->region, &b->region) &&
+            (region_rank(prog, a->region) >= 0 || array_string8_contains(&g_region_vars, a->region))) return false;
+        return type_flow_same(prog, type_slice_elem(a), type_slice_elem(b), depth + 1);
+    }
+    if (a->kind == Type_Array && b->kind == Type_Array) return type_flow_same(prog, a->elem, b->elem, depth + 1);
+    if (a->kind == Type_Generic && b->kind == Type_Generic) {
+        for (i32 i = 0; i < a->args.length && i < b->args.length; i++) {
+            if (!type_flow_same(prog, (TypeExpr *)a->args.data[i], (TypeExpr *)b->args.data[i], depth + 1)) return false;
+        }
+    }
+    return true;
+}
+
+/* A proc pointer's signature is what its callers are checked against, so the proc
+   it holds must promise exactly that. */
+static bool proc_signature_same(Program *prog, TypeExpr *a, TypeExpr *b) {
+    if (!a || !b) return true;
+    if (a->args.length != b->args.length) return false;
+    for (i32 i = 0; i < a->args.length; i++) {
+        TypeExpr *x = resolve_alias_type(prog, (TypeExpr *)a->args.data[i]);
+        TypeExpr *y = resolve_alias_type(prog, (TypeExpr *)b->args.data[i]);
+        if (x && y && x->kind == Type_Ptr && y->kind == Type_Ptr && !x->is_raw && !y->is_raw) {
+            if (x->is_nullable != y->is_nullable || !string8_equals(&x->region, &y->region)) return false;
+        }
+        if (!type_flow_same(prog, x, y, 0) || !type_flow_same(prog, y, x, 0)) return false;
+    }
+    TypeExpr *x = resolve_alias_type(prog, a->ret_type);
+    TypeExpr *y = resolve_alias_type(prog, b->ret_type);
+    if (x && y && x->kind == Type_Ptr && y->kind == Type_Ptr && !x->is_raw && !y->is_raw) {
+        if (x->is_nullable != y->is_nullable || !string8_equals(&x->region, &y->region)) return false;
+    }
+    return type_flow_same(prog, x, y, 0) && type_flow_same(prog, y, x, 0);
+}
+
+static bool region_flow_rejects(Program *prog, TypeExpr *dst, TypeExpr *src, i32 line, i32 col);
+
+static bool inner_flow_rejects(Program *prog, TypeExpr *d, TypeExpr *s, i32 line, i32 col) {
+    const char *message = "these two types say different things about a pointer inside them, and writing through one "
+                          "would break the other's promise: they must name the same region and the same '?'";
+    if (d->kind == Type_Array && s->kind == Type_Array) {
+        if (d->array_count.length > 0 && s->array_count.length > 0 && !string8_equals(&d->array_count, &s->array_count)) {
+            type_error_message("these arrays are different lengths", line, col);
+            return true;
+        }
+        return region_flow_rejects(prog, d->elem, s->elem, line, col);
+    }
+    if (type_is_proc_pointer(prog, d)) {
+        TypeExpr *dp = type_proc_from_callable_type(prog, d);
+        TypeExpr *sp = type_proc_from_callable_type(prog, s);
+        if (dp && sp && !proc_signature_same(prog, dp, sp)) {
+            type_error_message("this proc's signature promises different regions or nulls from the pointer it goes "
+                               "into, and callers are checked against the pointer's", line, col);
+            return true;
+        }
+        return false;
+    }
+    TypeExpr *de = null;
+    TypeExpr *se = null;
+    if (d->kind == Type_Ptr && s->kind == Type_Ptr) {
+        de = d->elem;
+        se = s->elem;
+    } else if (type_slice_elem(d) && (type_slice_elem(s) || s->kind == Type_Array)) {
+        de = type_slice_elem(d);
+        se = type_slice_elem(s) ? type_slice_elem(s) : s->elem;
+    }
+    if (de && se) {
+        if (de->is_const) return region_flow_rejects(prog, de, se, line, col);
+        if (!type_flow_same(prog, de, se, 0)) {
+            type_error_message(message, line, col);
+            return true;
+        }
+        return false;
+    }
+    if (d->kind == Type_Generic && s->kind == Type_Generic && !type_flow_same(prog, d, s, 0)) {
+        type_error_message(message, line, col);
+        return true;
+    }
+    return false;
+}
+
 static bool region_flow_rejects(Program *prog, TypeExpr *dst, TypeExpr *src, i32 line, i32 col) {
     if (!g_safety || !dst || !src) return false;
     TypeExpr *d = resolve_alias_type(prog, dst);
     TypeExpr *s = resolve_alias_type(prog, src);
     if (!d || !s) return false;
+    if (g_safe_body && inner_flow_rejects(prog, d, s, line, col)) return true;
     if (g_safe_body && s->kind == Type_Region && d->kind == Type_Ptr) {
         type_error_message("safe code hands a region only to a 'region R' parameter, never to a bare '*memops_arena': "
                            "the callee's result could not say which region it is in", line, col);
         return true;
     }
-    if (g_safe_body && d->kind == Type_Ptr && d->is_str && s->kind == Type_Ptr && !s->is_str && !type_is_void_pointer(s)) {
+    if (g_safe_body && d->kind == Type_Ptr && d->is_str && s->kind == Type_Ptr && !s->is_str &&
+        !(type_is_void_pointer(s) && s->is_nullable)) {
         type_error_message("a 'str' lasts the whole program, and this C string may not: only a literal or another "
                            "'str' becomes one, or a trusted proc that vouches for it", line, col);
         return true;
     }
+    if (g_safe_body && d->kind == Type_Ptr && d->is_raw && s->kind == Type_Ptr && s->is_raw && !type_is_void_pointer(d) &&
+        type_is_void_pointer(s) && !s->is_nullable) {
+        type_error_message("a '^void' does not become a '^T' in safe code: it could be any bytes, of any length",
+                           line, col);
+        return true;
+    }
+    if (g_safe_body && d->kind == Type_Ptr && d->is_raw && s->kind == Type_Ptr && s->is_raw && d->elem && s->elem &&
+        !d->elem->is_const && (s->elem->is_const || s->is_str) && !type_is_void_pointer(d)) {
+        type_error_message("a raw pointer to const does not become one to write through: the memory may be read-only",
+                           line, col);
+        return true;
+    }
     if (g_safe_body && d->kind == Type_Ptr && d->is_raw && !type_is_void_pointer(s) &&
-        ((s->kind == Type_Ptr && !s->is_raw) || type_slice_elem(s))) {
+        ((s->kind == Type_Ptr && !s->is_raw) || type_slice_elem(s) || s->kind == Type_Array)) {
         /* `print_cstr(x[0]&)` with `x: [3]c8`, or `copy(small&, ...)` into a
            `^void`: the callee reads or writes past what the pointer names. A
            raw pointer in safe code comes from a literal or a trusted proc. */
@@ -14764,11 +14883,15 @@ static RegionBindings call_region_bindings(Program *prog, ProcDecl *decl, Expr *
     RegionBindings rb = {0};
     rb.names = Vec_string8_reserve(arena, 4);
     rb.values = Vec_string8_reserve(arena, 4);
+    /* Handles first: what a proc allocates in is what its handle says, whatever
+       its other arguments live in. */
+    for (i32 pass = 0; pass < 2; pass++)
     for (i32 i = 0; i < call->args.length && i < decl->params.length; i++) {
         Param *param = (Param *)decl->params.data[i];
         TypeExpr *pt = resolve_alias_type(prog, param->type);
         Expr *arg = (Expr *)call->args.data[i];
         if (!pt || !arg) continue;
+        if ((pass == 0) != (pt->kind == Type_Region)) continue;
         string8 var = {0};
         string8 value = {0};
         if (pt->kind == Type_Region) {
@@ -14793,7 +14916,14 @@ static RegionBindings call_region_bindings(Program *prog, ProcDecl *decl, Expr *
             value = type_region_of(prog, infer_expr_type(arg, scope, prog, arena));
         }
         if (var.length == 0 || value.length == 0) continue;
-        if (region_binding_lookup(&rb, var).length > 0) continue; // first binding wins; the check reports a mismatch
+        if (region_binding_lookup(&rb, var).length > 0) {
+            /* Two handles for one R: which arena would `*T in R` be in? */
+            if (report && pt->kind == Type_Region && !string8_equals(&value, &(string8){ .data = region_binding_lookup(&rb, var).data, .length = region_binding_lookup(&rb, var).length })) {
+                region_error("this call gives '%.*s' and '%.*s' for one region parameter; pass the same one, or take two",
+                             region_binding_lookup(&rb, var), value, arg->line, arg->col);
+            }
+            continue; // first binding wins; the check reports a mismatch
+        }
         Vec_string8_append(arena, &rb.names, var);
         Vec_string8_append(arena, &rb.values, value);
     }
@@ -14902,6 +15032,16 @@ static Vec_string8 g_addr_taken;
 static void narrow_add(memops_arena *arena, TypeScope *into, string8 name, TypeExpr *nullable) {
     if (!into || !nullable) return;
     if (array_string8_contains(&g_addr_taken, name)) return;
+    /* A global changes in any callee, as a field does; take a local to test. */
+    for (TypeScope *level = into; level; level = level->parent) {
+        for (i32 i = level->names.length - 1; i >= 0; i--) {
+            if (string8_equals(&level->names.data[i], &name)) {
+                if (!level->parent) return;
+                goto found;
+            }
+        }
+    }
+    found:;
     TypeExpr *t = clone_type_expr(arena, nullable);
     t->is_nullable = false;
     t->narrowed = true;
@@ -15055,8 +15195,13 @@ static void type_check_condition_narrowing(Expr *cond, TypeScope *scope, TypeSco
            narrowing for that outcome. */
         TypeScope mid = type_scope_copy(arena, scope);
         type_check_condition_narrowing(cond->left, scope, and_op ? &mid : null, and_op ? null : &mid, prog, arena);
+        /* The right side first: a call in it may end what the left narrowed, and
+           the undoing has to be what reaches the branch. */
+        TypeScope right_true = type_scope_copy(arena, &mid);
+        TypeScope right_false = type_scope_copy(arena, &mid);
+        type_check_condition_narrowing(cond->right, &mid, and_op ? &right_true : null, and_op ? null : &right_false, prog, arena);
         narrow_copy(arena, &mid, and_op ? then_scope : else_scope);
-        type_check_condition_narrowing(cond->right, &mid, and_op ? then_scope : null, and_op ? null : else_scope, prog, arena);
+        narrow_copy(arena, and_op ? &right_true : &right_false, and_op ? then_scope : else_scope);
         return;
     }
     narrow_guard_unsequenced(cond, true, scope, prog, arena);
@@ -15228,6 +15373,7 @@ static void compute_proc_opens(Program *prog, memops_arena *arena) {
    a checked reader that kills nothing in its caller, while `grow(ww: *const
    w)` pushing through `ww*.hp` kills what was taken from `ww`. */
 #define MOVES_ANY (1ull << 63)
+#define MOVES_GLOBAL (1ull << 62) // through a global: every borrow behind a pointer is at risk
 
 /* Numbers, enums and arrays and structs of them, as far as can be seen: a
    callee handed a `*T` of one can overwrite it and can move nothing, since
@@ -15301,6 +15447,38 @@ static i32 moves_param_index(ProcDecl *proc, string8 name) {
 /* The parameters an expression may reach: through a parameter's name, a
    local that was filled from one, or the arguments of a call it is made
    from. A name nobody tracked reaches nothing. */
+static bool call_param_may_move(Program *prog, ProcDecl *decl, Expr *call, i32 i, memops_arena *arena);
+static bool decl_param_may_move(Program *prog, ProcDecl *decl, i32 i, memops_arena *arena);
+/* Whether a global could be how a callee reaches something that moves: a checked
+   pointer or a slice to anything but plain data. A raw pointer carries no borrow,
+   and plain data has nothing to reallocate behind. */
+static bool type_can_reach_movable(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth) {
+    if (!type) return false;
+    if (depth > 6) return true;
+    TypeExpr *r = resolve_alias_type(prog, type);
+    if (!r) return false;
+    if (r->kind == Type_Array) return type_can_reach_movable(prog, r->elem, arena, depth + 1);
+    if (r->kind == Type_Ptr) return !r->is_raw && !type_is_plain_data(prog, r->elem, arena, 0);
+    if (type_slice_elem(r)) return !type_is_plain_data(prog, type_slice_elem(r), arena, 0);
+    if (r->kind != Type_Name && r->kind != Type_Generic) return false;
+    TypeSub sub = {0};
+    StructDecl *decl = lookup_aggregate_decl(prog, r, &sub, arena);
+    if (!decl) return false;
+    for (i32 i = 0; i < decl->fields.length; i++) {
+        Field *field = (Field *)decl->fields.data[i];
+        if (!field->type) return true;
+        TypeExpr *ft = sub.has ? substitute_type_sub(arena, field->type, sub) : field->type;
+        if (type_can_reach_movable(prog, ft, arena, depth + 1)) return true;
+    }
+    return false;
+}
+
+typedef struct LocalNamed { string8 name; bool *found; } LocalNamed;
+static void visit_find_local_named(Stmt *s, void *ctx, memops_arena *arena) {
+    LocalNamed *l = (LocalNamed *)ctx;
+    if (s->kind == Stmt_Var && string8_equals(&s->name, &l->name)) *l->found = true;
+}
+
 static u64 moves_roots(MovesCtx *c, Expr *e, i32 depth) {
     if (!e || depth > 12) return 0;
     if (e->kind == Expr_Name) {
@@ -15312,6 +15490,12 @@ static u64 moves_roots(MovesCtx *c, Expr *e, i32 depth) {
         }
         for (i32 i = c->local_names.length - 1; i >= 0; i--) {
             if (string8_equals(&c->local_names.data[i], &e->name)) return (u64)(uintptr_t)c->local_roots.data[i];
+        }
+        for (i32 i = 0; i < c->prog->globals.length; i++) {
+            Stmt *g = (Stmt *)c->prog->globals.data[i];
+            if (string8_equals(&g->name, &e->name)) {
+                return type_can_reach_movable(c->prog, g->type, c->arena, 0) ? MOVES_GLOBAL : 0;
+            }
         }
         return 0;
     }
@@ -15327,16 +15511,33 @@ static u64 moves_roots(MovesCtx *c, Expr *e, i32 depth) {
     return 0;
 }
 
+static bool moves_name_is_value(MovesCtx *c, string8 name) {
+    if (moves_param_index(c->proc, name) >= 0) return true;
+    for (i32 i = 0; i < c->prog->globals.length; i++) {
+        if (string8_equals(&((Stmt *)c->prog->globals.data[i])->name, &name)) return true;
+    }
+    bool found = false;
+    for (i32 i = 0; i < c->proc->body.length; i++) stmt_walk((Stmt *)c->proc->body.data[i], null, visit_find_local_named, &(LocalNamed){ name, &found }, c->arena);
+    return found;
+}
+
 static void moves_visit_expr(Expr *e, void *ctx, memops_arena *arena) {
     MovesCtx *c = (MovesCtx *)ctx;
     if (!e || e->kind != Expr_Call || call_is_new(e)) return;
     if (!e->base && call_name_is_builtin(e->name)) return;
     ProcDecl *decl = e->base ? null : lookup_proc_decl(c->prog, e->name);
+    /* A macro is its arguments, which this walk visits by themselves. */
+    if (!e->base && !decl && !moves_name_is_value(c, e->name)) return;
+    /* A callee that moves through a global, or that nothing is known of. */
+    if (!decl || (decl->moves & MOVES_GLOBAL)) c->found |= MOVES_GLOBAL;
     for (i32 i = 0; i < e->args.length; i++) {
         Expr *arg = (Expr *)e->args.data[i];
         /* A call through a pointer, or to a name that is a local: the worst
            case for every argument. */
-        bool may_move = decl ? (i < decl->params.length && ((decl->moves >> i) & 1)) : true;
+        bool may_move = decl ? (i < decl->params.length && i < 62 && ((decl->moves >> i) & 1)) : true;
+        if (may_move && decl && decl->is_generic && e->type_args.length == 1) {
+            may_move = call_param_may_move(c->prog, decl, e, i, arena);
+        }
         if (may_move) c->found |= moves_roots(c, arg, 0);
     }
 }
@@ -15360,6 +15561,10 @@ static void moves_visit_stmt(Stmt *s, void *ctx, memops_arena *arena) {
     }
 }
 
+static void visit_find_unsafe_block(Stmt *s, void *ctx, memops_arena *arena) {
+    if (s->kind == Stmt_Unsafe) *(bool *)ctx = true;
+}
+
 static void compute_proc_moves(Program *prog, memops_arena *arena) {
     if (!g_safety) return;
     i32 n = prog->procs.length;
@@ -15368,17 +15573,30 @@ static void compute_proc_moves(Program *prog, memops_arena *arena) {
         p->moves = 0;
         bool trusted = p->is_trusted || p->is_unsafe || p->is_external;
         if (!trusted) continue;
-        for (i32 j = 0; j < p->params.length && j < 63; j++) {
+        for (i32 j = 0; j < p->params.length && j < 62; j++) {
             if (type_param_shallow_may_move(prog, ((Param *)p->params.data[j])->type, arena)) p->moves |= 1ull<< j;
         }
         if (p->is_variadic) p->moves |= MOVES_ANY;
+    }
+    /* A body with an unsafe block can move what its statements do not show, through
+       a raw pointer: it answers for its signature, as a trusted proc does. */
+    for (i32 i = 0; i < n; i++) {
+        ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+        if (p->is_trusted || p->is_unsafe || p->is_external || p->is_generic) continue;
+        bool has_block = false;
+        for (i32 j = 0; j < p->body.length; j++) stmt_walk((Stmt *)p->body.data[j], null, visit_find_unsafe_block, &has_block, arena);
+        if (!has_block) continue;
+        for (i32 j = 0; j < p->params.length && j < 62; j++) {
+            if (type_param_shallow_may_move(prog, ((Param *)p->params.data[j])->type, arena)) p->moves |= 1ull<< j;
+        }
     }
     bool changed = true;
     for (i32 round = 0; changed && round < 64; round++) {
         changed = false;
         for (i32 i = 0; i < n; i++) {
             ProcDecl *p = (ProcDecl *)prog->procs.data[i];
-            if (p->is_trusted || p->is_unsafe || p->is_external) continue;
+            if (p->is_external || p->is_generic) continue;
+            bool signature_only = p->is_trusted || p->is_unsafe;
             MovesCtx c = { .proc = p, .prog = prog, .arena = arena };
             c.local_names = Vec_string8_reserve(arena, 8);
             c.local_roots = ptr_array_reserve(arena, 8);
@@ -15389,6 +15607,7 @@ static void compute_proc_moves(Program *prog, memops_arena *arena) {
             }
             for (i32 j = 0; j < p->body.length; j++) stmt_walk((Stmt *)p->body.data[j], moves_visit_expr, null, &c, arena);
             u64 mask = c.found & ~MOVES_ANY;
+            if (signature_only) mask &= MOVES_GLOBAL;
             if ((p->moves | mask) != p->moves) { p->moves |= mask; changed = true; }
         }
     }
@@ -15420,6 +15639,7 @@ typedef struct Borrow {
     Vec_string8 paths;   // the places it was taken from: moved by a call, replaced by a write
     Vec_string8 regions; // the regions it was made in: gone when their block ends
     bool dead;
+    bool movable;        // into storage that may move: a call's result, not a fixed array or a region's slice
 } Borrow;
 
 static Vec_voidptr g_borrows; // Borrow*, the current proc's
@@ -15468,6 +15688,9 @@ static void borrow_paths_from_expr(Expr *init, TypeScope *scope, Program *prog, 
             Expr *arg = (Expr *)init->args.data[i];
             TypeExpr *at = resolve_alias_type(prog, infer_expr_type(arg, scope, prog, arena));
             if (!at) continue;
+            if (type_region_of(prog, at).length > 0 && !array_string8_contains(out_regions, type_region_of(prog, at))) {
+                Vec_string8_append(arena, out_regions, type_region_of(prog, at));
+            }
             /* A region handle: what came back may be in that region, and is
                gone when its block ends. */
             if (at->kind == Type_Region) {
@@ -15481,7 +15704,7 @@ static void borrow_paths_from_expr(Expr *init, TypeScope *scope, Program *prog, 
                came back did not come from anything taken through this one:
                `f = fopen(path, "rb")` is no borrow of `path`. Unless this one is
                itself a local known to have come from a call with a source. */
-            if (at->kind == Type_Ptr && at->is_raw &&
+            if (at->kind == Type_Ptr && at->is_raw && arg->kind != Expr_Call && arg->kind != Expr_Ternary &&
                 !(arg->kind == Expr_Name && borrow_find(arg->name) && borrow_find(arg->name)->paths.length +
                                                                      borrow_find(arg->name)->regions.length > 0)) continue;
             borrow_paths_from_expr(arg, scope, prog, arena, out, out_regions);
@@ -15493,6 +15716,11 @@ static void borrow_paths_from_expr(Expr *init, TypeScope *scope, Program *prog, 
         borrow_paths_from_expr(init->right, scope, prog, arena, out, out_regions);
         borrow_paths_from_expr(init->third, scope, prog, arena, out, out_regions);
         return;
+    }
+    {
+        /* `q = must(x)` with x in tmp: gone with tmp, whatever q says. */
+        string8 made_in = type_region_of(prog, infer_expr_type(init, scope, prog, arena));
+        if (made_in.length > 0 && !array_string8_contains(out_regions, made_in)) Vec_string8_append(arena, out_regions, made_in);
     }
     string8 path = expr_path(init, arena);
     Borrow *root = borrow_find(path_root(path));
@@ -15512,9 +15740,78 @@ static bool type_is_tracked_raw(Program *prog, TypeExpr *type) {
     return type && type->kind == Type_Ptr && type->is_raw && !type->is_str;
 }
 
+/* Whether a raw pointer came out of memory the checker can see, through a call
+   given a checked pointer, a slice, an array or a region, directly or not. */
+static bool raw_has_checked_source(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena, i32 depth) {
+    if (!e || depth > 8) return false;
+    if (e->kind == Expr_Ternary) {
+        return raw_has_checked_source(e->right, scope, prog, arena, depth + 1) ||
+               raw_has_checked_source(e->third, scope, prog, arena, depth + 1);
+    }
+    if (e->kind == Expr_Cast) return raw_has_checked_source(e->inner, scope, prog, arena, depth + 1);
+    if (e->kind == Expr_Name) {
+        Borrow *b = borrow_find(e->name);
+        return b && b->paths.length + b->regions.length > 0;
+    }
+    if (e->kind != Expr_Call) return false;
+    TypeExpr *result = resolve_alias_type(prog, infer_expr_type(e, scope, prog, arena));
+    if (result && result->is_str) return false;
+    for (i32 i = 0; i < e->args.length; i++) {
+        Expr *arg = (Expr *)e->args.data[i];
+        TypeExpr *at = resolve_alias_type(prog, infer_expr_type(arg, scope, prog, arena));
+        if (!at) continue;
+        if (at->kind == Type_Region || at->kind == Type_Array || type_slice_elem(at)) return true;
+        if (at->kind == Type_Ptr && !at->is_raw) return true;
+        if (at->kind == Type_Ptr && raw_has_checked_source(arg, scope, prog, arena, depth + 1)) return true;
+    }
+    return false;
+}
+
+/* Such a pointer lasts only for the call it is passed to. Nothing says when what it
+   points into changes: a write through any other pointer can take its terminator. */
+static void raw_keep_check(TypeExpr *dst, Expr *value, TypeScope *scope, Program *prog, memops_arena *arena) {
+    if (!g_safe_body || !dst || !value) return;
+    TypeExpr *d = resolve_alias_type(prog, dst);
+    if (!d || d->kind != Type_Ptr || !d->is_raw || d->is_str) return;
+    if (raw_has_checked_source(value, scope, prog, arena, 0)) {
+        type_error_message("a raw pointer into a buffer or a region lasts only for the call it is passed to, so it is "
+                           "not kept: pass it directly, as 'f(cstr_of(buf))'", value->line, value->col);
+    }
+}
+
+/* A global array and a slice naming a region stay where they are, whoever moves
+   what: memory in a region is not freed under it. */
+static bool expr_may_be_moved(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena, i32 depth) {
+    if (!e || depth > 12) return false;
+    if (e->kind == Expr_Call) return true;
+    if (e->kind == Expr_Ternary) return expr_may_be_moved(e->right, scope, prog, arena, depth + 1) || expr_may_be_moved(e->third, scope, prog, arena, depth + 1);
+    if (e->kind == Expr_Addr || e->kind == Expr_Cast) return expr_may_be_moved(e->inner, scope, prog, arena, depth + 1);
+    TypeExpr *t = resolve_alias_type(prog, infer_expr_type(e, scope, prog, arena));
+    if (t && (type_slice_elem(t) || (t->kind == Type_Ptr && !t->is_raw)) && type_region_of(prog, t).length > 0) return false;
+    if (e->kind == Expr_Name) {
+        Borrow *b = borrow_find(e->name);
+        if (b) return b->movable;
+        return t && (t->kind == Type_Ptr || type_slice_elem(t));
+    }
+    if (e->kind == Expr_Field || e->kind == Expr_Index) return expr_may_be_moved(e->base, scope, prog, arena, depth + 1);
+    return false;
+}
+
+/* `option<*T>`'s none is a zero `*T`, read by anyone who reads its value. */
+static void safety_check_option(Program *prog, TypeExpr *type, memops_arena *arena, i32 line, i32 col) {
+    if (!g_safe_body || !type) return;
+    TypeExpr *t = resolve_alias_type(prog, type);
+    if (!t || t->kind != Type_Generic || !string8_equals_cstr(&t->name, "option") || t->args.length != 1) return;
+    if (type_has_nonnull_pointer(prog, (TypeExpr *)t->args.data[0], arena, 0)) {
+        type_error_message("an option of something holding a '*T' has a null in it when it is none; use '?*T', which "
+                           "is an option already", line, col);
+    }
+}
+
 static void borrow_register(string8 name, Expr *init, TypeScope *scope, Program *prog, memops_arena *arena) {
     Borrow *b = memops_arena_push_struct(arena, Borrow);
     b->name = name;
+    b->movable = expr_may_be_moved(init, scope, prog, arena, 0);
     b->paths = Vec_string8_reserve(arena, 2);
     b->dead = false;
     /* A pointer into a region is tracked for the places it aliases, so that
@@ -15572,6 +15869,7 @@ static void borrow_retake(string8 name, Expr *init, TypeScope *scope, Program *p
     b->paths = Vec_string8_reserve(arena, 2);
     b->regions = Vec_string8_reserve(arena, 1);
     b->dead = false;
+    b->movable = expr_may_be_moved(init, scope, prog, arena, 0);
     borrow_paths_from_expr(init, scope, prog, arena, &b->paths, &b->regions);
 }
 
@@ -15673,12 +15971,30 @@ static bool param_type_may_move(Program *prog, TypeExpr *pt, bool trusted, memop
 /* The callee is known: a checked proc moves only through the parameters its
    body reaches a moving call with (compute_proc_moves); a trusted one
    through every non-const pointer in its signature. */
+static TypeSub call_generic_sub(Program *prog, ProcDecl *decl, Expr *call, memops_arena *arena) {
+    TypeSub sub = {0};
+    if (!decl || !decl->is_generic || !call || call->type_args.length != 1) return sub;
+    TypeScope empty = type_scope_make(arena, 1);
+    return proc_call_sub_in_scope(arena, decl, call, (TypeExpr *)call->type_args.data[0], &empty);
+}
+
+/* A generic's `*T` or `[]T` is what its instance makes it: `slice<f32>zero` moves
+   nothing, whatever `slice<vec<f32>>zero` might. */
+static bool call_param_may_move(Program *prog, ProcDecl *decl, Expr *call, i32 i, memops_arena *arena) {
+    TypeSub sub = call_generic_sub(prog, decl, call, arena);
+    if (sub.has && i < decl->params.length) {
+        TypeExpr *pt = substitute_type_sub(arena, ((Param *)decl->params.data[i])->type, sub);
+        return param_type_may_move(prog, pt, true, arena);
+    }
+    return decl_param_may_move(prog, decl, i, arena);
+}
+
 static bool decl_param_may_move(Program *prog, ProcDecl *decl, i32 i, memops_arena *arena) {
     if (!decl || i >= decl->params.length) return false;
     bool trusted = decl->is_trusted || decl->is_unsafe || decl->is_external;
     TypeExpr *pt = ((Param *)decl->params.data[i])->type;
     if (trusted) return param_type_may_move(prog, pt, true, arena);
-    if (i >= 63) return param_type_may_move(prog, pt, false, arena);
+    if (i >= 62) return param_type_may_move(prog, pt, false, arena);
     return ((decl->moves >> i) & 1) != 0;
 }
 
@@ -15689,7 +16005,7 @@ static void borrows_after_call(Expr *call, Vec_voidptr *param_types, ProcDecl *d
     if (!g_safe_body) return;
     Vec_string8 killed = Vec_string8_reserve(arena, 4);
     for (i32 i = 0; i < call->args.length && i < param_types->length; i++) {
-        bool may_move = decl ? decl_param_may_move(prog, decl, i, arena)
+        bool may_move = decl ? call_param_may_move(prog, decl, call, i, arena)
                              : param_type_may_move(prog, (TypeExpr *)param_types->data[i], false, arena);
         if (!may_move) continue;
         string8 p = expr_path((Expr *)call->args.data[i], arena);
@@ -15710,6 +16026,27 @@ static void borrows_after_call(Expr *call, Vec_voidptr *param_types, ProcDecl *d
         }
     }
     for (i32 i = 0; i < killed.length; i++) borrow_kill_path(killed.data[i], arena);
+    if (!decl || (decl->moves & MOVES_GLOBAL)) {
+        /* It can reach anything behind a pointer, including what it was just handed. */
+        for (i32 i = 0; i < call->args.length; i++) {
+            Expr *arg = (Expr *)call->args.data[i];
+            Vec_string8 from = Vec_string8_reserve(arena, 2);
+            Vec_string8 regions = Vec_string8_reserve(arena, 1);
+            TypeExpr *at = resolve_alias_type(prog, infer_expr_type(arg, scope, prog, arena));
+            if (at && type_is_checked_pointer(prog, at) && type_region_of(prog, at).length == 0 && arg->kind == Expr_Call && !call_is_must(arg)) {
+                borrow_paths_from_expr(arg, scope, prog, arena, &from, &regions);
+                if (from.length > 0 && decl && (decl->moves & MOVES_GLOBAL)) {
+                    region_error("this was taken from '%.*s', and '%.*s' can move it through a global: take it after the call",
+                                 from.data[0], decl->name, arg->line, arg->col);
+                }
+            }
+        }
+        for (i32 i = 0; i < g_borrows.length; i++) {
+            Borrow *b = (Borrow *)g_borrows.data[i];
+            if (b->dead || !b->reportable || !b->movable) continue;
+            if (b->paths.length > 0) b->dead = true;
+        }
+    }
 }
 
 /* What a statement will kill when it runs: so a loop can apply its body's
@@ -15752,7 +16089,7 @@ static void borrows_prescan_expr(Expr *e, Program *prog, Vec_string8 *out, memop
         bool read_only_builtin = !e->base && call_name_is_builtin(e->name);
         for (i32 i = 0; i < e->args.length && !read_only_builtin; i++) {
             bool may_move = true; // a call through a pointer: assume the worst
-            if (decl) may_move = decl_param_may_move(prog, decl, i, arena);
+            if (decl) may_move = call_param_may_move(prog, decl, e, i, arena);
             if (!may_move) continue;
             string8 p = expr_path((Expr *)e->args.data[i], arena);
             if (p.length > 0 && !array_string8_contains(out, p)) Vec_string8_append(arena, out, p);
@@ -15998,7 +16335,12 @@ static void type_collect_regions(Program *prog, TypeExpr *type, Vec_string8 *out
    level` is only ever called while level is open. */
 static Vec_string8 g_param_regions;
 
+static ProcDecl *g_region_check_proc;
 static bool region_available_here(Program *prog, string8 r) {
+    /* A parameter into a region says the caller has it open; a proc that opens it
+       itself is never called while it is, so that parameter can only be null. */
+    if (g_region_check_proc && array_string8_contains(&g_region_check_proc->opens, r) &&
+        !array_string8_contains(&g_active_regions, r)) return false;
     if (region_rank(prog, r) < 0) return true; // a region variable
     if (string8_equals_cstr(&r, "permanent")) return true;
     for (i32 i = 0; i < g_active_regions.length; i++) {
@@ -16026,6 +16368,22 @@ static bool type_declared_in_this_file(Program *prog, TypeExpr *type, memops_are
    its own file keeps, so other code reads them and calls its procs. Returns
    the carrier's name when the place is such a field. */
 static string8 assign_writes_carrier_field(Expr *lhs, TypeScope *scope, Program *prog, memops_arena *arena) {
+    {
+        Expr *root = lhs;
+        while (root && (root->kind == Expr_Field || root->kind == Expr_Index)) root = root->base;
+        if (root && root->kind == Expr_Name) {
+            for (i32 i = 0; i < prog->globals.length; i++) {
+                Stmt *g = (Stmt *)prog->globals.data[i];
+                if (!string8_equals(&g->name, &root->name)) continue;
+                const char *here = g_diag_source_path;
+                bool same_file = (!g->source_path || !here) ? g->source_path == here : cstr_equals(g->source_path, here);
+                TypeExpr *gt = resolve_alias_type(prog, g->type);
+                while (gt && gt->kind == Type_Array) gt = resolve_alias_type(prog, gt->elem);
+                if (!same_file && gt && gt->kind == Type_Ptr && gt->is_raw && !gt->is_str) return g->name;
+                break;
+            }
+        }
+    }
     for (Expr *e = lhs; e; ) {
         if (e->kind == Expr_Field) {
             TypeExpr *bt = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
@@ -16308,6 +16666,9 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
         }
     }
     if (g_safe_body) {
+        if (type_arg && string8_equals_cstr(&decl->name, "slice@zero")) {
+            safety_check_zeroed("slice<T>zero", prog, type_arg, arena, call->line, call->col);
+        }
         if (decl->is_unsafe) {
             char message[512];
             snprintf(message, sizeof(message),
@@ -16408,6 +16769,10 @@ static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_
             type_check_expr((Expr *)call->args.data[i], scope, prog, arena);
         }
     }
+    if (decl->ret_type && type_arg && decl->is_generic) {
+        TypeSub ret_sub = proc_call_sub_in_scope(arena, decl, call, type_arg, scope);
+        if (ret_sub.has) safety_check_option(prog, substitute_type_sub(arena, decl->ret_type, ret_sub), arena, call->line, call->col);
+    }
     if (g_safety && decl->ret_type) {
         /* The result, with the call's bindings: the same rule, in the caller's
            terms, and every region variable it mentions must have been bound. */
@@ -16463,7 +16828,12 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         return;
     }
     if (e->kind == Expr_Binary) {
+        bool null_test = (e->op == Token_EqualEqual || e->op == Token_BangEqual) && e->right &&
+                         e->right->kind == Expr_Name && string8_equals_cstr(&e->right->name, "null");
+        bool prev_allow = g_raw_field_read_ok;
+        if (null_test) g_raw_field_read_ok = true;
         type_check_expr(e->left, scope, prog, arena);
+        g_raw_field_read_ok = prev_allow;
         type_check_expr(e->right, scope, prog, arena);
         type_check_binary_op(e, scope, prog, arena);
         return;
@@ -16507,6 +16877,16 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
             region_error("'%.*s' is %.*s, and a call through a pointer would not be checked; it is called by name from "
                          "a [trusted] proc", e->name, as_value->is_unsafe ? string8_from_cstr(arena, "an unsafe proc")
                          : string8_from_cstr(arena, "C's, with pointers in its signature"), e->line, e->col);
+        }
+        if (as_value && g_safe_body) {
+            for (i32 i = 0; i < as_value->params.length; i++) {
+                TypeExpr *vt = resolve_alias_type(prog, ((Param *)as_value->params.data[i])->type);
+                if (vt && vt->kind == Type_Region) {
+                    region_error("'%.*s' takes a region, so it is called by name, not through a pointer%.0s",
+                                 e->name, (string8){0}, e->line, e->col);
+                    break;
+                }
+            }
         }
         if (as_value && as_value->opens.length > 0) {
             region_error("'%.*s' opens region '%.*s', so it is called by name, not through a pointer: a call through "
@@ -16611,6 +16991,16 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
             return;
         }
         type_check_expr(e->base, scope, prog, arena);
+        if (g_safe_body && !g_raw_field_read_ok) {
+            TypeExpr *ft = resolve_alias_type(prog, infer_expr_type(e, scope, prog, arena));
+            TypeExpr *bt = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
+            if (bt && bt->kind == Type_Ptr) bt = resolve_alias_type(prog, bt->elem);
+            if (ft && ft->kind == Type_Ptr && ft->is_raw && !ft->is_str && bt &&
+                (type_slice_elem(bt) || !type_declared_in_this_file(prog, bt, arena))) {
+                region_error("'%.*s' is a raw pointer with its length left behind%.0s; index the slice, or take a "
+                             "subrange, or put it in 'unsafe { }'", e->name, (string8){0}, e->line, e->col);
+            }
+        }
         TypeExpr *base = infer_expr_type(e->base, scope, prog, arena);
         TypeExpr *field = lookup_field_type(prog, base, e->name, arena);
         TypeExpr *resolved = resolve_alias_type(prog, base);
@@ -16689,6 +17079,12 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
     TypeExpr *left = resolve_alias_type(prog, infer_expr_type_k(e->left, scope, prog, arena, &left_kind));
     TypeExpr *right = resolve_alias_type(prog, infer_expr_type_k(e->right, scope, prog, arena, &right_kind));
     if (!left || !right) return;
+    if (g_safe_body && (e->op == Token_Plus || e->op == Token_Minus) &&
+        ((left->kind == Type_Ptr && left->is_raw) || (right->kind == Type_Ptr && right->is_raw) ||
+         left->kind == Type_Array || right->kind == Type_Array)) {
+        safety_error("arithmetic on a raw pointer or an array is unsafe: nothing says the result is still inside it; "
+                     "take a '[]T' and index it, or put it in 'unsafe { }'", e->line, e->col);
+    }
 
     /* `len > 0`: the literal becomes the other operand's type, and must fit in
        it. A shift amount is its own value, and an integer next to a float
@@ -16811,6 +17207,9 @@ static void type_check_ternary(Expr *e, TypeScope *scope, Program *prog, memops_
     TypeExpr *cond = resolve_alias_type(prog, infer_expr_type(e->left, scope, prog, arena));
     TypeExpr *right = resolve_alias_type(prog, infer_expr_type(e->right, scope, prog, arena));
     TypeExpr *third = resolve_alias_type(prog, infer_expr_type(e->third, scope, prog, arena));
+    if ((right && right->kind == Type_Region) || (third && third->kind == Type_Region)) {
+        type_error_message("a region is named, not chosen: the type of what it makes could not say which", e->line, e->col);
+    }
     if (cond && !type_is_truthy(prog, cond)) {
         type_error_ternary_condition(cond, e->left->line, e->left->col, arena);
     }
@@ -16866,6 +17265,14 @@ static void type_check_stmt(
         g_diag_source_path = s->source_path;
     }
     g_diag_import_chain = s->import_chain;
+    if (s->kind == Stmt_Goto || s->kind == Stmt_Label) {
+        safety_error("goto and labels are not safe code: a jump can skip a test, a declaration or a kill; use a loop, "
+                     "or put both in 'unsafe { }'", s->line, s->col);
+    }
+    if (s->kind == Stmt_Var && g_safe_body &&
+        (string8_equals_cstr(&s->name, "exit") || string8_equals_cstr(&s->name, "abort"))) {
+        safety_error("a local named exit or abort would hide the proc that never returns", s->line, s->col);
+    }
     if (s->kind == Stmt_Assign && s->lhs && s->lhs->kind != Expr_Name) {
         narrow_guard_unsequenced(s->lhs, false, scope, prog, arena);
         narrow_guard_unsequenced(s->expr, false, scope, prog, arena);
@@ -16873,6 +17280,7 @@ static void type_check_stmt(
         narrow_guard_unsequenced(s->expr, true, scope, prog, arena);
     }
     if (s->kind == Stmt_Var) {
+        narrow_end_fields(arena, scope, NarrowEnd_Root, s->name); // a local may shadow a global path's root
         TypeExpr *local_type = type_scope_apply_sub(scope, arena, s->type);
         if (s->is_uninitialized) {
             safety_error("'= ?' leaves the value with whatever bytes were there, which is unsafe to read; "
@@ -16901,6 +17309,8 @@ static void type_check_stmt(
         type_scope_add(arena, scope, s->name, local_type);
         Vec_string8_append(arena, &g_decl_names, s->name);
         ptr_array_append(arena, &g_decl_types, local_type);
+        raw_keep_check(local_type, s->expr, scope, prog, arena);
+        safety_check_option(prog, local_type, arena, s->line, s->col);
         if (g_safe_body && s->expr && (type_is_checked_pointer(prog, local_type) || type_is_tracked_raw(prog, local_type))) {
             borrow_register(s->name, s->expr, scope, prog, arena);
         }
@@ -16938,14 +17348,29 @@ static void type_check_stmt(
         if (s->lhs && s->lhs->kind == Expr_Name) {
             narrow_undo_on_assign(arena, scope, s->lhs->name);
             narrow_end_fields(arena, scope, NarrowEnd_Root, s->lhs->name);
+            /* A whole value holding pointers, `g = {}`, may be what another path
+               reaches through a pointer to it. */
+            TypeExpr *written = resolve_alias_type(prog, infer_expr_type(s->lhs, scope, prog, arena));
+            if (written && written->kind != Type_Ptr && !type_is_plain_data(prog, written, arena, 0)) {
+                narrow_end_fields(arena, scope, NarrowEnd_All, (string8){0});
+            }
         } else {
             narrow_end_for_write(s->lhs, scope, prog, arena);
         }
         TypeExpr *expected = infer_expr_type(s->lhs, scope, prog, arena);
+        raw_keep_check(expected, s->expr, scope, prog, arena);
         {
             TypeExpr *er = resolve_alias_type(prog, expected);
+            if (g_safe_body && er && er->kind == Type_Ptr && er->is_raw && (s->assign_op == Token_PlusEqual || s->assign_op == Token_MinusEqual)) {
+                safety_error("arithmetic on a raw pointer is unsafe: nothing says the result is still inside it; "
+                             "take a '[]T' and index it, or put it in 'unsafe { }'", s->line, s->col);
+            }
+            if (er && er->kind == Type_Array && er->elem && er->elem->is_const) {
+                type_error_message("this array's elements are const", s->line, s->col);
+            }
             s->is_array_copy = er && er->kind == Type_Array && s->assign_op == Token_Equal && s->expr &&
                                s->expr->kind != Expr_ZeroInit && s->expr->kind != Expr_InitList && s->expr->kind != Expr_CompoundInit;
+            if (er && er->kind == Type_Array) s->type = expected;
         }
         safety_check_carrier_value("an assignment", prog, expected, arena, s->line, s->col);
         if (g_safe_body && s->lhs && s->lhs->kind != Expr_Name) {
@@ -17012,6 +17437,7 @@ static void type_check_stmt(
             type_check_initializer_against(s->expr, return_type, scope, prog, arena);
             TypeExpr *actual = infer_expr_type(s->expr, scope, prog, arena);
             check_assignment_compatible("return", prog, return_type, actual, s->expr, scope, s->line, s->col, arena);
+            raw_keep_check(return_type, s->expr, scope, prog, arena);
             if (g_safe_body && g_active_regions.length > 0) {
                 /* Named or not, through a pointer or inside a struct: what this
                    returns may not be in a block the return itself ends. */
@@ -17253,9 +17679,10 @@ static void type_check_stmt(
            assigns is the block's word: alive, from nothing the checker knows. */
         if (g_safe_body) {
             borrows_prekill_body(&s->while_body, prog, arena);
+            /* Only what it assigns at its top level: one under an `if` may not run. */
             Vec_string8 assigned = Vec_string8_reserve(arena, 4);
             for (i32 i = 0; i < s->while_body.length; i++) {
-                stmt_walk((Stmt *)s->while_body.data[i], null, visit_collect_assigned, &assigned, arena);
+                visit_collect_assigned((Stmt *)s->while_body.data[i], &assigned, arena);
             }
             for (i32 i = 0; i < assigned.length; i++) {
                 Borrow *b = borrow_find(assigned.data[i]);
@@ -17291,7 +17718,9 @@ static void type_check_stmt(
             type_check_stmt((Stmt *)s->while_body.data[i], &loop_scope, prog, return_type, current_proc, arena);
         }
         if (s->kind == Stmt_DoWhile) {
-            type_check_condition("do while", s->while_cond, &loop_scope, prog, arena);
+            /* `continue` comes here too, so nothing narrowed in the body holds. */
+            TypeScope cond_scope = type_scope_copy(arena, scope);
+            type_check_condition("do while", s->while_cond, &cond_scope, prog, arena);
         }
         borrows_leave_scope(decl_mark, prog);
         if (ctx) {
@@ -17444,6 +17873,7 @@ static void type_check_proc_body(
     g_decl_types.length = 0;
     g_jump_ctx.length = 0;
     g_addr_taken.length = 0;
+    g_region_check_proc = p;
     g_local_regions.length = 0;
     g_field_narrows = 0;
     g_narrow_prog = prog;
@@ -18018,6 +18448,11 @@ static void rewrite_printfmt_call_stmt(Stmt *stmt, TypeScope *scope, Program *pr
         return;
     }
     Expr *file = (Expr *)call->args.data[0];
+    TypeExpr *file_type = resolve_alias_type(prog, infer_expr_type(file, scope, prog, arena));
+    if (!file_type || file_type->kind != Type_Name || !string8_equals_cstr(&file_type->name, "file")) {
+        printfmt_error_at(stmt->source_path, call->line, call->col, "fprintfmt writes to a file, from std/file.rin");
+        return;
+    }
     Expr *shifted = expr_new(arena, Expr_Call);
     *shifted = *call;
     shifted->name = string8_from_cstr(arena, "printfmt");
@@ -18999,6 +19434,21 @@ static void emit_stmt(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, s
     }
 }
 
+/* An array's size in bytes, by its type: C's sizeof of a type name with no
+   declarator has no way to say `[4]`. */
+static void emit_size_of_type(memops_arena *arena, string8 *out, TypeExpr *type, TypeSub sub) {
+    if (type && type->kind == Type_Array) {
+        emit_cstr(arena, out, "(");
+        emit_string8(arena, out, type->array_count);
+        emit_cstr(arena, out, ") * ");
+        emit_size_of_type(arena, out, type->elem, sub);
+        return;
+    }
+    emit_cstr(arena, out, "sizeof(");
+    emit_type(arena, out, type, sub);
+    emit_cstr(arena, out, ")");
+}
+
 static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, string8 generic_name) {
     if (!s) return;
     emit_line_directive_path(arena, out, s->source_path, s->line);
@@ -19118,13 +19568,23 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
     }
     if (s->kind == Stmt_Assign) {
         if (s->is_array_copy) {
-            emit_cstr(arena, out, "memcpy(&(");
+            /* By the type's size: an array parameter is a pointer in C, so
+               neither its sizeof nor its address is the array's. */
+            emit_cstr(arena, out, "memmove(");
             emit_expr(arena, out, s->lhs, sub, generic_name);
-            emit_cstr(arena, out, "), &(");
+            emit_cstr(arena, out, ", ");
             emit_expr(arena, out, s->expr, sub, generic_name);
-            emit_cstr(arena, out, "), sizeof(");
+            emit_cstr(arena, out, ", ");
+            emit_size_of_type(arena, out, s->type, sub);
+            emit_cstr(arena, out, ");\n");
+            return;
+        }
+        if (s->lhs && s->expr && s->expr->kind == Expr_ZeroInit && s->assign_op == Token_Equal && s->type) {
+            emit_cstr(arena, out, "memset(");
             emit_expr(arena, out, s->lhs, sub, generic_name);
-            emit_cstr(arena, out, "));\n");
+            emit_cstr(arena, out, ", 0, ");
+            emit_size_of_type(arena, out, s->type, sub);
+            emit_cstr(arena, out, ");\n");
             return;
         }
         /* `x = {}` zeroes in place: a copy of a literal would go through the
@@ -19140,13 +19600,13 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
         /* `xs = { 1, 2 }`: C does not assign arrays, so the literal is copied in. */
         if (s->lhs && s->expr && (s->expr->kind == Expr_ZeroInit || s->expr->kind == Expr_InitList) &&
             s->expr->cast_type && s->expr->cast_type->kind == Type_Array) {
-            emit_cstr(arena, out, "memcpy(&(");
+            emit_cstr(arena, out, "memcpy(");
             emit_expr(arena, out, s->lhs, sub, generic_name);
-            emit_cstr(arena, out, "), ");
+            emit_cstr(arena, out, ", ");
             emit_expr_value(arena, out, s->expr, sub, generic_name);
-            emit_cstr(arena, out, ", sizeof(");
-            emit_expr(arena, out, s->lhs, sub, generic_name);
-            emit_cstr(arena, out, "));\n");
+            emit_cstr(arena, out, ", ");
+            emit_size_of_type(arena, out, s->expr->cast_type, sub);
+            emit_cstr(arena, out, ");\n");
             return;
         }
         if (s->lhs) emit_expr(arena, out, s->lhs, sub, generic_name);

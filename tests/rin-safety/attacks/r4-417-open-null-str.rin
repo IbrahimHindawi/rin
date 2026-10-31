@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    s: str = null;
+    f: file = file_open(s, s);
+    printfmt("{}\n", file_is_open(f));
+    file_write_text(f, s);
+    return 0;
+}

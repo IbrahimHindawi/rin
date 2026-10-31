@@ -1,0 +1,10 @@
+import "std/print.rin"
+cinclude "stdlib.h"
+H: struct = { x: i32; }
+getenv: proc[external, trusted](name: ^const c8) -> ^c8 = {}
+main: proc() -> i32 = {
+    e: ^c8 = getenv("NO_SUCH_THING_AT_ALL");
+    print_cstr(e);
+    printfmt("\n{}\n", e);
+    return 0;
+}

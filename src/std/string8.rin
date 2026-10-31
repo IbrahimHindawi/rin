@@ -101,7 +101,7 @@ string8_from_cstr: proc[trusted](arena: *memops_arena, cstr: ^const char) -> str
     return s;
 }
 
-string8_copy_from_slice: proc[trusted](arena: *memops_arena, data: ^const u8, length: u64) -> string8 = {
+string8_copy_from_slice: proc[unsafe](arena: *memops_arena, data: ^const u8, length: u64) -> string8 = {
     if (data == null && length > 0) {
         return string8_reserve(arena, 0);
     }
@@ -179,7 +179,7 @@ string8_append_byte: proc[trusted](arena: *memops_arena, s: *string8, byte: u8) 
     s*.data[s*.length] = 0;
 }
 
-string8_append_bytes: proc[trusted](arena: *memops_arena, s: *string8, src: ^const u8, count: u64) -> void = {
+string8_append_bytes: proc[unsafe](arena: *memops_arena, s: *string8, src: ^const u8, count: u64) -> void = {
     if (count == 0) {
         return;
     }
@@ -670,7 +670,7 @@ string8_builder_append_byte: proc[trusted](b: *string8_builder, byte: u8) -> voi
     b*.length += 1;
 }
 
-string8_builder_append_bytes: proc[trusted](b: *string8_builder, src: ^const u8, count: u64) -> void = {
+string8_builder_append_bytes: proc[unsafe](b: *string8_builder, src: ^const u8, count: u64) -> void = {
     if (count == 0) {
         return;
     }

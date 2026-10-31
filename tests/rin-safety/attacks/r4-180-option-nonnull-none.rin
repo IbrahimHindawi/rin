@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "std/option.rin"
+H: struct = { x: i32; }
+main: proc() -> i32 = {
+    o: option<*H in permanent> = option<*H in permanent>none();
+    printfmt("{}\n", o.value*.x);
+    return 0;
+}

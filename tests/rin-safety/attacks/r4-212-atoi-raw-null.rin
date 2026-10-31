@@ -1,0 +1,4 @@
+import "std/print.rin"
+cinclude "stdlib.h"
+atoi: proc[external, trusted](s: ^const c8) -> i32 = {}
+main: proc() -> i32 = { printfmt("{}\n", atoi(null)); return 0; }

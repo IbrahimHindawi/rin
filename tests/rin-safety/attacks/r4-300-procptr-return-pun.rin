@@ -1,0 +1,4 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+f: proc() -> i64 = { return 0x41414141; }
+main: proc() -> i32 = { fp: *proc() -> *H in permanent = f; printfmt("{}\n", fp()*.x); return 0; }

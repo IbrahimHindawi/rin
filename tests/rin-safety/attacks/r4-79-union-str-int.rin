@@ -1,0 +1,3 @@
+import "std/print.rin"
+U: union = { s: str; n: u64; }
+main: proc() -> i32 = { u: U = {}; u.n = 0x41414141; printfmt("{}\n", u.s); return 0; }

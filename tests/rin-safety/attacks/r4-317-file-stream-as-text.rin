@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    f: file = file_open("r4-tmp-317.txt", "wb");
+    v: ^const void = file_stream(f);
+    print_cstr(v);
+    printfmt("\n");
+    return 0;
+}

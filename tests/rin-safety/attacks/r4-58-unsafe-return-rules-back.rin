@@ -1,0 +1,9 @@
+import "std/print.rin"
+f: proc() -> i32 = {
+    unsafe { return 1; }
+}
+g2: proc() -> i32 = {
+    q: ?*i32 = null;
+    return q*;
+}
+main: proc() -> i32 = { printfmt("{}\n", f() + g2()); return 0; }

@@ -1,0 +1,11 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    f: file = file_open("r4-tmp-304.txt", "wb");
+    fprintfmt(f, "%s%s%s%s%n\n");
+    fprintfmt(f, "%s%n {}\n", 1);
+    fprintfmt(f, "{} %s%n {}\n", "x", 1.5);
+    file_close(f);
+    printfmt("ok\n");
+    return 0;
+}

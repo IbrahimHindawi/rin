@@ -1,0 +1,11 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+W: struct = { h: *H in permanent; }
+a: H = { .x = 1 };
+wipe: proc(w: *W) -> void = { w* = {}; }
+main: proc() -> i32 = {
+    w: W = { .h = a& };
+    wipe(w&);
+    printfmt("{}\n", w.h*.x);
+    return 0;
+}

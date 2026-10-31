@@ -43,18 +43,18 @@ reflect_kind_union: const i32 = 1;
 reflect_kind_enum: const i32 = 2;
 
 reflect_field: struct[external] = {
-    name: ^const char;
-    type: ^const char;
-    attrs: ^const char;
+    name: str;
+    type: str;
+    attrs: str;
     offset: u64;
     size: u64;
     align: u64;
     kind: i32;
     array_count: u64;
     pointer_depth: u64;
-    base_type: ^const char;
-    elem_type: ^const char;
-    generic_arg_type: ^const char;
+    base_type: str;
+    elem_type: str;
+    generic_arg_type: str;
     is_const: u64;
     // The record for this field's own type, so a walk can recurse. Null when the
     // field's type has no table: a builtin, an external type, a proc.
@@ -62,7 +62,7 @@ reflect_field: struct[external] = {
 }
 
 reflect_value: struct[external] = {
-    name: ^const char;
+    name: str;
     // i32, matching C. An unadorned C enum's members must fit in int, and I
     // permits negative members, so signed 32-bit carries every legal value.
     value: i32;
@@ -74,7 +74,7 @@ reflect_variant: union[external] = {
 }
 
 reflect: struct[external] = {
-    name: ^const char;
+    name: str;
     size: u64;
     align: u64;
     kind: i32;
@@ -366,17 +366,17 @@ reflect_find_field_containing_offset: proc[trusted](type: *const reflect, offset
 // Reading and writing a field through its record
 // ---------------------------------------------------------------------------
 
-reflect_field_ptr: proc[trusted](base: ^void, field: *const reflect_field) -> ^void = {
+reflect_field_ptr: proc[unsafe](base: ^void, field: *const reflect_field) -> ^void = {
     if (base == null || field == null) { return null; }
     return cast(cast(base, ^u8) + field*.offset, ^void);
 }
 
-reflect_field_const_ptr: proc[trusted](base: ^const void, field: *const reflect_field) -> ^const void = {
+reflect_field_const_ptr: proc[unsafe](base: ^const void, field: *const reflect_field) -> ^const void = {
     if (base == null || field == null) { return null; }
     return cast(cast(base, ^const u8) + field*.offset, ^const void);
 }
 
-reflect_field_copy: proc[trusted](dst_base: ^void, src_base: ^const void, field: *const reflect_field) -> b32 = {
+reflect_field_copy: proc[unsafe](dst_base: ^void, src_base: ^const void, field: *const reflect_field) -> b32 = {
     dst: ^void = reflect_field_ptr(dst_base, field);
     src: ^const void = reflect_field_const_ptr(src_base, field);
     if (dst == null || src == null) { return 0; }
@@ -384,20 +384,20 @@ reflect_field_copy: proc[trusted](dst_base: ^void, src_base: ^const void, field:
     return 1;
 }
 
-reflect_field_zero: proc[trusted](base: ^void, field: *const reflect_field) -> b32 = {
+reflect_field_zero: proc[unsafe](base: ^void, field: *const reflect_field) -> b32 = {
     dst: ^void = reflect_field_ptr(base, field);
     if (dst == null) { return 0; }
     memset(dst, 0, cast(field*.size, usize));
     return 1;
 }
 
-reflect_field_copy_by_name: proc(dst_base: ^void, src_base: ^const void, type: *const reflect, name: ^const char) -> b32 = {
+reflect_field_copy_by_name: proc[unsafe](dst_base: ^void, src_base: ^const void, type: *const reflect, name: ^const char) -> b32 = {
     field: ?*const reflect_field = reflect_find_field(type, name);
     if (!field) { return 0; }
     return reflect_field_copy(dst_base, src_base, field);
 }
 
-reflect_field_zero_by_name: proc(base: ^void, type: *const reflect, name: ^const char) -> b32 = {
+reflect_field_zero_by_name: proc[unsafe](base: ^void, type: *const reflect, name: ^const char) -> b32 = {
     field: ?*const reflect_field = reflect_find_field(type, name);
     if (!field) { return 0; }
     return reflect_field_zero(base, field);

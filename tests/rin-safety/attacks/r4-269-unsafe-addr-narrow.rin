@@ -1,0 +1,11 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+clear: proc(pp: ?*?*H in permanent) -> void = { if (pp) { pp* = null; } }
+main: proc() -> i32 = {
+    p: ?*H in permanent = new<H>(permanent, { .x = 1 });
+    pp: ?*?*H in permanent = null;
+    // innocent: only takes an address
+    unsafe { pp = p&; }
+    if (p) { clear(pp); printfmt("{}\n", p*.x); }
+    return 0;
+}

@@ -10,9 +10,8 @@ open_named: proc(name: []const c8) -> file = {
 main: proc() -> i32 = {
     buf: [8]c8 = {};
     _ = cstr_copy(buf, "abc");
-    p: ^const c8 = cstr_of(buf);
-    print_cstr(p);
-    printfmt(" {}\n", cstr_length(p));
+    print_cstr(cstr_of(buf));
+    printfmt(" {}\n", cstr_length(cstr_of(buf)));
     f: file = open_named(buf);
     printfmt("{}\n", file_is_open(f));
     s: str = "kept";

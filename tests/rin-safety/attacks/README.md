@@ -19,6 +19,13 @@ a reject test in `../reject`; the full story is in
   checker. Fourteen got through, every one a signature that lied: null in a
   non-null field, writable slice headers, implicit checked-to-raw conversion,
   reflect lookups returning `*const` that could be null.
+- `r4-*`: the fourth round, against what the engine survey added, and it found
+  far more than the first three: a hundred and thirty programs got through. Most
+  of them are a few causes: what is inside a type went unchecked (`*?*T`, arrays of
+  pointers, `Box<T>`), proc pointers laundered their signatures, `goto` jumped past
+  tests, raw pointers were kept and stepped, std took a raw pointer and a count on
+  faith, and globals moved things behind borrows and narrowing. All are rules now.
+  Two recursive programs are not kept here: one of them crashed Windows.
 - `checks-clean.txt`: the programs that pass the checker on purpose. Some are
   correct programs written to provoke false positives; some end in a checked
   run-time abort with a `rin runtime:` message, which is not a hole.

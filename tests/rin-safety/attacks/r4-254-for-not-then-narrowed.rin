@@ -1,0 +1,7 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    p: ?*i32 = null;
+    for (i: i32 = 0; !p; i += 1) { break; }
+    printfmt("{}\n", p*);
+    return 0;
+}

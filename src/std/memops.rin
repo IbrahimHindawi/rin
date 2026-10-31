@@ -107,7 +107,7 @@ memops_arena_push_zero: proc[unsafe](arena: *memops_arena, alloc_size: u64, alig
     return p;
 }
 
-memops_arena_get_pos: proc(arena: *memops_arena) -> ^void = {
+memops_arena_get_pos: proc[trusted](arena: *memops_arena) -> ^void = {
     return arena*.base + arena*.used;
 }
 

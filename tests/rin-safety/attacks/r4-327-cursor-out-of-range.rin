@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    c: u64 = 100000000;
+    t: ^c8 = cstr_token(cast("x", ^c8), c&, " ");
+    print_cstr(t);
+    return 0;
+}

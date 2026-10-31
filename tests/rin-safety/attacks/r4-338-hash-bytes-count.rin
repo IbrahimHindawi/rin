@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/hash.rin"
+main: proc() -> i32 = {
+    h: ^const u8 = null;
+    b: [4]u8 = {};
+    s: []u8 = b;
+    printfmt("{}\n", hash_bytes(s.data, 100000));
+    return 0;
+}

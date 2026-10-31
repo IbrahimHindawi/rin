@@ -1,0 +1,12 @@
+import "std/print.rin"
+import "std/reflect.rin"
+P: struct = { pad: [64]u64; x: i32; }
+main: proc() -> i32 = {
+    b: [1]u8 = { 1 };
+    s: []u8 = b;
+    t: *const reflect = P<>&;
+    fi: ?*const reflect_field = reflect_find_field(t, "x");
+    if (fi) { _ = reflect_field_zero(s.data, fi); }
+    printfmt("{}\n", b[0]);
+    return 0;
+}

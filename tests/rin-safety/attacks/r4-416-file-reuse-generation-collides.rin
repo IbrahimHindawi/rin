@@ -1,0 +1,12 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    a: file = file_open("r4-tmp-416.txt", "wb");
+    b: file = a;
+    file_close(a);
+    c: file = file_open("r4-tmp-416b.txt", "wb");
+    printfmt("{} {} {} {}\n", c.slot, c.generation, b.generation, file_is_open(b));
+    z: file = { .slot = c.slot, .generation = c.generation };
+    printfmt("{}\n", file_is_open(z));
+    return 0;
+}

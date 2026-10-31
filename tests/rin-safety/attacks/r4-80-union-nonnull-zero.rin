@@ -1,0 +1,4 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+U: union = { p: *H in permanent; n: u64; }
+main: proc() -> i32 = { u: U = { .n = 0 }; printfmt("{}\n", u.p*.x); return 0; }

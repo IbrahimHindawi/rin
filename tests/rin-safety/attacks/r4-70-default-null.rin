@@ -1,0 +1,4 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+f: proc(h: *H = null) -> i32 = { return h*.x; }
+main: proc() -> i32 = { printfmt("{}\n", f()); return 0; }

@@ -1,0 +1,13 @@
+import "std/print.rin"
+import "std/vec.rin"
+import "std/slice.rin"
+level: region;
+frame: region in level;
+H: struct = { x: i32; }
+clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_slice<i32>(t, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } } }
+main: proc() -> i32 = {
+    x: [8]i32 = { 1, 2, 3, 4, 5, 6, 7, 8 };
+    slice<i32>copy(x[0..6], x[2..8]);
+    printfmt("{}\n", x[0]);
+    return 0;
+}

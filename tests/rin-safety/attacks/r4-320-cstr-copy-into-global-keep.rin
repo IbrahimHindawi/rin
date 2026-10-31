@@ -1,0 +1,11 @@
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    empty: []c8 = {};
+    printfmt("{}\n", cstr_copy(empty, "abc"));
+    buf: [1]c8 = {};
+    printfmt("{}\n", cstr_copy(buf, "abc"));
+    nul: []const c8 = {};
+    printfmt("{}\n", cstr_length(cstr_of(nul)));
+    return 0;
+}

@@ -1,0 +1,4 @@
+import "std/print.rin"
+import "std/slice.rin"
+k: [3]const i32 = { 1, 2, 3 };
+main: proc() -> i32 = { slice<i32>zero(k); printfmt("{}\n", k[0]); return 0; }

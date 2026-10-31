@@ -1,0 +1,12 @@
+import "std/print.rin"
+import "std/file.rin"
+rewind: proc[external, trusted](stream: *FILE) -> void = {}
+gfile: ?*FILE in permanent = null;
+main: proc() -> i32 = {
+    f: file = file_open("r4-tmp-208.txt", "wb");
+    s: ^FILE = file_stream(f);
+    file_close(f);
+    rewind(s);
+    printfmt("back\n");
+    return 0;
+}

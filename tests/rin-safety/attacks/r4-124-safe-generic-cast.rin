@@ -1,0 +1,4 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+fg: proc<T>(n: u64) -> T = { return cast(n, T); }
+main: proc() -> i32 = { p: *H in permanent = fg<*H in permanent>(0x41414141); printfmt("{}\n", p*.x); return 0; }

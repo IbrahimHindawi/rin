@@ -1,0 +1,8 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [2]i32 = { 1, 2 };
+    b: [64]i32 = {};
+    b = a;
+    printfmt("{}\n", b[40]);
+    return 0;
+}

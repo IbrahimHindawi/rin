@@ -1,0 +1,7 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+main: proc() -> i32 = {
+    pp: **H in permanent in permanent = new<*H in permanent>(permanent);
+    printfmt("{}\n", pp**.x);
+    return 0;
+}

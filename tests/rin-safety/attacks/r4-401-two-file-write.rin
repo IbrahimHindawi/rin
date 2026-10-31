@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "own_a.rin"
+main: proc() -> i32 = {
+    k: *Own in permanent = own_make(permanent);
+    k*.n = 100000;
+    printfmt("{}\n", k*.n);
+    return 0;
+}

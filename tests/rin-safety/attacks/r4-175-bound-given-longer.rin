@@ -1,0 +1,17 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+frame: region in level;
+H: struct = { x: i32; }
+clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_slice<i32>(t, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } } }
+Hold: struct = { p: ?*i32 in level; }
+f: proc(r: region R in level, p: *i32 in level) -> *Hold in R = { return new<Hold>(r, { .p = p }); }
+gh: ?*Hold in permanent = null;
+main: proc() -> i32 = {
+    level: region = {
+        gh = f(permanent, new<i32>(level, 42));
+    }
+    level: region = { x: []i32 in level = new_slice<i32>(level, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } }
+    h: *Hold in permanent = must(gh);
+    return 0;
+}

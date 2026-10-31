@@ -1,0 +1,14 @@
+import "std/print.rin"
+import "std/reflect.rin"
+H: struct = { x: i32; }
+a: H = { .x = 1 };
+W: struct = { h: *H in permanent; }
+main: proc() -> i32 = {
+    w: [1]W = { { .h = a& } };
+    s: []W = w;
+    t: *const reflect = W<>&;
+    fi: ?*const reflect_field = reflect_find_field(t, "h");
+    if (fi) { _ = reflect_field_zero(s.data, fi); }
+    printfmt("{}\n", w[0].h*.x);
+    return 0;
+}

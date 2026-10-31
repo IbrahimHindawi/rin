@@ -1,0 +1,13 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    f: file = file_open("r4-tmp-306.txt", "wb");
+    big: u64 = 1;
+    neg: i64 = -1;
+    c: c8 = 65;
+    fprintfmt(f, "{:x} {:x} {:x} {:x} {:x}\n", big, neg, 1.5, "s", c);
+    fprintfmt(f, "{:.6g} {:.6g} {:e} {:.2e} {:.6g}\n", big, neg, "s", c, 2.5);
+    file_close(f);
+    printfmt("ok\n");
+    return 0;
+}

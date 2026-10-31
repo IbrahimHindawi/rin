@@ -724,6 +724,52 @@ errors, most of them a few rules too blunt, and two holes.
   * *Smaller.* `--max-errors=<n>` (0 is no limit); the errors on a global name
     its file; `xs = {}` and `xs = { 1, 2 }` assign an array.
 
+**The fourth attack: what the survey added.** About four hundred programs, against
+the additions above and what they lean on. A hundred and thirty got past the
+checker, more than the first three rounds together, many through rules older than
+this round. The causes, now rules, each with its programs in `attacks/r4-*`:
+
+  * *What is inside a type.* Type compatibility compared regions and nulls at the top
+    of a type only, so `*?*T in frame` took a `*?*T in level`, a `[1]?*T in frame` was
+    assigned to a `[1]?*T in level`, and `Box<?*T>` became `Box<*T>`. A place reached
+    through a pointer is now invariant, the rule Rust applies to `&mut`: both types
+    must say the same about every pointer inside. Through `*const` it may narrow.
+    Array lengths must match.
+  * *Proc pointers.* `*proc(p: *i32)` took a proc that kept its `*i32 in permanent`. A
+    pointer's signature must promise exactly what the proc does, and a proc taking a
+    region is called by name.
+  * *One `R`, two regions.* `two(level, tmp)` bound R to level and allocated in tmp. The
+    handle binds first, two handles must agree, and a region is not chosen by a ternary.
+  * *`goto`.* A jump skipped tests, declarations and kills. It and labels are not safe
+    code; nothing safe used them.
+  * *Narrowing.* A call on the right of `&&` did not reach the branch; a global is not
+    narrowed, as a callee can change it; `g = {}` ends what a pointer to `g` narrowed;
+    a `do` condition sees nothing narrowed, since `continue` arrives there.
+  * *Raw pointers.* `"abc" + 100` and `p += 1` are arithmetic with no bound. A raw
+    pointer from a buffer or a region is not kept, in a local, a field or a return: it
+    lasts for the call it is passed to, as nothing says when its terminator is
+    overwritten through another pointer. `s.data` left a slice's length behind. A `^void`
+    does not become a `^T`, nor a `[N]char` a `^const char`: that is `cstr_of`. A const
+    raw pointer does not become a writable one. A global holding raw pointers is written
+    only in its file. In std, what takes a raw pointer and a count is `[unsafe]`.
+  * *Zero.* A `{}` nested in an initializer, an argument or a return now answers to the
+    non-null rule, as does `slice<T>zero`; `option<*T>` is refused, since its none is a
+    null, and `?*T` is an option already.
+  * *Moves behind a global.* A callee that moves through a global, or that nothing is
+    known of, kills what could move, in its callers too. A pointer into a fixed array or
+    a slice naming a region is not such a thing. A proc with an unsafe block answers for
+    its signature, as a raw pointer inside it moves things no statement shows.
+
+Also: an array parameter is a pointer in C, so `xs = ys` and `xs = {}` go by the type's
+size, and a proc that opens a region cannot keep a local of it across two blocks by
+having a parameter in it. `tests/rin-safety/attacks/README.md` says why new programs
+run in a VM: one crashed Windows, by opening a terabyte arena per recursion level.
+
+The honest claim is now "no known holes after four rounds", with the rounds run by
+the author's own agents. The soundness of this rests on few enough rules to write the
+argument out: regions and their invariance, bounds, null, the sealed raw boundary. The
+staleness rule is extra, since memory in a region stays valid when a `vec` moves.
+
 **Not done.** Dynamic regions; guard pages in debug builds; `stable<T>` and
 `handle<T>` in std; a string type safe code can hold by value, since
 `string8slice` carries a raw pointer and is trusted-only, which leaves safe

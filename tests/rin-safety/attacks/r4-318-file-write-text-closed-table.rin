@@ -1,0 +1,13 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    f: file = file_open("r4-tmp-318.txt", "wb");
+    x: ^FILE = file_table_stream[f.slot];
+    file_close(f);
+    file_table_stream[f.slot] = x;
+    file_table_generation[f.slot] = f.generation;
+    file_write_text(f, "after close\n");
+    file_flush(f);
+    printfmt("wrote\n");
+    return 0;
+}

@@ -1,0 +1,5 @@
+import "std/print.rin"
+import "std/cstr.rin"
+U: union = { s: str; n: [2]u64; }
+gu: U = {};
+main: proc() -> i32 = { gu.n[0] = 16; printfmt("{}\n", cstr_length(gu.s)); return 0; }

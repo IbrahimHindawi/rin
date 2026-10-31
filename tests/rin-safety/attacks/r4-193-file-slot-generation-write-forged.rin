@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    file_table_generation[0] = 1;
+    f: file = { .slot = 0, .generation = 1 };
+    printfmt("{}\n", file_is_open(f));
+    return 0;
+}

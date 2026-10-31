@@ -1,0 +1,7 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+a: H = { .x = 1 };
+W: struct = { h: *H in permanent; }
+Box: struct<T> = { v: T; }
+f: proc() -> W = { return {}; }
+main: proc() -> i32 = { printfmt("{}\n", f().h*.x); return 0; }

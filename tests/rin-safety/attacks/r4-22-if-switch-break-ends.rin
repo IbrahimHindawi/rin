@@ -1,0 +1,8 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+main: proc() -> i32 = {
+    p: ?*H = null;
+    if (!p) { switch (1) { default: { break; } } }
+    printfmt("{}\n", p*.x);
+    return 0;
+}

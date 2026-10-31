@@ -1,0 +1,17 @@
+import "std/print.rin"
+import "std/vec.rin"
+import "std/slice.rin"
+level: region;
+frame: region in level;
+H: struct = { x: i32; }
+clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_slice<i32>(t, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } } }
+gv: ?*vec<H> in permanent = null;
+bump: proc(h: *H) -> void = { h*.x += 1; w: *vec<H> in permanent = must(gv); for (i: i32 = 0; i < 100; i += 1) { _ = vec<H>push(w, { .x = 0 }); } h*.x += 1; }
+main: proc() -> i32 = {
+    v: *vec<H> in permanent = vec<H>make(permanent, 1);
+    gv = v;
+    _ = vec<H>push(v, { .x = 40 });
+    bump(vec<H>at(v, 0));
+    printfmt("{}\n", vec<H>at(v, 0)*.x);
+    return 0;
+}

@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    for (i: i32 = 0; i < 400; i += 1) {
+        f: file = file_open("r4-tmp-415.txt", "wb");
+        if (!file_is_open(f)) { printfmt("no {}\n", i); return 0; }
+    }
+    return 0;
+}

@@ -1,0 +1,12 @@
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/slice.rin"
+smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
+id_raw: proc(p: ^const c8) -> ^const c8 = { return p; }
+main: proc() -> i32 = {
+    ps: [2]^const c8 = {};
+    if (1) { buf: [8]c8 = {}; _ = cstr_copy(buf, "abc"); ps[0] = cstr_of(buf); }
+    smash();
+    print_cstr(ps[0]);
+    return 0;
+}

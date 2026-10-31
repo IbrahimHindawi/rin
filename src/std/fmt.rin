@@ -78,7 +78,7 @@ fmt_char: proc[trusted](f: *fmt, c: c8) -> void = {
     f*.data[f*.length] = 0;
 }
 
-fmt_bytes: proc[trusted](f: *fmt, src: ^const c8, count: u64) -> void = {
+fmt_bytes: proc[unsafe](f: *fmt, src: ^const c8, count: u64) -> void = {
     if (src == null || count == 0) {
         return;
     }
@@ -113,11 +113,11 @@ cstr_len_: proc[trusted](s: ^const c8) -> u64 = {
 }
 
 fmt_cstr: proc(f: *fmt, s: ^const c8) -> void = {
-    fmt_bytes(f, s, cstr_len_(s));
+    unsafe { fmt_bytes(f, s, cstr_len_(s)); }
 }
 
 fmt_slice: proc[trusted](f: *fmt, s: string8slice) -> void = {
-    fmt_bytes(f, cast(s.data, ^const c8), s.length);
+    unsafe { fmt_bytes(f, cast(s.data, ^const c8), s.length); }
 }
 
 /* Left-justified in a field of `width`, like %-24s. Longer input is written in
@@ -154,7 +154,7 @@ fmt_u64: proc[trusted](f: *fmt, value: u64) -> void = {
     for (i: u64 = 0; i < n; i += 1) {
         out[i] = digits[n - 1 - i];
     }
-    fmt_bytes(f, out[0]&, n);
+    unsafe { fmt_bytes(f, out[0]&, n); }
 }
 
 fmt_i64: proc(f: *fmt, value: i64) -> void = {
@@ -195,7 +195,7 @@ fmt_hex: proc[trusted](f: *fmt, value: u64, min_digits: u64, upper: b32) -> void
     for (i: u64 = 0; i < n; i += 1) {
         out[i] = digits[n - 1 - i];
     }
-    fmt_bytes(f, out[0]&, n);
+    unsafe { fmt_bytes(f, out[0]&, n); }
 }
 
 /* Fixed-point, which is all the call sites need -- %.2f and friends. Not a

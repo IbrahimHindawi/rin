@@ -1,0 +1,10 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    f: file = file_open("r4-tmp-195.txt", "wb");
+    file_close(f);
+    g2: file = file_open("r4-tmp-195b.txt", "wb");
+    printfmt("{} {}\n", file_is_open(f), file_is_open(g2));
+    file_write_text(f, "should stop\n");
+    return 0;
+}

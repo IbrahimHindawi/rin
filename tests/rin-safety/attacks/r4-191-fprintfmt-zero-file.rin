@@ -1,0 +1,7 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    f: file = {};
+    fprintfmt(f, "x {}\n", 2);
+    return 0;
+}

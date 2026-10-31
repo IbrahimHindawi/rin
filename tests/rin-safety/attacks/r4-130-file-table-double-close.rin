@@ -1,0 +1,13 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    f: file = file_open("r4-tmp-130.txt", "wb");
+    file_table_stream[1] = file_table_stream[f.slot];
+    file_table_generation[1] = 1;
+    g: file = { .slot = 1, .generation = 1 };
+    file_close(f);
+    file_write_text(g, "use after close\n");
+    file_close(g);
+    printfmt("done\n");
+    return 0;
+}

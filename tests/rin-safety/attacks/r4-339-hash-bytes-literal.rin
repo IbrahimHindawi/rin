@@ -1,0 +1,7 @@
+import "std/print.rin"
+import "std/hash.rin"
+main: proc() -> i32 = {
+    h: ^const void = "abc";
+    printfmt("{}\n", hash_bytes(h, 100000000));
+    return 0;
+}

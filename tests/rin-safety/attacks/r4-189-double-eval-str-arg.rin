@@ -1,0 +1,7 @@
+import "std/print.rin"
+n: i32 = 0;
+pick: proc() -> str = { n += 1; return n == 1 ? "first" : null; }
+main: proc() -> i32 = {
+    printfmt("{} {}\n", pick(), n);
+    return 0;
+}

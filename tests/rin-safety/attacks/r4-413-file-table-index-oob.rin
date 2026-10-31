@@ -1,0 +1,6 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc(argc: i32, argv: ^^char) -> i32 = {
+    printfmt("{}\n", file_table_generation[255 + argc]);
+    return 0;
+}

@@ -1,0 +1,8 @@
+import "std/print.rin"
+gk: ?*i32 in permanent = null;
+keep: proc(p: *i32 in permanent) -> void = { gk = p; }
+T: struct = { f: *proc(p: *i32) -> void; }
+t: T = { .f = keep };
+go: proc() -> void = { x: i32 = 42; t.f(x&); }
+smash: proc() -> void = { y: [64]i64 = {}; for (i: i32 = 0; i < 64; i += 1) { y[i] = 0x4141414141414141; } printfmt("{}\n", y[3] == 0); }
+main: proc() -> i32 = { go(); smash(); printfmt("{}\n", must(gk)*); return 0; }

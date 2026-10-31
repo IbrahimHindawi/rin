@@ -1,0 +1,3 @@
+import "std/print.rin"
+rd: proc<T>(p: ^T) -> T = { return p[100000]; }
+main: proc() -> i32 = { x: ^i32 = null; printfmt("{}\n", rd<i32>(x)); return 0; }

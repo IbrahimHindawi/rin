@@ -1,0 +1,7 @@
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    f: file = { .slot = 4000000000, .generation = 1 };
+    fprintfmt(f, "x {}\n", 2);
+    return 0;
+}

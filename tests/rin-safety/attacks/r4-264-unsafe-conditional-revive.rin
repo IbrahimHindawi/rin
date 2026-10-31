@@ -1,0 +1,19 @@
+import "std/print.rin"
+import "std/vec.rin"
+import "std/slice.rin"
+level: region;
+frame: region in level;
+H: struct = { x: i32; }
+clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_slice<i32>(t, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } } }
+main: proc(argc: i32, argv: ^^char) -> i32 = {
+    v: *vec<i32> in permanent = vec<i32>make(permanent, 1);
+    _ = vec<i32>push(v, 42);
+    o: i32 = 1;
+    p: *i32 = vec<i32>at(v, 0);
+    for (i: i32 = 0; i < 100; i += 1) { _ = vec<i32>push(v, 1); }
+    // a block that does not run its assignment still revives p
+    unsafe { if (argc == 99) { p = o&; } }
+    p* = 7;
+    printfmt("{} {}\n", p*, vec<i32>at(v, 0)*);
+    return 0;
+}

@@ -1,0 +1,7 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    xs: [2]i32 = {};
+    s: []i32 = xs;
+    q: *i32 = must(s);
+    return 0;
+}

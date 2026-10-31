@@ -1,0 +1,14 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+S: struct = { h: ?*H in permanent; }
+g: S = {};
+main: proc() -> i32 = {
+    i: i32 = 0;
+    g.h = new<H>(permanent, { .x = 1 });
+    if (g.h) {
+        again: label = { i += g.h*.x; }
+        g.h = null;
+        if (i < 2) { goto again; }
+    }
+    return i;
+}

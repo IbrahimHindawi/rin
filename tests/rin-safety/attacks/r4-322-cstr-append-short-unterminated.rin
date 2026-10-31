@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    buf: [4]c8 = { 65, 65, 65, 65 };
+    x: [4]c8 = { 66, 66, 66, 66 };
+    printfmt("{}\n", cstr_length(cstr_of(buf)));
+    return 0;
+}

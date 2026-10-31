@@ -1,0 +1,8 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+main: proc(argc: i32, argv: ^^char) -> i32 = {
+    p: ?*H = null;
+    if (!p && argc == 99) { return 1; }
+    printfmt("{}\n", p*.x);
+    return 0;
+}

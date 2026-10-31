@@ -1,0 +1,13 @@
+import "std/print.rin"
+H: struct = { x: i32; }
+a: H = { .x = 1 };
+W: struct = { h: *H in permanent; }
+Box: struct<T> = { v: T; }
+import "std/vec.rin"
+import "std/option.rin"
+main: proc() -> i32 = {
+    v: *vec<*H in permanent> in permanent = vec<*H in permanent>make(permanent, 1);
+    o: option<*H in permanent> = vec<*H in permanent>get(v, 5);
+    printfmt("{}\n", o.value*.x);
+    return 0;
+}

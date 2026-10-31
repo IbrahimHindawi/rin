@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "own_a.rin"
+poke: proc<T>(p: *T) -> void = { p*.n = 100000; }
+main: proc() -> i32 = {
+    k: *Own in permanent = own_make(permanent);
+    poke<Own>(k);
+    printfmt("{}\n", k*.n);
+    return 0;
+}
