@@ -104,7 +104,7 @@ cstr_copy: proc(dst: []c8, src: ^const c8) -> u64 = { unsafe {
     return n;
 } }
 
-cstr_append: proc(dst: []c8, src: ^const c8) -> u64 = { unsafe {
+cstr_append: proc(dst: []c8, src: ^const c8) -> u64 = {
     if (dst.data == null || dst.length == 0) {
         return 0;
     }
@@ -115,7 +115,7 @@ cstr_append: proc(dst: []c8, src: ^const c8) -> u64 = { unsafe {
         return used;
     }
     return used + cstr_copy(dst[used..dst.length], src);
-} }
+}
 
 /* Index of the first occurrence, or -1. strchr/strstr returned pointers, which
    forced null checks that read as "found"; an index says what it means. */

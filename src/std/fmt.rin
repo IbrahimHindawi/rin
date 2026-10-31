@@ -53,9 +53,9 @@ fmt_reset: proc(f: *fmt) -> void = { unsafe {
 } }
 
 /* The text so far, NUL-terminated; good until the next write. */
-fmt_text: proc(f: *const fmt) -> ^const c8 = { unsafe {
+fmt_text: proc(f: *const fmt) -> ^const c8 = {
     return f*.data;
-} }
+}
 
 fmt_remaining: proc(f: *const fmt) -> u64 = {
     if (f*.data == null || f*.capacity == 0) {
@@ -137,7 +137,7 @@ fmt_cstr_pad: proc(f: *fmt, s: ^const c8, width: u64) -> void = {
 /* Digits come out backwards, so they are staged and reversed rather than
    written straight into the buffer -- a truncated number must not leave its
    most significant digits behind and drop the rest. */
-fmt_u64: proc(f: *fmt, value: u64) -> void = { unsafe {
+fmt_u64: proc(f: *fmt, value: u64) -> void = {
     digits: [24]c8 = {};
     n: u64 = 0;
     v: u64 = value;
@@ -155,7 +155,7 @@ fmt_u64: proc(f: *fmt, value: u64) -> void = { unsafe {
         out[i] = digits[n - 1 - i];
     }
     unsafe { fmt_bytes(f, out[0]&, n); }
-} }
+}
 
 fmt_i64: proc(f: *fmt, value: i64) -> void = {
     if (value < 0) {
@@ -167,7 +167,7 @@ fmt_i64: proc(f: *fmt, value: i64) -> void = {
     fmt_u64(f, cast(value, u64));
 }
 
-fmt_hex: proc(f: *fmt, value: u64, min_digits: u64, upper: b32) -> void = { unsafe {
+fmt_hex: proc(f: *fmt, value: u64, min_digits: u64, upper: b32) -> void = {
     digits: [24]c8 = {};
     n: u64 = 0;
     v: u64 = value;
@@ -196,7 +196,7 @@ fmt_hex: proc(f: *fmt, value: u64, min_digits: u64, upper: b32) -> void = { unsa
         out[i] = digits[n - 1 - i];
     }
     unsafe { fmt_bytes(f, out[0]&, n); }
-} }
+}
 
 /* Fixed-point, which is all the call sites need -- %.2f and friends. Not a
    general float formatter: very large magnitudes lose the integer part to the

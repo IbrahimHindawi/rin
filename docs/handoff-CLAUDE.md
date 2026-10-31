@@ -93,7 +93,7 @@ that stands).
 Next, in the order that pays:
 
 1. Narrow std's `unsafe { }` bodies: the migration wrapped each old `[trusted]` body
-   whole. The count of lines inside them is the honest measure of the trusted base.
+   whole, and 264 still are, most of them generic. The count of lines inside them is the honest measure of the trusted base.
 2. A stranger's attack round, in a VM, and the soundness argument written out:
    regions and their invariance, bounds, null, the sealed raw boundary. Staleness is
    a lint on top of that: memory in a region stays valid when a `vec` moves.
