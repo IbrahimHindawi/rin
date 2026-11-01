@@ -1,4 +1,4 @@
-// expect: whose block ends with this return
+// expect: region 'frame' is not open here, so a local that points into
 level: region;
 frame: region in level;
 h: struct = { p: option<*i32 in frame>; }

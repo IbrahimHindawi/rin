@@ -1,4 +1,4 @@
-// expect: a returned pointer with
+// expect: the result names no region, and may point into the block at line 4
 // the return check follows assignments only: c is a declaration, its paths expand through h to a, so `h = x&` below the return is never looked at; the second pass returns x's address: stack-use-after-return at q*
 import "std/print.rin"
 f: proc(a: *i32, n: i32) -> *i32 = {

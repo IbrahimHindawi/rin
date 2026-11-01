@@ -1,4 +1,4 @@
-// expect: may be dangling
+// expect: 's' may point into the block at line 5, which ends here, and
 import "std/print.rin"
 main: proc() -> i32 = {
     s: []i32 = {};

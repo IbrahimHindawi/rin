@@ -1,4 +1,4 @@
-// expect: may be dangling
+// expect: 'q' may point into the block at line 5, which ends here, and
 use: proc(r: region R) -> i32 = {
     y: i32 = 0;
     q: *i32 = y&;

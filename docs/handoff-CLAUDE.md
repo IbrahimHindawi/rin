@@ -101,9 +101,11 @@ level region, and its level meshes are released by the reset.
 
 The attack rounds did not converge, and `rin/docs/regions-v2.md` says why and what replaces the pointer rules:
 one outlives rule, checked on a lowered form of each body, with every pointer carrying a region. The user decided
-to go. The new pass is in `main.c` behind `RIN_SHADOW=1` (`shadow_check_proc`), measured in the document; the
-switch is next: errors by default, then the old lifetime rules deleted family by family with the pipeline run
-after each. `scratchpad/shadow_run.py` and `shadow_lines.py` are the comparison tools.
+to go, and the switch is done: the pass (`shadow_check_proc` in `main.c`) is the lifetime checker, the old lifetime
+rules are deleted, and the stale lint, null narrowing, zeroing, bounds, const, carriers, names and type invariance
+stay as they were. `RIN_REGIONS=v1` silences the pass; `RIN_SHADOW=1` prints its refusals as `shadow:` lines as well.
+`tests/shadow_run.py` and `tests/shadow_lines.py` compare it with the rest. A hole is now a missing constraint in
+the pass, in one place: extend `sh_value_regions`, `sh_place_memory` or one of the five checks, never add a rule.
 
 Next, in the order that pays:
 

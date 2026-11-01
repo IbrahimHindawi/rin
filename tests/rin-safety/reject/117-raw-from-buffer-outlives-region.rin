@@ -1,4 +1,4 @@
-// expect: a raw pointer into a buffer or a region lasts only
+// expect: 'p' may point into region 'frame', which ends with this bloc
 import "std/print.rin"
 import "std/fmt.rin"
 level: region;

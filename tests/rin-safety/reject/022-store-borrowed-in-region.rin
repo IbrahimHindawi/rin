@@ -1,4 +1,4 @@
-// expect: a borrowed pointer cannot be kept in region 'level'
+// expect: this value may point into the block at line 5, and the place it goes to lasts as long as region
 level: region;
 holder: struct = { p: option<*i32 in level>; }
 main: proc() -> i32 = {

@@ -1,4 +1,4 @@
-// expect: the loop comes back to a return
+// expect: the result names no region, and may point into the block at line 2
 f: proc(n: i32, p: *i32) -> *i32 = {
     x: i32 = 0;
     q: *i32 = p;

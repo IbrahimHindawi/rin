@@ -1,4 +1,4 @@
-// expect: a returned pointer with no region
+// expect: the result names no region, and may point into the block at line 2
 f: proc(a: *i32, n: i32) -> *i32 = {
     x: i32 = 0;
     y: i32 = 0;

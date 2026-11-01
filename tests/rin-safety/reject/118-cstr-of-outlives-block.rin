@@ -1,4 +1,4 @@
-// expect: a raw pointer into a buffer or a region lasts only
+// expect: a raw pointer from a call lasts only for a statement
 import "std/print.rin"
 import "std/cstr.rin"
 main: proc() -> i32 = {

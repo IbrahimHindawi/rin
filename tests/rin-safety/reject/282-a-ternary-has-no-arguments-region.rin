@@ -1,4 +1,4 @@
-// expect: a borrowed pointer cannot be kept in region 'level'
+// expect: the result may point into the block at line 4, and the place it goes to lasts as long as region
 level: region global;
 pick: proc(a: *i32) -> *i32 = { return a; }
 keep: proc(r: region level, c: b32) -> *i32 in level = {

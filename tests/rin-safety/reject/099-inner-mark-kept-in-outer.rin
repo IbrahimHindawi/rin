@@ -1,4 +1,4 @@
-// expect: cannot be kept where
+// expect: this value may point into the block at line 6, and the place it goes to lasts as long as the block at line 4
 level: region;
 use: proc(l: region level) -> i32 = {
     a: region of l = {

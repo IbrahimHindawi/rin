@@ -1,4 +1,4 @@
-// expect: a returned pointer with
+// expect: the result names no region, and may point into the block at line 4
 // `return a&` is refused, but through a local the path's root is a, and return_root_ok asks only whether a is a pointer parameter: the parameter variable's own address comes back: stack-use-after-return at q**
 import "std/print.rin"
 f: proc(a: *i32) -> **i32 = {

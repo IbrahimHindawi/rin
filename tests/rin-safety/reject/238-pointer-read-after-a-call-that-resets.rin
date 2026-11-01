@@ -1,4 +1,4 @@
-// expect: may be dangling
+// expect: 'p' may point into region 'level', which is reset here, and
 level: region;
 frame: region in level;
 enemy: struct = { hp: i32; }

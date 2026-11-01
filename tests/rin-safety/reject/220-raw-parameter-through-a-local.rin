@@ -1,4 +1,4 @@
-// expect: raw parameter
+// expect: this value may point into what parameter
 g: ^const c8 = null;
 keep: proc(s: ^const c8) -> void = { q: ^const c8 = s; g = q; }
 main: proc() -> i32 = { return 0; }

@@ -1,4 +1,4 @@
-// expect: whose block ends with this return
+// expect: this returns a pointer into region
 level: region;
 frame: region in level;
 use: proc() -> option<*i32 in frame> = {

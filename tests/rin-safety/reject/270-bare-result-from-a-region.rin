@@ -1,4 +1,4 @@
-// expect: the caller has to know
+// expect: the result names no region, and may point into region
 level: region global;
 frame: region in level;
 enemy: struct = { hp: i32; }

@@ -1,3 +1,3 @@
-// expect: the caller has to know
+// expect: the result names no region, and may point into region
 bk: proc(h: *option<*i32 in R>) -> *i32 = { return unwrap(h*); }
 main: proc() -> i32 = { return 0; }

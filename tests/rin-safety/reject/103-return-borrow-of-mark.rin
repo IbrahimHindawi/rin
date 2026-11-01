@@ -1,4 +1,4 @@
-// expect: whose block ends with this return
+// expect: the result names no region, and may point into the block at line 3
 use: proc(r: region R) -> *i32 = {
     tmp: region of r = {
         return new<i32>(tmp, 1);

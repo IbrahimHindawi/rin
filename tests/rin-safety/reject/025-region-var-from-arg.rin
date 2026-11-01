@@ -1,4 +1,4 @@
-// expect: a pointer into region 'frame' cannot be kept where region 'level' is promised
+// expect: region 'level' is not open here, so a local that points into
 level: region;
 frame: region in level;
 first: proc(xs: []i32 in R) -> *i32 in R = { return xs[0]&; }

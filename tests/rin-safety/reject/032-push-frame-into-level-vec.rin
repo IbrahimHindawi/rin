@@ -1,4 +1,4 @@
-// expect: a pointer into region 'frame' cannot be kept where region 'level' is promised
+// expect: this argument may point into region
 import "std/vec.rin"
 level: region;
 frame: region in level;

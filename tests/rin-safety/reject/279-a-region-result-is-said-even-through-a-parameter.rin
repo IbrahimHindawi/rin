@@ -1,4 +1,4 @@
-// expect: the caller has to know
+// expect: the result names no region, and may point into region
 level: region global;
 holder: struct = { p: *i32 in level; }
 f: proc(h: *holder) -> *i32 = { return h*.p; }

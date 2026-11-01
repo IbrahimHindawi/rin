@@ -1,4 +1,4 @@
-// expect: may be dangling
+// expect: 'q' may point into region 'level', which ends with this bloc
 level: region;
 f: proc(q: option<*i32>) -> i32 = {
     level: region = { q = new<i32>(level, 42); }

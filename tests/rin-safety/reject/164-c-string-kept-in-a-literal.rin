@@ -1,4 +1,4 @@
-// expect: lasts only for the call
+// expect: the result may hold a pointer into this statement, and no field of it names a region that would
 import "std/cstr.rin"
 holder: struct = { k: [1]^const c8; }
 make: proc() -> holder = {

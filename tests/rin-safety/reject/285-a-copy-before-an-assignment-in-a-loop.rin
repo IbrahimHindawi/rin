@@ -1,4 +1,4 @@
-// expect: a returned pointer with
+// expect: the result names no region, and may point into the block at line 4
 // no return in the loop at all: r = h is read once, top to bottom, when h is a; the second pass copies x's address into r, and the return after the loop checks only what pass one recorded: stack-use-after-return at q*
 import "std/print.rin"
 f: proc(a: *i32, n: i32) -> *i32 = {

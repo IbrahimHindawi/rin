@@ -1,4 +1,4 @@
-// expect: may be
+// expect: 'c' may point into region 'level', which is reset here, and
 level: region global;
 frame: region in level;
 enemy: struct = { hp: i32; }

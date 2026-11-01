@@ -1,4 +1,4 @@
-// expect: may be dangling
+// expect: 'q' may point into the block at line 6, which ends here, and
 import "std/print.rin"
 main: proc(argc: i32, argv: ^^char) -> i32 = {
     y: i32 = 1;

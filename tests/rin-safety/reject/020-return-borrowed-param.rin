@@ -1,4 +1,4 @@
-// expect: the address of a local is gone when the caller looks
+// expect: the result names no region, and may point into the block at line 3
 v2: struct = { x: f32; y: f32; }
 f: proc(a: v2) -> *v2 = { return a&; }
 main: proc() -> i32 = { return 0; }

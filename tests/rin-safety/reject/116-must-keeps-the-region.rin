@@ -1,4 +1,4 @@
-// expect: cannot be kept where region 'level' is promised
+// expect: the result may point into region
 level: region;
 frame: region in level;
 use: proc(p: option<*i32 in frame>) -> *i32 in level = { return unwrap(p); }

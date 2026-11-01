@@ -1,4 +1,4 @@
-// expect: the next time round
+// expect: 'q' may point into the block at line 7, which ends here, and
 main: proc(argc: i32, argv: ^^char) -> i32 = {
     a: i32 = 1;
     q: *i32 = a&;

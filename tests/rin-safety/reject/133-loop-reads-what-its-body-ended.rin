@@ -1,4 +1,4 @@
-// expect: the next time round
+// expect: 'q' may point into region 'level', which ends with this bloc
 level: region;
 main: proc() -> i32 = {
     q: option<*i32> = null;

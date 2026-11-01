@@ -1,4 +1,4 @@
-// expect: cannot be kept where region 'R' is promised
+// expect: the result may point into the block at line 3, and the place it goes to lasts as long as region
 keep: proc(r: region R) -> *i32 in R = {
     tmp: region of r = {
         x: *i32 in tmp = new<i32>(tmp, 1);

@@ -1,4 +1,4 @@
-// expect: a borrowed pointer cannot be kept in region 'level'
+// expect: the result may point into the block at line 6, and the place it goes to lasts as long as region
 // A struct given by value holds a pointer the result may be.
 level: region global;
 holder: struct = { p: *i32; }

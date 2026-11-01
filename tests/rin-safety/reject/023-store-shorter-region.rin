@@ -1,4 +1,4 @@
-// expect: a pointer into region 'frame' cannot be kept where region 'level' is promised
+// expect: this value may point into region
 level: region;
 frame: region in level;
 holder: struct = { p: option<*i32 in level>; }

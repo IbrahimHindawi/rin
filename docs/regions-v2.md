@@ -236,14 +236,31 @@ Three things the measurement corrected in the design above, now part of it:
    refuses every program the VM has shown to be a hole, and every program it refuses that the old
    one accepted is either a hole or a stack view the program must write differently, with the
    count known.
-3. **Switch, one week.** The pass reports errors instead of `shadow:` lines, by default. Then the old
-   lifetime rules go, family by family, with the full pipeline run after each: an attack program that
-   becomes accepted names what that family still held, and the pass is extended there first. The rules
-   that stay are the ones the table above lists. Then the twenty rounds' programs and two fresh rounds
-   against the new checker.
+3. **Switch, one week.** Done in a day, above, up to the fresh rounds.
 4. **Explicit C, two to three days,** independent of the above.
 5. **Later:** a checked build in which pointers carry their region's tag, checked on dereference,
    so a hole nobody has found is a stop and not corruption.
+
+## The switch, as done
+
+The pass refuses by default since the commit after the shadow measurement; `RIN_REGIONS=v1` turns that off.
+The old lifetime rules then went one family at a time, with a gate after each: the safety suite with its
+expectations moved to the new messages, the 1,548 attack programs, the course, the engine. An attack program
+that became accepted named what the family still held, and the pass was extended there, never by putting
+the rule back.
+
+| Family deleted | What its deletion exposed, now in the pass |
+|---|---|
+| loop seeding, the back-edge check, assignments below a return in a loop | nothing: the graph already had it |
+| own-address paths, the address-of-borrow refusal, `region_from_args`, the old return rule | a struct returned by value with a temporary in a raw field; an aggregate global read as a value |
+| the raw-pointer walkers | a compound assignment's right side in liveness; array locals and array fields as views; aggregate places with only raw fields; statics; raw values read through parameter memory |
+| `reset_kills` | nothing |
+| the lifetime half of the borrow records | nothing; the stale lint stays, and now sees a struct local made from borrowed members |
+| the region order inside `type_compatible` and `region_flow_rejects` | each member of an initializer list against its own field's region; a read-only view may see a longer region as a shorter one, never the reverse (kept as a type rule); an array parameter is the caller's memory |
+
+Every attack program from twenty rounds is refused as before, the course and the engine pass, and `main.c` is
+about 500 lines shorter net, with the pass about 900 lines of that. What remains of the old records is the
+stale lint and a few dead fields, to be cleaned when nothing else is moving.
 
 ## What this still is not
 

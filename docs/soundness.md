@@ -29,6 +29,9 @@ the lines of `unsafe` that safe code can reach, following calls by name.
 The generated C is GNU C, for clang and gcc: `__typeof__`, an empty struct and a zero-length array mean what
 those compilers define them to, and standard C does not cover them.
 
+The pointer rules are the second pass of [regions-v2.md](regions-v2.md): one outlives rule, checked on a lowered
+form of each body. The rules below that are not about lifetimes are unchanged by it.
+
 What safe rin cannot express, on purpose: lifetimes that overlap without nesting, freeing one object for
 its memory back, data that churns forever in a region that never ends, long-lived data pointing at
 shorter-lived data, threads, closures and coroutines, and type-erased or raw memory. Each of those is an
@@ -94,16 +97,16 @@ The rules below keep these true. The argument is an induction over execution: ea
 
 | Error | What stops it | Where | Assumes | Tested by |
 |---|---|---|---|---|
-| Pointer outlives its region | A value holds pointers only into regions at least as long as its own | `region_flow_rejects`, `inner_flow_rejects` | Regions are a known order; a block ends where it is written | `reject/`, `attacks/r1-*`, `r2-*` |
+| Pointer outlives its region | One rule on a lowered body: a value may flow into a place only if every region it may point into outlives the place's. Blocks, parameters and a statement's temporaries are regions too | `shadow_check_proc`, check 1 (`sh_check_outlives`) | Regions are a known order; a block ends where it is written | `reject/`, `attacks/r1-*` on |
 | Pointer laundered through a generic, alias or `**T` | Places reached through a pointer are invariant | `type_flow_same` | Generic bodies are checked per instance | `attacks/r2-*`, `r4-*` |
-| A region result left unsaid | A result pointing into a named region says which, whatever it came through, parameters included. A result that names none lasts as long as the shortest pointer the call was given; a raw pointer, an array or a struct beside it, and it stays a borrow | `call_result_in_its_args_region` | Unsafe bodies keep their signatures honest | `reject/274`-`279`, `attacks/r13-*` |
+| A region result left unsaid | A result names its region, or is the caller's memory through a pointer parameter (elision), or lasts for good; by value, its fields' regions hold what they name | check 4 (`sh_check_return`) | - | `reject/270`, `279` to `281`, `attacks/r13-*`, `r14-*` |
 | A region handle kept or changed | A region is a parameter and nothing else: no fields, aliases, arrays, generics, casts, addresses or assignment | `parse_type`, `region_type_ok` | - | `attacks/r13-*` |
-| A loop's next pass | Each local a loop assigns starts the loop holding everything the body can give it, followed until nothing more turns up; a return in a loop is held to what is assigned below it | `borrows_seed_loop`, `return_checks_later_assignments` | Assignments by name only: anything else holding a bare pointer is refused | `attacks/r14-*`, `attacks/r15a-*` |
-| A variable's own address | `p = a&` with a a pointer points at the variable, not at what it points at: `&a` is the path, gone with its scope, and nothing vouches for it | `own_address_path` | - | `reject/287`-`289` |
-| Region reset under a pointer | No local or parameter that may point there can be read after, in the proc that resets or any that calls it; a global holding it is emptied; a resetting call stands alone; nothing shorter-lived is open across it | `reset_kills`, `emit_region_forget`, `reset_check_open` | Every call that can reset is found by name; calls through pointers are refused one | `reject/237` on, `attacks/r12-*` |
+| A loop's next pass | The body is a graph with a back-edge; liveness and the forward fixed point see the next pass as a path | the lowering, checks 2 and 3 | - | `attacks/r14-*`, `r15a-*`, `r16-*` |
+| A variable's own address | `x&` is the block that declared `x`; a local whose address is taken holds only what outlives its block, and is live wherever a local holding its address is | `sh_place_memory`, address edges in liveness | - | `reject/287` to `289`, `294`, `attacks/r15a-*`, `r16-*` |
+| Region reset under a pointer | No local or parameter live after a reset, or after a call to a proc that resets, may point into the region or anything inside it; a parameter's memory may be anywhere, so it counts; a global holding it is emptied, and so must be `option` | check 3 (`sh_check_reset_at`), `emit_region_forget` | Every call that can reset is found by name; calls through pointers are refused one | `reject/237` on, `attacks/r12-*`, `r19-*` |
 | Region re-entered while open | The checker tracks what each proc opens | `opens_collect_*` | Calls through pointers are refused a region | `reject/`, attack probes |
-| Local's address escapes | The stack is the innermost region | Region rules, `borrow_*` | Locals do not outlive the frame | `reject/` |
-| Stale pointer after a move | Borrow tracking kills it; the old buffer also stays valid until the region ends | `borrow_*`, `compute_proc_moves` | Arenas never free one object | `reject/`, `attacks/r3-*` |
+| Local's address escapes | Leaving a block, by its end or a jump, nothing live may point into it or into a region it opened | check 2 (`sh_check_leave`) | - | `reject/`, `attacks/r15a-*`, `r16-*` |
+| Stale pointer after a move | A lint, outside the claim: a pointer taken from a container dies when a call may move the container or it is written; the old buffer stays valid until the region ends | `borrow_*`, `compute_proc_moves` | Arenas never free one object | `reject/`, `attacks/r1-*` |
 | Null dereference | `option<*T>` must be tested; narrowing ends at anything that could change it | `narrow_*` | A field changes in any callee and through any path | `reject/`, `accept/010` |
 | A zero in a non-null pointer | `{}`, `new` and `new_slice` refuse a type holding a `*T` | `safety_check_zeroed` | Reflection and generics see through to the field | `reject/`, attack probes |
 | Out of bounds | `[]T` and arrays are checked in every build; a slice that can change is read whole | `RIN_INDEX`, `rin_slice_at`, `rin_slice_range` | Slices are `{ data, length }`; `length` is not written by safe code | `poison/008`, `poison/012`, `accept/026` |

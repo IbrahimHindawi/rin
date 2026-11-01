@@ -1,4 +1,4 @@
-// expect: must point into the caller's memory
+// expect: this returns a pointer into region
 level: region;
 frame: region in level;
 g: i32 = 0;

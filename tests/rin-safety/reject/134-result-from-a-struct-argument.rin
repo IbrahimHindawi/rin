@@ -1,4 +1,4 @@
-// expect: may be
+// expect: the result names no region, and may point into region
 level: region;
 S: struct = { p: *i32 in level; }
 pick: proc(s: S) -> *i32 = { return s.p; }

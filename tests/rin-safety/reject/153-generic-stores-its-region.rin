@@ -1,4 +1,4 @@
-// expect: cannot be kept here
+// expect: this value may point into region
 level: region;
 g: option<*i32 in permanent> = null;
 keep: proc<T>(x: T) -> void = { g = x; }

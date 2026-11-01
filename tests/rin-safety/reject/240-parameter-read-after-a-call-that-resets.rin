@@ -1,4 +1,4 @@
-// expect: may be dangling
+// expect: 'e' may point into what parameter 'e' points into, which may
 level: region;
 frame: region in level;
 enemy: struct = { hp: i32; }

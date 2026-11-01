@@ -1,0 +1,11 @@
+// expect: in a local whose address is taken
+main: proc() -> i32 = {
+    x: i32 = 1;
+    q: *i32 = x&;
+    r: **i32 = q&;
+    if (x > 0) {
+        y: i32 = 2;
+        q = y&;
+    }
+    return r** - 1;
+}

@@ -1,4 +1,4 @@
-// expect: 'q' points at something
+// expect: 'q' may point into region 'frame', which ends with this bloc
 // as 014 with a region block in the body: the second pass reads frame memory after its block: use-after-poison at q*
 import "std/print.rin"
 level: region global;
