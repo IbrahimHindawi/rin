@@ -696,6 +696,7 @@ struct Expr {
     TokenKind op;
     Expr *base;
     Expr *index_expr;
+    bool callee_is_value; // `f(...)` where f is a variable holding a proc, which is read like any other operand
     bool names_no_local; // written by the compiler, which means the proc or table, whatever the program's locals are called
     TypeExpr *cast_type;
     /* A number written without a `'` type takes its type from where it is used.
@@ -4045,6 +4046,9 @@ static Stmt *parse_for_clause_stmt(Parser *p, bool allow_var_decl) {
         is_assign_op_kind(parser_peek_n(p, 1)->kind)) {
         Token *name_tok = parser_next(p);
         TokenKind op = parser_match_assign_op(p);
+        if (string8slice_equals_cstr(name_tok->text, "_")) {
+            parser_error_token(p, name_tok, "'_' only discards, as a statement of its own: '_ = f();'");
+        }
         Stmt *s = stmt_new(p->arena, Stmt_Assign);
         s->name = token_to_string8(p->arena, name_tok);
         Expr *lhs = expr_new(p->arena, Expr_Name);
@@ -16722,6 +16726,11 @@ static bool name_is_enum_member(Program *prog, string8 name) {
 }
 
 /* `slice_i32`, `ptr_entity`, `vec_ptr_entity`: what an instance of a type is called in C. */
+static void visit_default_names_type(Expr *e, void *ctx, memops_arena *arena) {
+    (void)arena;
+    if (e->kind == Expr_SizeofType || e->kind == Expr_AlignofType || e->kind == Expr_Cast) *(bool *)ctx = true;
+}
+
 /* What an enum's value may mention: numbers, and the members of its own enum. */
 typedef struct EnumValueScan { EnumDecl *decl; bool bad; } EnumValueScan;
 static void visit_enum_value(Expr *e, void *ctx, memops_arena *arena) {
@@ -16957,6 +16966,26 @@ static void safety_check_program_names(Program *prog, memops_arena *arena) {
         }
     }
     /* An enum's values reach C before anything else in the file, so they are what rin can compute by then. */
+    for (i32 i = 0; i < prog->aliases.length; i++) {
+        AliasDecl *decl = (AliasDecl *)prog->aliases.data[i];
+        if (path_is_std(decl->source_path) || !name_is_runtime(decl->name)) continue;
+        g_diag_source_path = decl->source_path;
+        type_error_message("this name belongs to rin's runtime, which the generated C uses by name", decl->line, decl->col);
+    }
+    for (i32 i = 0; i < prog->procs.length; i++) {
+        ProcDecl *decl = (ProcDecl *)prog->procs.data[i];
+        if (!decl->is_generic || path_is_std(decl->source_path)) continue;
+        for (i32 j = 0; j < decl->params.length; j++) {
+            bool types = false;
+            Expr *given = ((Param *)decl->params.data[j])->default_value;
+            if (given) expr_walk(given, visit_default_names_type, &types, arena);
+            if (types) {
+                g_diag_source_path = decl->source_path;
+                type_error_message("a generic's default is written once, and would be read with the caller's type: pass "
+                                   "this one at the call", decl->line, decl->col);
+            }
+        }
+    }
     for (i32 i = 0; i < prog->enums.length; i++) {
         EnumDecl *decl = (EnumDecl *)prog->enums.data[i];
         if (decl->is_external || path_is_std(decl->source_path)) continue;
@@ -18142,7 +18171,7 @@ static bool expr_place_is_packed(Expr *e, TypeScope *scope, Program *prog, memop
    statement. Through a pointer it is somewhere else, and not this rule's business. */
 static bool expr_place_is_temporary(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena, i32 depth) {
     if (!e || depth > 64) return false;
-    if (e->kind == Expr_Call || e->kind == Expr_Ternary || e->kind == Expr_CompoundInit) return true;
+    if (e->kind == Expr_Call || e->kind == Expr_Ternary || e->kind == Expr_CompoundInit || e->kind == Expr_Cast) return true;
     if (e->kind == Expr_Field || e->kind == Expr_Index) {
         TypeExpr *bt = resolve_alias_type(prog, infer_expr_type(e->base, scope, prog, arena));
         if (!bt || bt->kind == Type_Ptr || (e->kind == Expr_Index && bt->kind != Type_Array)) return false;
@@ -18468,6 +18497,12 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
         }
 
         TypeExpr *proc_type = type_proc_from_callable_type(prog, callee_type);
+        /* A variable. A global with no value is C's, and may be a macro, with nothing to read. */
+        call->callee_is_value = type_scope_lookup_local(scope, call->name);
+        for (i32 i = 0; !call->callee_is_value && i < prog->globals.length; i++) {
+            Stmt *g = (Stmt *)prog->globals.data[i];
+            if (string8_equals(&g->name, &call->name) && g->expr) call->callee_is_value = true;
+        }
         if (!proc_type) {
             type_error_call_non_proc(call->name, callee_type, call->line, call->col, arena);
             for (i32 i = 0; i < call->args.length; i++) {
@@ -19473,6 +19508,9 @@ static void type_check_stmt(
     if (s->kind == Stmt_Assign) {
         safety_check_open_cstr_beside(s->lhs, s->expr, scope, prog, arena);
         if (s->lhs) s->place_packed = expr_place_is_packed(s->lhs, scope, prog, arena, 0);
+        if (g_safe_body && s->lhs && expr_place_is_temporary(s->lhs, scope, prog, arena, 0)) {
+            type_error_message("this is part of a temporary copy, and a write to it would be lost", s->line, s->col);
+        }
     }
     if (s->kind == Stmt_Goto || s->kind == Stmt_Label) {
         safety_error("goto and labels are not safe code: a jump can skip a test, a declaration or a kill; use a loop, "
@@ -23335,7 +23373,8 @@ typedef struct OrderScan { bool call; bool holds; } OrderScan;
 static void order_scan(Expr *e, OrderScan *scan) {
     if (!e) return;
     /* sizeof runs nothing, and a folded constant is a number: C needs some of these to stay constants. */
-    if (e->kind == Expr_SizeofType || e->kind == Expr_AlignofType || e->literal_fold) return;
+    if (e->kind == Expr_SizeofType || e->kind == Expr_AlignofType) return;
+    if (e->literal_fold && const_eval(e).ok) return;
     if (e->kind == Expr_Call) scan->call = true;
     /* A compound literal lives to the end of its block, and a value may leave the block the temporaries are in with
        its address: cstr_of's copy, a range's slice, `S{...}&`. Those stay in the statement's own block, unordered,
@@ -23344,7 +23383,7 @@ static void order_scan(Expr *e, OrderScan *scan) {
     if (e->kind == Expr_Index && e->index_end) scan->holds = true;
     if (e->kind == Expr_Call && e->cstr_copy_count.length > 0) scan->holds = true;
     /* A returned struct lasts its expression, and an array in it would decay to a pointer that does not. */
-    if (e->kind == Expr_Field && e->base && e->base->kind == Expr_Call) scan->holds = true;
+    if (e->kind == Expr_Field && e->base && (e->base->kind == Expr_Call || e->base->kind == Expr_Cast || e->base->kind == Expr_Ternary)) scan->holds = true;
     order_scan(e->inner, scan);
     order_scan(e->left, scan);
     order_scan(e->right, scan);
@@ -23405,6 +23444,15 @@ static bool emit_expr_in_order(memops_arena *arena, string8 *out, Expr *e, TypeS
     if (e->kind == Expr_Call && !call_is_new(e) && !call_is_must(e) && e->args.length + (e->base ? 1 : 0) >= 2 &&
         !string8_equals_cstr(&e->name, "new_slice")) {
         Vec_voidptr all = ptr_array_reserve(arena, e->args.length + 1);
+        Expr *named_callee = null;
+        if (e->callee_is_value && !e->base && !e->names_no_local) {
+            named_callee = expr_new(arena, Expr_Name);
+            named_callee->name = e->name;
+            named_callee->line = e->line;
+            named_callee->col = e->col;
+            named_callee->checked = true;
+            ptr_array_append(arena, &all, named_callee);
+        }
         if (e->base) ptr_array_append(arena, &all, e->base);
         for (i32 i = 0; i < e->args.length; i++) ptr_array_append(arena, &all, e->args.data[i]);
         if (operands_need_order((Expr **)all.data, all.length, arena)) {
@@ -23412,6 +23460,11 @@ static bool emit_expr_in_order(memops_arena *arena, string8 *out, Expr *e, TypeS
             Expr *written_base = e->base;
             Vec_voidptr reads = ptr_array_reserve(arena, written.length);
             emit_cstr(arena, out, "({ ");
+            string8 written_name = e->name;
+            if (named_callee) {
+                e->name = emit_order_temp(arena, out, named_callee, sub, generic_name)->name;
+                e->names_no_local = true;
+            }
             if (e->base) e->base = emit_order_temp(arena, out, e->base, sub, generic_name);
             for (i32 i = 0; i < written.length; i++) {
                 ptr_array_append(arena, &reads, emit_order_temp(arena, out, (Expr *)written.data[i], sub, generic_name));
@@ -23420,6 +23473,10 @@ static bool emit_expr_in_order(memops_arena *arena, string8 *out, Expr *e, TypeS
             emit_expr(arena, out, e, sub, generic_name);
             e->args = written;
             e->base = written_base;
+            if (named_callee) {
+                e->name = written_name;
+                e->names_no_local = false;
+            }
             emit_cstr(arena, out, "; })");
             return true;
         }
@@ -24029,7 +24086,7 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
             order_scan(s->expr, &value);
             bool free_of_temps = !place.holds && !value.holds;
             bool any_call = place.call || value.call;
-            if (free_of_temps && any_call && s->is_array_copy && s->lhs->kind != Expr_Name) {
+            if (free_of_temps && any_call && s->is_array_copy && !s->place_packed && s->lhs->kind != Expr_Name) {
                 /* The place in a temporary and the value where it is, inside the one call: it comes second in any
                    order, and an array in a returned struct lasts only that expression. */
                 emit_cstr(arena, out, "{ ");

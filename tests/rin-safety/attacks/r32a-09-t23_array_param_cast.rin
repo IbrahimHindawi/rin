@@ -1,0 +1,6 @@
+import "std/print.rin"
+S: struct = { a: [4]i32; n: i32; }
+mk: proc(v: i32) -> S = { s: S = { .a = { v, v + 1, v + 2, v + 3 }, .n = v }; return s; }
+c: proc() -> i32 = { x: [64]i32 = {}; for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } return x[3]; }
+take: proc(a: [4]i32, n: i32) -> i32 = { return a[1] + n; }
+main: proc() -> i32 = { printfmt("{}\n", take(cast(mk(1), S).a, c())); return 0; }

@@ -1,0 +1,24 @@
+import "std/print.rin"
+rin_t10: alias = [100]u8;
+rin_t11: alias = [100]u8;
+rin_t12: alias = [100]u8;
+rin_t13: alias = [100]u8;
+rin_t14: alias = [100]u8;
+rin_t15: alias = [100]u8;
+rin_t16: alias = [100]u8;
+rin_t17: alias = [100]u8;
+rin_t18: alias = [100]u8;
+say: proc(v: i32) -> i32 = { return v; }
+add: proc(a: i32, b: i32, c: u64) -> u64 = { return c; }
+main: proc() -> i32 = {
+    printfmt("{}\n", add(say(9), say(8), sizeof(rin_t10)));
+    printfmt("{}\n", add(say(9), say(8), sizeof(rin_t11)));
+    printfmt("{}\n", add(say(9), say(8), sizeof(rin_t12)));
+    printfmt("{}\n", add(say(9), say(8), sizeof(rin_t13)));
+    printfmt("{}\n", add(say(9), say(8), sizeof(rin_t14)));
+    printfmt("{}\n", add(say(9), say(8), sizeof(rin_t15)));
+    printfmt("{}\n", add(say(9), say(8), sizeof(rin_t16)));
+    printfmt("{}\n", add(say(9), say(8), sizeof(rin_t17)));
+    printfmt("{}\n", add(say(9), say(8), sizeof(rin_t18)));
+    return 0;
+}

@@ -1,0 +1,10 @@
+import "std/print.rin"
+said: [32]i32 = {};
+sn: u64 = 0;
+say: proc(v: i32) -> i32 = { said[sn] = v; sn += 1; return v; }
+show: proc() -> void = { for (i: u64 = 0; i < sn; i += 1) { printfmt("{} ", said[i]); } printfmt("\n"); sn = 0; }
+F: alias = *proc(a: i32, b: i32) -> i32;
+a1: proc(a: i32, b: i32) -> i32 = { return 1000 + a * 10 + b; }
+a2: proc(a: i32, b: i32) -> i32 = { return 2000 + a * 10 + b; }
+add: proc(a: i32, b: i32) -> i32 = { return a * 100 + b; }
+main: proc() -> i32 = { printfmt("{}\n", add((say(1) > 0 ? 1 : 2) shl 3, (say(2) > 0 ? 1 : 2) shl 2)); show(); return 0; }

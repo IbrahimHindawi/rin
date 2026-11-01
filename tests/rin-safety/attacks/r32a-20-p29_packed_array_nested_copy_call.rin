@@ -1,0 +1,5 @@
+import "std/print.rin"
+P: struct[packed] = { a: u8; m: [2][2]i32; }
+gp: P = {};
+pp: proc() -> *P in permanent = { return gp&; }
+main: proc() -> i32 = { x: [2]i32 = { 1, 2 }; pp()*.m[1] = x; printfmt("{}\n", gp.m[1][1]); return 0; }

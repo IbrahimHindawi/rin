@@ -1,0 +1,29 @@
+// A proc held in a variable is read before the arguments, as a callee written any other way is. A shift of a call is no
+// constant, so its operands are ordered. A packed array is copied in place.
+import "std/print.rin"
+add: proc(a: i32, b: i32) -> i32 = { return 1000 + a * 10 + b; }
+mul: proc(a: i32, b: i32) -> i32 = { return 2000 + a * 10 + b; }
+F: alias = *proc(a: i32, b: i32) -> i32;
+gf: F = add;
+sw: proc() -> i32 = { gf = mul; return 1; }
+say: proc(v: i32) -> i32 = { return v; }
+gi: i64 = 0;
+seti: proc() -> i32 = { gi = 1; return 1; }
+a: [2]i32 = {};
+P: struct[packed] = { c: u8; v: [2]i32; }
+gp: P = {};
+src: [2]i32 = { 5, 6 };
+hold: proc() -> i32 = { return 0; }
+main: proc() -> i32 = {
+    // gf is read first, so it is still add when sw runs.
+    printfmt("{}\n", gf(sw(), say(2)));
+    gf = add;
+    local: F = add;
+    printfmt("{}\n", local(say(1), say(2)));
+    // The place is worked out before the value's call.
+    a[cast(gi, u64)] = (seti() > 0 ? 1 : 2) shl 1;
+    printfmt("{} {}\n", a[0], a[1]);
+    gp.v = src;
+    printfmt("{} {}\n", gp.v[0], gp.v[1]);
+    return hold();
+}

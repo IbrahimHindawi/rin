@@ -1,0 +1,5 @@
+// expect: this is part of a temporary copy
+// A cast's value is a copy, so a view of part of it does not last. It reads like a place, and it is not one.
+S: struct = { a: [4]i32; }
+mk: proc(v: i32) -> S = { return { .a = { v, v, v, v } }; }
+main: proc() -> i32 = { s: []i32 = cast(mk(1), S).a; return s[0]; }

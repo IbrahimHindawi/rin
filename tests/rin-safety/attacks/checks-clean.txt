@@ -317,3 +317,11 @@ r29a-10-i13_generic_alias_suffix.rin
 r29a-11-c06_struct_underscore.rin
 r29a-12-f06_struct_underscore_local_underscore.rin
 r29a-18-c07_proc_tail_underscore.rin
+r32a-18-p25_packed_array_copy_call.rin
+r32a-19-p26_packed_array_copy_read_call.rin
+r32a-20-p29_packed_array_nested_copy_call.rin
+r32a-21-k15_bare_global_callee_two.rin
+r32a-22-k16_bare_local_callee_two.rin
+r32a-23-k17_bare_param_callee_two.rin
+r32a-24-n71_fold_hides_call_place.rin
+r32a-25-n60_fold_shift_with_call.rin

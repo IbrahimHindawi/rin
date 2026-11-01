@@ -1,0 +1,4 @@
+import "std/print.rin"
+h: proc<T>(b: u64 = sizeof(T)) -> u64 = { return b; }
+g: proc<T>() -> u64 = { return h<i64>(); }
+main: proc() -> i32 = { printfmt("{}\n", g<u8>()); return 0; }

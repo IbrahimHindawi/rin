@@ -1,0 +1,11 @@
+import "std/print.rin"
+S: struct = { a: [4]i32; n: i32; }
+W: struct = { s: S; m: [2][2]i32; }
+mk: proc(v: i32) -> S = { s: S = { .a = { v, v + 1, v + 2, v + 3 }, .n = v }; return s; }
+mw: proc(v: i32) -> W = { w: W = { .s = mk(v), .m = { { v, v }, { v + 5, v + 6 } } }; return w; }
+c: proc() -> i32 = { return 100; }
+flag: i32 = 1;
+id: proc(p: []i32, n: i32) -> []i32 = { return p; }
+out: proc(p: []i32, q: []i32) -> i32 = { return p[0] * 100 + q[0]; }
+bad: proc(v: i32) -> []i32 in permanent = { return cast(mk(v), S).a; }
+main: proc() -> i32 = { s: []i32 = bad(4); printfmt("{}\n", s[0]); return 0; }

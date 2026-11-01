@@ -26,7 +26,8 @@ numbers. These are not ordered yet, and rest on a checker rule against a call th
 | The members of an initializer, `{ a(), b() }` | The same | The same |
 | A `for` step's assignment, which has no block to take a temporary | The same | The same |
 | An operand with a temporary in the way: `S{...}&`, `cstr_of`'s copy, a range, a field of a returned struct | The same | A nested `({ })` would end it while a value still points at it |
-| An assignment to a packed place | The same | A pointer to the field would lose its packed access |
+| An assignment to a packed place, or an array copy into one | The same | A pointer to the field would lose its packed access |
+| `printfmt` with an enum or a print of the program's | No rule: it is written out piece by piece | `printfmt("{} {}", e, noisy())` prints `e` before `noisy` runs, and the single `printf` form runs every argument first |
 
 ## The checker and the emitter disagree, and C refuses
 
@@ -44,6 +45,9 @@ checker has signed off on something the emitter cannot write:
   `i32 * fns[2]`.
 - An alias of an enum, whose typedef comes before the enum.
 - `sizeof(q[0])` on a slice.
+- An enum named `rin`, whose table takes the name of rin's own.
+- A field, a struct or an alias named like one of C's own: `__LINE__`, `__auto_type`, `__typeof__`, `__int128`.
+- A proc returning a pointer to an array, `*[3]i32`.
 - A float cast to `long`.
 
 ## A lost write, not a memory error
@@ -54,7 +58,7 @@ inline it is not. The same goes for a stale pointer passed beside a call that gr
 
 ## Not attacked yet
 
-- Anything since round 31, which attacked the first two slices of the left-to-right change.
+- Anything since round 32, which attacked the left-to-right change and `$rin_local`.
 - Threads: the claim is single-threaded.
 - `gcc`: the safety suites and the attack corpus are run with clang, and only the course check runs with `gcc` on Linux.
 - Long runs of the engine under the sanitizers: its smoke test is short, and is not a sanitizer build.

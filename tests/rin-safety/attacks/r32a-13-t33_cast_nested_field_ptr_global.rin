@@ -1,0 +1,8 @@
+import "std/print.rin"
+W: struct = { in_: [2]i32; }
+O: struct = { w: W; }
+mk: proc() -> O = { o: O = { .w = { .in_ = { 1, 2 } } }; return o; }
+p: option<*i32 in permanent> = null;
+stash: proc() -> void = { p = cast(mk(), O).w.in_[1]&; }
+clobber: proc() -> i32 = { x: [64]i32 = {}; for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } return x[3]; }
+main: proc() -> i32 = { stash(); printfmt("{}\n", clobber()); q: option<*i32> = p; if (q) { printfmt("{}\n", q*); q* = 5; } return 0; }
