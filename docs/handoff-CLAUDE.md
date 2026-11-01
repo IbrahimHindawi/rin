@@ -99,6 +99,10 @@ the checker signed off), constants computed by rin, `option<*T>` and `unwrap`, `
 cleanup, no `#define` numbers, no VLAs, no program unions, `noalias` only in `unsafe`. The engine runs on a real
 level region, and its level meshes are released by the reset.
 
+The attack rounds did not converge, and `rin/docs/regions-v2.md` says why and what replaces the pointer rules:
+one outlives rule, checked on a lowered form of each body, with every pointer carrying a region. Read that before
+changing the checker; the plan there starts with a shadow mode beside the old rules, and the user decides first.
+
 Next, in the order that pays:
 
 1. Narrow std's `unsafe { }` bodies. `python tests/rin_trusted_lines.py` gives the honest measure: the lines of it safe code can reach.
