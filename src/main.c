@@ -18904,6 +18904,17 @@ static bool type_scope_lookup_local(TypeScope *scope, string8 name) {
 static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena) {
     if (!e) return;
     e->checked = true;
+    if (g_safe_body && e->kind == Expr_SizeofType && g_check_proc) {
+        /* `sizeof(a)` parses as a type, with a's name, whichever a is. */
+        string8 named = e->inner && e->inner->kind == Expr_Name ? e->inner->name
+                      : e->cast_type && e->cast_type->kind == Type_Name ? e->cast_type->name : (string8){0};
+        if (named.length > 0 && name_is_param(g_check_proc, named, prog)) {
+            TypeExpr *of = resolve_alias_type(prog, type_scope_lookup(scope, named));
+            if (of && of->kind == Type_Array) {
+                type_error_message("an array parameter is an address, and sizeof would say so: use the type, sizeof([N]T)", e->line, e->col);
+            }
+        }
+    }
     if (g_safe_body && e->kind == Expr_Index && e->base && e->base->kind == Expr_Addr) {
         type_error_message("this reads through an address just taken: use the place itself", e->line, e->col);
     }
@@ -19407,6 +19418,9 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
                e->op == Token_LessEqual || e->op == Token_GreaterEqual) {
         ok = numeric_or_same_enum ||
              type_pointer_compare_compatible(prog, left, right);
+        if (ok && !numeric_or_same_enum && g_safe_body && !g_checking_std) {
+            type_error_message("C defines the order of two pointers only inside one object: compare indexes instead", e->line, e->col);
+        }
     } else if (e->op == Token_EqualEqual || e->op == Token_BangEqual) {
         /* `p == null` is how a `option<*T>` is tested, whatever p's constness or
            nullability, so null compares with any pointer. */
@@ -20187,7 +20201,9 @@ static void type_check_stmt_inner(
     if (s->kind == Stmt_Switch) {
         type_check_expr(s->switch_expr, scope, prog, arena);
         TypeExpr *switch_type = resolve_alias_type(prog, infer_expr_type(s->switch_expr, scope, prog, arena));
-        if (switch_type && !type_is_numeric_or_enum(prog, switch_type)) {
+        if (g_safety && switch_type && type_is_float(switch_type)) {
+            type_error_message("a switch is on an integer or an enum: a float has no cases", s->line, s->col);
+        } else if (switch_type && !type_is_numeric_or_enum(prog, switch_type)) {
             type_error_incompatible("switch expression", prog, type_name_expr(arena, "integer_or_enum"), switch_type, s->line, s->col, arena);
         }
         BorrowState *entry = borrows_save_ptr(arena);
@@ -23103,7 +23119,9 @@ static void emit_enum_decl(memops_arena *arena, string8 *out, EnumDecl *decl) {
         emit_c_ident(arena, out, item->name);
         if (item->value_expr) {
             emit_cstr(arena, out, " = ");
+            g_emit_unevaluated++;
             emit_expr(arena, out, item->value_expr, (TypeSub){0}, (string8){0});
+            g_emit_unevaluated--;
         } else if (item->value.data) {
             emit_cstr(arena, out, " = ");
             emit_string8(arena, out, item->value);

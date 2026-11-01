@@ -131,10 +131,18 @@ vec<T>pop: proc<T>(array: *vec<T>) -> T = {
 
 // The elements as a slice, valid until the next append moves them.
 vec<T>items: proc[no_move]<T>(array: *vec<T>) -> []T = {
+    if (array*.data == null) {
+        empty: []T = {};
+        return empty;
+    }
     unsafe { return array*.data[0..array*.length]; }
 }
 
 vec<T>items_const: proc<T>(array: *const vec<T>) -> []const T = {
+    if (array*.data == null) {
+        empty: []const T = {};
+        return empty;
+    }
     unsafe { return array*.data[0..array*.length]; }
 }
 

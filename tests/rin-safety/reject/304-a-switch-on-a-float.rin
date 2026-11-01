@@ -1,0 +1,5 @@
+// expect: a float has no cases
+f: proc(x: f32) -> i32 = {
+    switch (x) { default: { return 1; } }
+}
+main: proc() -> i32 = { return f(1.0); }

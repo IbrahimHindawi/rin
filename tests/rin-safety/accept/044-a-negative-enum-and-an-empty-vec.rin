@@ -1,0 +1,10 @@
+// An enum may hold a negative value, and an empty vec gives an empty slice.
+import "std/print.rin"
+import "std/vec.rin"
+E: enum = { A = -1, B = 2 }
+main: proc() -> i32 = {
+    printfmt("{}\n", cast(E_A, i32));
+    v: *vec<i32> in permanent = vec<i32>make(permanent, 0);
+    printfmt("{}\n", vec<i32>items(v).length);
+    return 0;
+}

@@ -1,0 +1,8 @@
+// expect: C defines the order of two pointers
+main: proc() -> i32 = {
+    a: i32 = 0;
+    b: i32 = 0;
+    p: *i32 = a&;
+    q: *i32 = b&;
+    return p < q ? 1 : 0;
+}

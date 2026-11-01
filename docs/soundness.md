@@ -26,6 +26,9 @@ Std's containers in the safe subset are `vec`, `table` and `hashmap`. `list`, `d
 their bodies are not part of what the claim trusts. `python tests/rin_trusted_lines.py` counts what it does trust:
 the lines of `unsafe` that safe code can reach, following calls by name.
 
+The generated C is GNU C, for clang and gcc: `__typeof__`, an empty struct and a zero-length array mean what
+those compilers define them to, and standard C does not cover them.
+
 What safe rin cannot express, on purpose: lifetimes that overlap without nesting, freeing one object for
 its memory back, data that churns forever in a region that never ends, long-lived data pointing at
 shorter-lived data, threads, closures and coroutines, and type-erased or raw memory. Each of those is an
