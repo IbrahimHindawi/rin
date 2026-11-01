@@ -24,10 +24,14 @@ A compiler change is not finished until rin-dod's course still passes on it.
 
 rin resolves `std` as the `std` folder beside its own executable, so a built
 compiler needs std next to it. On Windows the repo's own build does this. On
-Linux or macOS, build `src/main.c` with gcc or clang and copy or symlink
+Linux or macOS, build `src/main.c`, `src/string8.c` and `src/string8slice.c` with
+gcc or clang and copy
 `src/std` beside the binary; the test runners look for `rin/build/rin.exe`
-and `rin/build/std`, so point those at the build (symlinks are fine). After
-any std change, copy `src/std/*.rin` next to the binary again.
+and `rin/build/std`. A symlink to std is refused: the compiler no longer knows
+those files as std. After any std change, copy `src/std/*.rin` next to the
+binary again. Outside Windows that build needs a stand-in, since `saha.h` in
+`extern/haikal` calls `VirtualAlloc`, and `main.c` includes `direct.h` and calls
+`_getcwd`, `_mkdir` and `fopen_s`.
 
 Flags: `rin check file.rin` checks with the safety rules on (the default);
 `--unsafe` or `RIN_UNSAFE=1` turns them off, `--safe` turns them back on.

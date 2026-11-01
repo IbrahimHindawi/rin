@@ -34,7 +34,7 @@ cstr_of: proc(chars: []const c8) -> ^const c8 = {
         }
     }
     unsafe {
-        printf("rin runtime: a C string with no terminator in its %llu chars\n", cast(chars.length, u64));
+        printf("rin runtime: a C string with no terminator in its %zu chars\n", cast(chars.length, usize));
         exit(1);
     }
     return null;

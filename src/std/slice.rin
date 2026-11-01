@@ -130,7 +130,7 @@ slice<T>copy_to: proc[unsafe]<T>(dst: ^T, s: slice<T>) -> void = {
 slice<T>copy: proc<T>(dst: []T, src: []const T) -> void = {
     unsafe {
         if (dst.length != src.length) {
-            printf("rin runtime: copy between slices of %llu and %llu\n", cast(dst.length, u64), cast(src.length, u64));
+            printf("rin runtime: copy between slices of %zu and %zu\n", cast(dst.length, usize), cast(src.length, usize));
             exit(1);
         }
         if (dst.length > 0) { memmove(dst.data, src.data, sizeof(T) * dst.length); }

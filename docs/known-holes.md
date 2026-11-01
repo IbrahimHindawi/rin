@@ -50,6 +50,9 @@ checker has signed off on something the emitter cannot write:
 - A proc returning a pointer to an array, `*[3]i32`.
 - A proc pointer alias with an array parameter, whose typedef has a pointer to the wrong thing.
 - `_ = { 1, 2 };`
+- On Linux, with `-Wextra -Werror`: comparing a call's enum result with a member. The order temporaries give the member
+  type `int` and the enum is unsigned there, so `-Wsign-compare` fires. The comparison is right.
+- A proc named like a libc function its headers declare, such as `read` on Linux: C reports conflicting types.
 - A generic proc and a specialization for the same type, `f: proc<T>` and `f: proc<u32>`, both called: the generic's
   body is checked for that type too, and the C defines `f_u32` twice, which the C compiler refuses. Nothing runs.
 - A local named like an object-like macro of a system header, which is then a syntax error in C. Most are listed and keep
