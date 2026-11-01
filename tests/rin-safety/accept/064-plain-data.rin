@@ -1,0 +1,97 @@
+// A byte column asks whether T is plain before viewing bytes as T. Everything
+// that could hide a pointer says no, including what it cannot see through.
+import "std/print.rin"
+import "std/reflect.rin"
+import "std/vec.rin"
+
+level: region;
+
+color: enum = { red, green }
+inner: struct = { a: f32; b: u8; }
+holder: struct = { p: *u32 in level; }
+num: alias = u64;
+run_proc: alias = *proc(x: i32) -> void;
+
+numbers: struct = { a: u8; b: i16; c: f64; d: b32; e: c8; }
+nested: struct = { n: inner; c: color; }
+arrays: struct = { a: [4]f32; b: [2]inner; }
+empty: struct = { }
+
+has_pointer: struct = { p: *u32 in level; }
+has_raw: struct = { p: ^u8; }
+has_cstr: struct = { name: ^const char; }
+has_slice: struct = { s: []u8 in level; }
+has_option: struct = { o: option<*u32 in level>; }
+has_proc: struct = { f: run_proc; }
+has_alias: struct = { n: num; }
+has_vec: struct = { v: *vec<u32> in level; }
+nested_pointer: struct = { h: holder; }
+array_of_pointers: struct = { a: [2]*u32 in level; }
+array_of_struct_pointers: struct = { a: [2]*inner in level; }
+pointer_to_struct: struct = { p: *inner in level; }
+array_nested_pointer: struct = { a: [2]holder; }
+deep_pointer: struct = { a: [2][2]holder; }
+box: struct<T> = { v: T; }
+generic_pointer: struct = { b: box<*u32 in level>; }
+pointer_alias: alias = *u32;
+array_of_alias: struct = { a: [2]pointer_alias; }
+holder_alias: alias = holder;
+struct_alias: struct = { a: holder_alias; }
+array_of_procs: struct = { a: [2]*proc() -> void; }
+array_of_slices: struct = { a: [2][]u8 in level; }
+array_of_options: struct = { a: [2]option<*u32 in level>; }
+deep_raw_inner: struct = { p: ^u8; }
+deep_raw_middle: struct = { a: [2]deep_raw_inner; }
+deep_raw: struct = { b: [2]deep_raw_middle; }
+
+packed_numbers: struct[packed] = { a: u8; b: u32; }
+enum_array: struct = { x: [3]color; }
+deep_plain_middle: struct = { a: [2]inner; }
+deep_plain: struct = { b: [2]deep_plain_middle; }
+
+// It fails closed: these hold no pointer, and the walk does not see far enough to say so.
+nested_numbers: struct = { a: [2][2]f32; }
+generic_number: struct = { b: box<u32>; }
+
+plain_of: proc<T>() -> b32 = {
+    return reflect_is_plain(T<>&);
+}
+
+show: proc(name: ^const char, plain: b32) -> void = {
+    printfmt("{}: {}\n", name, plain != 0 ? "plain" : "not plain");
+}
+
+main: proc() -> i32 = {
+    show("numbers", plain_of<numbers>());
+    show("nested", plain_of<nested>());
+    show("arrays", plain_of<arrays>());
+    show("empty", plain_of<empty>());
+    show("color", plain_of<color>());
+    show("has_pointer", plain_of<has_pointer>());
+    show("has_raw", plain_of<has_raw>());
+    show("has_cstr", plain_of<has_cstr>());
+    show("has_slice", plain_of<has_slice>());
+    show("has_option", plain_of<has_option>());
+    show("has_proc", plain_of<has_proc>());
+    show("has_alias", plain_of<has_alias>());
+    show("has_vec", plain_of<has_vec>());
+    show("nested_pointer", plain_of<nested_pointer>());
+    show("array_of_pointers", plain_of<array_of_pointers>());
+    show("array_of_struct_pointers", plain_of<array_of_struct_pointers>());
+    show("pointer_to_struct", plain_of<pointer_to_struct>());
+    show("array_nested_pointer", plain_of<array_nested_pointer>());
+    show("deep_pointer", plain_of<deep_pointer>());
+    show("generic_pointer", plain_of<generic_pointer>());
+    show("array_of_alias", plain_of<array_of_alias>());
+    show("struct_alias", plain_of<struct_alias>());
+    show("array_of_procs", plain_of<array_of_procs>());
+    show("array_of_slices", plain_of<array_of_slices>());
+    show("array_of_options", plain_of<array_of_options>());
+    show("deep_raw", plain_of<deep_raw>());
+    show("packed_numbers", plain_of<packed_numbers>());
+    show("enum_array", plain_of<enum_array>());
+    show("deep_plain", plain_of<deep_plain>());
+    show("nested_numbers", plain_of<nested_numbers>());
+    show("generic_number", plain_of<generic_number>());
+    return 0;
+}

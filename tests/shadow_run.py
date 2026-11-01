@@ -24,7 +24,7 @@ sets = {
  'holes r13-r20': [f for f in glob.glob(T + r'\attacks\r1[3-9]-*.rin') + glob.glob(T + r'\attacks\r20-*.rin') if 'r18-' not in f],
  'attacks clean by design': [os.path.join(T, 'attacks', n) for n in open(os.path.join(T, 'attacks', 'checks-clean.txt')).read().split()],
  'generated': glob.glob(os.path.join(os.environ.get('RIN_GEN', os.path.join(SP, 'gen')), '*.rin')),
- 'course safe': [f for f in glob.glob(str(ROOT.parent / 'rin-dod' / 'ecs' / 'safe' / '**' / '*.rin'), recursive=True) + glob.glob(str(ROOT.parent / 'rin-dod' / 'src' / 'safe' / '**' / '*.rin'), recursive=True) + glob.glob(str(ROOT.parent / 'rin-dod' / 'dojo' / 'safe' / '**' / '*.rin'), recursive=True)],
+ 'course': glob.glob(str(ROOT.parent / 'rin-dod' / 'ecs' / 'src' / '**' / '*.rin'), recursive=True) + glob.glob(str(ROOT.parent / 'rin-dod' / 'src' / '**' / '*.rin'), recursive=True) + glob.glob(str(ROOT.parent / 'rin-dod' / 'dojo' / '**' / '*.rin'), recursive=True),
  'engine': [str(ROOT.parent / 'njinn' / 'src' / 'gin_win32.rin')],
 }
 only = sys.argv[1:]

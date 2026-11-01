@@ -624,8 +624,8 @@ needed two `?` and a format spec; the table lessons needed `level: region;`,
 a `world_make(r: region level)` and `*vec<T> in level` on the world's
 fields; the systems lessons made the frame arena a `frame: region in level;`
 opened once per frame, so no command can outlive its frame by construction.
-The ported course is in rin-dod's `safe` branch, each `safe` folder with a
-README on what changed.
+The ported course is rin-dod's `regions` branch, with a README in `ecs/src`
+on what changed.
 
 Porting it found five rules that were right but too blunt, now fixed: a
 `printfmt` in a loop killed the borrows it printed, since it was an unknown

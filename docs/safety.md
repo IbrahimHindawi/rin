@@ -14,7 +14,8 @@ we chose C's behaviour, and each has a price we are choosing to defer.
 
 > **Implemented, see [pointers-and-slices.md](pointers-and-slices.md):** a
 > constant index out of range is a compile error, and a variable index into an
-> array or a slice is checked at run time unless NDEBUG is defined.
+> array or a slice is checked at run time in every build, unless
+> `RIN_NO_BOUNDS_CHECKS` is defined.
 
     xs: [4]i32 = {};
     xs[9] = 1;          // accepted; writes past the array

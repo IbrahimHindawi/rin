@@ -1,0 +1,31 @@
+numbers: plain
+nested: plain
+arrays: plain
+empty: not plain
+color: plain
+has_pointer: not plain
+has_raw: not plain
+has_cstr: not plain
+has_slice: not plain
+has_option: not plain
+has_proc: not plain
+has_alias: not plain
+has_vec: not plain
+nested_pointer: not plain
+array_of_pointers: not plain
+array_of_struct_pointers: not plain
+pointer_to_struct: not plain
+array_nested_pointer: not plain
+deep_pointer: not plain
+generic_pointer: not plain
+array_of_alias: not plain
+struct_alias: not plain
+array_of_procs: not plain
+array_of_slices: not plain
+array_of_options: not plain
+deep_raw: not plain
+packed_numbers: plain
+enum_array: plain
+deep_plain: plain
+nested_numbers: not plain
+generic_number: not plain

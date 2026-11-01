@@ -3,8 +3,8 @@ import glob, os, re, subprocess, sys, collections
 import pathlib
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 RIN = str(ROOT / 'build' / 'rin.exe')
-files = sys.argv[1:] or (glob.glob(str(ROOT.parent / 'rin-dod' / 'ecs' / 'safe' / '**' / '*.rin'), recursive=True) + glob.glob(str(ROOT.parent / 'rin-dod' / 'src' / 'safe' / '**' / '*.rin'), recursive=True) +
-                         glob.glob(str(ROOT.parent / 'rin-dod' / 'dojo' / 'safe' / '**' / '*.rin'), recursive=True) + [str(ROOT.parent / 'njinn' / 'src' / 'gin_win32.rin')])
+files = sys.argv[1:] or (glob.glob(str(ROOT.parent / 'rin-dod' / 'ecs' / 'src' / '**' / '*.rin'), recursive=True) + glob.glob(str(ROOT.parent / 'rin-dod' / 'src' / '**' / '*.rin'), recursive=True) + glob.glob(str(ROOT.parent / 'rin-dod' / 'dojo' / '**' / '*.rin'), recursive=True) +
+                         [str(ROOT.parent / 'njinn' / 'src' / 'gin_win32.rin')])
 groups = collections.defaultdict(list)
 seen = set()
 for f in sorted(files):

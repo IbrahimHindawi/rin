@@ -300,7 +300,7 @@ RIN_ANY_DEFINE_FLOAT(double, d)
 #define RIN_ALWAYS_INLINE static inline __attribute__((always_inline))
 #endif
 
-/* The Debug check that the promise holds, at the top of the proc. Each of the
+/* The check that the promise holds, at the top of the proc, in every build. Each of the
    n entries is (pointer, extent in bytes, name, flags): RIN_NOALIAS_PARAM if
    the parameter is noalias, RIN_NOALIAS_WRITE if it can write. A pair is
    checked when one side is noalias and one side can write, so the check

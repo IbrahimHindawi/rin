@@ -11,11 +11,12 @@ work stands. The design itself is in `rin/docs/regions.md`; read that second.
   in `src/std`. Branch `regions` is the safe compiler; `main` is the original
   unsafe rin and is never touched. Everything in this note is about `regions`.
 - `rin-dod/`: the data-oriented design course in rin. Branch `regions` (and
-  its twin `safe`) holds every program twice: the original under `ecs/src`,
-  `src`, `dojo`, and the port to the safe subset under `ecs/safe`,
-  `src/safe`, `includes/safe`, `dojo/safe`. `main` is the published course.
-- the engine: gets its own `regions` branch when its port starts. Its `main`
-  is not touched either.
+  its twin `safe`) is the course in the safe subset, one tree: code in `ecs/src`,
+  `src`, `includes` and `dojo`, guides in `ecs/docs`, `docs` and each block's
+  README. `python tools/check_snippets.py` says whether the guides still match
+  the code. `main` is the published course, in the old unsafe rin.
+- `njinn/`: the engine, in safe rin on branch `regions`. Its `main` is not
+  touched either.
 
 A compiler change is not finished until rin-dod's course still passes on it.
 
@@ -43,8 +44,8 @@ storage through).
     RIN_UNSAFE=1 python tests/run_rin_torture.py --cc clang   # 9/9, the old compiler suite
     RIN_UNSAFE=1 python tests/run_rin_execute.py --cc clang   # 23/23
     # in rin-dod, with RIN pointing at the fresh build:
-    RIN=<path>/rin RIN_UNSAFE=1 CC=gcc python tools/check.py  # 70 lessons, 26 dojo blocks
-    RIN=<path>/rin CC=gcc python tools/check.py --sanitize safe
+    RIN=<path>/rin CC=gcc python tools/check.py  # 35 lessons, 13 dojo blocks
+    RIN=<path>/rin CC=gcc python tools/check.py --sanitize
 
 The accept programs and the ported lessons must also run clean under
 `-fsanitize=address,undefined`. On Windows, clang's sanitizers work (`CC=clang`);
@@ -76,15 +77,21 @@ agents to a few at a time, and commit often.
 
 ## The port conventions
 
-The agents' brief is `rin-dod`'s `ecs/safe/README.md` plus these:
-ports mirror the original tree under a `safe` folder with the original
-`.expected` copied beside them, unchanged; `printf` becomes `printfmt` with
+The agents' brief is `rin-dod`'s `ecs/src/README.md` plus these:
+a port keeps the original's `.expected`, unchanged; `printf` becomes `printfmt` with
 `{:5.2}` widths; a world lives in `level: region;` and is made whole by a
 `world_make(r: region level)`; fields are `*vec<T> in level`; lookups that
 can miss return `option<*T>`; the frame arena is `frame: region in level;` opened
 once per frame; the type-erased byte column is the one legitimate
 `unsafe { }` core, kept small with honest signatures; every other proc is
 unannotated and checked. Report every remaining `unsafe { }` and why.
+
+An `unsafe` block trusts no argument and no field, unless the value carries its own
+bound. rin has no private fields; only a struct holding a raw pointer is sealed, to
+its file. So a column's bytes are `[]u8 in level`, row and count mistakes meet a
+bounds check, and a view of bytes as `T` checks `reflect_is_plain(T<>&)`, room and
+alignment itself: the wrong type then gives wrong numbers, never a bad pointer. A
+stored `^memops_arena` is the exception: it is believed, in the file that keeps it.
 
 ## State of play
 
