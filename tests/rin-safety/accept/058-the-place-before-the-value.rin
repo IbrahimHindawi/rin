@@ -1,0 +1,46 @@
+// In an assignment the place is worked out first, then the value: C gives the two sides no order of its own.
+import "std/print.rin"
+S: struct = { a: i32; b: i32; }
+said: [16]i32 = {};
+n: u64 = 0;
+say: proc(v: i32) -> i32 = { said[n] = v; n += 1; return v; }
+show: proc() -> void = {
+    for (i: u64 = 0; i < n; i += 1) { printfmt("{} ", said[i]); }
+    printfmt("\n");
+    n = 0;
+}
+xs: [4]i32 = {};
+one: S = {};
+two: S = {};
+which: proc(v: i32) -> *S in permanent = { _ = say(v); return new<S>(permanent, { .a = v, .b = v }); }
+at: i64 = 1;
+next: proc() -> i32 = { at = 3; return 7; }
+main: proc() -> i32 = {
+    xs[cast(say(1), u64)] = say(2);
+    show();
+    printfmt("{} {}\n", xs[1], xs[2]);
+    xs[cast(say(2), u64)] += say(5);
+    show();
+    printfmt("{}\n", xs[2]);
+    p: *S in permanent = which(3);
+    p*.a = say(4);
+    show();
+    printfmt("{}\n", p*.a);
+    which(5)*.b = say(6);
+    show();
+    // The index is read before the value's call changes it.
+    xs[cast(at, u64)] = next();
+    printfmt("{} {} {}\n", xs[1], xs[3], at);
+    // A struct, a plain local and a shift, beside a call.
+    one = { .a = say(1), .b = 2 };
+    printfmt("{}\n", one.a);
+    show();
+    t: i32 = 0;
+    t = say(9);
+    show();
+    xs[cast(say(0), u64)] = 1;
+    xs[cast(say(0), u64)] shl= cast(say(3), i32);
+    printfmt("{} {}\n", t, xs[0]);
+    show();
+    return 0;
+}

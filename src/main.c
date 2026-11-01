@@ -24041,6 +24041,37 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
         return;
     }
     if (s->kind == Stmt_Assign) {
+        /* The place first, in a statement of its own, then the value: C gives the two sides no order, and a call in
+           either could change what the other reads. */
+        if (g_safety && !s->is_array_copy && s->lhs && s->expr && s->lhs->kind != Expr_Name && s->expr->kind != Expr_ZeroInit) {
+            OrderScan place = {0};
+            OrderScan value = {0};
+            expr_walk(s->lhs, visit_order_scan, &place, arena);
+            expr_walk(s->expr, visit_order_scan, &value, arena);
+            if ((place.call || value.call) && !place.holds && !value.holds) {
+                char name[40];
+                i32 temp = ++g_emit_order_temp;
+                snprintf(name, sizeof(name), "(*rin_t%d)", temp);
+                Expr *place_read = expr_new(arena, Expr_Name);
+                place_read->name = string8_from_cstr(arena, name);
+                place_read->line = s->lhs->line;
+                place_read->col = s->lhs->col;
+                place_read->checked = true;
+                place_read->names_no_local = true;
+                snprintf(name, sizeof(name), "rin_t%d", temp);
+                emit_cstr(arena, out, "{ __auto_type ");
+                emit_cstr(arena, out, name);
+                emit_cstr(arena, out, " = &(");
+                emit_expr(arena, out, s->lhs, sub, generic_name);
+                emit_cstr(arena, out, "); ");
+                Expr *written = s->lhs;
+                s->lhs = place_read;
+                emit_stmt_inner(arena, out, s, sub, generic_name);
+                s->lhs = written;
+                emit_cstr(arena, out, "}\n");
+                return;
+            }
+        }
         if (s->is_array_copy) {
             /* By the type's size: an array parameter is a pointer in C, so
                neither its sizeof nor its address is the array's. */
