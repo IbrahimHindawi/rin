@@ -1,0 +1,17 @@
+// A raw parameter goes through '^const void' into a checked '*const T in permanent', which nothing ties to the call: fmt_text of a scratch fmt is kept in a global past the scratch block and read after the region is cleared (use-after-poison under ASan).
+import "std/print.rin"
+import "std/fmt.rin"
+buf: struct = { c: [8]c8; }
+held: option<*const buf in permanent> = null;
+to: proc(v: ^const void) -> *const buf in permanent = { return v; }
+keep: proc(s: ^const c8) -> void = { held = to(s); }
+main: proc() -> i32 = {
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 64);
+        fmt_char(f, 65);
+        keep(fmt_text(f));
+    }
+    h: option<*const buf in permanent> = held;
+    if (h) { x: c8 = h*.c[0]; printfmt("{}\n", cast(x, i32)); }
+    return 0;
+}

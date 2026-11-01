@@ -1,0 +1,18 @@
+// A ternary's second arm is never held to the place's proc signature: a proc taking a 'str' (which lasts, so st keeps it) goes into a pointer taking a raw '^const c8', which is handed fmt_text of a scratch fmt; keep is read after scratch is cleared (use-after-poison under ASan).
+import "std/print.rin"
+import "std/fmt.rin"
+keep: str = "x";
+st: proc(s: str) -> void = { keep = s; }
+ra: proc(s: ^const c8) -> void = { }
+fn: alias = *proc(s: ^const c8) -> void;
+main: proc() -> i32 = {
+    c: i32 = 0;
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 64);
+        fmt_char(f, 65);
+        p: fn = c ? ra : st;
+        p(fmt_text(f));
+    }
+    print_cstr(keep);
+    return 0;
+}

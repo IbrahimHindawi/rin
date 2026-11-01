@@ -1,0 +1,15 @@
+// A ternary's second arm is never held to the place's inner regions: a '*vec<*i32 in level>' is taken as a '*vec<*i32 in scratch>', a scratch pointer is pushed into the level vec, and it is read after scratch ends (use-after-poison under ASan).
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+main: proc() -> i32 = {
+    c: i32 = 0;
+    v1: *vec<*i32 in level> in level = vec<*i32 in level>make(level, 4);
+    scratch {
+        v2: *vec<*i32 in scratch> in scratch = vec<*i32 in scratch>make(scratch, 4);
+        v: *vec<*i32 in scratch> = c ? v2 : v1;
+        vec<*i32 in scratch>push(v, new<i32>(scratch, 41));
+    }
+    printfmt("{}\n", vec<*i32 in level>at(v1, 0)**);
+    return 0;
+}

@@ -1,0 +1,14 @@
+// A ternary's second arm is never held to the place's proc signature (inner_flow_rejects sees only the first arm's type): a proc taking '*i32' goes into a pointer that promises to take 'option<*i32>', and h(null) dereferences null in cb (SEGV, UBSan null).
+import "std/print.rin"
+strict: alias = *proc(p: *i32) -> i32;
+loose: alias = *proc(p: option<*i32>) -> i32;
+cb: proc(p: *i32) -> i32 = { return p*; }
+cl: proc(p: option<*i32>) -> i32 = { return 0; }
+main: proc() -> i32 = {
+    q: strict = cb;
+    r: loose = cl;
+    c: i32 = 0;
+    h: loose = c ? r : q;
+    printfmt("{}\n", h(null));
+    return 0;
+}

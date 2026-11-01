@@ -1,0 +1,9 @@
+// A '^const void' converts to a checked '*const T' (check_assignment_compatible lets a raw void source through to any pointer; region_flow_rejects only guards a raw destination): a 2-byte literal is read as a 512-byte struct, global-buffer-overflow under ASan.
+import "std/print.rin"
+big: struct = { a: [64]u64; }
+main: proc() -> i32 = {
+    v: ^const void = "a";
+    p: *const big = v;
+    printfmt("{}\n", p*.a[63]);
+    return 0;
+}

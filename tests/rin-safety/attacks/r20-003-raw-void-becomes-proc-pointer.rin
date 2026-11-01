@@ -1,0 +1,8 @@
+// A '^void' converts to a proc pointer: go's caller hands it a string literal, and the call jumps into the literal's bytes (SEGV on a non-executable page).
+import "std/print.rin"
+fn: alias = *proc() -> void;
+go: proc(v: ^void) -> void = { f: fn = v; f(); }
+main: proc() -> i32 = {
+    go("\xcc\xcc\xcc\xcc");
+    return 0;
+}

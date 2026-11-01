@@ -11359,6 +11359,8 @@ static TypeExpr *infer_expr_type_k(Expr *e, TypeScope *scope, Program *prog, mem
         /* What a call's arguments say about its result is about that call: the other arm may be anything. */
         if (right && right->region_from_args.length > 0) { right = clone_type_expr(arena, right); right->region_from_args = (string8){0}; }
         if (third && third->region_from_args.length > 0) { third = clone_type_expr(arena, third); third->region_from_args = (string8){0}; }
+        if (right && third && right->kind == Type_Ptr && third->kind == Type_Ptr && right->is_raw && third->is_raw &&
+            right->is_str != third->is_str) return right->is_str ? third : right;
         if (right && third && type_compatible(prog, right, third)) return right;
         if (right && third && type_compatible(prog, third, right)) return third;
         return right;
@@ -11943,8 +11945,8 @@ static bool type_compatible(Program *prog, TypeExpr *dst, TypeExpr *src) {
     /* A boolean means not zero; C's conversion of 0.5, or of 1 << 32, is not that. */
     if (g_safe_body && type_is_boolish(dst) && dst->kind == Type_Name && type_is_float(src)) return false;
     /* Into `*void` loses nothing, but out of it would make any type from any other. */
-    if (g_safe_body && type_is_void_pointer(src) && !src->is_null_literal && !src->is_raw && !type_is_void_pointer(dst) &&
-        (dst->kind == Type_Ptr || dst->kind == Type_Proc)) return false;
+    if (g_safe_body && type_is_void_pointer(src) && !src->is_null_literal && !type_is_void_pointer(dst) &&
+        ((dst->kind == Type_Ptr && !(dst->is_raw && src->is_raw)) || dst->kind == Type_Proc || type_slice_elem(dst))) return false;
     if (g_safety && type_is_checked_pointer(prog, dst) && !type_is_void_pointer(src)) {
         string8 dreg = type_region_of(prog, dst);
         if (dreg.length > 0) {
@@ -14640,6 +14642,18 @@ static void check_assignment_compatible(
     if (!dst || !src) return;
     safety_check_place_for_view(dst, src_expr, scope, prog, arena);
     if (region_flow_rejects(prog, dst, src, line, col)) return;
+    if (g_safe_body && src_expr && src_expr->kind == Expr_Ternary) {
+        TypeExpr *d = resolve_alias_type(prog, dst);
+        if (d && (d->kind == Type_Ptr || type_slice_elem(d) || d->kind == Type_Generic)) {
+            Expr *arms[2] = { src_expr->right, src_expr->third };
+            for (i32 i = 0; i < 2; i++) {
+                TypeExpr *at = arms[i] ? infer_expr_type(arms[i], scope, prog, arena) : null;
+                if (!at || arms[i]->kind == Expr_Ternary) continue;
+                if (region_flow_rejects(prog, dst, at, arms[i]->line, arms[i]->col)) return;
+                if (!type_compatible(prog, dst, at)) { type_error_incompatible(context, prog, dst, at, arms[i]->line, arms[i]->col, arena); return; }
+            }
+        }
+    }
     if (!type_compatible(prog, dst, src)) {
         type_error_incompatible(context, prog, dst, src, line, col, arena);
         return;
@@ -15468,6 +15482,12 @@ static bool region_flow_rejects(Program *prog, TypeExpr *dst, TypeExpr *src, i32
         !(type_is_void_pointer(s) && s->is_nullable)) {
         type_error_message("a 'str' lasts the whole program, and this C string may not: only a literal or another "
                            "'str' becomes one, or an unsafe block that vouches for it", line, col);
+        return true;
+    }
+    if (g_safe_body && s->kind == Type_Ptr && s->is_raw && type_is_void_pointer(s) && !type_is_void_pointer(d) &&
+        ((d->kind == Type_Ptr && !d->is_raw) || d->kind == Type_Proc || type_slice_elem(d))) {
+        type_error_message("a '^void' does not become a checked pointer, a slice or a proc in safe code: it could be any bytes, "
+                           "of any length", line, col);
         return true;
     }
     if (g_safe_body && d->kind == Type_Ptr && d->is_raw && s->kind == Type_Ptr && s->is_raw && !type_is_void_pointer(d) &&
@@ -17172,7 +17192,7 @@ static bool raw_from_param(Expr *e, TypeScope *scope, Program *prog, memops_aren
     if (e->kind == Expr_Ternary) {
         return raw_from_param(e->right, scope, prog, arena, depth + 1) || raw_from_param(e->third, scope, prog, arena, depth + 1);
     }
-    if (e->kind == Expr_Cast) return raw_from_param(e->inner, scope, prog, arena, depth + 1);
+    if (e->kind == Expr_Cast || e->kind == Expr_Addr || e->kind == Expr_Unary) return raw_from_param(e->inner, scope, prog, arena, depth + 1);
     if (e->kind == Expr_Name) {
         if (array_string8_contains(&g_raw_param_locals, e->name)) return true;
         for (i32 i = 0; i < g_check_proc->params.length; i++) {
@@ -17194,7 +17214,8 @@ static bool raw_from_param(Expr *e, TypeScope *scope, Program *prog, memops_aren
             }
             return false;
         }
-        return false;
+        /* `id(l&)*`: read out of what a call gave back, which came from its arguments. */
+        return root && root != e ? raw_from_param(root, scope, prog, arena, depth + 1) : false;
     }
     if (e->kind != Expr_Call) return false;
     TypeExpr *result = resolve_alias_type(prog, infer_expr_type(e, scope, prog, arena));
@@ -17276,10 +17297,22 @@ static bool raw_has_checked_source(Expr *e, TypeScope *scope, Program *prog, mem
         return raw_has_checked_source(e->right, scope, prog, arena, depth + 1) ||
                raw_has_checked_source(e->third, scope, prog, arena, depth + 1);
     }
-    if (e->kind == Expr_Cast) return raw_has_checked_source(e->inner, scope, prog, arena, depth + 1);
+    if (e->kind == Expr_Cast || e->kind == Expr_Addr || e->kind == Expr_Unary) return raw_has_checked_source(e->inner, scope, prog, arena, depth + 1);
     if (e->kind == Expr_Name) {
         Borrow *b = borrow_find(e->name);
         return b && b->paths.length + b->regions.length > 0;
+    }
+    if (e->kind == Expr_Field || e->kind == Expr_Index) {
+        Expr *root = e;
+        for (i32 hop = 0; root && hop < 32 && (root->kind == Expr_Field || root->kind == Expr_Index); hop++) root = root->base;
+        if (!root || (root->kind != Expr_Call && root->kind != Expr_Ternary && root->kind != Expr_Cast)) return false;
+        if (root->kind != Expr_Call) return raw_has_checked_source(root, scope, prog, arena, depth + 1);
+        /* A raw field of what a call gave back was stored under the raw rules; what the call was given
+           may be the raw value itself, read back: `id(l&)*`. */
+        for (i32 i = 0; i < root->args.length; i++) {
+            if (raw_has_checked_source((Expr *)root->args.data[i], scope, prog, arena, depth + 1)) return true;
+        }
+        return false;
     }
     if (e->kind != Expr_Call) return false;
     TypeExpr *result = resolve_alias_type(prog, infer_expr_type(e, scope, prog, arena));
@@ -19637,6 +19670,23 @@ static void type_check_ternary(Expr *e, TypeScope *scope, Program *prog, memops_
                 type_error_ternary_arms(right, third, e->line, e->col, arena);
                 return;
             }
+        }
+        /* Outside, the ternary is the weaker of the two; inside the pointer the arms must say the same
+           thing, since what is reached through it is read as one arm's type and written as the other's. */
+        bool inner_same = true;
+        if (right->kind == Type_Ptr && third->kind == Type_Ptr && !type_is_void_pointer(right) && !type_is_void_pointer(third)) {
+            inner_same = type_flow_same(prog, right->elem, third->elem, 1) && type_flow_same(prog, third->elem, right->elem, 1);
+        } else if (type_slice_elem(right) && type_slice_elem(third)) {
+            inner_same = type_flow_same(prog, type_slice_elem(right), type_slice_elem(third), 1) &&
+                         type_flow_same(prog, type_slice_elem(third), type_slice_elem(right), 1);
+        } else if ((right->kind == Type_Generic && third->kind == Type_Generic) || (right->kind == Type_Proc && third->kind == Type_Proc)) {
+            inner_same = type_flow_same(prog, right, third, 0) && type_flow_same(prog, third, right, 0);
+        }
+        if (!inner_same) {
+            type_error_message("the two arms say different things about what is inside the pointer, a region, whether it may be "
+                               "null, or a proc's signature: what the ternary gives would be read as one and written as the other",
+                               e->line, e->col);
+            return;
         }
     }
     LitKind right_kind = Lit_None;

@@ -1,0 +1,10 @@
+// A string literal becomes a non-const '^void', which then becomes a checked '*u64': the write lands in the read-only literal and past it (SEGV, or global-buffer-overflow under ASan).
+import "std/print.rin"
+big: struct = { a: [64]u64; }
+main: proc() -> i32 = {
+    v: ^void = "abc";
+    p: *big = v;
+    p*.a[40] = 7;
+    printfmt("{}\n", p*.a[40]);
+    return 0;
+}

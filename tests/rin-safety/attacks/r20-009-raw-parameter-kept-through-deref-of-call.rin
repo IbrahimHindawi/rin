@@ -1,0 +1,15 @@
+// raw_from_param follows a Field/Index only to a named root, and raw_has_checked_source does not follow it at all: 'id(l&)*' reads the raw parameter back through a call, so keep stores fmt_text of a scratch fmt in a global, read after scratch is cleared (use-after-poison under ASan).
+import "std/print.rin"
+import "std/fmt.rin"
+g: ^const c8 = "x";
+id: proc(x: *^const c8) -> *^const c8 = { return x; }
+keep: proc(s: ^const c8) -> void = { l: ^const c8 = s; g = id(l&)*; }
+main: proc() -> i32 = {
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 64);
+        fmt_char(f, 65);
+        keep(fmt_text(f));
+    }
+    print_cstr(g);
+    return 0;
+}

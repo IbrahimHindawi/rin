@@ -1,0 +1,16 @@
+// The same gap at new<T>'s value: 'new<^const c8>(permanent, id(l&)*)' keeps a raw parameter in permanent memory, here fmt_text of a scratch fmt, read after scratch is cleared (use-after-poison under ASan).
+import "std/print.rin"
+import "std/fmt.rin"
+held: option<*^const c8 in permanent> = null;
+id: proc(x: *^const c8) -> *^const c8 = { return x; }
+keep: proc(s: ^const c8) -> void = { l: ^const c8 = s; held = new<^const c8>(permanent, id(l&)*); }
+main: proc() -> i32 = {
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 64);
+        fmt_char(f, 65);
+        keep(fmt_text(f));
+    }
+    h: option<*^const c8 in permanent> = held;
+    if (h) { print_cstr(h*); }
+    return 0;
+}

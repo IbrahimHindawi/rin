@@ -1,0 +1,12 @@
+// expect: the two arms say different things
+loose: alias = *proc(p: option<*i32>) -> i32;
+strict: alias = *proc(p: *i32) -> i32;
+a: proc(p: option<*i32>) -> i32 = { return p ? p* : 0; }
+b: proc(p: *i32) -> i32 = { return p*; }
+c: b32 = 0;
+main: proc() -> i32 = {
+    r: loose = a;
+    q: strict = b;
+    h: loose = c ? r : q;
+    return h(null);
+}

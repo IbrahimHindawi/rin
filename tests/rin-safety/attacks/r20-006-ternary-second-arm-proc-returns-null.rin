@@ -1,0 +1,10 @@
+// A ternary's second arm is never held to the place's proc signature: a proc returning 'option<*i32>' goes into a pointer promising a '*i32', and the null it returns is dereferenced unchecked (SEGV, UBSan null).
+import "std/print.rin"
+a: proc() -> *i32 in permanent = { return new<i32>(permanent, 1); }
+b: proc() -> option<*i32 in permanent> = { return null; }
+main: proc() -> i32 = {
+    c: i32 = 0;
+    fp: *proc() -> *i32 in permanent = c ? a : b;
+    printfmt("{}\n", fp()*);
+    return 0;
+}

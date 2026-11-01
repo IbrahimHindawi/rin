@@ -1,0 +1,7 @@
+// expect: does not become a checked pointer
+big: struct = { a: [64]i32; }
+f: proc(v: ^const void) -> i32 = {
+    p: *const big = v;
+    return p*.a[63];
+}
+main: proc() -> i32 = { return 0; }
