@@ -1,0 +1,12 @@
+import "std/print.rin"
+said: [32]i32 = {};
+sn: u64 = 0;
+say: proc(v: i32) -> i32 = { said[sn] = v; sn += 1; return v; }
+show: proc() -> void = { for (i: u64 = 0; i < sn; i += 1) { printfmt("{} ", said[i]); } printfmt("\n"); sn = 0; }
+pr: proc(a: i32, b: i32) -> i32 = { return a * 10 + b; }
+gv: i32 = 1;
+bump: proc() -> i32 = { gv += 10; return gv; }
+S1: struct = { x: i32; }
+s: S1 = {};
+setx: proc() -> i32 = { s.x = 50; return 1; }
+main: proc() -> i32 = { gv = 1; gv += bump(); printfmt("{}\n", gv); s.x = 1; s.x += setx(); printfmt("{}\n", s.x); gv = 1; gv = gv + bump(); printfmt("{}\n", gv); s.x = 1; s.x = s.x + setx(); printfmt("{}\n", s.x); s.x = 2; s.x *= setx() + 1; printfmt("{}\n", s.x); s.x = 7; s.x /= setx(); printfmt("{}\n", s.x); return 0; }

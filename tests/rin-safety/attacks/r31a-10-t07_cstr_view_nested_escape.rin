@@ -1,0 +1,6 @@
+import "std/print.rin"
+import "std/cstr.rin"
+c: proc() -> i32 = { return 100; }
+mid: proc(s: []const c8, n: i32) -> []const c8 = { return s; }
+out: proc(s: []const c8, n: i32) -> i32 = { t: i32 = n; for (i: u64 = 0; i < s.length; i += 1) { t += cast(s[i], i32); } return t; }
+main: proc() -> i32 = { buf: [8]c8 = { 'a', 'b', 'c', 0 }; printfmt("{}\n", out(mid(cstr_view(cstr_of(buf)), c()), c())); return 0; }

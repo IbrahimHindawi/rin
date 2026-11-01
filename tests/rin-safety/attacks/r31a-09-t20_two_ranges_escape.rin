@@ -1,0 +1,5 @@
+import "std/print.rin"
+c: proc() -> i32 = { return 100; }
+id: proc(p: *[]i32, n: i32) -> *[]i32 = { return p; }
+out2: proc(p: *[]i32, q: *[]i32) -> i32 = { return p*[0] * 100 + q*[0]; }
+main: proc() -> i32 = { xs: [4]i32 = { 1, 2, 3, 4 }; s: []i32 = xs; printfmt("{}\n", out2(id(s[0..2]&, c()), id(s[2..4]&, c()))); return 0; }

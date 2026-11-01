@@ -1,0 +1,5 @@
+import "std/print.rin"
+pr: proc(a: i32, b: i32) -> i32 = { return a + b; }
+K: const u64 = 3;
+G: u64 = (K + sizeof(pr(1, 2))) + K;
+main: proc() -> i32 = { printfmt("{}\n", G); return 0; }

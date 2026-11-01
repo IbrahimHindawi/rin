@@ -1,0 +1,17 @@
+import "std/print.rin"
+said: [64]i32 = {};
+sn: u64 = 0;
+say: proc(v: i32) -> i32 = { said[sn] = v; sn += 1; return v; }
+show: proc() -> void = { for (i: u64 = 0; i < sn; i += 1) { printfmt("{} ", said[i]); } printfmt("\n"); sn = 0; }
+pr: proc(a: i32, b: i32) -> i32 = { return a * 10 + b; }
+gv: i32 = 1;
+bump: proc() -> i32 = { gv += 10; return gv; }
+F: alias = *proc(a: i32, b: i32) -> i32;
+a1: proc(a: i32, b: i32) -> i32 = { return 1000 + a * 10 + b; }
+a2: proc(a: i32, b: i32) -> i32 = { return 2000 + a * 10 + b; }
+fns: [2]F = { a1, a2 };
+H1: struct = { fn: F; }
+h: H1 = { .fn = a1 };
+hp: proc() -> *H1 = { _ = say(9); return h&; }
+getf: proc() -> F = { _ = say(8); return a1; }
+main: proc() -> i32 = { printfmt("{}\n", fns[cast(say(0), u64)](say(1), say(2))); show(); printfmt("{}\n", hp()*.fn(say(1), say(2))); show(); printfmt("{}\n", getf()(say(1), say(2))); show(); printfmt("{}\n", getf()(say(1), 2)); show(); return 0; }

@@ -1,0 +1,4 @@
+import "std/print.rin"
+g1: i32 = 1;
+bump: proc() -> i32 = { g1 += 10; return g1; }
+main: proc() -> i32 = { x: b32 = g1 == bump(); g1 = 1; y: i32 = 0; if (g1 == bump()) { y = 1; } printfmt("{} {}\n", x, y); return 0; }

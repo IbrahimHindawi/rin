@@ -1,0 +1,13 @@
+import "std/print.rin"
+said: [64]i32 = {};
+sn: u64 = 0;
+say: proc(v: i32) -> i32 = { said[sn] = v; sn += 1; return v; }
+show: proc() -> void = { for (i: u64 = 0; i < sn; i += 1) { printfmt("{} ", said[i]); } printfmt("\n"); sn = 0; }
+pr: proc(a: i32, b: i32) -> i32 = { return a * 10 + b; }
+gv: i32 = 1;
+bump: proc() -> i32 = { gv += 10; return gv; }
+A: struct = { v: [2]i32; }
+as: [2]A = {};
+bs: [2]A = { { .v = { 1, 2 } }, { .v = { 3, 4 } } };
+mkv: proc(i: i32) -> A = { _ = say(i); return bs[1]; }
+main: proc() -> i32 = { as[cast(say(1), u64)].v = bs[cast(say(0), u64)].v; show(); printfmt("{}\n", as[1].v[1]); as[cast(say(0), u64)].v = mkv(5).v; show(); printfmt("{}\n", as[0].v[1]); return 0; }

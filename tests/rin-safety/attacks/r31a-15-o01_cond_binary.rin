@@ -1,0 +1,9 @@
+import "std/print.rin"
+said: [32]i32 = {};
+sn: u64 = 0;
+say: proc(v: i32) -> i32 = { said[sn] = v; sn += 1; return v; }
+show: proc() -> void = { for (i: u64 = 0; i < sn; i += 1) { printfmt("{} ", said[i]); } printfmt("\n"); sn = 0; }
+pr: proc(a: i32, b: i32) -> i32 = { return a * 10 + b; }
+gv: i32 = 1;
+bump: proc() -> i32 = { gv += 10; return gv; }
+main: proc() -> i32 = { if (gv == bump()) { printfmt("same\n"); } else { printfmt("diff\n"); } gv = 1; i: i32 = 0; while (gv + i < bump()) { i += 1; if (i > 2) { break; } } printfmt("{}\n", i); gv = 1; if (say(1) < say(2)) { show(); } do { gv += 0; } while (gv == bump()); printfmt("{}\n", gv); gv = 1; for (j: i32 = 0; gv == bump(); j += 1) { printfmt("in\n"); } printfmt("{}\n", gv); return 0; }

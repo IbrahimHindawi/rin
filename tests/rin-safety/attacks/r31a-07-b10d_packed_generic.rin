@@ -1,0 +1,6 @@
+import "std/print.rin"
+P: struct[packed] = { a: u8; b: i32; }
+Q: struct[packed] = { a: u8; b: i64; }
+mk: proc<T>(v: i32) -> T = { t: T = {}; t.b = cast(v + one(), i32); return t; }
+one: proc() -> i32 = { return 1; }
+main: proc() -> i32 = { p: P = mk<P>(3); printfmt("{}\n", p.b); return 0; }

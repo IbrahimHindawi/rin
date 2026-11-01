@@ -803,6 +803,7 @@ struct Stmt {
     bool is_uninitialized; // '= ?': deliberately left with indeterminate contents
     bool is_discard;       // '_ = expr;': a Stmt_Expr whose value is thrown away on purpose
     bool is_array_copy;    // `xs = ys` or `xs: [4]T = ys`: C does not assign arrays
+    bool place_packed; // the checker says, for the emitter, which has no scope to ask
     /* Stmt_Region: `scratch: region of frame = { }` says scratch lives inside
        frame, which must be open. Empty for a plain `frame: region = { }`. Each
        has an arena of its own. The body is in while_body. */
@@ -19522,6 +19523,7 @@ static void type_check_stmt(
     g_diag_import_chain = s->import_chain;
     if (s->kind == Stmt_Assign) {
         safety_check_open_cstr_beside(s->lhs, s->expr, scope, prog, arena);
+        if (s->lhs) s->place_packed = expr_place_is_packed(s->lhs, scope, prog, arena, 0);
     }
     if (s->kind == Stmt_Goto || s->kind == Stmt_Label) {
         safety_error("goto and labels are not safe code: a jump can skip a test, a declaration or a kill; use a loop, "
@@ -23210,8 +23212,10 @@ static bool emit_defined_compound(memops_arena *arena, string8 *out, Stmt *s, Ty
     return false;
 }
 
+static bool emit_expr_in_order(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name);
 static void emit_expr_condition(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
     if (e && e->kind == Expr_Binary) {
+        if (emit_expr_in_order(arena, out, e, sub, generic_name)) return;
         emit_binary_expr(arena, out, e, sub, generic_name, false);
         return;
     }
@@ -23379,12 +23383,27 @@ static i32 g_emit_unevaluated; // inside sizeof: C never runs it, so it needs no
 /* The order of evaluation is rin's: left to right. C leaves it open, and clang on Windows takes a call's arguments
    right to left, so `f(g.p*.x, clear())` read the field on one target and not on another. */
 typedef struct OrderScan { bool call; bool holds; } OrderScan;
-static void visit_order_scan(Expr *e, void *ctx, memops_arena *arena) {
-    (void)arena;
-    OrderScan *scan = (OrderScan *)ctx;
+static void order_scan(Expr *e, OrderScan *scan) {
+    if (!e) return;
+    /* sizeof runs nothing, and a folded constant is a number: C needs some of these to stay constants. */
+    if (e->kind == Expr_SizeofType || e->kind == Expr_AlignofType || e->literal_fold) return;
     if (e->kind == Expr_Call) scan->call = true;
-    /* A temporary in the block a temporary's value leaves: left where it is, in the statement's own block. */
+    /* A compound literal lives to the end of its block, and a value may leave the block the temporaries are in with
+       its address: cstr_of's copy, a range's slice, `S{...}&`. Those stay in the statement's own block, unordered,
+       under the checker's rules. */
     if (e->kind == Expr_Addr && e->inner && (e->inner->kind == Expr_InitList || e->inner->kind == Expr_CompoundInit)) scan->holds = true;
+    if (e->kind == Expr_Index && e->index_end) scan->holds = true;
+    if (e->kind == Expr_Call && e->cstr_copy_count.length > 0) scan->holds = true;
+    /* A returned struct lasts its expression, and an array in it would decay to a pointer that does not. */
+    if (e->kind == Expr_Field && e->base && e->base->kind == Expr_Call) scan->holds = true;
+    order_scan(e->inner, scan);
+    order_scan(e->left, scan);
+    order_scan(e->right, scan);
+    order_scan(e->third, scan);
+    order_scan(e->base, scan);
+    order_scan(e->index_expr, scan);
+    order_scan(e->index_end, scan);
+    for (i32 i = 0; i < e->args.length; i++) order_scan((Expr *)e->args.data[i], scan);
 }
 
 static bool expr_is_order_free(Expr *e) {
@@ -23397,11 +23416,12 @@ static bool expr_is_order_free(Expr *e) {
 }
 
 static bool operands_need_order(Expr **operands, i32 count, memops_arena *arena) {
+    (void)arena;
     i32 with_call = 0;
     i32 not_free = 0;
     for (i32 i = 0; i < count; i++) {
         OrderScan scan = {0};
-        if (operands[i]) expr_walk(operands[i], visit_order_scan, &scan, arena);
+        order_scan(operands[i], &scan);
         if (scan.holds) return false;
         if (scan.call) with_call++;
         if (!expr_is_order_free(operands[i])) not_free++;
@@ -23433,19 +23453,27 @@ static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, s
 /* Answers whether it wrote the expression. */
 static bool emit_expr_in_order(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
     if (g_emit_unevaluated) return false;
-    if (e->kind == Expr_Call && !call_is_new(e) && !call_is_must(e) && e->args.length >= 2 &&
-        !string8_equals_cstr(&e->name, "new_slice") && operands_need_order((Expr **)e->args.data, e->args.length, arena)) {
-        Vec_voidptr written = e->args;
-        Vec_voidptr reads = ptr_array_reserve(arena, written.length);
-        emit_cstr(arena, out, "({ ");
-        for (i32 i = 0; i < written.length; i++) {
-            ptr_array_append(arena, &reads, emit_order_temp(arena, out, (Expr *)written.data[i], sub, generic_name));
+    if (e->kind == Expr_Call && !call_is_new(e) && !call_is_must(e) && e->args.length + (e->base ? 1 : 0) >= 2 &&
+        !string8_equals_cstr(&e->name, "new_slice")) {
+        Vec_voidptr all = ptr_array_reserve(arena, e->args.length + 1);
+        if (e->base) ptr_array_append(arena, &all, e->base);
+        for (i32 i = 0; i < e->args.length; i++) ptr_array_append(arena, &all, e->args.data[i]);
+        if (operands_need_order((Expr **)all.data, all.length, arena)) {
+            Vec_voidptr written = e->args;
+            Expr *written_base = e->base;
+            Vec_voidptr reads = ptr_array_reserve(arena, written.length);
+            emit_cstr(arena, out, "({ ");
+            if (e->base) e->base = emit_order_temp(arena, out, e->base, sub, generic_name);
+            for (i32 i = 0; i < written.length; i++) {
+                ptr_array_append(arena, &reads, emit_order_temp(arena, out, (Expr *)written.data[i], sub, generic_name));
+            }
+            e->args = reads;
+            emit_expr(arena, out, e, sub, generic_name);
+            e->args = written;
+            e->base = written_base;
+            emit_cstr(arena, out, "; })");
+            return true;
         }
-        e->args = reads;
-        emit_expr(arena, out, e, sub, generic_name);
-        e->args = written;
-        emit_cstr(arena, out, "; })");
-        return true;
     }
     if (e->kind == Expr_Binary && e->op != Token_AmpAmp && e->op != Token_PipePipe) {
         Expr *sides[2] = { e->left, e->right };
@@ -24042,32 +24070,55 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
     }
     if (s->kind == Stmt_Assign) {
         /* The place first, in a statement of its own, then the value: C gives the two sides no order, and a call in
-           either could change what the other reads. */
-        if (g_safety && !s->is_array_copy && s->lhs && s->expr && s->lhs->kind != Expr_Name && s->expr->kind != Expr_ZeroInit) {
+           either could change what the other reads. A compound assignment then reads the old value after the value
+           has run, as Rust does for numbers: `x += f()` sees what f left in x. A packed place has no pointer to take,
+           so it stays as C has it, under the checker's rules. */
+        if (g_safety && s->lhs && s->expr && s->expr->kind != Expr_ZeroInit) {
             OrderScan place = {0};
             OrderScan value = {0};
-            expr_walk(s->lhs, visit_order_scan, &place, arena);
-            expr_walk(s->expr, visit_order_scan, &value, arena);
-            if ((place.call || value.call) && !place.holds && !value.holds) {
-                char name[40];
-                i32 temp = ++g_emit_order_temp;
-                snprintf(name, sizeof(name), "(*rin_t%d)", temp);
-                Expr *place_read = expr_new(arena, Expr_Name);
-                place_read->name = string8_from_cstr(arena, name);
-                place_read->line = s->lhs->line;
-                place_read->col = s->lhs->col;
-                place_read->checked = true;
-                place_read->names_no_local = true;
-                snprintf(name, sizeof(name), "rin_t%d", temp);
-                emit_cstr(arena, out, "{ __auto_type ");
-                emit_cstr(arena, out, name);
-                emit_cstr(arena, out, " = &(");
-                emit_expr(arena, out, s->lhs, sub, generic_name);
-                emit_cstr(arena, out, "); ");
-                Expr *written = s->lhs;
-                s->lhs = place_read;
+            order_scan(s->lhs, &place);
+            order_scan(s->expr, &value);
+            bool free_of_temps = !place.holds && !value.holds;
+            bool any_call = place.call || value.call;
+            if (free_of_temps && any_call && s->is_array_copy && s->lhs->kind != Expr_Name) {
+                /* The place in a temporary and the value where it is, inside the one call: it comes second in any
+                   order, and an array in a returned struct lasts only that expression. */
+                emit_cstr(arena, out, "{ ");
+                Expr *written_place = s->lhs;
+                s->lhs = emit_order_temp(arena, out, written_place, sub, generic_name);
                 emit_stmt_inner(arena, out, s, sub, generic_name);
-                s->lhs = written;
+                s->lhs = written_place;
+                emit_cstr(arena, out, "}\n");
+                return;
+            }
+            bool take_place = free_of_temps && any_call && !s->is_array_copy && !s->place_packed && s->lhs->kind != Expr_Name;
+            bool take_value = free_of_temps && value.call && !s->is_array_copy && s->assign_op != Token_Equal;
+            if (take_place || take_value) {
+                Expr *written_place = s->lhs;
+                Expr *written_value = s->expr;
+                emit_cstr(arena, out, "{ ");
+                if (take_place) {
+                    char name[40];
+                    i32 temp = ++g_emit_order_temp;
+                    snprintf(name, sizeof(name), "(*rin_t%d)", temp);
+                    Expr *place_read = expr_new(arena, Expr_Name);
+                    place_read->name = string8_from_cstr(arena, name);
+                    place_read->line = s->lhs->line;
+                    place_read->col = s->lhs->col;
+                    place_read->checked = true;
+                    place_read->names_no_local = true;
+                    snprintf(name, sizeof(name), "rin_t%d", temp);
+                    emit_cstr(arena, out, "__auto_type ");
+                    emit_cstr(arena, out, name);
+                    emit_cstr(arena, out, " = &(");
+                    emit_expr(arena, out, s->lhs, sub, generic_name);
+                    emit_cstr(arena, out, "); ");
+                    s->lhs = place_read;
+                }
+                if (take_value) s->expr = emit_order_temp(arena, out, s->expr, sub, generic_name);
+                emit_stmt_inner(arena, out, s, sub, generic_name);
+                s->lhs = written_place;
+                s->expr = written_value;
                 emit_cstr(arena, out, "}\n");
                 return;
             }

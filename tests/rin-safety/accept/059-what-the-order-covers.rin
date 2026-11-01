@@ -1,0 +1,46 @@
+// The callee before its arguments, a comparison in a condition, an array copy, a compound assignment and a packed place.
+import "std/print.rin"
+said: [16]i32 = {};
+n: u64 = 0;
+say: proc(v: i32) -> i32 = { said[n] = v; n += 1; return v; }
+show: proc() -> void = {
+    for (i: u64 = 0; i < n; i += 1) { printfmt("{} ", said[i]); }
+    printfmt("\n");
+    n = 0;
+}
+add: proc(a: i32, b: i32) -> i32 = { return a + b; }
+sub_: proc(a: i32, b: i32) -> i32 = { return a - b; }
+F: alias = *proc(a: i32, b: i32) -> i32;
+fns: [2]F = { add, sub_ };
+H: struct = { fn: *proc(a: i32, b: i32) -> i32; }
+holder: H = { .fn = add };
+hp: proc() -> *H in permanent = { _ = say(8); return holder&; }
+g1: i32 = 0;
+bump: proc() -> i32 = { g1 += 1; return g1; }
+m: [2][2]i32 = {};
+o: [2][2]i32 = { { 1, 2 }, { 3, 4 } };
+gv: i32 = 10;
+setv: proc() -> i32 = { gv = 20; return 2; }
+P: struct[packed] = { a: u8; b: i32; }
+gp: P = {};
+val: proc() -> i32 = { return 7; }
+main: proc() -> i32 = {
+    printfmt("{}\n", fns[cast(say(0), u64)](say(1), say(2)));
+    show();
+    printfmt("{}\n", hp()*.fn(say(1), say(2)));
+    show();
+    // The read of g1 comes first, in a condition as in a value.
+    if (g1 == bump()) { printfmt("same\n"); } else { printfmt("before\n"); }
+    x: b32 = g1 == bump();
+    printfmt("{}\n", x);
+    m[cast(say(1), u64)] = o[cast(say(0), u64)];
+    show();
+    printfmt("{} {} {} {}\n", m[0][0], m[1][0], m[1][1], o[0][1]);
+    // The value runs, then the old value is read.
+    gv += setv();
+    printfmt("{}\n", gv);
+    gp.b = val();
+    printfmt("{}\n", gp.b);
+    printfmt("{}\n", sizeof(P) + cast(val(), u64) - cast(val(), u64));
+    return 0;
+}

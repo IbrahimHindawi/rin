@@ -1,0 +1,6 @@
+import "std/print.rin"
+import "std/cstr.rin"
+c: proc() -> i32 = { return 100; }
+mid: proc(s: []const c8, n: i32) -> []const c8 = { return s; }
+out2: proc(a: []const c8, b: []const c8) -> i32 = { return cast(a[0], i32) * 1000 + cast(b[0], i32); }
+main: proc() -> i32 = { x: [8]c8 = { 'a', 'b', 'c', 0 }; y: [8]c8 = { 'x', 'y', 'z', 0 }; printfmt("{}\n", out2(mid(cstr_view(cstr_of(x)), c()), mid(cstr_view(cstr_of(y)), c()))); return 0; }

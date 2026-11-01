@@ -1,0 +1,4 @@
+import "std/print.rin"
+P: struct[packed] = { a: u8; b: i32; }
+val: proc() -> i32 = { return 7; }
+main: proc() -> i32 = { q: *P in permanent = new<P>(permanent, {}); q*.b = val(); s: []P in permanent = new_slice<P>(permanent, 3); s[1].b = val(); printfmt("{} {}\n", q*.b, s[1].b); return 0; }

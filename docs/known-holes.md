@@ -15,15 +15,18 @@ That is a statement about what has been found. Rounds keep finding more, so expe
 
 ## Order of evaluation still left to C
 
-Calls, binary operators and assignments run left to right, in `emit_expr_in_order` and the assignment case of
-`emit_stmt_inner`. These do not yet, and rest on a checker rule against a call that could write beside a read:
+A call (its callee first, then its arguments), binary operators and assignments run left to right, in
+`emit_expr_in_order` and the assignment case of `emit_stmt_inner`. An assignment works out its place, then its value;
+a compound assignment reads the old value after that, so `x += f()` sees what `f` left in `x`, as Rust does for
+numbers. These are not ordered yet, and rest on a checker rule against a call that could write beside a read:
 
 | Where | The rule it rests on | Why it matters |
 |---|---|---|
 | An index against its base, `a()[b()]` | `safety_check_open_cstr_beside`, `narrow_guard_unsequenced`, "read twice by its bounds check" | Those rules have leaked before |
 | The members of an initializer, `{ a(), b() }` | The same | The same |
 | A `for` step's assignment, which has no block to take a temporary | The same | The same |
-| An operand taking the address of a compound literal | The same | Left alone for the literal's lifetime |
+| An operand with a temporary in the way: `S{...}&`, `cstr_of`'s copy, a range, a field of a returned struct | The same | A nested `({ })` would end it while a value still points at it |
+| An assignment to a packed place | The same | A pointer to the field would lose its packed access |
 
 ## The checker and the emitter disagree, and C refuses
 
@@ -37,14 +40,21 @@ checker has signed off on something the emitter cannot write:
 - `case N` beside a local `N`.
 - A struct named `key` as a generic's argument: `key key` in C.
 - `reflect<>&`, `reflect_field<>&`, `reflect_variant<>&` and `FILE<>&`: an undeclared table.
-- A proc returning a proc pointer: emitted as `i32 * pick(...)`.
+- A proc returning a proc pointer, and an array of them written without an alias: emitted as `i32 * pick(...)` and
+  `i32 * fns[2]`.
 - An alias of an enum, whose typedef comes before the enum.
 - `sizeof(q[0])` on a slice.
 - A float cast to `long`.
 
+## A lost write, not a memory error
+
+`vec<i32>at(v, 0)* = grow(v);` writes through the place worked out first, into the old storage, so the write is lost.
+The old storage stays valid, so it is no memory error. The same statement through a local is refused as stale; written
+inline it is not. The same goes for a stale pointer passed beside a call that grows.
+
 ## Not attacked yet
 
-- Anything since the left-to-right emitter change, until its round reports.
+- Anything since round 31, which attacked the first two slices of the left-to-right change.
 - Threads: the claim is single-threaded.
 - `gcc`: the safety suites and the attack corpus are run with clang, and only the course check runs with `gcc` on Linux.
 - Long runs of the engine under the sanitizers: its smoke test is short, and is not a sanitizer build.

@@ -1,0 +1,5 @@
+import "std/print.rin"
+I: struct = { x: i32; y: i64; }
+P: struct[packed] = { a: u8; i: I; v: [2]i32; }
+val: proc() -> i32 = { return 7; }
+main: proc() -> i32 = { o: P = {}; o.i.x = val(); o.v[1] = val(); printfmt("{} {}\n", o.i.x, o.v[1]); return 0; }
