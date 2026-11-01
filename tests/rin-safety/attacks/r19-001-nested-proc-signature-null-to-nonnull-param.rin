@@ -1,0 +1,11 @@
+// proc_signature_same compares one level, and type_flow_same falls through on Type_Proc, so a proc type inside a proc type is never compared; an alias makes the C agree. take is given cb through f's signature and calls it with null: null dereference in cb (UBSan null, or SEGV).
+import "std/print.rin"
+strict: alias = *proc(p: *i32) -> i32;
+loose: alias = *proc(p: option<*i32>) -> i32;
+cb: proc(p: *i32) -> i32 = { return p*; }
+take: proc(c: loose) -> i32 = { return c(null); }
+main: proc() -> i32 = {
+    f: *proc(c: strict) -> i32 = take;
+    printfmt("{}\n", f(cb));
+    return 0;
+}

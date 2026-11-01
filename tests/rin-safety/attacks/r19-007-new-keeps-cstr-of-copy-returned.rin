@@ -1,0 +1,14 @@
+// new<^const c8> keeps the private copy cstr_of makes directly, and the region pointer holding it is returned. ASan: stack-use-after-return in printf.
+import "std/print.rin"
+import "std/cstr.rin"
+level: region global;
+keep: proc() -> *^const c8 in level = {
+    a: [4]c8 = {};
+    a[0] = 65;
+    return new<^const c8>(level, cstr_of(a));
+}
+main: proc() -> i32 = {
+    h: *^const c8 in level = keep();
+    printfmt("{}\n", h*);
+    return 0;
+}

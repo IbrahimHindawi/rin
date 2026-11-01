@@ -1,0 +1,13 @@
+// the same through a callee: rs is called by name and go is known to reset, yet p is still readable after it. ASan: use-after-poison in printf.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region global;
+gf: option<*fmt in level> = null;
+rs: proc() -> void = { reset level; }
+go: proc(p: ^const c8) -> void = { rs(); print_cstr(p); }
+main: proc() -> i32 = {
+    gf = fmt_make(level, 8);
+    fmt_char(unwrap(gf), 65);
+    go(fmt_text(unwrap(gf)));
+    return 0;
+}

@@ -1,0 +1,14 @@
+// new<^const c8> stores its value in a region with no raw_keep_check, so a raw pointer into scratch outlives it; h is declared in level, so it is never reported dead when scratch ends. ASan: use-after-poison in printf.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region global;
+main: proc() -> i32 = {
+    h: option<*^const c8 in level> = null;
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 8);
+        fmt_char(f, 65);
+        h = new<^const c8>(level, fmt_text(f));
+    }
+    if (h) { printfmt("{}\n", h*); }
+    return 0;
+}

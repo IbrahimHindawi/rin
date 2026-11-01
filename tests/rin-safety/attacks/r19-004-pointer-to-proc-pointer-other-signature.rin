@@ -1,0 +1,12 @@
+// type_flow_same treats the proc type at the end of '**proc' as the same whatever it says, so a place holding a proc that takes '*i32' is read through a pointer saying it takes 'option<*i32>': h(null) calls cb: null dereference in cb (UBSan null, or SEGV).
+import "std/print.rin"
+strict: alias = *proc(p: *i32) -> i32;
+loose: alias = *proc(p: option<*i32>) -> i32;
+cb: proc(p: *i32) -> i32 = { return p*; }
+main: proc() -> i32 = {
+    q: strict = cb;
+    pp: *loose = q&;
+    h: loose = pp*;
+    printfmt("{}\n", h(null));
+    return 0;
+}

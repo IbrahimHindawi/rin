@@ -239,10 +239,6 @@ r18-f05-index-at-far.rin
 r18-j01-empty-ops.rin
 r18-j14-vec-pop-empty-pointer.rin
 r18-j17-hash-first-empty.rin
-r18-001-asset-reload-name-after-reset.rin
-r18-002-level-title-unwrap-after-reset.rin
-r18-003-frame-label-after-frame-reset.rin
-r18-004-vec-element-name-after-reset.rin
 r18-005-cstr-terminator-overwritten-by-alias.rin
 r18-006-cstr-global-array-filled-by-callee.rin
 r18-007-cstr-table-entry-renamed-in-callee.rin

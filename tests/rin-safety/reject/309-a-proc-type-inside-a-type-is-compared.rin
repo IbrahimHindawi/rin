@@ -1,0 +1,9 @@
+// expect: a pointer inside
+loose: alias = *proc(p: option<*i32>) -> i32;
+strict: alias = *proc(p: *i32) -> i32;
+cb: proc(p: *i32) -> i32 = { return p*; }
+main: proc() -> i32 = {
+    q: strict = cb;
+    pp: *loose = q&;
+    return 0;
+}

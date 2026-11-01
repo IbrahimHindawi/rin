@@ -1,0 +1,12 @@
+// the same in a generic: T is raw in this instance, so the parameter has no record and survives the reset. ASan: use-after-poison in printf.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region global;
+gf: option<*fmt in level> = null;
+go: proc<T>(p: T) -> void = { reset level; printfmt("{}\n", p); }
+main: proc() -> i32 = {
+    gf = fmt_make(level, 8);
+    fmt_char(unwrap(gf), 65);
+    go<^const c8>(fmt_text(unwrap(gf)));
+    return 0;
+}

@@ -1,0 +1,4 @@
+// expect: this proc can reset a region
+level: region global;
+f: proc(s: ^const c8) -> void = { reset level; }
+main: proc() -> i32 = { return 0; }

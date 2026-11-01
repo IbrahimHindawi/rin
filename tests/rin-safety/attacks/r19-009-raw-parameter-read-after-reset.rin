@@ -1,0 +1,12 @@
+// reset_kills walks the borrow records, and a raw parameter has none: go resets level and then reads p, which points into a fmt buffer in level; it is reached through a global, so the call site has no local to kill. ASan: use-after-poison in printf.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region global;
+gf: option<*fmt in level> = null;
+go: proc(p: ^const c8) -> void = { reset level; print_cstr(p); }
+main: proc() -> i32 = {
+    gf = fmt_make(level, 8);
+    fmt_char(unwrap(gf), 65);
+    go(fmt_text(unwrap(gf)));
+    return 0;
+}

@@ -1,0 +1,15 @@
+// new<^const c8> keeps a raw parameter past the call it was given to, which raw_param_store_check exists to stop; the private copy cstr_of made is in outer's frame. ASan: stack-use-after-return in printf.
+import "std/print.rin"
+import "std/cstr.rin"
+level: region global;
+keep: proc(p: ^const c8) -> *^const c8 in level = { return new<^const c8>(level, p); }
+outer: proc() -> *^const c8 in level = {
+    a: [4]c8 = {};
+    a[0] = 65;
+    return keep(cstr_of(a));
+}
+main: proc() -> i32 = {
+    h: *^const c8 in level = outer();
+    printfmt("{}\n", h*);
+    return 0;
+}

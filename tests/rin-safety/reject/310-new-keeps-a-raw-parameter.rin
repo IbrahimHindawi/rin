@@ -1,0 +1,4 @@
+// expect: raw
+h: struct = { p: ^const c8; }
+f: proc(r: region R, s: ^const c8) -> *h in R = { return new<h>(r, { s }); }
+main: proc() -> i32 = { return 0; }

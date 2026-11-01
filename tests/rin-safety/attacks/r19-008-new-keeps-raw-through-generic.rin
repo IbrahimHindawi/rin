@@ -1,0 +1,15 @@
+// the same through a generic of the program's own: new<T> in mk<^const c8> takes v, a raw parameter in this instance, and keeps it. ASan: use-after-poison in printf.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region global;
+mk: proc<T>(r: region R, v: T) -> *T in R = { return new<T>(r, v); }
+main: proc() -> i32 = {
+    h: option<*^const c8 in level> = null;
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 8);
+        fmt_char(f, 65);
+        h = mk<^const c8>(level, fmt_text(f));
+    }
+    if (h) { printfmt("{}\n", h*); }
+    return 0;
+}

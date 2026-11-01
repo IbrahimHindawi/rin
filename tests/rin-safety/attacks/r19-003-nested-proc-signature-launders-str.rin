@@ -1,0 +1,18 @@
+// the same gap on 'str', which lasts: keeper keeps a str, and runner hands its callback the private copy cstr_of makes on runner's stack. ASan: stack-use-after-return in printf.
+import "std/print.rin"
+import "std/cstr.rin"
+g: str = "x";
+lasting: alias = *proc(s: str) -> void;
+brief: alias = *proc(s: ^const c8) -> void;
+keeper: proc(s: str) -> void = { g = s; }
+runner: proc(c: brief) -> void = {
+    a: [4]c8 = {};
+    a[0] = 65;
+    c(cstr_of(a));
+}
+main: proc() -> i32 = {
+    f: *proc(c: lasting) -> void = runner;
+    f(keeper);
+    printfmt("{}\n", g);
+    return 0;
+}

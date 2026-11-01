@@ -15339,12 +15339,22 @@ static void safety_check_zeroed(const char *what, Program *prog, TypeExpr *type,
    write through either is a write to both: the two must say the same thing about
    every pointer inside. A pointer in `a` naming no region can only be read, so it
    promises nothing; a region still to be bound by the call matches anything. */
+static bool proc_signature_same(Program *prog, TypeExpr *a, TypeExpr *b);
+static i32 g_signature_depth;
 static bool type_flow_same(Program *prog, TypeExpr *a, TypeExpr *b, i32 depth) {
     if (!a || !b) return true;
     if (depth > 16) return false;
     a = resolve_alias_type(prog, a);
     b = resolve_alias_type(prog, b);
     if (!a || !b) return true;
+    if (a->kind == Type_Proc || b->kind == Type_Proc) {
+        if (a->kind != b->kind) return false;
+        if (g_signature_depth > 8) return false;
+        g_signature_depth++;
+        bool same = proc_signature_same(prog, a, b);
+        g_signature_depth--;
+        return same;
+    }
     if (a->kind == Type_Ptr && b->kind == Type_Ptr) {
         if (type_is_void_pointer(a) || type_is_void_pointer(b)) return true;
         if (a->is_raw != b->is_raw || a->is_str != b->is_str || a->is_nullable != b->is_nullable) return false;
@@ -15687,6 +15697,8 @@ static void type_check_new_call(Expr *call, TypeScope *scope, Program *prog, mem
         Expr *value = (Expr *)call->args.data[1];
         TypeExpr *actual = infer_expr_type(value, scope, prog, arena);
         check_assignment_compatible("new's value", prog, t, actual, value, scope, value->line, value->col, arena);
+        raw_keep_check(t, value, scope, prog, arena);
+        raw_param_store_check(t, value, scope, prog, arena);
         if (value->kind == Expr_ZeroInit) safety_check_zeroed("a value made by new", prog, t, arena, call->line, call->col);
     } else {
         safety_check_zeroed("a value made by new", prog, t, arena, call->line, call->col);
@@ -20530,6 +20542,29 @@ static Vec_voidptr *proc_instance_body(ProcDecl *p, TypeSub sub, bool make, memo
     return body;
 }
 
+static bool type_holds_raw(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth) {
+    TypeExpr *r = resolve_alias_type(prog, type);
+    if (!r || depth > 16) return false;
+    if (type_is_proc_pointer(prog, r)) return false;
+    if (r->kind == Type_Ptr) {
+        if (r->is_raw) return !r->is_str && !type_is_void_pointer(r);
+        return type_holds_raw(prog, r->elem, arena, depth + 1);
+    }
+    if (r->kind == Type_Array) return type_holds_raw(prog, r->elem, arena, depth + 1);
+    if (type_slice_elem(r)) return type_holds_raw(prog, type_slice_elem(r), arena, depth + 1);
+    if (r->kind != Type_Name && r->kind != Type_Generic) return false;
+    TypeSub sub = {0};
+    StructDecl *decl = lookup_aggregate_decl(prog, r, &sub, arena);
+    if (!decl || decl->is_external || path_is_std(decl->source_path)) return false;
+    for (i32 i = 0; i < decl->fields.length; i++) {
+        Field *f = (Field *)decl->fields.data[i];
+        if (!f->type) continue;
+        TypeExpr *ft = sub.has ? substitute_type_sub(arena, f->type, sub) : f->type;
+        if (type_holds_raw(prog, ft, arena, depth + 1)) return true;
+    }
+    return false;
+}
+
 static void type_check_proc_body(
     Program *prog,
     ProcDecl *p,
@@ -20625,6 +20660,12 @@ static void type_check_proc_body(
     for (i32 j = 0; j < p->params.length; j++) {
         Param *param = (Param *)p->params.data[j];
         TypeExpr *param_type = type_scope_apply_sub(&scope, arena, param->type);
+        /* main's arguments are the C runtime's, in no region. */
+        if (g_safety && !path_is_std(p->source_path) && p->resets.length > 0 && !string8_equals_cstr(&p->name, "main") &&
+            type_holds_raw(prog, param_type, arena, 0)) {
+            type_error_message("this proc can reset a region, and a raw parameter may point into it, with nothing to say "
+                               "it is gone: take a slice, or an index", param->line, param->col);
+        }
         if (!p->answers_for_signature) safety_check_carrier_value("a parameter", prog, param_type, arena, param->line, param->col);
         check_type_regions_wf(prog, param_type, param->line, param->col, arena);
         if (g_safety && param_type && param_type->kind == Type_Region && region_rank(prog, param_type->region) >= 0 &&

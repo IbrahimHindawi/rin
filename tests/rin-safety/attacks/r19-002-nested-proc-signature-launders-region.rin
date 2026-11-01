@@ -1,0 +1,14 @@
+// the same gap on regions: keeper keeps a pointer it was promised lives in permanent, and runner hands its callback a local's address; f's signature lets one be passed for the other. ASan: stack-use-after-return at g.p*.
+import "std/print.rin"
+holder: struct = { p: option<*i32 in permanent>; }
+g: holder = {};
+kept: alias = *proc(p: *i32 in permanent) -> void;
+brief: alias = *proc(p: *i32) -> void;
+keeper: proc(p: *i32 in permanent) -> void = { g.p = p; }
+runner: proc(c: brief) -> void = { x: i32 = 7; c(x&); }
+main: proc() -> i32 = {
+    f: *proc(c: kept) -> void = runner;
+    f(keeper);
+    if (g.p) { printfmt("{}\n", g.p*); }
+    return 0;
+}
