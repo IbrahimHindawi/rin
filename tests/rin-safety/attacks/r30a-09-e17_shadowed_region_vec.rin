@@ -1,0 +1,20 @@
+// A vec made in the inner region, by a call, kept past it.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+build: proc(r: region R) -> *vec<i32> in R = {
+    v: *vec<i32> in R = vec<i32>make(r, 2);
+    r: region of r = {
+        v = vec<i32>make(r, 2);
+        vec<i32>push(v, 7);
+    }
+    return v;
+}
+main: proc() -> i32 = {
+    w: *vec<i32> in level = build(level);
+    printfmt("{}\n", w*.length);
+    x: *vec<i32> in level = build(level);
+    vec<i32>push(x, 8);
+    printfmt("{}\n", w*.length);
+    return 0;
+}

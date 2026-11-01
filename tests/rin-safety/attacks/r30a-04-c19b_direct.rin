@@ -1,0 +1,11 @@
+// out = a new in the inner r. Must be refused.
+import "std/print.rin"
+f: proc(r: region R) -> *i32 in R = {
+    out: *i32 in R = new<i32>(r);
+    r: region of r = {
+        out = new<i32>(r, 5);
+    }
+    return out;
+}
+level: region global;
+main: proc() -> i32 = { p: *i32 in level = f(level); printfmt("{}\n", p*); return 0; }

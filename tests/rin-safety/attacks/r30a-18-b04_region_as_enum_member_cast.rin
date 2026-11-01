@@ -1,0 +1,11 @@
+// E.a is the member. Expect 0
+import "std/print.rin"
+E: enum = { a, b, }
+level: region global;
+main: proc() -> i32 = {
+    E_a: region of level = {
+        i: u64 = cast(E.a, u64);
+        printfmt("{}\n", i);
+    }
+    return 0;
+}

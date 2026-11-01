@@ -1,0 +1,10 @@
+// The generated rin_file_printf calls whatever is called file_stream. Expect a refusal.
+import "std/print.rin"
+file: struct = { x: i32; }
+file_stream: proc(f: file) -> ^const c8 = { return "abcd"; }
+main: proc() -> i32 = {
+    f: file = {};
+    fprintfmt(f, "hello {}\n", 3);
+    printfmt("HOLE\n");
+    return 0;
+}

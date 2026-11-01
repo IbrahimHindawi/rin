@@ -1,0 +1,9 @@
+// E.register is the member, value 0, whose C name is E_rin_register. A local of that name is not it. Expect 0 7
+import "std/print.rin"
+E: enum = { register, other, }
+xs: [2]i32 = { 7, 8 };
+main: proc() -> i32 = {
+    E_rin_register: i32 = 100;
+    printfmt("{} {}\n", cast(E.register, i32), xs[E.register]);
+    return E_rin_register - 100;
+}

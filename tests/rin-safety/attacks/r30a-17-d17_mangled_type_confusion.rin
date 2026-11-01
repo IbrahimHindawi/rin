@@ -1,0 +1,10 @@
+// E.register as a pointer: the member reads the local whatever its type. Is an enum now a pointer?
+import "std/print.rin"
+E: enum = { register, other, }
+level: region global;
+main: proc() -> i32 = {
+    E_rin_register: *i32 in level = new<i32>(level, 9);
+    q: *i32 = E.register;
+    printfmt("{}\n", q*);
+    return 0;
+}

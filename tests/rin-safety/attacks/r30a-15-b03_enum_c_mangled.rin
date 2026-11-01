@@ -1,0 +1,9 @@
+// auto.a is the member, value 0, whose C name is rin_auto_a. Expect 0 7
+import "std/print.rin"
+auto: enum = { a, b, }
+xs: [2]i32 = { 7, 8 };
+main: proc() -> i32 = {
+    rin_auto_a: i32 = 100;
+    printfmt("{} {}\n", cast(auto.a, i32), xs[auto.a]);
+    return rin_auto_a - 100;
+}

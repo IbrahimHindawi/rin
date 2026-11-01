@@ -16650,9 +16650,22 @@ static bool name_is_runtime(string8 name) {
 /* What the checker reads, or the generated C calls, by name: rin's whatever a program would mean by it. */
 static bool name_is_compilers(string8 name) {
     static const char *const exact[] = { "unwrap", "printfmt", "fprintfmt", "rin_file_printf", "new", "new_slice", "cstr_of",
-                                         "print_cstr", "print_enum" };
+                                         "print_cstr", "print_enum", "file_stream" };
     for (u64 i = 0; i < sizeof(exact) / sizeof(exact[0]); i++) {
         if (string8_equals_cstr(&name, exact[i])) return true;
+    }
+    return false;
+}
+
+/* The C name `E.a` is rewritten to, which c_ident may have changed from what the program wrote. */
+static bool name_is_enum_member_c(Program *prog, string8 name, memops_arena *arena) {
+    for (i32 i = 0; i < prog->enums.length; i++) {
+        EnumDecl *decl = (EnumDecl *)prog->enums.data[i];
+        for (i32 j = 0; j < decl->items.length; j++) {
+            EnumItem *item = (EnumItem *)decl->items.data[j];
+            string8 spelled = enum_item_c_name(arena, decl, item);
+            if (string8_equals(&spelled, &name)) return true;
+        }
     }
     return false;
 }
@@ -16798,7 +16811,7 @@ static void safety_check_local_name(Program *prog, string8 name, i32 line, i32 c
         why = "is how the checker knows a branch does not come back";
     }
     else if (string8_ends_with_cstr(name, "_reflect")) why = "is what the generated C calls a type's reflection table";
-    else if (name_is_enum_member(prog, name)) why = "is how the checker spells an enum's member";
+    else if (name_is_enum_member_c(prog, name, arena)) why = "is how the checker spells an enum's member";
     else if (lookup_enum_decl(prog, name)) why = "is an enum's name, and E.a always means its member";
     else if (name.length >= 2 && name.data[0] == '_' && name.data[1] == '_') why = "with the suffix a local takes could be one of C's own macros";
     else if (name_is_compilers(name)) why = "is read by name as rin's own";
@@ -18300,6 +18313,12 @@ static void safety_check_open_cstr_beside(Expr *a, Expr *b, TypeScope *scope, Pr
     }
 }
 
+static void visit_names_no_local(Expr *e, void *ctx, memops_arena *arena) {
+    (void)ctx;
+    (void)arena;
+    e->names_no_local = true;
+}
+
 static void safety_check_nullable_callee(Expr *call, TypeScope *scope, Program *prog, memops_arena *arena) {
     if (!g_safe_body) return;
     TypeExpr *callee = call->base ? infer_expr_type(call->base, scope, prog, arena) : type_scope_lookup(scope, call->name);
@@ -18447,6 +18466,10 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
                     Expr *arg = (Expr *)call->args.data[i];
                     TypeExpr *at = infer_expr_type(arg, scope, prog, arena);
                     TypeExpr *ar = at ? resolve_alias_type(prog, type_scope_apply_sub(scope, arena, at)) : null;
+                    if (ar && ar->kind == Type_Region) {
+                        type_error_message("a region is not a value to print", arg->line, arg->col);
+                        continue;
+                    }
                     if (at) {
                         TypeExpr *as_written = type_scope_apply_sub(scope, arena, at);
                         ProcDecl *spelled = lookup_proc_decl(prog, mono_proc_name_from_mangle(arena, string8_from_cstr(arena, "print"),
@@ -18644,6 +18667,8 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
            any argument written out. A generic body is checked once per instance;
            the second time round nothing is missing and nothing is added. */
         for (i32 i = call->args.length; i < decl->params.length; i++) {
+            /* It means what it meant where it was written, not what its names mean at this call. */
+            expr_walk(((Param *)decl->params.data[i])->default_value, visit_names_no_local, null, arena);
             ptr_array_append(arena, &call->args, ((Param *)decl->params.data[i])->default_value);
         }
     }
@@ -18954,6 +18979,10 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         type_check_expr(e->inner, scope, prog, arena);
         TypeExpr *actual = infer_expr_type(e->inner, scope, prog, arena);
         TypeExpr *cast_type = type_scope_apply_sub(scope, arena, e->cast_type);
+        TypeExpr *cast_from = resolve_alias_type(prog, actual);
+        if (g_safe_body && cast_from && cast_from->kind == Type_Region) {
+            type_error_message("a region is not cast: it has no value but its name", e->line, e->col);
+        }
         if (g_safe_body && (type_mentions_pointer(prog, cast_type, 0) || type_mentions_pointer(prog, actual, 0))) {
             type_error_message("a cast to or from a pointer is unsafe: it could make any type out of any bytes; "
                                "convert with q[0]& or a subrange, or put it in 'unsafe { }'", e->line, e->col);
@@ -19907,6 +19936,7 @@ static void type_check_stmt(
            is open, and names it as a value for the body. */
         i32 rank = region_rank(prog, s->name);
         bool local = rank < 0 && s->region_parent.length > 0;
+        if (local) safety_check_local_name(prog, s->name, s->line, s->col, arena);
         if (rank >= 0 && g_local_regions.length > 0) {
             region_error("region '%.*s' cannot open inside '%.*s': it would end first, yet may be kept in its memory",
                          s->name, g_local_regions.data[g_local_regions.length - 1], s->line, s->col);
@@ -20444,7 +20474,9 @@ static i32 sh_block_begin(Sh *sh, i32 line, i32 col, const char *path, string8 r
     TypeScope *inner = memops_arena_push_struct(sh->arena, TypeScope);
     *inner = type_scope_copy(sh->arena, sh->types);
     sh->types = inner;
-    if (region_name.length > 0 && !type_scope_lookup(inner, region_name)) {
+    if (region_name.length > 0) {
+        /* Whatever else has this name outside, inside it is the block: `new<T>(scratch)` beside a parameter called
+           scratch allocates in the block, and asking the outer name's type would let the result out. */
         TypeExpr *t = type_new(sh->arena, Type_Region);
         t->region = region_name;
         type_scope_add(sh->arena, inner, region_name, t);
@@ -22491,6 +22523,11 @@ static void rewrite_printfmt_stmt_in_place(Stmt *s, TypeScope *scope, Program *p
     }
     if (s->kind == Stmt_DoWhile || s->kind == Stmt_Label || s->kind == Stmt_Region || s->kind == Stmt_Unsafe) {
         TypeScope loop_scope = type_scope_copy(arena, scope);
+        if (s->kind == Stmt_Region && s->name.length > 0) {
+            TypeExpr *handle = type_new(arena, Type_Region);
+            handle->region = s->name;
+            type_scope_add(arena, &loop_scope, s->name, handle);
+        }
         rewrite_printfmt_body(&s->while_body, &loop_scope, prog, arena);
         rewrite_printfmt_in_expr(s->while_cond, path);
         return;
@@ -23397,7 +23434,7 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
     if (e->kind == Expr_SizeofType || e->kind == Expr_AlignofType) {
         bool cast = emit_const_cast_open(arena, out, e);
         emit_cstr(arena, out, e->kind == Expr_SizeofType ? "sizeof(" : "_Alignof(");
-        if (e->cast_type && e->cast_type->kind == Type_Name && emit_name_is_local(e->cast_type->name)) {
+        if (e->cast_type && e->cast_type->kind == Type_Name && !e->names_no_local && emit_name_is_local(e->cast_type->name)) {
             emit_string8(arena, out, local_c_name(arena, e->cast_type->name));
         } else if (e->cast_type) {
             emit_type(arena, out, e->cast_type, sub);

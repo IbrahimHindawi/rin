@@ -1,0 +1,5 @@
+// The parameter of the mangled name: E.register reads it. Expect 0 and the default-free call.
+import "std/print.rin"
+E: enum = { register, other, }
+f: proc(E_rin_register: i32) -> i32 = { return cast(E.register, i32); }
+main: proc() -> i32 = { printfmt("{}\n", f(100)); return 0; }

@@ -1,0 +1,15 @@
+// A local region named as a local i32 in an enclosing block. Must be refused.
+import "std/print.rin"
+level: region global;
+keep: option<*i32 in level> = null;
+main: proc() -> i32 = {
+    x: i32 = 3;
+    if (x > 0) {
+        x: region of level = {
+            keep = new<i32>(x, 5);
+        }
+    }
+    k: option<*i32> = keep;
+    if (k) { printfmt("{}\n", k*); }
+    return 0;
+}

@@ -1,0 +1,6 @@
+// The default is the file's sizeof(S), 40, wherever the call is. Expect 40 40
+import "std/print.rin"
+S: struct = { a: [10]i32; }
+f: proc(n: u64 = sizeof(S)) -> u64 = { return n; }
+g: proc() -> u64 = { S: u8 = 1; return f() + cast(S, u64) - 1; }
+main: proc() -> i32 = { printfmt("{} {}\n", f(), g()); return 0; }

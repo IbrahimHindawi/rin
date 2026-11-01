@@ -1,0 +1,10 @@
+// The region through a width. Expect a refusal.
+import "std/print.rin"
+level: region global;
+x: f64 = 1.5;
+main: proc() -> i32 = {
+    x: region of level = {
+        printfmt("{:6.2}\n", x);
+    }
+    return 0;
+}

@@ -1,0 +1,12 @@
+// r: region of r, the inner r in the outer. A pointer into the inner kept in the outer must be refused.
+import "std/print.rin"
+f: proc(r: region R) -> *i32 in R = {
+    out: *i32 in R = new<i32>(r);
+    r: region of r = {
+        q: *i32 in r = new<i32>(r, 5);
+        out = q;
+    }
+    return out;
+}
+level: region global;
+main: proc() -> i32 = { p: *i32 in level = f(level); printfmt("{}\n", p*); return 0; }

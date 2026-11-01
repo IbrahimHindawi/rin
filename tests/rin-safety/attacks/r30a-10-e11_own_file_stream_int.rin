@@ -1,0 +1,10 @@
+// As e10, returning a number as the stream.
+import "std/print.rin"
+file: struct = { x: i32; }
+file_stream: proc(f: file) -> u64 = { return 1094795585; }
+main: proc() -> i32 = {
+    f: file = {};
+    fprintfmt(f, "hello {}\n", 3);
+    printfmt("HOLE\n");
+    return 0;
+}

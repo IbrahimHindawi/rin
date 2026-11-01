@@ -351,7 +351,9 @@ day the first is wrong.
 
 ## Rounds 25 and 26: the rules the pass did not replace
 
-Attacks on the pass have dried up. The holes moved to the rules beside it, and two rounds aimed at those found
+Attacks on the pass had dried up, but that was not the same as its being finished: round 30 found a region block named
+like anything already in scope escaping it, a hole from the day it was written, because no program had that shape. The
+holes mostly moved to the rules beside it, and two rounds aimed at those found
 six causes in about 370 programs (round 27 found four more in 609, closed in the same way), where rounds 22 and 23 had reported nothing. Those rounds were aimed at the pass,
 so their silence said nothing about these rules.
 

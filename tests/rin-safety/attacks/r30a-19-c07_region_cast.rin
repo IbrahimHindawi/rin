@@ -1,0 +1,10 @@
+// A region is a parameter: no casts, the docs say. Expect a refusal.
+import "std/print.rin"
+level: region global;
+main: proc() -> i32 = {
+    r: region of level = {
+        i: u64 = cast(r, u64);
+        printfmt("{}\n", i);
+    }
+    return 0;
+}

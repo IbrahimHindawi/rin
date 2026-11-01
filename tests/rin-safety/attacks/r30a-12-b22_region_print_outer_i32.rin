@@ -1,0 +1,12 @@
+// As b21, with an integer outside. Expect a refusal.
+import "std/print.rin"
+level: region global;
+main: proc() -> i32 = {
+    x: i64 = 3;
+    if (x > 0) {
+        x: region of level = {
+            printfmt("{}\n", x);
+        }
+    }
+    return 0;
+}

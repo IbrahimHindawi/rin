@@ -1,0 +1,9 @@
+// expect: this value may point into the block
+// Inside the block its name is the block, whatever else has that name outside.
+f: proc(scratch: region R) -> *i32 in R = {
+    out: *i32 in R = new<i32>(scratch);
+    scratch { out = new<i32>(scratch, 5); }
+    return out;
+}
+level: region global;
+main: proc() -> i32 = { return f(level)*; }

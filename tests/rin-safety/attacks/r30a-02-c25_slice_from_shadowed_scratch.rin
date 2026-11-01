@@ -1,0 +1,17 @@
+// A natural one: a parameter called scratch, and a block to use in a loop. The slice outlives its block.
+import "std/print.rin"
+fill: proc(scratch: region R, n: u64) -> []i32 in R = {
+    out: []i32 in R = new_slice<i32>(scratch, n);
+    scratch {
+        out = new_slice<i32>(scratch, n);
+        out[0] = 3;
+    }
+    return out;
+}
+level: region global;
+main: proc() -> i32 = {
+    s: []i32 in level = fill(level, 4);
+    t: []i32 in level = fill(level, 4);
+    printfmt("{} {}\n", s[0], t[0]);
+    return 0;
+}

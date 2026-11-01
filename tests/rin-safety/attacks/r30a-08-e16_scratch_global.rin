@@ -1,0 +1,13 @@
+// A global called scratch beside a scratch block. Must be refused or safe.
+import "std/print.rin"
+level: region global;
+scratch: i32 = 1;
+keep: option<*i32 in level> = null;
+main: proc() -> i32 = {
+    scratch {
+        keep = new<i32>(scratch, 5);
+    }
+    k: option<*i32> = keep;
+    if (k) { printfmt("{} {}\n", k*, scratch); }
+    return 0;
+}

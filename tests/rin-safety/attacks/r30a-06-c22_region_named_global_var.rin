@@ -1,0 +1,13 @@
+// A local region named as a global i32: the pointer into it escapes. Must be refused.
+import "std/print.rin"
+g: i32 = 0;
+level: region global;
+keep: option<*i32 in level> = null;
+main: proc() -> i32 = {
+    g: region of level = {
+        keep = new<i32>(g, 5);
+    }
+    k: option<*i32> = keep;
+    if (k) { printfmt("{}\n", k*); }
+    return 0;
+}

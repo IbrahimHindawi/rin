@@ -1,0 +1,10 @@
+// A local region named as the parameter, r2 inside, return from it.
+import "std/print.rin"
+f: proc(r: region R) -> *i32 in R = {
+    r: region of r = {
+        return new<i32>(r, 5);
+    }
+    return new<i32>(r);
+}
+level: region global;
+main: proc() -> i32 = { p: *i32 in level = f(level); printfmt("{}\n", p*); return 0; }

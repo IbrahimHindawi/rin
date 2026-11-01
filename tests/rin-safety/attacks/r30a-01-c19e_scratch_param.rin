@@ -1,0 +1,11 @@
+// A parameter called scratch, then a scratch block: is its scratch the parameter's?
+import "std/print.rin"
+f: proc(scratch: region R) -> *i32 in R = {
+    out: *i32 in R = new<i32>(scratch);
+    scratch {
+        out = new<i32>(scratch, 5);
+    }
+    return out;
+}
+level: region global;
+main: proc() -> i32 = { p: *i32 in level = f(level); printfmt("{}\n", p*); return 0; }
