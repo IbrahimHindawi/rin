@@ -14670,6 +14670,14 @@ static void check_assignment_compatible(
     i32 col,
     memops_arena *arena
 ) {
+    if (g_safe_body && dst && src) {
+        TypeExpr *to = resolve_alias_type(prog, dst);
+        TypeExpr *from = resolve_alias_type(prog, src);
+        if (to && from && type_is_boolish(to) && from->kind == Type_Ptr &&
+            !(src_expr && src_expr->kind == Expr_Name && string8_equals_cstr(&src_expr->name, "null"))) {
+            type_error_message("a pointer is not a truth value here: write 'p != null'", line, col);
+        }
+    }
     if (g_safe_body && dst && !src && src_expr && src_expr->kind == Expr_Name &&
         program_defines_object_macro(prog, src_expr->name, arena)) {
         TypeExpr *d = resolve_alias_type(prog, dst);
@@ -17562,6 +17570,23 @@ static bool decl_param_may_move(Program *prog, ProcDecl *decl, i32 i, memops_are
     return ((decl->moves >> i) & 1) != 0;
 }
 
+/* A proc of std's that reaches a global only by running a proc it was handed, handed one that touches no global and
+   moves nothing: `sort` with a plain comparison. Only sort.rin's are like this: the other std procs that take a proc are
+   proc[unsafe]. */
+static bool call_only_runs_contained(ProcDecl *decl, Expr *call, Program *prog) {
+    if (!decl || !path_is_std(decl->source_path)) return false;
+    bool any = false;
+    for (i32 i = 0; i < decl->params.length && i < call->args.length; i++) {
+        if (!type_is_proc_pointer(prog, ((Param *)decl->params.data[i])->type)) continue;
+        Expr *given = (Expr *)call->args.data[i];
+        if (!given || given->kind != Expr_Name) return false;
+        ProcDecl *runs = lookup_proc_decl(prog, given->name);
+        if (!runs || !runs->noalias_contained || runs->moves != 0 || runs->is_unsafe || runs->is_external) return false;
+        any = true;
+    }
+    return any;
+}
+
 /* After a call: the arguments passed where the callee may move things kill the
    borrows taken from those places; and a borrow passed in the same call as
    the place it was taken from may be stale before the callee reads it. */
@@ -17590,7 +17615,7 @@ static void borrows_after_call(Expr *call, Vec_voidptr *param_types, ProcDecl *d
         }
     }
     for (i32 i = 0; i < killed.length; i++) borrow_kill_path(killed.data[i], arena);
-    if (!decl || (decl->moves & MOVES_GLOBAL)) {
+    if ((!decl || (decl->moves & MOVES_GLOBAL)) && !call_only_runs_contained(decl, call, prog)) {
         /* It can reach anything behind a pointer, including what it was just handed. */
         for (i32 i = 0; i < call->args.length; i++) {
             Expr *arg = (Expr *)call->args.data[i];
@@ -19344,6 +19369,11 @@ static void type_check_binary_op(Expr *e, TypeScope *scope, Program *prog, memop
             type_error_message("C defines the order of two pointers only inside one object: compare indexes instead", e->line, e->col);
         }
     } else if (e->op == Token_EqualEqual || e->op == Token_BangEqual) {
+        if (g_safe_body && left && right && !type_is_program_enum(prog, left) &&
+            ((type_slice_elem(left) || type_is_declared_aggregate(prog, left)) && left->kind != Type_Ptr)) {
+            type_error_message("structs and slices are not compared with '==': compare their fields or elements, or "
+                               "write 'equal: proc<T>' for it", e->line, e->col);
+        }
         /* `p == null` is how a `option<*T>` is tested, whatever p's constness or
            nullability, so null compares with any pointer. */
         bool left_null = e->left && e->left->kind == Expr_Name && string8_equals_cstr(&e->left->name, "null");

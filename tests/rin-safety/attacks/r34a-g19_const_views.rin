@@ -1,0 +1,13 @@
+// A write through a const parameter's inner pointer.
+import "std/print.rin"
+level: region global;
+box: struct = { v: *i32 in level; }
+look: proc(b: *const box) -> void = {
+    b*.v* = 5;
+}
+main: proc() -> i32 = {
+    b: box = { .v = new<i32>(level) };
+    look(b&);
+    printfmt("{}\n", b.v*);
+    return 0;
+}

@@ -1,0 +1,22 @@
+// A slice of a vec given to a proc which grows the vec through a global.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+g_list: option<*vec<i32> in level> = null;
+grow_it: proc() -> void = {
+    v: option<*vec<i32> in level> = g_list;
+    if (v) { _ = vec<i32>push(v, 9); }
+}
+bump_all: proc(xs: []i32) -> void = {
+    grow_it();
+    for (i: u64 = 0; i < xs.length; i += 1) { xs[i] += 1; }
+}
+main: proc() -> i32 = {
+    v: *vec<i32> in level = vec<i32>make(level, 1);
+    g_list = v;
+    _ = vec<i32>push(v, 1);
+    xs: []i32 = vec<i32>items(v);
+    bump_all(xs);
+    printfmt("{}\n", vec<i32>at(v, 0)*);
+    return 0;
+}

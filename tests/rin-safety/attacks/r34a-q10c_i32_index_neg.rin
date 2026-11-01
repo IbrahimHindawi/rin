@@ -1,0 +1,11 @@
+import "std/print.rin"
+last_hit: i32 = -1;
+hits: [8]i32 = {};
+main: proc() -> i32 = {
+    hits[2] = 5;
+    printfmt("{}\n", hits[last_hit + 3]);
+    small: i8 = -1;
+    printfmt("{}\n", cast(small, u8));
+    printfmt("{}\n", hits[small]);
+    return 0;
+}

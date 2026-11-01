@@ -1,0 +1,17 @@
+// A helper that takes a C string and keeps nothing; called with a slice's terminated text.
+import "std/print.rin"
+import "std/cstr.rin"
+level: region global;
+entity: struct = { name: [16]c8; }
+count_vowels: proc(s: ^const c8) -> i32 = {
+    v: []const c8 = cstr_view(s);
+    n: i32 = 0;
+    for (i: u64 = 0; i < v.length; i += 1) { if (v[i] == 'a' || v[i] == 'e') { n += 1; } }
+    return n;
+}
+main: proc() -> i32 = {
+    e: *entity in level = new<entity>(level, {});
+    _ = cstr_copy(e*.name, "gargoyle");
+    printfmt("{}\n", count_vowels(cstr_of(e*.name)));
+    return 0;
+}

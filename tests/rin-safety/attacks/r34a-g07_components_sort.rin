@@ -1,0 +1,52 @@
+// Component arrays with swap-remove and a sparse map; a draw list sorted in a frame slice; a binary search.
+import "std/print.rin"
+import "std/vec.rin"
+import "std/sort.rin"
+level: region global;
+frame: region in level;
+transform: struct = { x: f32; depth: i32; owner: u32; }
+store: struct = {
+    rows: *vec<transform> in level;
+    row_of: []i32 in level;
+}
+add: proc(s: *store, owner: u32, depth: i32) -> void = {
+    s*.row_of[owner] = cast(s*.rows*.length, i32);
+    _ = vec<transform>push(s*.rows, { .x = cast(owner, f32), .depth = depth, .owner = owner });
+}
+remove_owner: proc(s: *store, owner: u32) -> void = {
+    row: i32 = s*.row_of[owner];
+    last: transform = vec<transform>last(s*.rows)*;
+    vec<transform>at(s*.rows, cast(row, u64))* = last;
+    s*.row_of[last.owner] = row;
+    s*.row_of[owner] = -1;
+    _ = vec<transform>pop(s*.rows);
+}
+by_depth: proc(a: transform, b: transform) -> b32 = { return a.depth < b.depth; }
+draw: proc(s: *store) -> i32 = {
+    first: i32 = -1;
+    frame: region = {
+        n: u64 = s*.rows*.length;
+        list: []transform in frame = new_slice<transform>(frame, n);
+        for (i: u64 = 0; i < n; i += 1) { list[i] = vec<transform>at(s*.rows, i)*; }
+        sort<transform>(list, by_depth);
+        for (i: u64 = 0; i < n; i += 1) { printfmt("{}:{} ", list[i].owner, list[i].depth); }
+        printfmt("\n");
+        key: transform = { .depth = 5 };
+        at: u64 = lower_bound<transform>(list, key, by_depth);
+        if (at < n) { first = cast(list[at].owner, i32); }
+    }
+    return first;
+}
+main: proc() -> i32 = {
+    s: *store in level = new<store>(level, { .rows = vec<transform>make(level, 2), .row_of = new_slice<i32>(level, 32) });
+    for (o: u32 = 0; o < 20; o += 1) { add(s, o, cast((o * 7) % 20, i32)); }
+    printfmt("{}\n", draw(s));
+    remove_owner(s, 3);
+    remove_owner(s, 19);
+    remove_owner(s, 0);
+    printfmt("{} {}\n", draw(s), s*.rows*.length);
+    // Removed twice: the row is -1, and the cast goes huge.
+    remove_owner(s, 3);
+    printfmt("unreached\n");
+    return 0;
+}

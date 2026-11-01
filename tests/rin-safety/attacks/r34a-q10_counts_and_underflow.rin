@@ -1,0 +1,16 @@
+// Integer mistakes with a vec's count: u32 count - 1, a reverse loop on an unsigned, a cast index.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+last_of: proc(v: *vec<i32>) -> i32 = {
+    n: u32 = cast(v*.length, u32);
+    return vec<i32>at(v, cast(n - 1, u64))*;
+}
+main: proc() -> i32 = {
+    v: *vec<i32> in level = vec<i32>make(level, 4);
+    _ = vec<i32>push(v, 7);
+    printfmt("{}\n", last_of(v));
+    _ = vec<i32>pop(v);
+    printfmt("{}\n", last_of(v));
+    return 0;
+}

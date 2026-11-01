@@ -1,0 +1,20 @@
+// The draw list again, with the field naming the shorter region, as the docs say.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+frame: region in level;
+vertex: struct = { x: f32; }
+draw_item: struct = { verts: []vertex in frame; layer: i32; }
+main: proc() -> i32 = {
+    shared: []vertex in level = new_slice<vertex>(level, 3);
+    frame: region = {
+        list: *vec<draw_item> in frame = vec<draw_item>make(frame, 4);
+        temp: []vertex in frame = new_slice<vertex>(frame, 2);
+        _ = vec<draw_item>push(list, { .verts = shared, .layer = 0 });
+        _ = vec<draw_item>push(list, { .verts = temp, .layer = 1 });
+        total: u64 = 0;
+        for (i: u64 = 0; i < list*.length; i += 1) { total += vec<draw_item>at(list, i)*.verts.length; }
+        printfmt("{}\n", total);
+    }
+    return 0;
+}

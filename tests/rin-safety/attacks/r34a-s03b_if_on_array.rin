@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "std/cstr.rin"
+entity: struct = { name: [8]c8; hp: i32; }
+main: proc() -> i32 = {
+    e: entity = {};
+    if (e.name) { printfmt("named\n"); } else { printfmt("no name\n"); }
+    return 0;
+}

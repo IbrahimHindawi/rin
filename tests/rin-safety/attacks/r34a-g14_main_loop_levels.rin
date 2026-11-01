@@ -1,0 +1,53 @@
+// A whole little game loop: levels, frames, a player kept in a global, a level change between frames.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+frame: region in level;
+player_t: struct = { hp: i32; x: i32; }
+game: struct = {
+    player: option<*player_t in level>;
+    coins: option<*vec<i32> in level>;
+    level_id: i32;
+    score: i32;
+}
+g: game = {};
+load_level: proc(id: i32) -> void = {
+    reset level;
+    g.level_id = id;
+    g.player = new<player_t>(level, { .hp = 10, .x = 0 });
+    c: *vec<i32> in level = vec<i32>make(level, 1);
+    for (i: i32 = 0; i < id + 2; i += 1) { _ = vec<i32>push(c, i * 2); }
+    g.coins = c;
+}
+update: proc(tick: i32) -> b32 = {
+    p: option<*player_t in level> = g.player;
+    c: option<*vec<i32> in level> = g.coins;
+    if (!p || !c) { return false; }
+    p*.x += 1;
+    frame: region = {
+        hits: *vec<u64> in frame = vec<u64>make(frame, 1);
+        for (i: u64 = 0; i < c*.length; i += 1) {
+            if (vec<i32>at(c, i)* == p*.x) { _ = vec<u64>push(hits, i); }
+        }
+        for (i: u64 = hits*.length; i > 0; i -= 1) {
+            at: u64 = vec<u64>at(hits, i - 1)*;
+            vec<i32>at(c, at)* = vec<i32>last(c)*;
+            _ = vec<i32>pop(c);
+            g.score += 1;
+        }
+    }
+    return c*.length > 1;
+}
+main: proc() -> i32 = {
+    load_level(1);
+    for (tick: i32 = 0; tick < 12; tick += 1) {
+        if (!update(tick)) {
+            printfmt("level {} done at tick {} score {}\n", g.level_id, tick, g.score);
+            if (g.level_id == 3) { break; }
+            load_level(g.level_id + 1);
+        }
+    }
+    reset level;
+    printfmt("{} {}\n", g.player == null, g.coins == null);
+    return 0;
+}

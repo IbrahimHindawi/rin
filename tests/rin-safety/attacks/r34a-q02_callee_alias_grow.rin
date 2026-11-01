@@ -1,0 +1,22 @@
+// One enemy's update can spawn another. The element and the world go in side by side, the shape a system takes.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+enemy: struct = { hp: i32; kind: i32; }
+world: struct = { enemies: *vec<enemy> in level; spawned: i32; }
+update_enemy: proc(e: *enemy, w: *world) -> void = {
+    if (e*.kind == 1) {
+        _ = vec<enemy>push(w*.enemies, { .hp = 5, .kind = 0 });
+        w*.spawned += 1;
+    }
+    e*.hp -= 1;
+}
+main: proc() -> i32 = {
+    w: *world in level = new<world>(level, { .enemies = vec<enemy>make(level, 1) });
+    _ = vec<enemy>push(w*.enemies, { .hp = 100, .kind = 1 });
+    for (i: u64 = 0; i < 1; i += 1) {
+        update_enemy(vec<enemy>at(w*.enemies, i), w);
+    }
+    printfmt("{} {}\n", vec<enemy>at(w*.enemies, 0)*.hp, w*.spawned);
+    return 0;
+}

@@ -1,0 +1,13 @@
+// A big local buffer: a software framebuffer on the stack, written from the far end.
+import "std/print.rin"
+SIZE: const u64 = 33554432;
+draw: proc(c: u8) -> u32 = {
+    pixels: [SIZE]u8 = {};
+    pixels[SIZE - 1] = c;
+    pixels[0] = c;
+    return cast(pixels[SIZE - 1], u32) + cast(pixels[0], u32);
+}
+main: proc() -> i32 = {
+    printfmt("{}\n", draw(3));
+    return 0;
+}

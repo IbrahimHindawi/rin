@@ -1,0 +1,26 @@
+// break and continue inside a switch inside a loop; a nested switch; a default.
+import "std/print.rin"
+state: enum = { a, b, c, d, }
+main: proc() -> i32 = {
+    seq: [6]state = { state.a, state.b, state.c, state.a, state.d, state.b };
+    trace: i32 = 0;
+    for (i: u64 = 0; i < 6; i += 1) {
+        switch (seq[i]) {
+            case state.a: { trace = trace * 10 + 1; }
+            case state.b: {
+                if (i == 1) { break; }
+                trace = trace * 10 + 2;
+            }
+            case state.c: { continue; }
+            default: {
+                switch (i) {
+                    case 4: { trace = trace * 10 + 4; }
+                    default: { trace = trace * 10 + 9; }
+                }
+            }
+        }
+        trace = trace * 10 + 7;
+    }
+    printfmt("{}\n", trace);
+    return 0;
+}

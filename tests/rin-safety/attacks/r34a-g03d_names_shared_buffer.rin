@@ -1,0 +1,17 @@
+// Keys that all point at one reused buffer: the classic with strtok and with a static buffer.
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+set_name: proc(buf: []c8, id: i32) -> void = { buf[0] = 'a'; buf[1] = cast(48 + id, c8); }
+main: proc() -> i32 = {
+    m: *hashmap<[]c8 in level, i32> in level = hashmap<[]c8 in level, i32>make(level);
+    buf: []c8 in level = new_slice<c8>(level, 2);
+    for (i: i32 = 0; i < 3; i += 1) {
+        set_name(buf, i);
+        _ = hashmap<[]c8 in level, i32>set(m, buf, i);
+    }
+    printfmt("{}\n", m*.length);
+    set_name(buf, 0);
+    printfmt("{}\n", hashmap<[]c8 in level, i32>get_or(m, buf, -1));
+    return 0;
+}

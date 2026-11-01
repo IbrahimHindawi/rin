@@ -1,0 +1,43 @@
+// A scratch left by break, continue and return, many times over: its memory must come back every time.
+import "std/print.rin"
+big: u64 = 65536;
+work: proc(n: i32) -> i32 = {
+    total: i32 = 0;
+    for (i: i32 = 0; i < n; i += 1) {
+        scratch {
+            xs: []i32 in scratch = new_slice<i32>(scratch, big);
+            xs[0] = i;
+            xs[1] = i + 1;
+            if (i % 3 == 0) { continue; }
+            if (i == 99999) { break; }
+            total += xs[1] - xs[0];
+        }
+    }
+    return total;
+}
+inner: proc(i: i32) -> i32 = {
+    while (true) {
+        scratch {
+            ys: []i32 in scratch = new_slice<i32>(scratch, big);
+            ys[1] = i;
+            if (ys[1] != 0) { return ys[1]; }
+        }
+    }
+    return 0;
+}
+early: proc(i: i32) -> i32 = {
+    scratch {
+        xs: []i32 in scratch = new_slice<i32>(scratch, big);
+        xs[0] = i;
+        if (i % 2 == 0) { return xs[0]; }
+        return inner(i);
+    }
+    return 0;
+}
+main: proc() -> i32 = {
+    printfmt("{}\n", work(200000));
+    t: i64 = 0;
+    for (i: i32 = 0; i < 100000; i += 1) { t += cast(early(i), i64); }
+    printfmt("{}\n", t);
+    return 0;
+}

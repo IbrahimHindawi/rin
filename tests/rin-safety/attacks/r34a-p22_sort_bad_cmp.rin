@@ -1,0 +1,13 @@
+// Sorting a draw list with <= in the comparator, the classic qsort mistake.
+import "std/print.rin"
+import "std/sort.rin"
+level: region global;
+sprite: struct = { depth: f32; id: i32; }
+by_depth: proc(a: sprite, b: sprite) -> b32 = { return a.depth <= b.depth; }
+main: proc() -> i32 = {
+    v: []sprite = new_slice<sprite>(level, 40);
+    for (i: u64 = 0; i < 40; i += 1) { v[i] = { .depth = 1.0, .id = cast(i, i32) }; }
+    sort<sprite>(v, by_depth);
+    printfmt("{}\n", v.length);
+    return 0;
+}

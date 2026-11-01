@@ -1,0 +1,33 @@
+// Index, place and value with calls in them: each call must run once, in order.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+n: i32 = 0;
+next: proc() -> i32 = { n += 1; return n; }
+stat: struct = { hits: i32; total: i32; }
+main: proc() -> i32 = {
+    counts: [16]i32 = {};
+    counts[next()] += 1;
+    counts[next()] = next();
+    printfmt("{} {} {} {}\n", counts[1], counts[2], counts[3], n);
+    stats: [8]stat = {};
+    stats[next() - 4].hits += 2;
+    printfmt("{} {}\n", stats[0].hits, n);
+    grid: [4][4]i32 = {};
+    n = 0;
+    grid[next()][next()] = next();
+    printfmt("{} {}\n", grid[1][2], n);
+    v: *vec<i32> in level = vec<i32>make(level, 8);
+    for (i: i32 = 0; i < 8; i += 1) { _ = vec<i32>push(v, 0); }
+    n = 0;
+    vec<i32>at(v, cast(next(), u64))* += 5;
+    printfmt("{} {}\n", vec<i32>at(v, 1)*, n);
+    s: []i32 in level = new_slice<i32>(level, 8);
+    n = 0;
+    s[next()] += next();
+    printfmt("{} {}\n", s[1], n);
+    n = 0;
+    r: i32 = next() - next() * next();
+    printfmt("{}\n", r);
+    return 0;
+}

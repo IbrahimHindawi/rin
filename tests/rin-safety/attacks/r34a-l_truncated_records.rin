@@ -1,0 +1,73 @@
+// A small binary mesh loader. The file's own counts drive the allocation and the loops. Case: the file ends inside the records, and the count agrees with the header only
+import "std/print.rin"
+import "std/file.rin"
+level: region global;
+vertex: struct = { x: i32; y: i32; }
+model: struct = { verts: []vertex in level; id: u32; }
+g_model: option<*model in level> = null;
+
+put_u32: proc(out: []u8, at: u64, v: u32) -> void = {
+    out[at] = cast(v & 255, u8);
+    out[at + 1] = cast((v shr 8) & 255, u8);
+    out[at + 2] = cast((v shr 16) & 255, u8);
+    out[at + 3] = cast((v shr 24) & 255, u8);
+}
+get_u32: proc(bytes: []const u8, at: u64) -> u32 = {
+    return cast(bytes[at], u32) | (cast(bytes[at + 1], u32) shl 8) | (cast(bytes[at + 2], u32) shl 16) | (cast(bytes[at + 3], u32) shl 24);
+}
+write_file: proc(path: ^const c8, magic: u32, count: u32, stride: u32, offset: u32, real_records: u32, keep: u64) -> void = {
+    buf: [4096]u8 = {};
+    put_u32(buf, 0, magic);
+    put_u32(buf, 4, count);
+    put_u32(buf, 8, stride);
+    put_u32(buf, 12, offset);
+    for (i: u32 = 0; i < real_records; i += 1) {
+        at: u64 = 16 + cast(i, u64) * 8;
+        put_u32(buf, at, i * 10);
+        put_u32(buf, at + 4, i * 10 + 1);
+    }
+    f: file = file_open(path, "wb");
+    if (!file_is_open(f)) { printfmt("cannot write\n"); return; }
+    n: u64 = keep;
+    if (n == 0) { n = 16 + cast(real_records, u64) * 8; }
+    if (keep == 99999) { n = 0; }
+    _ = file_write(f, buf[0..n]);
+    file_close(f);
+}
+load: proc(r: region level, path: ^const c8) -> b32 = {
+    f: file = file_open_in(r, path, "rb");
+    if (!file_is_open(f)) { printfmt("no file\n"); return false; }
+    size: i64 = file_size(f);
+    size_u: u64 = cast(size, u64);
+    bytes: []u8 in level = new_slice<u8>(r, size_u);
+    got: u64 = file_read(f, bytes);
+    printfmt("size {} got {}\n", size, got);
+    magic: u32 = get_u32(bytes, 0);
+    count: u32 = get_u32(bytes, 4);
+    stride: u32 = get_u32(bytes, 8);
+    offset: u32 = get_u32(bytes, 12);
+    total: u32 = count * stride;
+    printfmt("magic {} count {} stride {} offset {} total {}\n", magic, count, stride, offset, total);
+    if (cast(total, u64) + cast(offset, u64) > cast(size, u64)) { printfmt("too big\n"); return false; }
+    count_u: u64 = cast(count, u64);
+    verts: []vertex in level = new_slice<vertex>(r, count_u);
+    at: u64 = cast(offset, u64);
+    for (i: u64 = 0; i < cast(count, u64); i += 1) {
+        verts[i].x = cast(get_u32(bytes, at), i32);
+        verts[i].y = cast(get_u32(bytes, at + 4), i32);
+        at += cast(stride, u64);
+    }
+    g_model = new<model>(r, { .verts = verts, .id = magic });
+    return true;
+}
+main: proc() -> i32 = {
+    path: str = "r34_mesh.bin";
+    write_file(path, 7, 3, 8, 16, 3, 30);
+    if (!load(level, path)) { return 2; }
+    m: option<*model in level> = g_model;
+    if (!m) { return 3; }
+    vs: []vertex in level = m*.verts;
+    printfmt("verts {}\n", vs.length);
+    printfmt("last {}\n", vs[vs.length - 1].y);
+    return 0;
+}

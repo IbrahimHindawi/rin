@@ -1,0 +1,15 @@
+// Sorting a vec's items with a plain comparison: the comparison touches nothing, so the vec cannot move under the sort.
+import "std/print.rin"
+import "std/vec.rin"
+import "std/sort.rin"
+level: region global;
+main: proc() -> i32 = {
+    v: *vec<i32> in level = vec<i32>make(level, 8);
+    for (i: i32 = 0; i < 20; i += 1) { _ = vec<i32>push(v, (i * 7) % 20); }
+    sort<i32>(vec<i32>items(v), less_i32);
+    printfmt("{} {}\n", vec<i32>at(v, 0)*, vec<i32>at(v, 19)*);
+    all: []i32 = vec<i32>items(v);
+    sort<i32>(all, less_i32);
+    printfmt("{}\n", all[1]);
+    return 0;
+}

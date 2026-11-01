@@ -1,0 +1,10 @@
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    a: [8]c8 = {};
+    b: [8]c8 = {};
+    _ = cstr_copy(a, "ogre");
+    _ = cstr_copy(b, "ogre");
+    printfmt("{}\n", a == b);
+    return 0;
+}

@@ -1,0 +1,14 @@
+// The same self-join through a slice parameter, the way a helper would be written.
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/fmt.rin"
+join_in_place: proc(path: []c8, name: ^const c8) -> u64 = {
+    return fmt_cat3(path, cstr_of(path), "/", name);
+}
+main: proc() -> i32 = {
+    p: [32]c8 = {};
+    _ = cstr_copy(p, "res");
+    printfmt("{}\n", join_in_place(p, "a.png"));
+    printfmt("{}\n", cstr_of(p));
+    return 0;
+}

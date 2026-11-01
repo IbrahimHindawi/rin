@@ -1,0 +1,29 @@
+// Ordinary code that should pass: take, reset, take again, in a loop and through a state machine.
+import "std/print.rin"
+level: region global;
+item: struct = { id: i32; }
+g_items: []item in level = {};
+mode: enum = { play, next, quit, }
+start_level: proc(id: i32) -> void = {
+    reset level;
+    g_items = new_slice<item>(level, 4);
+    g_items[0].id = id;
+}
+main: proc() -> i32 = {
+    start_level(1);
+    m: mode = mode.play;
+    ticks: i32 = 0;
+    while (m != mode.quit) {
+        p: *item in level = g_items[0]&;
+        p*.id += 1;
+        switch (m) {
+            case mode.play: { if (ticks == 2) { m = mode.next; } }
+            case mode.next: { start_level(ticks * 10); m = mode.play; }
+            case mode.quit: { }
+        }
+        ticks += 1;
+        if (ticks == 6) { m = mode.quit; }
+    }
+    printfmt("{} {}\n", g_items[0].id, ticks);
+    return 0;
+}

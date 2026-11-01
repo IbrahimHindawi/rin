@@ -1,0 +1,32 @@
+// What the number parsers say of text a config file might hold.
+import "std/print.rin"
+import "std/cstr.rin"
+ival: proc(s: ^const c8) -> void = {
+    n: i64 = -999;
+    ok: b32 = cstr_parse_i64(s, n&);
+    printfmt("i [{}] ok {} value {}\n", s, ok, n);
+}
+fval: proc(s: ^const c8) -> void = {
+    x: f64 = -999.0;
+    ok: b32 = cstr_parse_f64(s, x&);
+    printfmt("f [{}] ok {} value {:.6}\n", s, ok, x);
+}
+main: proc() -> i32 = {
+    ival("12abc");
+    ival("0x10");
+    ival("1.5");
+    ival("1e3");
+    ival("-");
+    ival(" 7");
+    ival("7 ");
+    fval("1e5");
+    fval("1.5e3");
+    fval("2.5E-1");
+    fval(".5.5");
+    fval("inf");
+    fval("nan");
+    fval("0.1");
+    fval("-.5");
+    fval("1,5");
+    return 0;
+}

@@ -1,0 +1,14 @@
+// Two tables of the same struct: an index from one used on the other.
+import "std/print.rin"
+import "std/table.rin"
+level: region global;
+unit: struct = { hp: i32; }
+main: proc() -> i32 = {
+    players: *table<unit> in level = table<unit>make(level, 4);
+    enemies: *table<unit> in level = table<unit>make(level, 4);
+    p: index<unit> = table<unit>add(players, { .hp = 100 });
+    _ = table<unit>add(enemies, { .hp = 7 });
+    wrong: option<*unit> = table<unit>get(enemies, p);
+    if (wrong) { printfmt("hp through the wrong table {}\n", wrong*.hp); } else { printfmt("nothing\n"); }
+    return 0;
+}

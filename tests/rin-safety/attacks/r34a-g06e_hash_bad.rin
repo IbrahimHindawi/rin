@@ -1,0 +1,15 @@
+// A hash that does not agree with equal, a hash that changes: lookups miss, nothing else may go wrong.
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+cell: struct = { x: i32; y: i32; }
+hash: proc<cell>(c: cell) -> u64 = { return cast(c.y, u64) * 4; }
+equal: proc<cell>(a: cell, b: cell) -> b32 = { return a.x == b.x; }
+main: proc() -> i32 = {
+    m: *hashmap<cell, i32> in level = hashmap<cell, i32>make(level);
+    for (i: i32 = 0; i < 100; i += 1) { _ = hashmap<cell, i32>set(m, { .x = i, .y = i * 16 }, i); }
+    printfmt("{}\n", m*.length);
+    printfmt("{}\n", hashmap<cell, i32>get_or(m, { .x = 5, .y = 7 }, -1));
+    printfmt("{}\n", hashmap<cell, i32>get_or(m, { .x = 5, .y = 80 }, -1));
+    return 0;
+}

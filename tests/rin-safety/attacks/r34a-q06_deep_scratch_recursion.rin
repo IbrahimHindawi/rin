@@ -1,0 +1,24 @@
+// A tree walk with a scratch per level, on a very deep tree (a chain).
+import "std/print.rin"
+node: struct = { next: option<*node in level>; v: i32; }
+level: region global;
+walk: proc(n: *node, depth: i32) -> i32 = {
+    total: i32 = 0;
+    scratch {
+        buf: []i32 in scratch = new_slice<i32>(scratch, 4);
+        buf[0] = n*.v;
+        nx: option<*node in level> = n*.next;
+        if (nx) { total = walk(nx, depth + 1); }
+        total += buf[0];
+    }
+    return total;
+}
+main: proc() -> i32 = {
+    head: option<*node in level> = null;
+    for (i: i32 = 0; i < 60000; i += 1) {
+        head = new<node>(level, { .next = head, .v = 1 });
+    }
+    h: option<*node in level> = head;
+    if (h) { printfmt("{}\n", walk(h, 0)); }
+    return 0;
+}

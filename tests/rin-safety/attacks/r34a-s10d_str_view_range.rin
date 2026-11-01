@@ -1,0 +1,10 @@
+// The checked way, and a part of it printed.
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    s: str = "abcdef";
+    v: []const c8 = cstr_view(s);
+    printfmt("{} {}\n", v.length, v[1]);
+    printfmt("{}\n", cstr_of(v));
+    return 0;
+}

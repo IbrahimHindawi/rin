@@ -1,0 +1,32 @@
+// std's memcmp equality on a struct with padding, both built field by field.
+import "std/print.rin"
+import "std/equal.rin"
+pad: struct = { a: u8; b: u32; c: u8; }
+scribble: proc() -> u64 = {
+    xs: [64]u64 = {};
+    for (i: u64 = 0; i < 64; i += 1) { xs[i] = 0xFFFFFFFFFFFFFFFF; }
+    return xs[3];
+}
+make: proc(a: u8, b: u32, c: u8) -> pad = {
+    p: pad = { .a = a, .b = b, .c = c };
+    return p;
+}
+set: proc(out: *pad, a: u8, b: u32, c: u8) -> void = {
+    out*.a = a; out*.b = b; out*.c = c;
+}
+fresh: proc(a: u8, b: u32, c: u8) -> pad = {
+    t: pad = {};
+    q: [16]u8 = {};
+    q[1] = 200;
+    set(t&, a, b, c);
+    t.a = a;
+    return t;
+}
+main: proc() -> i32 = {
+    _ = scribble();
+    x: pad = make(1, 2, 3);
+    _ = scribble();
+    y: pad = fresh(1, 2, 3);
+    printfmt("{}\n", runtime_equal<pad>(x, y));
+    return 0;
+}

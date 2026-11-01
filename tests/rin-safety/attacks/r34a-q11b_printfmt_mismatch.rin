@@ -1,0 +1,7 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    printfmt("{:.2}\n", 3);
+    printfmt("{:x}\n", 1.5);
+    printfmt("{:5}\n", 1.5);
+    return 0;
+}

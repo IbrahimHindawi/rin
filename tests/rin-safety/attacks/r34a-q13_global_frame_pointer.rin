@@ -1,0 +1,27 @@
+// The last frame's command list kept in a global "for the debug overlay"; read next frame.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+frame: region in level;
+cmd: struct = { id: i32; }
+g_last: option<*vec<cmd> in frame> = null;
+g_last_slice: []cmd in frame = {};
+run_frame: proc(n: i32) -> i32 = {
+    old: i32 = -1;
+    frame: region = {
+        prev: option<*vec<cmd> in frame> = g_last;
+        if (prev) { old = vec<cmd>at(prev, 0)*.id; }
+        if (g_last_slice.length > 0) { old = g_last_slice[0].id; }
+        q: *vec<cmd> in frame = vec<cmd>make(frame, 2);
+        _ = vec<cmd>push(q, { .id = n });
+        g_last = q;
+        g_last_slice = new_slice<cmd>(frame, 2);
+        g_last_slice[0].id = n;
+    }
+    return old;
+}
+main: proc() -> i32 = {
+    printfmt("{}\n", run_frame(1));
+    printfmt("{}\n", run_frame(2));
+    return 0;
+}

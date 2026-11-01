@@ -1,0 +1,13 @@
+// Text with a percent in it as an argument.
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    name: [16]c8 = {};
+    _ = cstr_copy(name, "%s%s%s%n");
+    printfmt("{}\n", cstr_of(name));
+    print_cstr(cstr_of(name));
+    printfmt("\n");
+    printfmt("{:.2}%\n", 99.5);
+    printfmt("{}\n", "%d");
+    return 0;
+}

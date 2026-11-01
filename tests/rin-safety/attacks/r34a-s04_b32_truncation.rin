@@ -1,0 +1,14 @@
+// A flag test stored in a b32: the bit is above 32.
+import "std/print.rin"
+FLAG_BOSS: const u64 = 1'u64 shl 40;
+has_flag: proc(flags: u64, f: u64) -> b32 = { return flags & f; }
+main: proc() -> i32 = {
+    flags: u64 = FLAG_BOSS;
+    a: b32 = flags & FLAG_BOSS;
+    printfmt("{}\n", a);
+    printfmt("{}\n", has_flag(flags, FLAG_BOSS));
+    if (flags & FLAG_BOSS) { printfmt("if sees it\n"); }
+    b: b32 = cast(flags & FLAG_BOSS, b32);
+    printfmt("{}\n", b);
+    return 0;
+}

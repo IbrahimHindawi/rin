@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    s: str = "abcdef";
+    v: []const c8 = cstr_view(s);
+    w: []const c8 = v[1..3];
+    printfmt("{}\n", cstr_of(w));
+    return 0;
+}

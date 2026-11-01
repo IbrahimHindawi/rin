@@ -1,0 +1,28 @@
+// Every format a game log would use.
+import "std/print.rin"
+state: enum = { idle, walk, }
+main: proc() -> i32 = {
+    printfmt("100% done\n");
+    printfmt("{}% of {}\n", 50, 100);
+    printfmt("%d %s %n\n");
+    printfmt("[{:5}] [{:-5}] [{:05}]\n", 42, 42, 42);
+    printfmt("[{:5.2}] [{:.0}] [{:8.3}]\n", 3.14159, 2.5, 2.0);
+    printfmt("[{:x}] [{:x}] [{:x}]\n", 255, 0x123456789ABC'u64, -1);
+    i8v: i8 = -1;
+    u8v: u8 = 200;
+    printfmt("[{:x}] [{}] [{}]\n", i8v, i8v, u8v);
+    big: u64 = 18446744073709551615;
+    neg: i64 = -9223372036854775807 - 1;
+    printfmt("[{}] [{}]\n", big, neg);
+    printfmt("[{:20}] [{:20}]\n", big, neg);
+    f: f32 = 1.5;
+    printfmt("[{}] [{:.1}]\n", f, f);
+    printfmt("[{}] [{}]\n", true, false);
+    s: str = "name";
+    printfmt("[{}] [{:8}] [{:-8}]\n", s, s, s);
+    c: c8 = 'x';
+    printfmt("[{}]\n", c);
+    st: state = state.walk;
+    printfmt("[{}]\n", st);
+    return 0;
+}

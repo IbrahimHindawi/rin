@@ -1,0 +1,16 @@
+// A pointer into a map kept in a struct field, the map grows.
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+stat: struct = { hits: i32; }
+player: struct = { score: option<*stat in level>; }
+main: proc() -> i32 = {
+    m: *hashmap<u32, stat> in level = hashmap<u32, stat>make(level);
+    _ = hashmap<u32, stat>set(m, 1, { .hits = 1 });
+    me: *player in level = new<player>(level, { .score = hashmap<u32, stat>get(m, 1) });
+    for (i: u32 = 2; i < 40; i += 1) { _ = hashmap<u32, stat>set(m, i, { .hits = 0 }); }
+    s: option<*stat in level> = me*.score;
+    if (s) { s*.hits = 99; }
+    printfmt("{}\n", hashmap<u32, stat>get_or(m, 1, { .hits = -1 }).hits);
+    return 0;
+}

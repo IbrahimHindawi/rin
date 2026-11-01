@@ -1,0 +1,36 @@
+// A scene graph in the level region; an editor reparent makes a cycle. The world transform recursion never ends.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+node: struct = {
+    parent: option<*node in level>;
+    children: *vec<*node in level> in level;
+    x: f32;
+    world_x: f32;
+}
+make_node: proc(x: f32) -> *node in level = {
+    return new<node>(level, { .parent = null, .children = vec<*node in level>make(level, 2), .x = x });
+}
+attach: proc(parent: *node in level, child: *node in level) -> void = {
+    child*.parent = parent;
+    _ = vec<*node in level>push(parent*.children, child);
+}
+update: proc(n: *node in level, base: f32) -> i32 = {
+    n*.world_x = base + n*.x;
+    count: i32 = 1;
+    for (i: u64 = 0; i < n*.children*.length; i += 1) {
+        count += update(vec<*node in level>at(n*.children, i)*, n*.world_x);
+    }
+    return count;
+}
+main: proc() -> i32 = {
+    root: *node in level = make_node(1.0);
+    a: *node in level = make_node(2.0);
+    b: *node in level = make_node(4.0);
+    attach(root, a);
+    attach(a, b);
+    printfmt("{} {:.1}\n", update(root, 0.0), cast(b*.world_x, f64));
+    attach(b, root);
+    printfmt("{}\n", update(root, 0.0));
+    return 0;
+}

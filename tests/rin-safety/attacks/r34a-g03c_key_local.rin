@@ -1,0 +1,13 @@
+// The key of a slot read into a local, as the last error said.
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+main: proc() -> i32 = {
+    m: *hashmap<[]c8 in level, i32> in level = hashmap<[]c8 in level, i32>make(level);
+    s: []c8 in level = new_slice<c8>(level, 2);
+    _ = hashmap<[]c8 in level, i32>set(m, s, 1);
+    i: u64 = hashmap<[]c8 in level, i32>first(m);
+    k: []const c8 = hashmap<[]c8 in level, i32>key_at(m, i)*;
+    printfmt("{}\n", k.length);
+    return 0;
+}

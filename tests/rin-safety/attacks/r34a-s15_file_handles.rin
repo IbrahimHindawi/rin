@@ -1,0 +1,31 @@
+// A frame-scoped file kept in a global; reads and seeks past the end; double close.
+import "std/print.rin"
+import "std/file.rin"
+level: region global;
+frame: region in level;
+g_log: file = {};
+open_log: proc() -> void = {
+    frame: region = {
+        g_log = file_open_in(frame, "r34_log.txt", "wb");
+        file_write_text(g_log, "hello\n");
+        printfmt("{}\n", file_is_open(g_log));
+    }
+}
+main: proc() -> i32 = {
+    open_log();
+    printfmt("{}\n", file_is_open(g_log));
+    file_close(g_log);
+    r: file = file_open("r34_log.txt", "rb");
+    printfmt("{} {}\n", file_is_open(r), file_size(r));
+    printfmt("{}\n", file_seek(r, -5));
+    printfmt("{}\n", file_seek(r, 100));
+    printfmt("{}\n", file_read_byte(r));
+    printfmt("{}\n", file_seek(r, 0));
+    printfmt("{}\n", file_read_byte(r));
+    buf: [4]u8 = {};
+    printfmt("{}\n", file_read(r, buf));
+    file_close(r);
+    file_close(r);
+    printfmt("{}\n", file_read_byte(r));
+    return 0;
+}

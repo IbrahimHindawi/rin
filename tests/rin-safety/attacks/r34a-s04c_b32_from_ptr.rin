@@ -1,0 +1,9 @@
+import "std/print.rin"
+item: struct = { v: i32; }
+main: proc() -> i32 = {
+    x: item = {};
+    p: option<*item> = x&;
+    has: b32 = p;
+    printfmt("{}\n", has);
+    return 0;
+}

@@ -1,0 +1,26 @@
+// A pointer from table<T>get is held while the entity dies and its slot is reused by a new spawn.
+import "std/print.rin"
+import "std/table.rin"
+
+level: region global;
+
+unit: struct = { hp: i32; team: i32; }
+
+kill_and_respawn: proc(t: *table<unit>, who: index<unit>) -> index<unit> = {
+    _ = table<unit>remove(t, who);
+    return table<unit>add(t, { .hp = 100, .team = 2 });
+}
+
+main: proc() -> i32 = {
+    t: *table<unit> in level = table<unit>make(level, 4);
+    a: index<unit> = table<unit>add(t, { .hp = 10, .team = 1 });
+    p: option<*unit> = table<unit>get(t, a);
+    if (!p) { return 1; }
+    b: index<unit> = kill_and_respawn(t, a);
+    // The classic: p was the old unit. In rin this is memory of the right type, but it is now b.
+    p*.hp -= 3;
+    q: option<*unit> = table<unit>get(t, b);
+    if (!q) { return 2; }
+    printfmt("old alive {} new hp {} same slot {}\n", table<unit>has(t, a), q*.hp, a.slot == b.slot);
+    return 0;
+}

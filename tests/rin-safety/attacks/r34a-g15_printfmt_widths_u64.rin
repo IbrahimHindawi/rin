@@ -1,0 +1,23 @@
+// Widths and hex on 64-bit values, b32 beside an enum.
+import "std/print.rin"
+state: enum = { idle, walk, }
+main: proc() -> i32 = {
+    big: u64 = 0x123456789ABC'u64;
+    small: u64 = 5;
+    neg: i64 = -5;
+    printfmt("[{:x}]\n", big);
+    printfmt("[{:X}]\n", big);
+    printfmt("[{:x}]\n", small);
+    printfmt("[{:8}] [{:-8}] [{:08}]\n", small, small, small);
+    printfmt("[{:8}] [{:x}]\n", neg, neg);
+    w: u16 = 0xABCD;
+    b: u8 = 0xFF;
+    printfmt("[{:x}] [{:x}]\n", w, b);
+    i: i16 = -1;
+    printfmt("[{:x}]\n", i);
+    flag: b32 = true;
+    st: state = state.walk;
+    printfmt("{}\n", flag);
+    printfmt("{} {}\n", flag, st);
+    return 0;
+}

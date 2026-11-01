@@ -1,0 +1,23 @@
+// Float to index: positions to grid cells, with NaN, infinity, negatives and huge values.
+import "std/print.rin"
+zero: f32 = 0.0;
+cell: proc(x: f32, w: i32) -> i32 = { return cast(x, i32) % w; }
+main: proc() -> i32 = {
+    nan: f32 = zero / zero;
+    inf: f32 = 1.0 / zero;
+    printfmt("{} {} {} {}\n", cast(nan, i32), cast(inf, i32), cast(-inf, i32), cast(-1.5, i32));
+    printfmt("{} {} {} {}\n", cast(nan, u32), cast(inf, u32), cast(-inf, u32), cast(-1.5, u32));
+    printfmt("{} {} {} {}\n", cast(nan, u8), cast(inf, u8), cast(-inf, u8), cast(300.0, u8));
+    printfmt("{} {}\n", cast(inf, i64), cast(-inf, i64));
+    printfmt("{} {}\n", cast(inf, u64), cast(1e30, u64));
+    printfmt("{} {}\n", cast(cast(1e40, f32), f64) > 1e300, cast(cast(-1e40, f32), f64) < -1e300);
+    printfmt("{}\n", cell(7.5, 4));
+    printfmt("{}\n", cell(-7.5, 4));
+    grid: [16]i32 = {};
+    grid[5] = 42;
+    y: f32 = 1.25;
+    x: f32 = 1.75;
+    printfmt("{}\n", grid[cast(y, i32) * 4 + cast(x, i32)]);
+    printfmt("{}\n", grid[cast(nan, i32) * 4 + cast(nan, i32)]);
+    return 0;
+}

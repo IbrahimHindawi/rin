@@ -1,0 +1,6 @@
+import "std/print.rin"
+main: proc() -> i32 = {
+    s: str = "";
+    if (s) { printfmt("yes\n"); } else { printfmt("no\n"); }
+    return 0;
+}

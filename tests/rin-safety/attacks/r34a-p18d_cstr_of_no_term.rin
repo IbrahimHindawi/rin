@@ -1,0 +1,8 @@
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    name: [4]c8 = {};
+    for (i: u64 = 0; i < 4; i += 1) { name[i] = 'a'; }
+    print_cstr(cstr_of(name));
+    return 0;
+}

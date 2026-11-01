@@ -1,0 +1,30 @@
+// Signed and unsigned side by side, with casts the checker asked for, and wrap in narrow types.
+import "std/print.rin"
+main: proc() -> i32 = {
+    count: u32 = 0;
+    printfmt("{}\n", count - 1);
+    printfmt("{}\n", count - 1 > 10);
+    b: u8 = 200;
+    c: u8 = 100;
+    wide: u64 = b + c;
+    printfmt("{}\n", wide);
+    wide2: u64 = cast(b, u64) + c;
+    printfmt("{}\n", wide2);
+    n: i32 = 3;
+    u: u32 = 5;
+    printfmt("{}\n", n - u);
+    ff: f32 = 1.5;
+    printfmt("{}\n", cast(ff, i32) - u);
+    x: u8 = 250;
+    x += 10;
+    printfmt("{}\n", x);
+    s: i16 = 32767;
+    s += 1;
+    printfmt("{}\n", s);
+    neg: i32 = -7;
+    printfmt("{} {}\n", neg / 2, neg % 4);
+    printfmt("{}\n", cast(neg, u32) % 4);
+    avg: u32 = (cast(4000000000, u32) + cast(4000000000, u32)) / 2;
+    printfmt("{}\n", avg);
+    return 0;
+}

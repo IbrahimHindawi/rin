@@ -1,0 +1,19 @@
+// An array field inside a vec element, through a pointer and a copy, off the end.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+squad: struct = { members: [3]i32; n: i32; }
+main: proc() -> i32 = {
+    v: *vec<squad> in level = vec<squad>make(level, 1);
+    _ = vec<squad>push(v, { .members = { 1, 2, 3 }, .n = 3 });
+    s: *squad = vec<squad>at(v, 0);
+    s*.members[2] = 30;
+    copy: squad = s*;
+    copy.members[0] = 100;
+    printfmt("{} {} {}\n", s*.members[0], copy.members[0], copy.members[2]);
+    m: []i32 = s*.members;
+    m[1] = 20;
+    printfmt("{}\n", vec<squad>at(v, 0)*.members[1]);
+    printfmt("{}\n", s*.members[s*.n]);
+    return 0;
+}

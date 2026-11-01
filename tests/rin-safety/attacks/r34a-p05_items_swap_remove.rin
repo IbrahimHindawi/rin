@@ -1,0 +1,21 @@
+// Iterating a slice of a vec while swap-removing from the vec.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+bullet: struct = { id: i32; life: i32; }
+main: proc() -> i32 = {
+    bullets: *vec<bullet> in level = vec<bullet>make(level, 8);
+    for (i: i32 = 0; i < 6; i += 1) { _ = vec<bullet>push(bullets, { .id = i, .life = i % 2 }); }
+    all: []bullet = vec<bullet>items(bullets);
+    seen: i32 = 0;
+    for (i: u64 = 0; i < all.length; i += 1) {
+        seen += 1;
+        if (all[i].life == 0) {
+            // Swap-remove: the last goes here, and the vec is one shorter. `all` is not.
+            vec<bullet>at(bullets, i)* = vec<bullet>last(bullets)*;
+            _ = vec<bullet>pop(bullets);
+        }
+    }
+    printfmt("seen {} left {}\n", seen, bullets*.length);
+    return 0;
+}

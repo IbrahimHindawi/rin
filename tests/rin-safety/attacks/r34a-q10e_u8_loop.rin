@@ -1,0 +1,14 @@
+// A loop over all byte values with a u8 counter.
+import "std/print.rin"
+main: proc() -> i32 = {
+    table: [256]i32 = {};
+    n: i32 = 0;
+    limit: u16 = 256;
+    for (i: u8 = 0; i < limit; i += 1) {
+        table[i] += 1;
+        n += 1;
+        if (n > 1000) { printfmt("wrapped\n"); break; }
+    }
+    printfmt("{}\n", n);
+    return 0;
+}

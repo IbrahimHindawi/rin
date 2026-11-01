@@ -1,0 +1,13 @@
+// Struct with a big array passed by value, and a big array in a recursive proc.
+import "std/print.rin"
+frame_t: struct = { pixels: [1048576]u8; id: i32; }
+touch: proc(f: frame_t, depth: i32) -> i32 = {
+    f.pixels[depth] = 1;
+    if (depth == 0) { return f.id; }
+    return touch(f, depth - 1);
+}
+main: proc() -> i32 = {
+    f: frame_t = { .id = 5 };
+    printfmt("{}\n", touch(f, 100));
+    return 0;
+}

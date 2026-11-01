@@ -1,0 +1,17 @@
+// A list of pointers to elements of another vec, made before it grows, used after.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+enemy: struct = { hp: i32; }
+main: proc() -> i32 = {
+    enemies: *vec<enemy> in level = vec<enemy>make(level, 2);
+    alive: *vec<*enemy in level> in level = vec<*enemy in level>make(level, 2);
+    for (i: i32 = 0; i < 2; i += 1) {
+        p: *enemy in level = vec<enemy>push(enemies, { .hp = 10 });
+        _ = vec<*enemy in level>push(alive, p);
+    }
+    _ = vec<enemy>push(enemies, { .hp = 10 });
+    vec<*enemy in level>at(alive, 0)**.hp = 1;
+    printfmt("{}\n", vec<enemy>at(enemies, 0)*.hp);
+    return 0;
+}

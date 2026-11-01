@@ -1,0 +1,10 @@
+// The file is missing and the check was forgotten.
+import "std/print.rin"
+import "std/file.rin"
+level: region global;
+main: proc() -> i32 = {
+    f: file = file_open("no_such_file.txt", "rb");
+    size: i64 = file_size(f);
+    printfmt("{}\n", size);
+    return 0;
+}

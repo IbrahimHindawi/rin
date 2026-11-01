@@ -1,0 +1,13 @@
+// A hash of its own with no calls, then one calling hash_mix.
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+cell: struct = { x: i32; y: i32; }
+hash: proc<cell>(c: cell) -> u64 = { return cast(c.x, u64) * 31 + cast(c.y, u64); }
+equal: proc<cell>(a: cell, b: cell) -> b32 = { return a.x == b.x && a.y == b.y; }
+main: proc() -> i32 = {
+    m: *hashmap<cell, i32> in level = hashmap<cell, i32>make(level);
+    _ = hashmap<cell, i32>set(m, { .x = 1, .y = 2 }, 3);
+    printfmt("{}\n", hashmap<cell, i32>get_or(m, { .x = 1, .y = 2 }, -1));
+    return 0;
+}

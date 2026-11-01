@@ -1,0 +1,25 @@
+// An enum value read from data, out of the enum, through a switch and an array.
+import "std/print.rin"
+state: enum = { idle, walk, run, }
+name_of: proc(s: state) -> str = {
+    switch (s) {
+        case state.idle: { return "idle"; }
+        case state.walk: { return "walk"; }
+        case state.run: { return "run"; }
+    }
+    return "unknown";
+}
+no_default: proc(s: state) -> i32 = {
+    switch (s) {
+        case state.idle: { return 1; }
+        case state.walk: { return 2; }
+        case state.run: { return 3; }
+    }
+}
+main: proc() -> i32 = {
+    from_file: i32 = 9;
+    s: state = cast(from_file, state);
+    printfmt("{} {}\n", name_of(s), s);
+    printfmt("{}\n", no_default(s));
+    return 0;
+}

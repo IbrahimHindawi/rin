@@ -1,0 +1,12 @@
+// An entity's name is a str in its struct; one was never set. Print it with a newline.
+import "std/print.rin"
+entity: struct = { name: str; hp: i32; }
+main: proc() -> i32 = {
+    e: entity = {};
+    printfmt("{}\n", e.name);
+    printfmt("{}", e.name);
+    printfmt("\nname={} hp={}\n", e.name, e.hp);
+    names: [3]str = { "a" };
+    printfmt("{}\n", names[1]);
+    return 0;
+}

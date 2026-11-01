@@ -1,0 +1,71 @@
+// A level file in text, read whole into the level region and walked with an index. Case: a name of exactly the buffer size, with a bare copy: the terminator is the overflow
+import "std/print.rin"
+import "std/file.rin"
+import "std/cstr.rin"
+import "std/vec.rin"
+level: region global;
+spawn_line: struct = { name: [16]c8; count: i64; x: f64; }
+
+write_text: proc(path: ^const c8, body: ^const c8) -> void = {
+    f: file = file_open(path, "wb");
+    if (file_is_open(f)) { file_write_text(f, body); file_close(f); }
+}
+read_whole: proc(r: region level, path: ^const c8) -> []u8 in level = {
+    empty: []u8 in level = {};
+    f: file = file_open(path, "rb");
+    if (!file_is_open(f)) { return empty; }
+    size: i64 = file_size(f);
+    size_u: u64 = cast(size, u64);
+    out: []u8 in level = new_slice<u8>(r, size_u);
+    _ = file_read(f, out);
+    file_close(f);
+    return out;
+}
+is_space: proc(c: u8) -> b32 = { return c == 32 || c == 9 || c == 13; }
+// The next token into a fixed buffer. `i` is where we are; returns where we got to.
+token: proc(text: []const u8, i: u64, out: []c8) -> u64 = {
+    while (i < text.length && is_space(text[i])) { i += 1; }
+    n: u64 = 0;
+    while (i < text.length && !is_space(text[i]) && text[i] != 10) {
+        out[n] = cast(text[i], c8);
+        n += 1;
+        i += 1;
+    }
+    out[n] = 0;
+    return i;
+}
+parse: proc(text: []const u8, into: *vec<spawn_line>) -> i32 = {
+    i: u64 = 0;
+    lines: i32 = 0;
+    while (i < text.length) {
+        name: [16]c8 = {};
+        number: [16]c8 = {};
+        where: [16]c8 = {};
+        i = token(text, i, name);
+        i = token(text, i, number);
+        i = token(text, i, where);
+        while (i < text.length && text[i] != 10) { i += 1; }
+        i += 1;
+        if (name[0] == 0) { continue; }
+        s: spawn_line = {};
+        _ = cstr_copy(s.name, cstr_of(name));
+        ok: b32 = cstr_parse_i64(cstr_of(number), s.count&);
+        ok2: b32 = cstr_parse_f64(cstr_of(where), s.x&);
+        printfmt("  [{}] count ok {} value {} x ok {} value {:.3}\n", cstr_of(s.name), ok, s.count, ok2, s.x);
+        _ = vec<spawn_line>push(into, s);
+        lines += 1;
+    }
+    return lines;
+}
+main: proc() -> i32 = {
+    path: str = "r34_level.txt";
+    write_text(path, "aaaaaaaaaaaaaaaa 3 1.5\n");
+    text: []u8 in level = read_whole(level, path);
+    printfmt("{} bytes\n", text.length);
+    all: *vec<spawn_line> in level = vec<spawn_line>make(level, 2);
+    printfmt("{} lines\n", parse(text, all));
+    total: i64 = 0;
+    for (i: u64 = 0; i < all*.length; i += 1) { total += vec<spawn_line>at(all, i)*.count; }
+    printfmt("total {}\n", total);
+    return 0;
+}

@@ -1,0 +1,19 @@
+// f32 against a literal, and division results as a C programmer would read them.
+import "std/print.rin"
+main: proc() -> i32 = {
+    x: f32 = 0.1;
+    printfmt("{}\n", x == 0.1);
+    dt: f32 = 1 / 60;
+    printfmt("{:.3}\n", cast(dt, f64));
+    hp: i32 = 7;
+    half: f32 = hp / 2;
+    printfmt("{:.3}\n", cast(half, f64));
+    ratio: f32 = hp * 0.5;
+    printfmt("{:.3}\n", cast(ratio, f64));
+    y: f32 = 16777216.0;
+    y += 1;
+    printfmt("{:.1}\n", cast(y, f64));
+    z: f64 = 0.1 + 0.2;
+    printfmt("{:.17}\n", z);
+    return 0;
+}

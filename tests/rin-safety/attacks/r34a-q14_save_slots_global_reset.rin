@@ -1,0 +1,26 @@
+// Save slots: copies of a level's state nested in global arrays of structs. Reset, then read them.
+import "std/print.rin"
+level: region global;
+item: struct = { id: i32; }
+bag: struct = { items: []item in level; owner: option<*item in level>; count: i32; }
+room: struct = { bags: [3]bag; depth: i32; }
+game: struct = { current: bag; rooms: [2]room; }
+g: game = {};
+saves: [2]game = {};
+fill: proc() -> void = {
+    reset level;
+    g.current.items = new_slice<item>(level, 4);
+    g.current.count = 4;
+    g.current.items[0].id = 11;
+    g.current.owner = g.current.items[0]&;
+    g.rooms[1].bags[2] = g.current;
+    saves[1] = g;
+}
+main: proc() -> i32 = {
+    fill();
+    printfmt("{} {}\n", saves[1].rooms[1].bags[2].items[0].id, saves[1].rooms[1].bags[2].count);
+    reset level;
+    printfmt("{} {}\n", saves[1].rooms[1].bags[2].items.length, saves[1].rooms[1].bags[2].count);
+    printfmt("{}\n", saves[1].current.owner == null);
+    return 0;
+}

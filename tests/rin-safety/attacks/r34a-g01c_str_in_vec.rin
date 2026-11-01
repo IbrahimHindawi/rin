@@ -1,0 +1,11 @@
+// A str in a vec element, on its own.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+unit: struct = { name: str; hp: i32; }
+main: proc() -> i32 = {
+    t: *vec<unit> in level = vec<unit>make(level, 4);
+    _ = vec<unit>push(t, { .name = "x", .hp = 1 });
+    printfmt("{}\n", vec<unit>at(t, 0)*.name);
+    return 0;
+}

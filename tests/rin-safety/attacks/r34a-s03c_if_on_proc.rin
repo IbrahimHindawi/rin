@@ -1,0 +1,6 @@
+import "std/print.rin"
+tick: proc() -> i32 = { return 0; }
+main: proc() -> i32 = {
+    if (tick) { printfmt("yes\n"); }
+    return 0;
+}

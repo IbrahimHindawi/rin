@@ -1,0 +1,57 @@
+// Commands recorded in the frame region and applied after the systems, with pointers into the level.
+import "std/print.rin"
+import "std/vec.rin"
+import "std/table.rin"
+level: region global;
+frame: region in level;
+pos: struct = { x: i32; y: i32; }
+mob: struct = { at: pos; hp: i32; }
+cmd_kind: enum = { spawn, kill, move, }
+cmd: struct = { kind: cmd_kind; who: index<mob>; at: pos; }
+world: struct = { mobs: *table<mob> in level; applied: i32; skipped: i32; }
+
+record_systems: proc(w: *world, q: *vec<cmd>, tick: i32) -> void = {
+    for (s: u32 = 0; s < table<mob>capacity(w*.mobs); s += 1) {
+        i: index<mob> = table<mob>index_at(w*.mobs, s);
+        m: option<*mob> = table<mob>get(w*.mobs, i);
+        if (!m) { continue; }
+        m*.hp -= 1;
+        if (m*.hp <= 0) {
+            _ = vec<cmd>push(q, { .kind = cmd_kind.kill, .who = i });
+            _ = vec<cmd>push(q, { .kind = cmd_kind.move, .who = i, .at = { .x = 1, .y = 1 } });
+        } else if (tick % 2 == 0) {
+            _ = vec<cmd>push(q, { .kind = cmd_kind.spawn, .at = m*.at });
+        }
+    }
+}
+apply: proc(w: *world, q: *vec<cmd>) -> void = {
+    for (i: u64 = 0; i < q*.length; i += 1) {
+        c: cmd = vec<cmd>at(q, i)*;
+        switch (c.kind) {
+            case cmd_kind.spawn: {
+                h: index<mob> = table<mob>add(w*.mobs, { .at = c.at, .hp = 2 });
+                if (table<mob>has(w*.mobs, h)) { w*.applied += 1; } else { w*.skipped += 1; }
+            }
+            case cmd_kind.kill: {
+                if (table<mob>remove(w*.mobs, c.who)) { w*.applied += 1; } else { w*.skipped += 1; }
+            }
+            case cmd_kind.move: {
+                m: option<*mob> = table<mob>get(w*.mobs, c.who);
+                if (m) { m*.at = c.at; w*.applied += 1; } else { w*.skipped += 1; }
+            }
+        }
+    }
+}
+main: proc() -> i32 = {
+    w: *world in level = new<world>(level, { .mobs = table<mob>make(level, 8) });
+    _ = table<mob>add(w*.mobs, { .hp = 3 });
+    for (tick: i32 = 0; tick < 6; tick += 1) {
+        frame: region = {
+            q: *vec<cmd> in frame = vec<cmd>make(frame, 1);
+            record_systems(w, q, tick);
+            apply(w, q);
+        }
+        printfmt("tick {} mobs {} applied {} skipped {}\n", tick, table<mob>count(w*.mobs), w*.applied, w*.skipped);
+    }
+    return 0;
+}

@@ -1,0 +1,10 @@
+import "std/print.rin"
+zero: f32 = 0.0;
+main: proc() -> i32 = {
+    inf: f32 = 1.0 / zero;
+    grid: [16]i32 = {};
+    y: f32 = inf;
+    printfmt("{}\n", grid[cast(y, i32) * 4 + 3]);
+    printfmt("{}\n", grid[cast(y, i32)]);
+    return 0;
+}

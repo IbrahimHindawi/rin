@@ -1,0 +1,23 @@
+// Open for write, read from it, then write; a directory opened as a file.
+import "std/print.rin"
+import "std/file.rin"
+level: region global;
+main: proc() -> i32 = {
+    w: file = file_open("r34_rw.bin", "wb");
+    b: [4]u8 = { 1, 2, 3, 4 };
+    printfmt("{}\n", file_write(w, b));
+    printfmt("{}\n", file_read_byte(w));
+    printfmt("{}\n", file_read(w, b));
+    printfmt("{}\n", file_write(w, b));
+    file_close(w);
+    d: file = file_open(".", "rb");
+    printfmt("{}\n", file_is_open(d));
+    if (file_is_open(d)) {
+        size: i64 = file_size(d);
+        printfmt("{}\n", size);
+        size_u: u64 = cast(size, u64);
+        out: []u8 in level = new_slice<u8>(level, size_u);
+        printfmt("{}\n", file_read(d, out));
+    }
+    return 0;
+}

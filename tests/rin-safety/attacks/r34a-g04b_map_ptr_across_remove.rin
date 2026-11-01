@@ -1,0 +1,15 @@
+// A pointer to a value, the key removed, then written; then the slot taken by a new key.
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+stat: struct = { hits: i32; }
+main: proc() -> i32 = {
+    m: *hashmap<u32, stat> in level = hashmap<u32, stat>make(level);
+    _ = hashmap<u32, stat>set(m, 1, { .hits = 1 });
+    p: option<*stat> = hashmap<u32, stat>get(m, 1);
+    if (!p) { return 1; }
+    _ = hashmap<u32, stat>remove(m, 1);
+    p*.hits = 99;
+    printfmt("{} {}\n", p*.hits, hashmap<u32, stat>has(m, 1));
+    return 0;
+}

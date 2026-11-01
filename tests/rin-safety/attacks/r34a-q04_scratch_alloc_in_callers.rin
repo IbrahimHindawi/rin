@@ -1,0 +1,33 @@
+// A helper has its own scratch, and allocates its result in the caller's region, which is the caller's scratch.
+import "std/print.rin"
+item: struct = { v: i32; }
+make_item: proc(r: region R, n: i32) -> *item in R = {
+    out: *item in R = new<item>(r, { .v = 0 });
+    scratch {
+        tmp: []i32 in scratch = new_slice<i32>(scratch, 8);
+        tmp[3] = n;
+        out*.v = tmp[3] * 2;
+    }
+    return out;
+}
+make_item2: proc(r: region R, n: i32) -> *item in R = {
+    scratch {
+        tmp: []i32 in scratch = new_slice<i32>(scratch, 8);
+        tmp[3] = n;
+        out: *item in R = new<item>(r, { .v = tmp[3] * 2 });
+        return out;
+    }
+    return new<item>(r, { .v = -1 });
+}
+main: proc() -> i32 = {
+    scratch {
+        a: *item in scratch = make_item(scratch, 1);
+        b: *item in scratch = make_item(scratch, 2);
+        c: *item in scratch = make_item2(scratch, 3);
+        d: *item in scratch = make_item2(scratch, 4);
+        junk: []i32 in scratch = new_slice<i32>(scratch, 64);
+        junk[0] = 99;
+        printfmt("{} {} {} {}\n", a*.v, b*.v, c*.v, d*.v);
+    }
+    return 0;
+}

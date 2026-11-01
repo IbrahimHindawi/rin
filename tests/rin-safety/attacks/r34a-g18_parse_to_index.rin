@@ -1,0 +1,14 @@
+// A parsed i64 narrowed to i32 and to u8, then an index.
+import "std/print.rin"
+import "std/cstr.rin"
+hp_table: [8]i32 = { 1, 2, 3, 4, 5, 6, 7, 8 };
+main: proc() -> i32 = {
+    n: i64 = 0;
+    _ = cstr_parse_i64("4294967296", n&);
+    printfmt("{}\n", hp_table[cast(n, i32)]);
+    _ = cstr_parse_i64("259", n&);
+    printfmt("{}\n", hp_table[cast(n, u8)]);
+    _ = cstr_parse_i64("-1", n&);
+    printfmt("{}\n", hp_table[n]);
+    return 0;
+}

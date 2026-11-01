@@ -1,0 +1,10 @@
+import "std/print.rin"
+state: enum = { idle, walk, run, }
+main: proc() -> i32 = {
+    from_file: i32 = 9;
+    s: state = cast(from_file, state);
+    speeds: [3]i32 = { 1, 2, 3 };
+    printfmt("{}\n", speeds[state.walk]);
+    printfmt("{}\n", speeds[s]);
+    return 0;
+}

@@ -1,0 +1,8 @@
+import "std/print.rin"
+vec2: struct = { x: f32; y: f32; }
+main: proc() -> i32 = {
+    a: vec2 = { .x = 1.0, .y = 2.0 };
+    b: vec2 = { .x = 1.0, .y = 2.0 };
+    printfmt("{}\n", a == b);
+    return 0;
+}

@@ -1,0 +1,29 @@
+// Paths built in fixed buffers: a join over itself, an append of itself, an overflow, into a struct's field.
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/fmt.rin"
+import "std/vec.rin"
+level: region global;
+asset: struct = { path: [24]c8; id: i32; }
+main: proc() -> i32 = {
+    path: [32]c8 = {};
+    printfmt("{}\n", fmt_cat2(path, "res", "/fx"));
+    printfmt("{}\n", cstr_of(path));
+    printfmt("{}\n", fmt_cat3(path, cstr_of(path), "/", "smoke.png"));
+    printfmt("{}\n", cstr_of(path));
+    printfmt("{}\n", cstr_append(path, cstr_of(path)));
+    printfmt("{}\n", cstr_of(path));
+    printfmt("{}\n", cstr_copy(path, cstr_of(path[4..32])));
+    printfmt("{}\n", cstr_of(path));
+    as: *vec<asset> in level = vec<asset>make(level, 2);
+    a: *asset = vec<asset>push(as, { .id = 1 });
+    n: u64 = fmt_cat3(a*.path, "res/textures/", "a_rather_long_name", ".png");
+    printfmt("{} {} {}\n", n, cstr_of(a*.path), cstr_length(cstr_of(a*.path)));
+    printfmt("{}\n", cstr_ends_with(cstr_of(a*.path), ".png"));
+    buf: [8]c8 = {};
+    printfmt("{}\n", fmt_cat5(buf, "a", "b", "c", "d", "efghijklmnop"));
+    printfmt("{}\n", cstr_of(buf));
+    empty: []c8 = path[0..0];
+    printfmt("{}\n", fmt_cat2(empty, "a", "b"));
+    return 0;
+}

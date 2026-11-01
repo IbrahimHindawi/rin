@@ -1,0 +1,51 @@
+// A map from name to handle, keys interned in the level, removed while walking.
+import "std/print.rin"
+import "std/hashmap.rin"
+import "std/table.rin"
+import "std/cstr.rin"
+import "std/fmt.rin"
+level: region global;
+frame: region in level;
+ent: struct = { hp: i32; }
+intern: proc(r: region level, s: ^const c8) -> []c8 in level = {
+    v: []const c8 = cstr_view(s);
+    n: u64 = v.length;
+    out: []c8 in level = new_slice<c8>(r, n);
+    for (i: u64 = 0; i < v.length; i += 1) { out[i] = v[i]; }
+    return out;
+}
+main: proc() -> i32 = {
+    m: *hashmap<[]c8 in level, index<ent>> in level = hashmap<[]c8 in level, index<ent>>make(level);
+    t: *table<ent> in level = table<ent>make(level, 64);
+    f: *fmt in level = fmt_make(level, 32);
+    for (i: i64 = 0; i < 40; i += 1) {
+        fmt_reset(f);
+        fmt_cstr(f, "mob_");
+        fmt_i64(f, i);
+        h: index<ent> = table<ent>add(t, { .hp = cast(i, i32) });
+        k: []c8 in level = intern(level, fmt_text(f));
+        _ = hashmap<[]c8 in level, index<ent>>set(m, k, h);
+    }
+    printfmt("{}\n", m*.length);
+    probe: []c8 in level = intern(level, "mob_17");
+    got: option<*index<ent>> = hashmap<[]c8 in level, index<ent>>get(m, probe);
+    if (got) {
+        e: option<*ent> = table<ent>get(t, got*);
+        if (e) { printfmt("mob_17 hp {}\n", e*.hp); }
+    }
+    // Remove the odd ones while walking the map: the key is read through a pointer to const.
+    removed: i32 = 0;
+    for (i: u64 = hashmap<[]c8 in level, index<ent>>first(m); i < m*.capacity; i = hashmap<[]c8 in level, index<ent>>next(m, i)) {
+        h: index<ent> = hashmap<[]c8 in level, index<ent>>value_at(m, i)*;
+        e: option<*ent> = table<ent>get(t, h);
+        if (e && e*.hp % 2 == 1) {
+            kp: *const []c8 in level = hashmap<[]c8 in level, index<ent>>key_at(m, i);
+            k: []c8 in level = kp*;
+            _ = hashmap<[]c8 in level, index<ent>>remove(m, k);
+            removed += 1;
+        }
+    }
+    printfmt("{} {}\n", removed, m*.length);
+    printfmt("{}\n", hashmap<[]c8 in level, index<ent>>has(m, probe));
+    return 0;
+}

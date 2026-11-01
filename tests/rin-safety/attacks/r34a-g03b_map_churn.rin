@@ -1,0 +1,20 @@
+// Set and remove the same keys for a long time: the probes must end, the answers must stay right.
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+main: proc() -> i32 = {
+    m: *hashmap<u32, i32> in level = hashmap<u32, i32>make(level);
+    for (round: i32 = 0; round < 200000; round += 1) {
+        k: u32 = cast(round % 11, u32);
+        _ = hashmap<u32, i32>set(m, k, round);
+        if (round % 3 != 0) { _ = hashmap<u32, i32>remove(m, k); }
+    }
+    n: i32 = 0;
+    for (i: u64 = hashmap<u32, i32>first(m); i < m*.capacity; i = hashmap<u32, i32>next(m, i)) { n += 1; }
+    printfmt("{} {} {}\n", m*.length, n, m*.capacity);
+    hashmap<u32, i32>clear(m);
+    printfmt("{} {}\n", m*.length, hashmap<u32, i32>first(m) == m*.capacity);
+    _ = hashmap<u32, i32>set(m, 5, 55);
+    printfmt("{}\n", hashmap<u32, i32>get_or(m, 5, 0));
+    return 0;
+}

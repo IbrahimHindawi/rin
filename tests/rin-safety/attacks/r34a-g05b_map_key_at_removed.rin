@@ -1,0 +1,15 @@
+// The slot's key, removed, read again: the walk reads what it just removed.
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+main: proc() -> i32 = {
+    m: *hashmap<u32, i32> in level = hashmap<u32, i32>make(level);
+    _ = hashmap<u32, i32>set(m, 7, 1);
+    i: u64 = hashmap<u32, i32>first(m);
+    k: *const u32 = hashmap<u32, i32>key_at(m, i);
+    v: *i32 = hashmap<u32, i32>value_at(m, i);
+    _ = hashmap<u32, i32>remove(m, k*);
+    printfmt("{} {}\n", k*, v*);
+    printfmt("{}\n", hashmap<u32, i32>value_at(m, i)*);
+    return 0;
+}

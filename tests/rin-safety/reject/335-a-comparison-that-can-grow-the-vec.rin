@@ -1,0 +1,14 @@
+// expect: can move it through a global
+// This comparison reaches the vec through a global and grows it, so the items handed to the sort may move under it.
+import "std/vec.rin"
+import "std/sort.rin"
+level: region global;
+gv: option<*vec<i32> in level> = null;
+grows: proc(a: i32, b: i32) -> b32 = { h: option<*vec<i32> in level> = gv; if (h) { _ = vec<i32>push(h, 1); } return a < b; }
+main: proc() -> i32 = {
+    v: *vec<i32> in level = vec<i32>make(level, 1);
+    gv = v;
+    _ = vec<i32>push(v, 2);
+    sort<i32>(vec<i32>items(v), grows);
+    return 0;
+}

@@ -1,0 +1,36 @@
+// Building names, finding things in them, using a find result as an index.
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/fmt.rin"
+import "std/vec.rin"
+level: region global;
+frame: region in level;
+ent: struct = { name: [12]c8; id: i32; }
+make_name: proc(e: *ent, base: ^const c8) -> void = {
+    frame: region = {
+        f: *fmt in frame = fmt_make(frame, 32);
+        fmt_cstr(f, base);
+        fmt_char(f, '_');
+        fmt_i64(f, cast(e*.id, i64));
+        _ = cstr_copy(e*.name, fmt_text(f));
+    }
+}
+extension_of: proc(path: ^const c8) -> i64 = { return cstr_find_char(path, '.'); }
+main: proc() -> i32 = {
+    es: *vec<ent> in level = vec<ent>make(level, 2);
+    for (i: i32 = 0; i < 3; i += 1) {
+        e: *ent = vec<ent>push(es, { .id = i * 1000 });
+        make_name(e, "skeleton");
+        printfmt("[{}]\n", cstr_of(e*.name));
+    }
+    printfmt("{}\n", cstr_equals(cstr_of(vec<ent>at(es, 2)*.name), "skeleton_20"));
+    path: [16]c8 = {};
+    _ = cstr_copy(path, "mesh.gltf");
+    dot: i64 = extension_of(cstr_of(path));
+    printfmt("{} {}\n", dot, path[dot + 1]);
+    _ = cstr_copy(path, "noext");
+    dot = extension_of(cstr_of(path));
+    printfmt("{}\n", dot);
+    printfmt("{}\n", path[dot]);
+    return 0;
+}

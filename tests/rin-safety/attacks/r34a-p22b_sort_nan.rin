@@ -1,0 +1,19 @@
+import "std/print.rin"
+import "std/sort.rin"
+level: region global;
+sprite: struct = { depth: f32; id: i32; }
+by_depth: proc(a: sprite, b: sprite) -> b32 = { return a.depth < b.depth; }
+zero: f32 = 0.0;
+main: proc() -> i32 = {
+    xs: []sprite = new_slice<sprite>(level, 64);
+    nan: f32 = zero / zero;
+    for (i: i32 = 0; i < 64; i += 1) {
+        d: f32 = i % 3 == 0 ? nan : cast((i * 37) % 50, f32);
+        xs[cast(i, u64)] = { .depth = d, .id = i };
+    }
+    sort<sprite>(xs, by_depth);
+    sum: i32 = 0;
+    for (i: u64 = 0; i < xs.length; i += 1) { sum += xs[i].id; }
+    printfmt("{} {}\n", xs.length, sum);
+    return 0;
+}

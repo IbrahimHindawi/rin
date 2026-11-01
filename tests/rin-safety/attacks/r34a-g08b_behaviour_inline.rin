@@ -1,0 +1,23 @@
+// The same, the element handed straight in, not kept: the callee's write goes to the old storage.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+mob: struct = { kind: i32; hp: i32; }
+world: struct = { mobs: *vec<mob> in level; }
+behave_fn: alias = *proc(m: *mob, w: *world) -> void;
+idle: proc(m: *mob, w: *world) -> void = { m*.hp -= 1; }
+breed: proc(m: *mob, w: *world) -> void = {
+    _ = vec<mob>push(w*.mobs, { .kind = 0, .hp = 1 });
+    m*.hp -= 2;
+}
+table_of: [2]behave_fn = { idle, breed };
+main: proc() -> i32 = {
+    w: *world in level = new<world>(level, { .mobs = vec<mob>make(level, 1) });
+    _ = vec<mob>push(w*.mobs, { .kind = 1, .hp = 100 });
+    for (i: u64 = 0; i < w*.mobs*.length; i += 1) {
+        kind: i32 = vec<mob>at(w*.mobs, i)*.kind;
+        table_of[kind](vec<mob>at(w*.mobs, i), w);
+    }
+    printfmt("{} {}\n", vec<mob>at(w*.mobs, 0)*.hp, w*.mobs*.length);
+    return 0;
+}

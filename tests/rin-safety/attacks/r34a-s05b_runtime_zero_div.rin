@@ -1,0 +1,12 @@
+// An average with no samples, as ints and as floats.
+import "std/print.rin"
+average: proc(total: i32, n: i32) -> i32 = { return total / n; }
+favg: proc(total: f32, n: i32) -> f32 = { return total / cast(n, f32); }
+main: proc() -> i32 = {
+    printfmt("{:.1}\n", cast(favg(1.0, 0), f64));
+    printfmt("{}\n", 7 % 3);
+    mod: i32 = 0;
+    printfmt("{}\n", average(5, 1));
+    printfmt("{}\n", 5 % mod);
+    return 0;
+}

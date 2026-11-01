@@ -1,0 +1,3 @@
+// expect: a pointer is not a truth value here
+item: struct = { v: i32; }
+main: proc() -> i32 = { x: item = {}; p: option<*item> = x&; has: b32 = p; return cast(has, i32); }

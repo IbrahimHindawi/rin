@@ -1,0 +1,15 @@
+// A vec's items in a local first, then sorted: the same as inline? And an array.
+import "std/print.rin"
+import "std/sort.rin"
+import "std/vec.rin"
+level: region global;
+sprite: struct = { depth: f32; id: i32; }
+by_depth: proc(a: sprite, b: sprite) -> b32 = { return a.depth < b.depth; }
+main: proc() -> i32 = {
+    v: *vec<sprite> in level = vec<sprite>make(level, 8);
+    for (i: i32 = 0; i < 20; i += 1) { _ = vec<sprite>push(v, { .depth = cast((i * 7) % 20, f32), .id = i }); }
+    xs: []sprite = vec<sprite>items(v);
+    sort<sprite>(xs, by_depth);
+    printfmt("{}\n", xs[0].id);
+    return 0;
+}

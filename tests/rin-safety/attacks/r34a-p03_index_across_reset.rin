@@ -1,0 +1,43 @@
+// The player's target is a handle kept in a global across a level change. The new level's table is new, so its
+// generations start again and the old handle fits a different monster.
+import "std/print.rin"
+import "std/table.rin"
+
+level: region global;
+
+monster: struct = { hp: i32; kind: i32; }
+
+game: struct = {
+    monsters: option<*table<monster> in level>;
+    target: index<monster>;
+}
+g: game = {};
+
+load_level: proc(id: i32) -> void = {
+    reset level;
+    t: *table<monster> in level = table<monster>make(level, 8);
+    g.monsters = t;
+    for (i: i32 = 0; i < 3; i += 1) {
+        _ = table<monster>add(t, { .hp = 10 * id + i, .kind = id });
+    }
+}
+
+attack_target: proc() -> i32 = {
+    t: option<*table<monster> in level> = g.monsters;
+    if (!t) { return -1; }
+    m: option<*monster> = table<monster>get(t, g.target);
+    if (!m) { return -2; }
+    m*.hp -= 1;
+    return m*.kind;
+}
+
+main: proc() -> i32 = {
+    load_level(1);
+    t: option<*table<monster> in level> = g.monsters;
+    if (!t) { return 1; }
+    g.target = table<monster>index_at(t, 1);
+    printfmt("level 1 target kind {}\n", attack_target());
+    load_level(2);
+    printfmt("level 2 target kind {}\n", attack_target());
+    return 0;
+}

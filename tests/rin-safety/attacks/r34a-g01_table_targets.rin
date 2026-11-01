@@ -1,0 +1,52 @@
+// Units target each other by handle; some die and their slots are reused. Removing while iterating over slots.
+import "std/print.rin"
+import "std/table.rin"
+import "std/cstr.rin"
+level: region global;
+unit: struct = { hp: i32; damage: i32; target: index<unit>; name: [8]c8; }
+units: option<*table<unit> in level> = null;
+
+spawn: proc(t: *table<unit>, name: ^const c8, hp: i32, damage: i32, target: index<unit>) -> index<unit> = {
+    i: index<unit> = table<unit>add(t, { .hp = hp, .damage = damage, .target = target });
+    u: option<*unit> = table<unit>get(t, i);
+    if (u) { _ = cstr_copy(u*.name, name); }
+    return i;
+}
+step: proc(t: *table<unit>) -> i32 = {
+    deaths: i32 = 0;
+    for (slot: u32 = 0; slot < table<unit>capacity(t); slot += 1) {
+        i: index<unit> = table<unit>index_at(t, slot);
+        me: option<*unit> = table<unit>get(t, i);
+        if (!me) { continue; }
+        foe: option<*unit> = table<unit>get(t, me*.target);
+        if (!foe) { printfmt("  {} has no target\n", cstr_of(me*.name)); continue; }
+        foe*.hp -= me*.damage;
+        if (foe*.hp <= 0) {
+            printfmt("  {} killed {}\n", cstr_of(me*.name), cstr_of(foe*.name));
+            _ = table<unit>remove(t, me*.target);
+            deaths += 1;
+        }
+    }
+    return deaths;
+}
+main: proc() -> i32 = {
+    t: *table<unit> in level = table<unit>make(level, 4);
+    none: index<unit> = {};
+    a: index<unit> = spawn(t, "archer", 10, 3, none);
+    b: index<unit> = spawn(t, "brute", 7, 5, a);
+    ap: option<*unit> = table<unit>get(t, a);
+    if (ap) { ap*.target = b; }
+    printfmt("{}\n", step(t));
+    printfmt("{}\n", step(t));
+    // a's slot is free now: a new unit takes it, and b's old target must not find it.
+    c: index<unit> = spawn(t, "cleric", 4, 1, b);
+    printfmt("same slot {} old alive {} new alive {}\n", a.slot == c.slot, table<unit>has(t, a), table<unit>has(t, c));
+    printfmt("{}\n", step(t));
+    // Fill it past capacity: the handles of the ones that did not fit find nothing.
+    for (i: i32 = 0; i < 5; i += 1) {
+        h: index<unit> = spawn(t, "extra", 1, 0, none);
+        printfmt("{} ", table<unit>has(t, h));
+    }
+    printfmt("{} {}\n", table<unit>count(t), table<unit>capacity(t));
+    return 0;
+}

@@ -1,0 +1,16 @@
+// Walking a map while setting new keys: the table moves under the walk.
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+main: proc() -> i32 = {
+    m: *hashmap<u32, i32> in level = hashmap<u32, i32>make(level);
+    for (i: u32 = 0; i < 10; i += 1) { _ = hashmap<u32, i32>set(m, i, 1); }
+    visits: i32 = 0;
+    for (i: u64 = hashmap<u32, i32>first(m); i < m*.capacity; i = hashmap<u32, i32>next(m, i)) {
+        k: u32 = hashmap<u32, i32>key_at(m, i)*;
+        visits += 1;
+        if (k < 1000 && visits < 500) { _ = hashmap<u32, i32>set(m, k + 1000, 2); }
+    }
+    printfmt("{} {}\n", visits, m*.length);
+    return 0;
+}

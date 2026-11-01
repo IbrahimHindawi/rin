@@ -1,0 +1,17 @@
+// A unit's target is a pointer into a vec, kept in a field. The vec grows afterwards.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+enemy: struct = { hp: i32; }
+turret: struct = { target: option<*enemy in level>; shots: i32; }
+main: proc() -> i32 = {
+    enemies: *vec<enemy> in level = vec<enemy>make(level, 1);
+    _ = vec<enemy>push(enemies, { .hp = 50 });
+    t: *turret in level = new<turret>(level, { .shots = 0 });
+    t*.target = vec<enemy>at(enemies, 0);
+    for (i: i32 = 0; i < 8; i += 1) { _ = vec<enemy>push(enemies, { .hp = 10 }); }
+    tgt: option<*enemy in level> = t*.target;
+    if (tgt) { tgt*.hp -= 20; }
+    printfmt("{}\n", vec<enemy>at(enemies, 0)*.hp);
+    return 0;
+}

@@ -1,0 +1,18 @@
+// Grids: an alias for a row, a grid passed by value, an index off the end of a row.
+import "std/print.rin"
+row: alias = [4]i32;
+grid_t: alias = [3]row;
+sum_row: proc(r: row) -> i32 = { return r[0] + r[1] + r[2] + r[3]; }
+fill: proc(g: grid_t, v: i32) -> void = {
+    for (y: u64 = 0; y < 3; y += 1) { for (x: u64 = 0; x < 4; x += 1) { g[y][x] = v; } }
+}
+main: proc() -> i32 = {
+    g: grid_t = {};
+    fill(g, 2);
+    printfmt("{}\n", g[1][1]);
+    printfmt("{}\n", sum_row(g[2]));
+    y: i32 = 2;
+    x: i32 = 4;
+    printfmt("{}\n", g[y][x]);
+    return 0;
+}

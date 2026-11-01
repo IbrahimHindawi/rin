@@ -1,0 +1,48 @@
+// A binary tree of nodes in the level: insert, walk with a while loop on an option, recurse, a deep chain.
+import "std/print.rin"
+level: region global;
+tree: struct = {
+    left: option<*tree in level>;
+    right: option<*tree in level>;
+    key: i32;
+}
+insert: proc(root: option<*tree in level>, key: i32) -> *tree in level = {
+    fresh: *tree in level = new<tree>(level, { .left = null, .right = null, .key = key });
+    if (!root) { return fresh; }
+    cur: *tree in level = root;
+    while (true) {
+        if (key < cur*.key) {
+            l: option<*tree in level> = cur*.left;
+            if (!l) { cur*.left = fresh; return root; }
+            cur = l;
+        } else {
+            r: option<*tree in level> = cur*.right;
+            if (!r) { cur*.right = fresh; return root; }
+            cur = r;
+        }
+    }
+    return root;
+}
+sum: proc(n: option<*tree in level>) -> i64 = {
+    if (!n) { return 0; }
+    return sum(n*.left) + cast(n*.key, i64) + sum(n*.right);
+}
+height: proc(n: option<*tree in level>) -> i32 = {
+    if (!n) { return 0; }
+    a: i32 = height(n*.left);
+    b: i32 = height(n*.right);
+    return 1 + (a > b ? a : b);
+}
+main: proc() -> i32 = {
+    root: option<*tree in level> = null;
+    x: u32 = 12345;
+    for (i: i32 = 0; i < 2000; i += 1) {
+        x = x * 1103515245 + 12345;
+        root = insert(root, cast((x shr 8) % 100000, i32));
+    }
+    printfmt("{}\n", sum(root));
+    printfmt("{}\n", height(root) > 10);
+    reset level;
+    printfmt("reset\n");
+    return 0;
+}

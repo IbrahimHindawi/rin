@@ -1,0 +1,30 @@
+// A local region opened per item, left by continue and return; a recursion of them past the limit.
+import "std/print.rin"
+level: region global;
+tmp: region in level;
+work: proc(i: i32) -> i32 = {
+    tmp: region = {
+        xs: []i32 in tmp = new_slice<i32>(tmp, 1024);
+        xs[1] = i;
+        if (i % 2 == 0) { return xs[1]; }
+    }
+    return -1;
+}
+depth_of: proc(n: i32) -> i32 = {
+    if (n == 0) { return 0; }
+    r: i32 = 0;
+    scratch {
+        xs: []i32 in scratch = new_slice<i32>(scratch, 4);
+        xs[0] = n;
+        r = depth_of(n - 1) + 1;
+    }
+    return r;
+}
+main: proc() -> i32 = {
+    t: i64 = 0;
+    for (i: i32 = 0; i < 20000; i += 1) { t += cast(work(i), i64); }
+    printfmt("{}\n", t);
+    printfmt("{}\n", depth_of(200));
+    printfmt("{}\n", depth_of(400));
+    return 0;
+}

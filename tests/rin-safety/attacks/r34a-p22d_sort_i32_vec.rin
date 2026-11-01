@@ -1,0 +1,12 @@
+import "std/print.rin"
+import "std/sort.rin"
+import "std/vec.rin"
+level: region global;
+main: proc() -> i32 = {
+    v: *vec<i32> in level = vec<i32>make(level, 8);
+    for (i: i32 = 0; i < 20; i += 1) { _ = vec<i32>push(v, (i * 7) % 20); }
+    sort<i32>(vec<i32>items(v), less_i32);
+    reverse<i32>(vec<i32>items(v));
+    printfmt("{}\n", vec<i32>at(v, 0)*);
+    return 0;
+}

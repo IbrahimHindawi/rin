@@ -1,0 +1,23 @@
+// A state machine: a case with no break, each in its block. What runs after case idle?
+import "std/print.rin"
+state: enum = { idle, walk, run, }
+step: proc(s: state) -> i32 = {
+    out: i32 = 0;
+    switch (s) {
+        case state.idle: {
+            out = 7;
+        }
+        case state.walk: {
+            out += 10;
+            break;
+        }
+        case state.run: {
+            out = 100;
+        }
+    }
+    return out;
+}
+main: proc() -> i32 = {
+    printfmt("{} {} {}\n", step(state.idle), step(state.walk), step(state.run));
+    return 0;
+}

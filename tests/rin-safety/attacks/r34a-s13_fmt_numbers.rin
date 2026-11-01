@@ -1,0 +1,36 @@
+// The bounded writer's numbers against what printf says for the same values.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region global;
+show: proc(f: *fmt, x: f64, d: u64) -> void = {
+    fmt_reset(f);
+    fmt_f64(f, x, d);
+    printfmt("{}\n", fmt_text(f));
+}
+main: proc() -> i32 = {
+    f: *fmt in level = fmt_make(level, 512);
+    show(f, 3.14159, 2);     printfmt("{:.2}\n", 3.14159);
+    show(f, 2.5, 0);         printfmt("{:.0}\n", 2.5);
+    show(f, 0.999, 2);       printfmt("{:.2}\n", 0.999);
+    show(f, 9.995, 2);       printfmt("{:.2}\n", 9.995);
+    show(f, 1.005, 2);       printfmt("{:.2}\n", 1.005);
+    show(f, -0.001, 2);      printfmt("{:.2}\n", -0.001);
+    show(f, 1000000.5, 1);   printfmt("{:.1}\n", 1000000.5);
+    show(f, 1e22, 2);        printfmt("{:.2}\n", 1e22);
+    show(f, 1e23, 2);        printfmt("{:.2}\n", 1e23);
+    show(f, 1e300, 0);       printfmt("{:.0}\n", 1e300);
+    show(f, 18446744073709549568.0, 1);  printfmt("{:.1}\n", 18446744073709549568.0);
+    show(f, 0.1, 20);        printfmt("{:.20}\n", 0.1);
+    show(f, 123456789012.5, 3); printfmt("{:.3}\n", 123456789012.5);
+    show(f, 0.000001, 3);    printfmt("{:.3}\n", 0.000001);
+    fmt_reset(f); fmt_u64(f, 18446744073709551615); printfmt("{}\n", fmt_text(f));
+    fmt_reset(f); fmt_i64(f, -9223372036854775807 - 1); printfmt("{}\n", fmt_text(f));
+    fmt_reset(f); fmt_hex(f, 0xDEADBEEF, 12, 1); printfmt("{}\n", fmt_text(f));
+    tiny: *fmt in level = fmt_make(level, 4);
+    fmt_cstr(tiny, "abcdefgh");
+    printfmt("{} {} {}\n", fmt_text(tiny), fmt_done(tiny), fmt_truncated(tiny));
+    fmt_reset(tiny);
+    fmt_f64(tiny, 123456.789, 2);
+    printfmt("{} {}\n", fmt_text(tiny), fmt_truncated(tiny));
+    return 0;
+}

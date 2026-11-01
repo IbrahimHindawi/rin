@@ -1,0 +1,24 @@
+// Names compared with ==: a str field against a literal, and C strings out of buffers.
+import "std/print.rin"
+import "std/cstr.rin"
+kind_t: struct = { name: str; hp: i32; }
+g_kinds: [2]kind_t = { { .name = "imp", .hp = 1 }, { .name = "boss", .hp = 2 } };
+find_kind: proc(name: str) -> i32 = {
+    for (i: u64 = 0; i < 2; i += 1) {
+        if (g_kinds[i].name == name) { return g_kinds[i].hp; }
+    }
+    return -1;
+}
+main: proc() -> i32 = {
+    kind: str = "boss";
+    printfmt("{}\n", kind == "boss");
+    printfmt("{}\n", find_kind("boss"));
+    a: [8]c8 = {};
+    b: [8]c8 = {};
+    _ = cstr_copy(a, "ogre");
+    _ = cstr_copy(b, "ogre");
+    printfmt("{}\n", cstr_of(a) == cstr_of(b));
+    printfmt("{}\n", cstr_of(a) == "ogre");
+    printfmt("{}\n", cstr_equals(cstr_of(a), "ogre"));
+    return 0;
+}

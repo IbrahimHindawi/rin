@@ -1,0 +1,13 @@
+// A b32 holding 2, compared with true; a pointer tested into a b32.
+import "std/print.rin"
+item: struct = { v: i32; }
+main: proc() -> i32 = {
+    count: i32 = 2;
+    alive: b32 = cast(count, b32);
+    printfmt("{} {}\n", alive == true, alive);
+    y: b32 = count > 1;
+    printfmt("{}\n", y == true);
+    z: b32 = true + true;
+    printfmt("{}\n", z);
+    return 0;
+}

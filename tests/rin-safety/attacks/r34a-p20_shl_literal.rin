@@ -1,0 +1,23 @@
+// A component mask built with a shift of a plain literal, past bit 31.
+import "std/print.rin"
+main: proc() -> i32 = {
+    flag: u64 = 1 shl 40;
+    printfmt("{}\n", flag);
+    k: i32 = 40;
+    m: u64 = 1'u64 shl k;
+    printfmt("{}\n", m);
+    n: u32 = 1'u32 shl 32;
+    printfmt("{}\n", n);
+    area: u64 = 100000 * 100000;
+    printfmt("{}\n", area);
+    w: i32 = 100000;
+    h: i32 = 100000;
+    bytes: i32 = w * h;
+    printfmt("{}\n", bytes);
+    bytes64: i64 = w * h;
+    printfmt("{}\n", bytes64);
+    one: i32 = 1;
+    id: i32 = 40;
+    printfmt("{}\n", cast(one shl id, u64));
+    return 0;
+}

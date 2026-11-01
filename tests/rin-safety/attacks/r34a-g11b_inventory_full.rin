@@ -1,0 +1,12 @@
+import "std/print.rin"
+player: struct = { items: [4]i32; count: u8; }
+give: proc(p: *player, id: i32) -> void = {
+    p*.items[p*.count] = id;
+    p*.count += 1;
+}
+main: proc() -> i32 = {
+    p: player = {};
+    for (i: i32 = 0; i < 5; i += 1) { give(p&, i); }
+    printfmt("{}\n", p.count);
+    return 0;
+}

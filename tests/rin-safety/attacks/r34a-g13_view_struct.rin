@@ -1,0 +1,34 @@
+// A view struct: pointer and slice into the level, returned by value, kept in frame and level vecs.
+import "std/print.rin"
+import "std/vec.rin"
+import "std/table.rin"
+level: region global;
+frame: region in level;
+ent: struct = { hp: i32; bones: []i32 in level; }
+view: struct = { owner: *ent in level; bones: []i32 in level; }
+make_view: proc(e: *ent in level) -> view = {
+    v: view = { .owner = e, .bones = e*.bones };
+    return v;
+}
+main: proc() -> i32 = {
+    bones: []i32 in level = new_slice<i32>(level, 3);
+    bones[2] = 5;
+    e: *ent in level = new<ent>(level, { .hp = 1, .bones = bones });
+    kept: *vec<view> in level = vec<view>make(level, 1);
+    _ = vec<view>push(kept, make_view(e));
+    t: *table<ent> in level = table<ent>make(level, 2);
+    h: index<ent> = table<ent>add(t, { .hp = 2, .bones = bones });
+    p: option<*ent in level> = table<ent>get(t, h);
+    if (p) {
+        _ = vec<view>push(kept, make_view(p));
+    }
+    frame: region = {
+        fv: *vec<view> in frame = vec<view>make(frame, 1);
+        _ = vec<view>push(fv, make_view(e));
+        printfmt("{}\n", vec<view>at(fv, 0)*.owner*.hp);
+    }
+    x: view = vec<view>at(kept, 1)*;
+    y: []i32 in level = x.bones;
+    printfmt("{} {}\n", x.owner*.hp, y[2]);
+    return 0;
+}

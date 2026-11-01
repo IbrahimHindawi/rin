@@ -1,0 +1,10 @@
+// A loader wants an f32 out of four bytes in the file. What can it write?
+import "std/print.rin"
+level: region global;
+to_f32: proc(bits: u32) -> f32 = {
+    return cast(bits, f32);
+}
+main: proc() -> i32 = {
+    printfmt("{:.3}\n", cast(to_f32(0x40490FDB), f64));
+    return 0;
+}
