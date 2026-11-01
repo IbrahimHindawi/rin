@@ -455,6 +455,9 @@ def main() -> int:
             print("rin-vm: a sandbox is already running; Windows allows one at a time")
             return 1
     host_cc = args.cc if args.sandbox else None
+    if not args.sandbox and args.cc != "clang":
+        print(f"rin-vm: the WSL guest builds with its own clang, so --cc {args.cc} does nothing there; use --sandbox for it")
+        return 1
 
     # Named by run, so a results folder still locked by the last sandbox cannot get in the way.
     stamp = time.strftime("%Y%m%d-%H%M%S")

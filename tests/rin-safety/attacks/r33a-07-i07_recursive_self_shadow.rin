@@ -1,0 +1,14 @@
+import "std/print.rin"
+import "std/cstr.rin"
+S: struct = { a: [4]i32; n: i32; }
+C8: struct = { buf: [8]c8; }
+mk: proc(v: i32) -> S = { s: S = { .a = { v, v + 1, v + 2, v + 3 }, .n = v }; return s; }
+mkc: proc() -> C8 = { s: C8 = { .buf = { 'a', 'b', 'c', 0, 0, 0, 0, 0 } }; return s; }
+level: region global;
+flag: i32 = 1;
+clobber: proc(v: i32) -> i32 = { a: [64]i32 = {}; for (i: u64 = 0; i < 64; i += 1) { a[i] = v; } return a[63]; }
+box: struct<T> = { v: T; }
+pair: struct<A, B> = { a: A; b: B; }
+N: const i32 = 300;
+f: proc(N: u8, x: i32 = -N) -> i32 = { if (N == 0) { return f(1); } return x; }
+main: proc() -> i32 = { printfmt("{}\n", f(0, 1)); return 0; }

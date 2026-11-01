@@ -18292,6 +18292,14 @@ static void safety_check_open_cstr_beside(Expr *a, Expr *b, TypeScope *scope, Pr
     }
 }
 
+static Expr *clone_expr(memops_arena *arena, Expr *e);
+typedef struct DefaultNames { TypeScope *scope; bool hidden; } DefaultNames;
+static void visit_default_name_hidden(Expr *e, void *ctx, memops_arena *arena) {
+    (void)arena;
+    DefaultNames *names = (DefaultNames *)ctx;
+    if (e->kind == Expr_Name && type_scope_lookup_local(names->scope, e->name)) names->hidden = true;
+}
+
 static void visit_names_no_local(Expr *e, void *ctx, memops_arena *arena) {
     (void)ctx;
     (void)arena;
@@ -18652,9 +18660,18 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
            any argument written out. A generic body is checked once per instance;
            the second time round nothing is missing and nothing is added. */
         for (i32 i = call->args.length; i < decl->params.length; i++) {
-            /* It means what it meant where it was written, not what its names mean at this call. */
-            expr_walk(((Param *)decl->params.data[i])->default_value, visit_names_no_local, null, arena);
-            ptr_array_append(arena, &call->args, ((Param *)decl->params.data[i])->default_value);
+            /* It means what it meant where it was written, not what its names mean at this call. The checker writes
+               what it learns on the tree, and that differs by caller, so each call has its own copy. */
+            Expr *given = clone_expr(arena, ((Param *)decl->params.data[i])->default_value);
+            expr_walk(given, visit_names_no_local, null, arena);
+            DefaultNames hides = { scope, false };
+            expr_walk(given, visit_default_name_hidden, &hides, arena);
+            if (hides.hidden && g_safe_body) {
+                type_error_message("a local here has the name of something this parameter's default uses, and the "
+                                   "default would be read with its type: call the local something else, or pass the value",
+                                   call->line, call->col);
+            }
+            ptr_array_append(arena, &call->args, given);
         }
     }
 
@@ -19548,6 +19565,9 @@ static void type_check_stmt(
         narrow_guard_unsequenced(s->while_cond, true, scope, prog, arena);
     } else if (s->kind == Stmt_Switch) {
         narrow_guard_unsequenced(s->switch_expr, true, scope, prog, arena);
+    }
+    if (s->kind == Stmt_Var && g_safe_body && !g_checking_std && string8_equals_cstr(&s->name, "_")) {
+        type_error_message("'_' only discards, as in '_ = f();': it cannot be declared", s->line, s->col);
     }
     if (s->kind == Stmt_Var && g_safe_body && !g_checking_std && s->expr && s->expr->kind != Expr_InitList &&
         s->expr->kind != Expr_ZeroInit && s->expr->kind != Expr_CompoundInit) {
@@ -23441,7 +23461,8 @@ static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, s
 /* Answers whether it wrote the expression. */
 static bool emit_expr_in_order(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
     if (g_emit_unevaluated) return false;
-    if (e->kind == Expr_Call && !call_is_new(e) && !call_is_must(e) && e->args.length + (e->base ? 1 : 0) >= 2 &&
+    if (e->kind == Expr_Call && !call_is_new(e) && !call_is_must(e) &&
+        e->args.length + (e->base || (e->callee_is_value && !e->names_no_local) ? 1 : 0) >= 2 &&
         !string8_equals_cstr(&e->name, "new_slice")) {
         Vec_voidptr all = ptr_array_reserve(arena, e->args.length + 1);
         Expr *named_callee = null;

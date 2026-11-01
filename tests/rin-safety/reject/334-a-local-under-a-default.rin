@@ -1,0 +1,5 @@
+// expect: a local here has the name of something this parameter's default uses
+// The default is -N, the constant, and would be read with the local's type.
+N: const f64 = 1.0e300;
+f: proc(x: f64 = -N) -> f64 = { return x; }
+main: proc() -> i32 = { N: u8 = 1; return cast(f() < cast(N, f64), i32); }

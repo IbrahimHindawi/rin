@@ -25,7 +25,7 @@ numbers. These are not ordered yet, and rest on a checker rule against a call th
 | An index against its base, `a()[b()]` | `safety_check_open_cstr_beside`, `narrow_guard_unsequenced`, "read twice by its bounds check" | Those rules have leaked before |
 | The members of an initializer, `{ a(), b() }` | The same | The same |
 | A `for` step's assignment, which has no block to take a temporary | The same | The same |
-| An operand with a temporary in the way: `S{...}&`, `cstr_of`'s copy, a range, a field of a returned struct | The same | A nested `({ })` would end it while a value still points at it |
+| An operand with a temporary in the way: `S{...}&`, `cstr_of`'s copy, a range, a field of a call, a cast or a ternary | The same | A nested `({ })` would end it while a value still points at it. Only an array field needs this, and a scalar field is held back with it, so `add((c ? a : b).n, bump())` is left to C |
 | An assignment to a packed place, or an array copy into one | The same | A pointer to the field would lose its packed access |
 | `printfmt` with an enum or a print of the program's | No rule: it is written out piece by piece | `printfmt("{} {}", e, noisy())` prints `e` before `noisy` runs, and the single `printf` form runs every argument first |
 
@@ -48,6 +48,8 @@ checker has signed off on something the emitter cannot write:
 - An enum named `rin`, whose table takes the name of rin's own.
 - A field, a struct or an alias named like one of C's own: `__LINE__`, `__auto_type`, `__typeof__`, `__int128`.
 - A proc returning a pointer to an array, `*[3]i32`.
+- A proc pointer alias with an array parameter, whose typedef has a pointer to the wrong thing.
+- `_ = { 1, 2 };`
 - A float cast to `long`.
 
 ## A lost write, not a memory error
@@ -60,11 +62,12 @@ inline it is not. The same goes for a stale pointer passed beside a call that gr
 
 - Anything since round 32, which attacked the left-to-right change and `$rin_local`.
 - Threads: the claim is single-threaded.
-- `gcc`: the safety suites and the attack corpus are run with clang, and only the course check runs with `gcc` on Linux.
+- `gcc`: the safety suites and the attack corpus are run with clang, and the WSL guest has only clang. Only the course
+  check runs with `gcc`, on Linux, so a local spelled with `$` and the left-to-right temporaries are unproven there.
 - Real play of the engine under the sanitizers. Its own code has run under ASan and UBSan with no reports: every level
-  from 0 to 50, briefly, and one level for about 14,000 ticks. All of that was random input with no level change during
-  a run, so `reset level` going from one level to the next has not been exercised this way, and neither have the editors.
-  The vendor libraries were not instrumented.
+  from 0 to 50 briefly, one level for about 14,000 ticks, and the scripted playtest, which goes through the upgrade menu
+  and from level 0 to level 1. That is one level change, not a run through the game, and the input was random or scripted.
+  The editors were not run, and the vendor libraries were not instrumented.
 
 ## Outside the claim
 

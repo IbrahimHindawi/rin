@@ -1,0 +1,11 @@
+// A default is the same value in every caller, including ones with a local of another name.
+import "std/print.rin"
+N: const i32 = 300;
+f: proc(x: i32 = -N) -> i32 = { return x; }
+g: proc(x: i32 = ~N) -> i32 = { return x; }
+c1: proc() -> i32 = { other: u8 = 1; return f() + cast(other, i32); }
+c2: proc() -> i32 = { return f(); }
+main: proc() -> i32 = {
+    printfmt("{} {} {}\n", c1(), c2(), g());
+    return 0;
+}
