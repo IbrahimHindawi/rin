@@ -1,0 +1,8 @@
+// The address of a static table's element, in a global initializer.
+import "std/print.rin"
+import "std/file.rin"
+gen: *u32 in permanent = file_table_generation[0]&;
+main: proc() -> i32 = {
+    gen* = 5;
+    return 0;
+}

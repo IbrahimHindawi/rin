@@ -1,0 +1,7 @@
+// A static's address in a const.
+import "std/file.rin"
+gs: const *u32 in permanent = file_table_generation[0]&;
+main: proc() -> i32 = {
+    gs* = 5;
+    return 0;
+}

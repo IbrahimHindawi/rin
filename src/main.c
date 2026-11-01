@@ -17404,12 +17404,14 @@ static bool param_type_may_move(Program *prog, TypeExpr *pt, bool trusted, memop
 }
 
 static ProcDecl *g_region_check_proc;
+static const char *g_global_init_path;
 
 /* A proc[static] named from a body in another file. */
 static bool proc_is_static_elsewhere(ProcDecl *decl) {
     if (!decl || !decl->is_file_static) return false;
-    if (!g_region_check_proc || !g_region_check_proc->source_path || !decl->source_path) return true;
-    return strcmp(g_region_check_proc->source_path, decl->source_path) != 0;
+    const char *asker = g_region_check_proc ? g_region_check_proc->source_path : g_global_init_path;
+    if (!asker || !decl->source_path) return true;
+    return strcmp(asker, decl->source_path) != 0;
 }
 
 /* The callee is known: a checked proc moves only through the parameters its
@@ -18671,12 +18673,14 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         type_error_message("the checker cannot work out what this is, so no rule can vouch for it", e->line, e->col);
     }
     if (e->kind == Expr_Name && !type_scope_lookup_local(scope, e->name)) e->const_literal = const_global_literal(prog, e->name);
-    if (e->kind == Expr_Name && g_safe_body && g_region_check_proc && !type_scope_lookup_local(scope, e->name)) {
+    /* In a body, the proc's file; in a global's initializer, that global's. */
+    const char *static_asker = g_region_check_proc ? g_region_check_proc->source_path : g_global_init_path;
+    if (e->kind == Expr_Name && g_safe_body && static_asker && !type_scope_lookup_local(scope, e->name)) {
         for (i32 i = 0; i < prog->globals.length; i++) {
             Stmt *g = (Stmt *)prog->globals.data[i];
-            if (!g->is_static || !string8_equals(&g->name, &e->name) || !g->source_path || !g_region_check_proc->source_path) continue;
+            if (!g->is_static || !string8_equals(&g->name, &e->name) || !g->source_path) continue;
             if (!path_is_std(g->source_path)) continue;
-            if (strcmp(g->source_path, g_region_check_proc->source_path) != 0) {
+            if (strcmp(g->source_path, static_asker) != 0) {
                 type_error_message("this global is static, and belongs to the file that declares it", e->line, e->col);
             }
         }
@@ -21643,8 +21647,10 @@ static void type_check_program(Program *prog, memops_arena *arena) {
         if (!g->expr || g->expr->kind == Expr_ZeroInit) {
             safety_check_zeroed("a global", prog, g->type, arena, g->line, g->col);
         }
+        g_global_init_path = g->source_path;
         type_check_expr(g->expr, &globals, prog, arena);
         type_check_initializer_against(g->expr, g->type, &globals, prog, arena);
+        g_global_init_path = null;
         TypeExpr *actual = infer_expr_type(g->expr, &globals, prog, arena);
         check_assignment_compatible("global initializer", prog, g->type, actual, g->expr, &globals, g->line, g->col, arena);
         type_scope_add(arena, &globals, g->name, g->type);

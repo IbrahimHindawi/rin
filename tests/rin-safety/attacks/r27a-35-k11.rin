@@ -1,0 +1,13 @@
+// T = an alias of a number: printed through what? plain print_cnt.
+import "std/print.rin"
+cnt: alias = i32;
+level: region global;
+print_cnt: proc(s: cnt) -> void = { reset level; }
+show: proc<T>(v: T, p: *i32 in level) -> void = { printfmt("{} {}\n", v, p*); }
+main: proc() -> i32 = {
+    p: *i32 in level = new<i32>(level, 7);
+    n: cnt = 1;
+    show<cnt>(n, p);
+    printfmt("{} {}\n", n, p*);
+    return 0;
+}

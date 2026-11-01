@@ -1,0 +1,14 @@
+// A generic takes T = al, where al is an alias with its own plain print, the real print is on S.
+import "std/print.rin"
+S: struct = { x: i32; }
+al: alias = S;
+level: region global;
+print: proc<S>(s: S) -> void = { }
+print_al: proc(s: S) -> void = { reset level; }
+show: proc<T>(v: T, p: *i32 in level) -> void = { printfmt("{} {}\n", v, p*); }
+main: proc() -> i32 = {
+    a: S = { .x = 1 };
+    p: *i32 in level = new<i32>(level, 7);
+    show<al>(a, p);
+    return 0;
+}
