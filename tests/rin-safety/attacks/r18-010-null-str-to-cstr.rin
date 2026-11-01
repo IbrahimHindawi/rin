@@ -1,0 +1,10 @@
+// Null deref in cstr_length if it has no null test: a str field defaulted to null, as a lookup that misses would give.
+import "std/print.rin"
+import "std/cstr.rin"
+pick: proc(i: i32) -> ^const c8 = { return i ? "tree" : null; }
+main: proc() -> i32 = {
+    missing: str = null;
+    printfmt("{}\n", cstr_length(pick(0)));
+    printfmt("{}\n", cstr_length(missing));
+    return 0;
+}

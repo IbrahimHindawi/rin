@@ -1,0 +1,10 @@
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+E: struct = { hp: i32; }
+main: proc() -> i32 = {
+    v: *vec<*E in level> in level = vec<*E in level>make(level, 4);
+    e: *E in level = vec<*E in level>pop(v);
+    printfmt("{}\n", e*.hp);
+    return 0;
+}

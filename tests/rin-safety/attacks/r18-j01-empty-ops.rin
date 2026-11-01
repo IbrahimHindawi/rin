@@ -1,0 +1,18 @@
+import "std/print.rin"
+import "std/slice.rin"
+level: region global;
+H: struct = { xs: []i32 in level; }
+g: H = {};
+main: proc() -> i32 = {
+    e: []i32 in level = g.xs;
+    t: []i32 = e[0..0];
+    printfmt("{}\n", t.length);
+    slice<i32>copy(t, e);
+    slice<i32>zero(t);
+    printfmt("{}\n", slice<i32>equals(t, e));
+    u: []i32 = slice<i32>skip(e, 0);
+    v: []i32 = slice<i32>take(e, 0);
+    w: []i32 = slice<i32>sub(e, 0, 0);
+    printfmt("{} {} {}\n", u.length, v.length, w.length);
+    return 0;
+}

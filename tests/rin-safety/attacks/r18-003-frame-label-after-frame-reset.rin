@@ -1,0 +1,32 @@
+// UAF: a frame region reset inside a callee while a raw label from a frame-allocated array is still its parameter.
+import "std/print.rin"
+import "std/cstr.rin"
+level: region global;
+frame: region in level;
+
+label: struct = { text: [24]c8; x: i32; y: i32; }
+hud: struct = { title: option<*label in frame>; }
+g: hud = {};
+
+hud_build: proc(r: region frame) -> void = {
+    g.title = new<label>(r, { .x = 1, .y = 2 });
+    _ = cstr_copy(unwrap(g.title)*.text, "wave 3");
+}
+
+// Restart the frame arena half way through for a second pass, then log the old label.
+second_pass: proc(old: ^const c8, r: region frame) -> void = {
+    reset r;
+    print_cstr(old);
+    printfmt("\n");
+    hud_build(r);
+}
+
+main: proc() -> i32 = {
+    for (i: i32 = 0; i < 2; i += 1) {
+        frame: region = {
+            hud_build(frame);
+            second_pass(cstr_of(unwrap(g.title)*.text), frame);
+        }
+    }
+    return 0;
+}

@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/fmt.rin"
+main: proc() -> i32 = {
+    x: [4]c8 = {};
+    n: u64 = 4;
+    printfmt("{}\n", fmt_cat1(x[n..4], "a"));
+    printfmt("{}\n", fmt_expand_i64(x[n..4], "%d", 5));
+    return 0;
+}

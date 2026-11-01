@@ -1,0 +1,30 @@
+// UAF: cstr_of on an array in a vec element, callee resets the vec's region and then reads the raw name.
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/vec.rin"
+level: region global;
+
+entity: struct = { name: [16]c8; hp: i32; }
+world: struct = { ents: option<*vec<entity> in level>; }
+w: world = {};
+
+spawn: proc(name: ^const c8, hp: i32) -> void = {
+    if (!w.ents) { w.ents = vec<entity>make(level, 4); }
+    e: *entity = vec<entity>push(unwrap(w.ents), { .hp = hp });
+    _ = cstr_copy(e*.name, name);
+}
+
+restart_with_hero: proc(hero: ^const c8) -> void = {
+    reset level;
+    printfmt("{}\n", cstr_length(hero));
+    spawn(hero, 100);
+    printfmt("{}\n", unwrap(w.ents)*.length);
+}
+
+main: proc() -> i32 = {
+    spawn("orc", 3);
+    spawn("hero", 10);
+    restart_with_hero(cstr_of(vec<entity>at(unwrap(w.ents), 1)*.name));
+    print_cstr(cstr_of(vec<entity>at(unwrap(w.ents), 0)*.name));
+    return 0;
+}

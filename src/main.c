@@ -4476,6 +4476,15 @@ static DeclAttributes parse_decl_attributes(Parser *p, bool is_enum) {
             parser_expect(p, Token_LParen, "expected '(' after callconv");
             c = parser_expect(p, Token_Identifier, "expected a name in callconv(NAME)");
             if (c) attrs.callconv = token_to_string8(p->arena, c);
+            if (c && g_safety) {
+                static const char *const known[] = { "WINAPI", "WINAPIV", "CALLBACK", "APIENTRY", "WINCALL", "__stdcall", "__cdecl" };
+                bool ok = false;
+                for (u64 k = 0; k < sizeof(known) / sizeof(known[0]); k++) {
+                    if (string8_equals_cstr(&attrs.callconv, known[k])) ok = true;
+                }
+                if (!ok) parser_error_token(p, c, "callconv prints this name into the C declaration, so it is one of WINAPI, "
+                                                  "WINAPIV, CALLBACK, APIENTRY, WINCALL, __stdcall or __cdecl");
+            }
             parser_expect(p, Token_RParen, "expected ')' after callconv(NAME)");
         } else if (is_enum && decl_attribute_is_integer_type(tok->text)) {
             /* `enum[u32]`: the underlying type, which C otherwise leaves to the
@@ -5504,6 +5513,15 @@ static const char *canonicalize_path(memops_arena *arena, string8 path) {
 
 #if defined(_WIN32)
     char *full = _fullpath(null, (const char *)nul_path.data, 0);
+    if (full) {
+        string8 out = string8_reserve(arena, (u64)strlen(full) + 1);
+        string8_append_cstr(arena, &out, full);
+        string8_append_byte(arena, &out, 0);
+        free(full);
+        return (const char *)out.data;
+    }
+#else
+    char *full = realpath((const char *)nul_path.data, null);
     if (full) {
         string8 out = string8_reserve(arena, (u64)strlen(full) + 1);
         string8_append_cstr(arena, &out, full);
@@ -15926,7 +15944,7 @@ static void type_check_condition_narrowing(Expr *cond, TypeScope *scope, TypeSco
 /* The region names a signature mentions that are not declared: the proc's
    region variables. */
 static void collect_region_names(Program *prog, TypeExpr *type, Vec_string8 *out, memops_arena *arena, i32 depth) {
-    if (!type || depth > 12) return;
+    if (!type || depth > 16) return;
     if (type->region.length > 0 && region_rank(prog, type->region) < 0 && !array_string8_contains(out, type->region)) {
         Vec_string8_append(arena, out, type->region);
     }
@@ -16249,7 +16267,7 @@ static void visit_find_local_named(Stmt *s, void *ctx, memops_arena *arena) {
 }
 
 static u64 moves_roots(MovesCtx *c, Expr *e, i32 depth) {
-    if (!e || depth > 12) return 0;
+    if (!e || depth > 16) return 0;
     if (e->kind == Expr_Name) {
         i32 pi = moves_param_index(c->proc, e->name);
         if (pi >= 0) {
@@ -16547,12 +16565,18 @@ static bool path_is_std(const char *path) {
     size_t root = strlen(g_exe_import_root);
     if (strlen(path) < root + 4) return false;
     for (size_t i = 0; i < root; i++) {
+#if defined(_WIN32)
         char a = path[i] == '\\' ? '/' : (char)tolower((unsigned char)path[i]);
         char b = g_exe_import_root[i] == '\\' ? '/' : (char)tolower((unsigned char)g_exe_import_root[i]);
+#else
+        char a = path[i];
+        char b = g_exe_import_root[i];
+#endif
         if (a != b) return false;
     }
     const char *rest = path + root;
     while (*rest == '/' || *rest == '\\') rest++;
+    if (strstr(rest, "..")) return false;
     return strncmp(rest, "std", 3) == 0 && (rest[3] == '/' || rest[3] == '\\');
 }
 
@@ -16706,8 +16730,82 @@ static void safety_check_local_name(Program *prog, string8 name, i32 line, i32 c
     }
 }
 
+/* The longest way through a type, by value or by pointer, stopping where it comes back on itself. The walks
+   over types stop a cycle with a depth, so a type longer than that would be half looked at. */
+#define RIN_MAX_TYPE_WALK 16
+static i32 type_walk_length(Program *prog, TypeExpr *type, Vec_voidptr *stack, memops_arena *arena, i32 depth) {
+    TypeExpr *r = resolve_alias_type(prog, type);
+    if (!r || depth > 64) return 0;
+    if (r->kind == Type_Ptr || r->kind == Type_Array) return 1 + type_walk_length(prog, r->elem, stack, arena, depth + 1);
+    if (type_slice_elem(r)) return 1 + type_walk_length(prog, type_slice_elem(r), stack, arena, depth + 1);
+    if (r->kind != Type_Name && r->kind != Type_Generic) return 1;
+    i32 most = 0;
+    for (i32 i = 0; i < r->args.length; i++) {
+        i32 n = type_walk_length(prog, (TypeExpr *)r->args.data[i], stack, arena, depth + 1);
+        if (n > most) most = n;
+    }
+    TypeSub sub = {0};
+    StructDecl *decl = lookup_aggregate_decl(prog, r, &sub, arena);
+    if (!decl || decl->is_external) return 1 + most;
+    for (i32 i = 0; i < stack->length; i++) {
+        if (stack->data[i] == decl) return 1 + most;
+    }
+    if (stack->length >= 256) return RIN_MAX_TYPE_WALK + 1;
+    ptr_array_append(arena, stack, decl);
+    for (i32 i = 0; i < decl->fields.length; i++) {
+        Field *f = (Field *)decl->fields.data[i];
+        if (!f->type) continue;
+        TypeExpr *ft = sub.has ? substitute_type_sub(arena, f->type, sub) : f->type;
+        i32 n = type_walk_length(prog, ft, stack, arena, depth + 1);
+        if (n > most) most = n;
+    }
+    stack->length--;
+    return 1 + most;
+}
+
+static void safety_check_type_walk(Program *prog, TypeExpr *type, i32 line, i32 col, memops_arena *arena) {
+    if (!type) return;
+    Vec_voidptr stack = ptr_array_reserve(arena, 16);
+    if (type_walk_length(prog, type, &stack, arena, 0) > RIN_MAX_TYPE_WALK) {
+        type_error_message("this type goes deeper than the checker follows one, through fields, pointers and type "
+                           "arguments: flatten it", line, col);
+    }
+}
+
+/* A file's name goes into the generated C, in a comment and on #line lines. */
+static void safety_check_source_path(const char *path, i32 line, i32 col) {
+    if (!path || path_is_std(path)) return;
+    for (const char *c = path; *c; c++) {
+        if (*c == '"' || *c == '\n' || *c == '\r' || (*c == '*' && c[1] == '/')) {
+            g_diag_source_path = path;
+            type_error_message("this file's name holds a character that would change the generated C: rename it", line, col);
+            return;
+        }
+    }
+}
+
 static void safety_check_program_names(Program *prog, memops_arena *arena) {
     if (!g_safety) return;
+    for (i32 i = 0; i < prog->structs.length; i++) {
+        StructDecl *decl = (StructDecl *)prog->structs.data[i];
+        if (path_is_std(decl->source_path) || decl->is_external) continue;
+        safety_check_source_path(decl->source_path, decl->line, decl->col);
+        g_diag_source_path = decl->source_path;
+        for (i32 k = 0; k < decl->fields.length; k++) {
+            Field *f = (Field *)decl->fields.data[k];
+            if (f->type) safety_check_type_walk(prog, f->type, decl->line, decl->col, arena);
+        }
+    }
+    for (i32 i = 0; i < prog->procs.length; i++) {
+        ProcDecl *decl = (ProcDecl *)prog->procs.data[i];
+        if (path_is_std(decl->source_path) || decl->is_external) continue;
+        safety_check_source_path(decl->source_path, decl->line, decl->col);
+        g_diag_source_path = decl->source_path;
+        for (i32 k = 0; k < decl->params.length; k++) {
+            safety_check_type_walk(prog, ((Param *)decl->params.data[k])->type, decl->line, decl->col, arena);
+        }
+        safety_check_type_walk(prog, decl->ret_type, decl->line, decl->col, arena);
+    }
     for (i32 i = 0; i < prog->procs.length; i++) {
         ProcDecl *p = (ProcDecl *)prog->procs.data[i];
         if (path_is_std(p->source_path) || !(name_is_c_runtime_symbol(p->name) || name_is_enum_member(prog, p->name))) continue;
@@ -17051,7 +17149,7 @@ static Vec_string8 g_static_locals;
 /* Whether this raw pointer came from a raw parameter, which lasts as long as the call:
    `cstr_of`'s private copy does not outlive it. */
 static bool raw_from_param(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena, i32 depth) {
-    if (!e || depth > 8 || !g_check_proc) return false;
+    if (!e || depth > 16 || !g_check_proc) return false;
     if (e->kind == Expr_Ternary) {
         return raw_from_param(e->right, scope, prog, arena, depth + 1) || raw_from_param(e->third, scope, prog, arena, depth + 1);
     }
@@ -17154,7 +17252,7 @@ static void raw_param_store_check(TypeExpr *dst, Expr *value, TypeScope *scope, 
 }
 
 static bool raw_has_checked_source(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena, i32 depth) {
-    if (!e || depth > 8) return false;
+    if (!e || depth > 16) return false;
     if (e->kind == Expr_Ternary) {
         return raw_has_checked_source(e->right, scope, prog, arena, depth + 1) ||
                raw_has_checked_source(e->third, scope, prog, arena, depth + 1);
@@ -17193,7 +17291,7 @@ static void raw_keep_check(TypeExpr *dst, Expr *value, TypeScope *scope, Program
 /* A global array and a slice naming a region stay where they are, whoever moves
    what: memory in a region is not freed under it. */
 static bool expr_may_be_moved(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena, i32 depth) {
-    if (!e || depth > 12) return false;
+    if (!e || depth > 16) return false;
     if (e->kind == Expr_Call) return true;
     if (e->kind == Expr_Ternary) return expr_may_be_moved(e->right, scope, prog, arena, depth + 1) || expr_may_be_moved(e->third, scope, prog, arena, depth + 1);
     if (e->kind == Expr_Addr || e->kind == Expr_Cast) return expr_may_be_moved(e->inner, scope, prog, arena, depth + 1);
@@ -18901,9 +18999,32 @@ static bool type_scope_lookup_local(TypeScope *scope, string8 name) {
     return false;
 }
 
+/* How far the checker's walks along a place or a call must go. */
+static i32 expr_chain_height(Expr *e, i32 depth) {
+    if (!e || depth > 64) return depth;
+    i32 most = depth;
+    Expr *one[5] = { e->base, e->inner, e->kind == Expr_Ternary ? e->left : null, e->kind == Expr_Ternary ? e->right : null,
+                     e->kind == Expr_Ternary ? e->third : null };
+    bool chain = e->kind == Expr_Field || e->kind == Expr_Index || e->kind == Expr_Addr || e->kind == Expr_Cast ||
+                 e->kind == Expr_Unary || e->kind == Expr_Call || e->kind == Expr_Ternary;
+    if (!chain) return depth;
+    for (i32 i = 0; i < 5; i++) {
+        i32 h = expr_chain_height(one[i], depth + 1);
+        if (h > most) most = h;
+    }
+    for (i32 i = 0; i < e->args.length; i++) {
+        i32 h = expr_chain_height((Expr *)e->args.data[i], depth + 1);
+        if (h > most) most = h;
+    }
+    return most;
+}
+
 static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena) {
     if (!e) return;
     e->checked = true;
+    if (g_safe_body && !g_checking_std && expr_chain_height(e, 0) > 16) {
+        type_error_message("this nests deeper than the checker follows a place or a call: put part of it in a local", e->line, e->col);
+    }
     if (g_safe_body && e->kind == Expr_SizeofType && g_check_proc) {
         /* `sizeof(a)` parses as a type, with a's name, whichever a is. */
         string8 named = e->inner && e->inner->kind == Expr_Name ? e->inner->name
@@ -19610,6 +19731,7 @@ static void type_check_stmt_inner(
         safety_error("a local named exit or abort would hide the proc that never returns", s->line, s->col);
     } else if (s->kind == Stmt_Var) {
         safety_check_local_name(prog, s->name, s->line, s->col, arena);
+        if (g_safe_body && !g_checking_std) safety_check_type_walk(prog, s->type, s->line, s->col, arena);
         if (g_safe_body && !g_checking_std && s->expr) {
             NameScan self = { s->name, false };
             expr_walk(s->expr, visit_name_mentioned, &self, arena);
@@ -21373,7 +21495,7 @@ static void rewrite_printfmt_call_stmt_inner(Stmt *stmt, TypeScope *scope, Progr
             }
         } else if (lit.data[k] >= '0' && lit.data[k] <= '7') {
             value = 0;
-            for (u64 d = k; d < lit.length && d < k + 3 && lit.data[d] >= '0' && lit.data[d] <= '7'; d++) value = value * 8 + (lit.data[d] - '0');
+            for (u64 d = k; d < lit.length && d < k + 3 && lit.data[d] >= '0' && lit.data[d] <= '7'; d++) value = (value * 8 + (lit.data[d] - '0')) & 0xff;
         }
         if (value == '%') {
             printfmt_error_at(stmt->source_path, fmt->line, fmt->col, "this escape spells a '%', which C's printf would read as a "
@@ -22310,7 +22432,12 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
         return;
     }
     if (e->kind == Expr_String || e->kind == Expr_Char) {
-        emit_string8(arena, out, e->string_lit);
+        /* `??/` is a backslash to C before it is anything else, where trigraphs are on: spell the second
+           '?' so no two are ever side by side, and what rin read is what C reads. */
+        for (u64 i = 0; i < e->string_lit.length; i++) {
+            if (e->string_lit.data[i] == '?' && i > 0 && e->string_lit.data[i - 1] == '?') string8_append_byte(arena, out, '\\');
+            string8_append_byte(arena, out, e->string_lit.data[i]);
+        }
         return;
     }
     if (e->kind == Expr_SizeofType || e->kind == Expr_AlignofType) {

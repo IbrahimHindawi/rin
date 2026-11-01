@@ -1,0 +1,42 @@
+// UAF: cstr_of on an array inside level memory is passed to a proc that resets the level, then reads the name; ASan use-after-poison (or stale read).
+import "std/print.rin"
+import "std/cstr.rin"
+level: region global;
+
+asset: struct = { name: [32]c8; size: u64; loaded: b32; }
+assets_state: struct = { items: []asset; count: u64; }
+g: assets_state = {};
+
+assets_init: proc(n: u64) -> void = {
+    g.items = new_slice<asset>(level, n);
+    g.count = 0;
+}
+
+asset_add: proc(name: ^const c8, size: u64) -> u64 = {
+    i: u64 = g.count;
+    _ = cstr_copy(g.items[i].name, name);
+    g.items[i].size = size;
+    g.items[i].loaded = 1;
+    g.count += 1;
+    return i;
+}
+
+// Reload everything from disk, keyed by the name of the asset that changed.
+reload_all: proc(changed: ^const c8) -> void = {
+    reset level;
+    printfmt("reloading after change to: ");
+    print_cstr(changed);
+    printfmt("\n");
+    assets_init(8);
+    _ = asset_add("default.tex", 16);
+}
+
+main: proc() -> i32 = {
+    assets_init(8);
+    _ = asset_add("rock.tex", 16);
+    tree: u64 = asset_add("tree.tex", 32);
+    // the file watcher says tree.tex changed
+    reload_all(cstr_of(g.items[tree].name));
+    printfmt("{}\n", g.count);
+    return 0;
+}

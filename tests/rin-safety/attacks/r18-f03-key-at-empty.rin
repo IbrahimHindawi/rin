@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+E: struct = { hp: i32; }
+main: proc() -> i32 = {
+    m: *hashmap<*E in level, i32> in level = hashmap<*E in level, i32>make(level);
+    printfmt("{}\n", hashmap<*E in level, i32>key_at(m, 0)**.hp);
+    return 0;
+}

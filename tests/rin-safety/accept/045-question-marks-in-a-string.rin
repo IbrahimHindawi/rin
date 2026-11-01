@@ -1,0 +1,7 @@
+// `??/` is a backslash to C where trigraphs are on; in rin it is three characters.
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    printfmt("what??/ {}\n", cstr_length("??/"));
+    return 0;
+}

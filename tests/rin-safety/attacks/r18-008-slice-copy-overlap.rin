@@ -1,0 +1,10 @@
+// memcpy-param-overlap if slice copy is memcpy: scroll a log buffer down by one with slice<T>copy over overlapping subranges. Unverified: fine if the body uses memmove.
+import "std/print.rin"
+import "std/slice.rin"
+main: proc() -> i32 = {
+    logbuf: [64]i32 = {};
+    for (i: u64 = 0; i < 64; i += 1) { logbuf[i] = cast(i, i32); }
+    slice<i32>copy(logbuf[0..63], logbuf[1..64]);
+    printfmt("{} {}\n", logbuf[0], logbuf[62]);
+    return 0;
+}

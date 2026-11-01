@@ -1,0 +1,31 @@
+// UAF: state machine; next_level() resets the level while its argument still points at the old level's title array, reached through unwrap(g.lv).
+import "std/print.rin"
+import "std/cstr.rin"
+level: region global;
+
+level_data: struct = { title: [32]c8; number: i32; enemies: []i32; }
+game: struct = { lv: option<*level_data in level>; score: i32; }
+g: game = {};
+
+load: proc(number: i32, title: ^const c8) -> void = {
+    g.lv = new<level_data>(level, { .number = number, .enemies = new_slice<i32>(level, 16) });
+    _ = cstr_copy(unwrap(g.lv)*.title, title);
+}
+
+// Show "leaving <title>" on the loading screen after the old level is gone.
+next_level: proc(old_title: ^const c8, number: i32) -> void = {
+    reset level;
+    printfmt("leaving ");
+    print_cstr(old_title);
+    printfmt("\n");
+    load(number, "next");
+}
+
+main: proc() -> i32 = {
+    load(1, "cave of doom");
+    for (i: i32 = 2; i < 4; i += 1) {
+        next_level(cstr_of(unwrap(g.lv)*.title), i);
+    }
+    printfmt("{}\n", unwrap(g.lv)*.number);
+    return 0;
+}

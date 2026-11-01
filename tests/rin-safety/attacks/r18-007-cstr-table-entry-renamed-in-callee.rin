@@ -1,0 +1,25 @@
+// Over-read: name array inside a table slot, passed by cstr_of with the table beside it; rename fills the array with no NUL, then the old name is printed, reading past the slot's array into the arena's guard area or the next slot.
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/table.rin"
+level: region global;
+
+player: struct = { name: [8]c8; }
+
+rename_and_log: proc(old: ^const c8, t: *table<player>, who: index<player>) -> void = {
+    p: option<*player> = table<player>get(t, who);
+    if (p) {
+        for (k: u64 = 0; k < 8; k += 1) { p*.name[k] = 'z'; }
+    }
+    printfmt("renamed ");
+    print_cstr(old);
+    printfmt("\n");
+}
+
+main: proc() -> i32 = {
+    t: *table<player> in level = table<player>make(level, 1);
+    who: index<player> = table<player>add(t, {});
+    p: option<*player> = table<player>get(t, who);
+    if (p) { rename_and_log(cstr_of(p*.name), t, who); }
+    return 0;
+}

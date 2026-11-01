@@ -1,0 +1,22 @@
+// expect: goes deeper than the checker follows
+s0: struct = { a: i32; }
+s1: struct = { a: s0; }
+s2: struct = { a: s1; }
+s3: struct = { a: s2; }
+s4: struct = { a: s3; }
+s5: struct = { a: s4; }
+s6: struct = { a: s5; }
+s7: struct = { a: s6; }
+s8: struct = { a: s7; }
+s9: struct = { a: s8; }
+s10: struct = { a: s9; }
+s11: struct = { a: s10; }
+s12: struct = { a: s11; }
+s13: struct = { a: s12; }
+s14: struct = { a: s13; }
+s15: struct = { a: s14; }
+s16: struct = { a: s15; }
+s17: struct = { a: s16; }
+s18: struct = { a: s17; }
+s19: struct = { a: s18; }
+main: proc() -> i32 = { return 0; }

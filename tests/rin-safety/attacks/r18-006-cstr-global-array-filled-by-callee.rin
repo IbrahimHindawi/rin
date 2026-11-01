@@ -1,0 +1,22 @@
+// Over-read: a global name buffer is passed via cstr_of, and a helper fills all 8 bytes before the name is printed; print_cstr reads past the global.
+import "std/print.rin"
+import "std/cstr.rin"
+
+status_line: [8]c8 = {};
+
+update_status: proc() -> void = {
+    for (i: u64 = 0; i < 8; i += 1) { status_line[i] = '='; }
+}
+
+log_status: proc(old: ^const c8) -> void = {
+    update_status();
+    printfmt("was: ");
+    print_cstr(old);
+    printfmt("\n");
+}
+
+main: proc() -> i32 = {
+    _ = cstr_copy(status_line, "idle");
+    log_status(cstr_of(status_line));
+    return 0;
+}

@@ -1,0 +1,10 @@
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+main: proc() -> i32 = {
+    m: *hashmap<i64, i64> in level = hashmap<i64, i64>make(level);
+    k: u64 = hashmap<i64, i64>first(m);
+    printfmt("{}\n", hashmap<i64, i64>value_at(m, k)*);
+    printfmt("{}\n", hashmap<i64, i64>key_at(m, k)*);
+    return 0;
+}

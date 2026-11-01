@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+main: proc() -> i32 = {
+    m: *hashmap<i64, i64> in level = hashmap<i64, i64>make(level);
+    printfmt("{}\n", hashmap<i64, i64>next(m, 100000000));
+    printfmt("{}\n", hashmap<i64, i64>scan(m, 18446744073709551615));
+    return 0;
+}

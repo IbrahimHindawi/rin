@@ -1,0 +1,17 @@
+// Over-read: cstr_of(array) is checked once, then the callee overwrites the NUL through the same array passed beside it; cstr_length walks off the 8-byte stack array.
+import "std/print.rin"
+import "std/cstr.rin"
+
+// Pad a name out to the field width, and report how long the name was.
+pad_field: proc(name: ^const c8, field: []c8) -> u64 = {
+    for (i: u64 = 0; i < field.length; i += 1) { field[i] = '.'; }
+    return cstr_length(name);
+}
+
+main: proc() -> i32 = {
+    buf: [8]c8 = {};
+    _ = cstr_copy(buf, "bob");
+    n: u64 = pad_field(cstr_of(buf), buf);
+    printfmt("{}\n", n);
+    return 0;
+}

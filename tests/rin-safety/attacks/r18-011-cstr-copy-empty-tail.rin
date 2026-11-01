@@ -1,0 +1,10 @@
+// One byte write past the array if cstr_copy writes a NUL without testing for an empty dst: appending at the end of a full buffer, dst is buf[4..4].
+import "std/print.rin"
+import "std/cstr.rin"
+main: proc() -> i32 = {
+    buf: [4]c8 = {};
+    used: u64 = 4;
+    printfmt("{}\n", cstr_copy(buf[used..4], "abc"));
+    printfmt("{}\n", cstr_length(cstr_of(buf[used..4])));
+    return 0;
+}

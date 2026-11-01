@@ -1,0 +1,12 @@
+import "std/print.rin"
+import "std/fmt.rin"
+level: region global;
+main: proc() -> i32 = {
+    f: *fmt in level = fmt_make(level, 0);
+    print_cstr(fmt_text(f));
+    fmt_hex(f, 255, 1000, 0);
+    fmt_f64(f, 1.5, 100000);
+    fmt_cstr_pad(f, "abc", 1000000);
+    print_cstr(fmt_text(f));
+    return 0;
+}

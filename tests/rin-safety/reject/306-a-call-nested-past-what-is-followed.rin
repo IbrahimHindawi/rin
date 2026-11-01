@@ -1,0 +1,7 @@
+// expect: nests deeper than the checker follows
+id: proc(p: *i32) -> *i32 = { return p; }
+main: proc() -> i32 = {
+    y: i32 = 0;
+    x: *i32 = y&;
+    return id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(x))))))))))))))))))))* ;
+}

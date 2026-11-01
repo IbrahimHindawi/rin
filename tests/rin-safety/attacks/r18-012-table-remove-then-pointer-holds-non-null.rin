@@ -1,0 +1,16 @@
+// Null deref if table remove zeroes the slot: pointer kept across remove (no_move, so not killed), and T's '*enemy' field read through it. If the slot is not zeroed this is only stale data.
+import "std/print.rin"
+import "std/table.rin"
+level: region global;
+enemy: struct = { hp: i32; }
+squad: struct = { leader: *enemy in level; size: i32; }
+main: proc() -> i32 = {
+    t: *table<squad> in level = table<squad>make(level, 4);
+    i: index<squad> = table<squad>add(t, { .leader = new<enemy>(level, { .hp = 1 }), .size = 2 });
+    s: option<*squad> = table<squad>get(t, i);
+    if (s) {
+        _ = table<squad>remove(t, i);
+        printfmt("{}\n", s*.leader*.hp);
+    }
+    return 0;
+}

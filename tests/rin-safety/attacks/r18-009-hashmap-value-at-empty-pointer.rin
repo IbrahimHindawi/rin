@@ -1,0 +1,19 @@
+// Null deref if value_at does not stop on an empty slot: walking every slot by index reads a '*enemy' value that was never set, breaking 'a *T is never null'.
+import "std/print.rin"
+import "std/hashmap.rin"
+level: region global;
+enemy: struct = { hp: i32; }
+total_hp: proc(m: *hashmap<i64, *enemy in level>, slots: u64) -> i32 = {
+    n: i32 = 0;
+    for (i: u64 = 0; i < slots; i += 1) {
+        e: *enemy in level = hashmap<i64, *enemy in level>value_at(m, i)*;
+        n += e*.hp;
+    }
+    return n;
+}
+main: proc() -> i32 = {
+    m: *hashmap<i64, *enemy in level> in level = hashmap<i64, *enemy in level>make(level);
+    _ = hashmap<i64, *enemy in level>set(m, 1, new<enemy>(level, { .hp = 2 }));
+    printfmt("{}\n", total_hp(m, 8));
+    return 0;
+}
