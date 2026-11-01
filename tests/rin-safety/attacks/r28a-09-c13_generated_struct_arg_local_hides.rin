@@ -1,0 +1,14 @@
+import "std/print.rin"
+import "std/cstr.rin"
+level: region global;
+gb: []c8 in level = {};
+pair: struct<T> = { a: T; }
+f: proc<T>(x: T) -> u64 = { return 1; }
+bad: proc(x: pair<i32>) -> u64 = { for (i: u64 = 0; i < gb.length; i += 1) { gb[i] = 65; } return 1; }
+main: proc() -> i32 = {
+    gb = new_slice<c8>(level, 8);
+    a: pair<i32> = { .a = 1 };
+    f_pair_i32: *proc(x: pair<i32>) -> u64 = bad;
+    printfmt("{}\n", cstr_equals_n(cstr_of(gb), "x", f<pair<i32>>(a)));
+    return 0;
+}

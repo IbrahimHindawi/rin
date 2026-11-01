@@ -265,3 +265,5 @@ r25c-32-beside-ternary-cond.rin
 r25c-33-beside-and-sequenced.rin
 r25c-34-beside-cstr-of-cstr-of.rin
 r25c-35-beside-fine-two-readers.rin
+r28a-09-c13_generated_struct_arg_local_hides.rin
+r28a-10-c14_generated_two_args_local_hides.rin

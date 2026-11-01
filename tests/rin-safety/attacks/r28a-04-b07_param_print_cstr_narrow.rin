@@ -1,0 +1,16 @@
+import "std/print.rin"
+level: region global;
+E: enum = { one }
+n: struct = { p: option<*i32 in level>; }
+g: n = { .p = null };
+wipe: proc(t: ^const char) -> void = { g.p = null; }
+f: proc(print_cstr: *proc(t: ^const char) -> void) -> void = {
+    g.p = new<i32>(level, 7);
+    if (g.p) {
+        printfmt("{} after {}\n", E.one, g.p*);
+    }
+}
+main: proc() -> i32 = {
+    f(wipe);
+    return 0;
+}

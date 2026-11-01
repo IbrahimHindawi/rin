@@ -1,0 +1,6 @@
+import "std/print.rin"
+_IO_2_1_stdout_: [8]u8 = {};
+main: proc() -> i32 = {
+    for (i: i32 = 0; i < 100; i += 1) { printfmt("HOLE {}\n", i); }
+    return 0;
+}

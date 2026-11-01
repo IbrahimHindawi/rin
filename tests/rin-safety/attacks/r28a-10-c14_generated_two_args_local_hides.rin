@@ -1,0 +1,12 @@
+import "std/print.rin"
+import "std/cstr.rin"
+level: region global;
+gb: []c8 in level = {};
+f: proc<A, B>(x: A, y: B) -> u64 = { return 1; }
+bad: proc(x: i32, y: u8) -> u64 = { for (i: u64 = 0; i < gb.length; i += 1) { gb[i] = 65; } return 1; }
+main: proc() -> i32 = {
+    gb = new_slice<c8>(level, 8);
+    f_i32_u8: *proc(x: i32, y: u8) -> u64 = bad;
+    printfmt("{}\n", cstr_equals_n(cstr_of(gb), "x", f<i32, u8>(1, 2)));
+    return 0;
+}

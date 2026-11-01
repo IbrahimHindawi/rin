@@ -1,0 +1,16 @@
+import "std/print.rin"
+level: region global;
+S: struct = { x: i32; }
+n: struct = { p: option<*i32 in level>; }
+g: n = { .p = null };
+print: proc<S>(s: S) -> void = { g.p = null; }
+noop: proc(f: ^const c8, s: S, v: i32) -> void = {}
+main: proc() -> i32 = {
+    printfmt: *proc(f: ^const c8, s: S, v: i32) -> void = noop;
+    g.p = new<i32>(level, 7);
+    a: S = { .x = 1 };
+    if (g.p) {
+        printfmt("{} {}", a, g.p*);
+    }
+    return 0;
+}

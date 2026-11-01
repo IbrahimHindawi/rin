@@ -1,0 +1,14 @@
+import "std/print.rin"
+level: region global;
+S: struct = { x: i32; }
+print_S: proc(s: S) -> void = { reset level; }
+noop: proc(f: ^const c8, s: S) -> void = {}
+go: proc(printfmt: *proc(f: ^const c8, s: S) -> void, p: *i32 in level) -> void = {
+    a: S = { .x = 1 };
+    printfmt("{}", a);
+    p* = 3;
+}
+main: proc() -> i32 = {
+    go(noop, new<i32>(level, 7));
+    return 0;
+}

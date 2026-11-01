@@ -1,0 +1,10 @@
+level: region global;
+reflect: struct = { a: i32; }
+print_enum: proc(t: *const reflect, v: i32) -> void = { reset level; }
+E: enum = { one }
+main: proc() -> i32 = {
+    p: *i32 in level = new<i32>(level, 7);
+    printfmt("{}", E.one);
+    p* = 3;
+    return p*;
+}

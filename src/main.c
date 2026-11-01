@@ -696,6 +696,7 @@ struct Expr {
     TokenKind op;
     Expr *base;
     Expr *index_expr;
+    bool names_no_local; // written by the compiler, which means the proc or table, whatever the program's locals are called
     TypeExpr *cast_type;
     /* A number written without a `'` type takes its type from where it is used.
        The checker records that type here so the emitter can write the C literal
@@ -16646,8 +16647,20 @@ static bool name_is_runtime(string8 name) {
 }
 
 /* A proc or global replaces the C library's for everything linked, std included. */
+/* What the checker reads, or the generated C calls, by name: rin's whatever a program would mean by it. */
+static bool name_is_compilers(string8 name) {
+    static const char *const exact[] = { "unwrap", "printfmt", "fprintfmt", "rin_file_printf", "new", "new_slice", "cstr_of",
+                                         "print_cstr", "print_enum" };
+    for (u64 i = 0; i < sizeof(exact) / sizeof(exact[0]); i++) {
+        if (string8_equals_cstr(&name, exact[i])) return true;
+    }
+    return false;
+}
+
 static bool name_is_c_runtime_symbol(string8 name) {
-    static const char *const exact[] = { "exit", "stdout", "memcmp", "strlen", "strcmp", "malloc", "free", "calloc", "realloc",
+    /* C keeps a leading underscore at file scope for itself, and the C library's objects are spelled that way. */
+    if (name.length > 0 && name.data[0] == '_') return true;
+    static const char *const exact[] = { "stdin", "environ", "optarg", "optind", "opterr", "optopt", "timezone", "daylight", "tzname", "exit", "stdout", "memcmp", "strlen", "strcmp", "malloc", "free", "calloc", "realloc",
                                          "mprotect", "mmap", "munmap", "madvise", "sysconf", "getpagesize", "VirtualAlloc",
                                          "VirtualFree", "VirtualProtect", "GetSystemInfo", "fopen", "fclose", "fread", "fwrite",
                                          "fseek", "ftell", "fflush", "fputs", "fputc", "puts", "putchar", "snprintf", "vsnprintf",
@@ -16695,6 +16708,10 @@ static bool name_is_enum_member(Program *prog, string8 name) {
 }
 
 /* `slice_i32`, `ptr_entity`, `vec_ptr_entity`: what an instance of a type is called in C. */
+static bool name_ends_in_local_suffix(string8 name) {
+    return name.length >= 2 && name.data[name.length - 1] == '_' && name.data[name.length - 2] == '_';
+}
+
 /* What an enum's value may mention: numbers, and the members of its own enum. */
 typedef struct EnumValueScan { EnumDecl *decl; bool bad; } EnumValueScan;
 static void visit_enum_value(Expr *e, void *ctx, memops_arena *arena) {
@@ -16800,6 +16817,7 @@ static void safety_check_local_name(Program *prog, string8 name, i32 line, i32 c
     else if (name_is_generated_type(prog, name, arena)) why = "is what the generated C calls a type";
     else if (name_is_generated_proc(prog, name, arena)) why = "is what the generated C may call a generic proc";
     else if (string8_ends_with_cstr(name, "_reflect")) why = "is what the generated C calls a type's reflection table";
+    else if (name_is_compilers(name)) why = "is read by name as rin's own";
     else if (string8_equals_cstr(&name, "print_enum") || (lookup_proc_decl(prog, name) && lookup_proc_decl(prog, name)->specialized_from.length > 0)) why = "is a proc the generated C calls by name";
     else {
         for (i32 i = 0; i < prog->globals.length; i++) {
@@ -16940,10 +16958,13 @@ static void safety_check_program_names(Program *prog, memops_arena *arena) {
        capacity and tables, so these may not reach the container or anything else. */
     for (i32 i = 0; i < prog->procs.length; i++) {
         ProcDecl *p = (ProcDecl *)prog->procs.data[i];
-        if (!path_is_std(p->source_path) && (call_name_is_builtin(p->name) || string8_equals_cstr(&p->name, "new") ||
-                                             string8_equals_cstr(&p->name, "new_slice") || string8_equals_cstr(&p->name, "cstr_of"))) {
+        if (!path_is_std(p->source_path) && name_is_compilers(p->name)) {
             g_diag_source_path = p->source_path;
             type_error_message("this name is rin's own, and the checker reads a call to it as rin's", p->line, p->col);
+        }
+        if (!path_is_std(p->source_path) && name_ends_in_local_suffix(p->name)) {
+            g_diag_source_path = p->source_path;
+            type_error_message("a name ending in '__' is how the generated C spells a local", p->line, p->col);
         }
         if (p->no_move && !path_is_std(p->source_path)) {
             safety_error("'no_move' is std's: it is a promise about a body the checker cannot read", p->line, p->col);
@@ -16957,6 +16978,33 @@ static void safety_check_program_names(Program *prog, memops_arena *arena) {
             g_diag_source_path = p->source_path;
             type_error_message("std calls this in the middle of an operation on a container, so it must touch no global and "
                                "call only procs that do the same", p->line, p->col);
+        }
+    }
+    /* A global, a type or a member named like a local's C name could be hidden by that local. */
+    for (i32 i = 0; i < prog->globals.length; i++) {
+        Stmt *g = (Stmt *)prog->globals.data[i];
+        if (!path_is_std(g->source_path) && name_ends_in_local_suffix(g->name)) {
+            g_diag_source_path = g->source_path;
+            type_error_message("a name ending in '__' is how the generated C spells a local", g->line, g->col);
+        }
+    }
+    for (i32 i = 0; i < prog->structs.length; i++) {
+        StructDecl *decl = (StructDecl *)prog->structs.data[i];
+        if (!path_is_std(decl->source_path) && name_ends_in_local_suffix(decl->name)) {
+            g_diag_source_path = decl->source_path;
+            type_error_message("a name ending in '__' is how the generated C spells a local", decl->line, decl->col);
+        }
+    }
+    for (i32 i = 0; i < prog->enums.length; i++) {
+        EnumDecl *decl = (EnumDecl *)prog->enums.data[i];
+        if (path_is_std(decl->source_path)) continue;
+        bool reserved = name_ends_in_local_suffix(decl->name);
+        for (i32 j = 0; j < decl->items.length; j++) {
+            if (name_ends_in_local_suffix(((EnumItem *)decl->items.data[j])->name)) reserved = true;
+        }
+        if (reserved) {
+            g_diag_source_path = decl->source_path;
+            type_error_message("a name ending in '__' is how the generated C spells a local", decl->line, decl->col);
         }
     }
     /* An enum's values reach C before anything else in the file, so they are what rin can compute by then. */
@@ -21887,6 +21935,7 @@ static Expr *printfmt_string_expr(memops_arena *arena, u8 *data, u64 length, i32
 
 static Expr *printfmt_call_expr(memops_arena *arena, const char *name, i32 line, i32 col) {
     Expr *call = expr_new(arena, Expr_Call);
+    call->names_no_local = true;
     call->name = string8_from_cstr(arena, name);
     call->args = ptr_array_reserve(arena, 2);
     call->type_args = ptr_array_reserve(arena, 1);
@@ -22045,6 +22094,7 @@ static void printfmt_append_print_arg(memops_arena *arena, Vec_voidptr *out, Stm
         if (own_print_decl && g_safety && !string8_equals_cstr(&own_print_decl->specialized_from, "print")) own_print_decl = null;
         if (!own_print_decl) {
             Expr *record = expr_new(arena, Expr_Name);
+            record->names_no_local = true;
             record->name = concat_name2(arena, enum_decl->name, "_", string8_from_cstr(arena, "reflect"));
             record->line = arg->line;
             record->col = arg->col;
@@ -22251,6 +22301,7 @@ static void rewrite_printfmt_call_stmt(Stmt *stmt, TypeScope *scope, Program *pr
         return;
     }
     Expr *shifted = expr_new(arena, Expr_Call);
+    shifted->names_no_local = true;
     *shifted = *call;
     shifted->name = string8_from_cstr(arena, "printfmt");
     shifted->args = ptr_array_reserve(arena, call->args.length);
@@ -22516,6 +22567,41 @@ static Vec_string8 *g_emit_global_regions = null;
 static Vec_string8 g_region_alias_names;
 static Vec_string8 g_region_alias_targets;
 
+/* A local is `name__` in C, and a program's own names may not end that way, so a local cannot hide anything the
+   generated C says by name: a proc, a type in a sizeof, an enum member, a constant in an array's length. */
+static Vec_string8 g_emit_locals;
+static bool g_emit_in_body;
+static bool g_emit_locals_made;
+
+static void emit_locals_reset(memops_arena *arena) {
+    if (!g_emit_locals_made) {
+        g_emit_locals = Vec_string8_reserve(arena, 32);
+        g_emit_locals_made = true;
+    }
+    g_emit_locals.length = 0;
+}
+
+static void emit_local_add(memops_arena *arena, string8 name) {
+    if (!g_emit_locals_made) emit_locals_reset(arena);
+    Vec_string8_append(arena, &g_emit_locals, name);
+}
+
+static bool emit_name_is_local(string8 name) {
+    if (!g_emit_locals_made) return false;
+    for (i32 i = g_emit_locals.length - 1; i >= 0; i--) {
+        if (string8_equals(&g_emit_locals.data[i], &name)) return true;
+    }
+    return false;
+}
+
+static string8 local_c_name(memops_arena *arena, string8 name) {
+    if (name.length == 0 || string8_equals_cstr(&name, "_")) return name;
+    string8 out = string8_reserve(arena, name.length + 2);
+    string8_append_bytes(arena, &out, name.data, name.length);
+    string8_append_cstr(arena, &out, "__");
+    return out;
+}
+
 static bool emit_region_name(memops_arena *arena, string8 *out, string8 name) {
     bool is_region = string8_equals_cstr(&name, "permanent") ||
                      (g_emit_regions && array_string8_contains(g_emit_regions, name));
@@ -22647,6 +22733,10 @@ static i32 emit_region_mark_height(bool loop_only) {
     return 0;
 }
 static void emit_stmt(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, string8 generic_name);
+static void emit_assign_name(memops_arena *arena, string8 *out, string8 name) {
+    if (emit_name_is_local(name)) emit_string8(arena, out, local_c_name(arena, name));
+    else emit_string8(arena, out, c_ident(arena, name));
+}
 
 /* True when control cannot run off the end of the list, so an appended break
    would be unreachable. An if/else counts only when both arms jump. */
@@ -22751,10 +22841,12 @@ static void emit_if_stmt(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub
     emit_cstr(arena, out, "if (");
     emit_expr_condition(arena, out, s->if_cond, sub, generic_name);
     emit_cstr(arena, out, ") {\n");
+    i32 locals_before_then = g_emit_locals_made ? g_emit_locals.length : 0;
     for (i32 i = 0; i < s->if_then_body.length; i++) {
         emit_cstr(arena, out, "        ");
         emit_stmt(arena, out, (Stmt *)s->if_then_body.data[i], sub, generic_name);
     }
+    if (g_emit_locals_made) g_emit_locals.length = locals_before_then;
     emit_cstr(arena, out, "    }");
     if (s->if_else_if) {
         emit_cstr(arena, out, " else ");
@@ -23005,11 +23097,11 @@ static bool emit_defined_compound(memops_arena *arena, string8 *out, Stmt *s, Ty
             default: return false;
         }
         emit_cstr(arena, out, ints_only ? "RIN_ANY_INT((" : "RIN_ANY_NUM((");
-        if (s->lhs) emit_expr(arena, out, s->lhs, sub, generic_name); else emit_c_ident(arena, out, s->name);
+        if (s->lhs) emit_expr(arena, out, s->lhs, sub, generic_name); else emit_assign_name(arena, out, s->name);
         emit_cstr(arena, out, "), ");
         emit_cstr(arena, out, stem);
         emit_cstr(arena, out, ")(&(");
-        if (s->lhs) emit_expr(arena, out, s->lhs, sub, generic_name); else emit_c_ident(arena, out, s->name);
+        if (s->lhs) emit_expr(arena, out, s->lhs, sub, generic_name); else emit_assign_name(arena, out, s->name);
         emit_cstr(arena, out, "), ");
         emit_expr_value(arena, out, s->expr, sub, generic_name);
         emit_cstr(arena, out, located ? ", __FILE__, __LINE__)" : ")");
@@ -23019,7 +23111,7 @@ static bool emit_defined_compound(memops_arena *arena, string8 *out, Stmt *s, Ty
     bool is_signed = s->arith_code & 1;
     char buf[96];
     TokenKind op = s->assign_op;
-#define EMIT_PLACE() do { if (s->lhs) emit_expr(arena, out, s->lhs, sub, generic_name); else emit_c_ident(arena, out, s->name); } while (0)
+#define EMIT_PLACE() do { if (s->lhs) emit_expr(arena, out, s->lhs, sub, generic_name); else emit_assign_name(arena, out, s->name); } while (0)
     if (op == Token_PlusEqual || op == Token_MinusEqual || op == Token_StarEqual) {
         if (!is_signed && bits == 16 && op == Token_StarEqual) {
             emit_cstr(arena, out, "rin_umul_set_u16((u16 *)&(");
@@ -23298,7 +23390,9 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
     if (e->kind == Expr_SizeofType || e->kind == Expr_AlignofType) {
         bool cast = emit_const_cast_open(arena, out, e);
         emit_cstr(arena, out, e->kind == Expr_SizeofType ? "sizeof(" : "_Alignof(");
-        if (e->cast_type) {
+        if (e->cast_type && e->cast_type->kind == Type_Name && emit_name_is_local(e->cast_type->name)) {
+            emit_string8(arena, out, local_c_name(arena, e->cast_type->name));
+        } else if (e->cast_type) {
             emit_type(arena, out, e->cast_type, sub);
         } else {
             g_emit_unevaluated++;
@@ -23376,6 +23470,10 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
             emit_cstr(arena, out, ")(");
             emit_expr(arena, out, e->const_literal->expr, (TypeSub){0}, (string8){0});
             emit_cstr(arena, out, "))");
+            return;
+        }
+        if (!e->names_no_local && emit_name_is_local(e->name)) {
+            emit_string8(arena, out, local_c_name(arena, e->name));
             return;
         }
         emit_string8(arena, out, c_ident(arena, reflect_runtime_c_name(arena, e->name)));
@@ -23614,6 +23712,8 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
             emit_cstr(arena, out, "_");
             string8 mangle = type_mangle(arena, type_sub_first_arg(sub), (TypeSub){0});
             emit_string8(arena, out, mangle);
+        } else if (!e->names_no_local && emit_name_is_local(e->name)) {
+            emit_string8(arena, out, local_c_name(arena, e->name));
         } else {
             emit_string8(arena, out, c_ident(arena, reflect_runtime_c_name(arena, e->name)));
         }
@@ -23644,7 +23744,9 @@ static void emit_stmt(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, s
         Vec_i32_append(arena, &g_region_marks, g_region_cleanups.length);
         Vec_i32_append(arena, &g_region_mark_is_loop, loop ? 1 : 0);
     }
+    i32 locals_before = g_emit_locals_made ? g_emit_locals.length : 0;
     emit_stmt_inner(arena, out, s, sub, generic_name);
+    if (s->kind != Stmt_Var && g_emit_locals_made) g_emit_locals.length = locals_before;
     if (mark) {
         g_region_marks.length--;
         g_region_mark_is_loop.length--;
@@ -23691,7 +23793,8 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
         emit_cstr(arena, out, " */\n");
         if (local) {
             emit_cstr(arena, out, "        memops_arena *");
-            emit_c_ident(arena, out, s->name);
+            emit_string8(arena, out, local_c_name(arena, s->name));
+            emit_local_add(arena, s->name);
             emit_cstr(arena, out, " = rin_region_stack_push();\n");
             string8_append_cstr(arena, &cleanup, "rin_region_stack_pop(); ");
         } else {
@@ -23727,7 +23830,13 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
         /* Its reads may all be the value itself, leaving only the storage for an address. */
         if (s->is_static && s->type && s->type->is_const) emit_cstr(arena, out, "RIN_MAYBE_UNUSED ");
         if (s->is_static) emit_cstr(arena, out, "static ");
-        emit_decl(arena, out, s->type, s->name, sub);
+        /* A global comes through here too, with no body around it, and keeps its name. */
+        if (g_emit_in_body) {
+            emit_decl(arena, out, s->type, local_c_name(arena, s->name), sub);
+            emit_local_add(arena, s->name); // C's scope starts here too, before the initializer
+        } else {
+            emit_decl(arena, out, s->type, s->name, sub);
+        }
         /* '= ?' lowers to a plain C declaration, so it costs exactly what the
            equivalent C would: nothing. */
         if (s->expr && !s->is_uninitialized) {
@@ -23843,7 +23952,7 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
             return;
         }
         if (s->lhs) emit_expr(arena, out, s->lhs, sub, generic_name);
-        else emit_c_ident(arena, out, s->name);
+        else emit_assign_name(arena, out, s->name);
         emit_assign_op(arena, out, s->assign_op);
         emit_expr_value(arena, out, s->expr, sub, generic_name);
         emit_cstr(arena, out, ";\n");
@@ -23859,13 +23968,14 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
         emit_cstr(arena, out, "for (");
         if (s->for_init) {
             if (s->for_init->kind == Stmt_Var) {
-                emit_decl(arena, out, s->for_init->type, s->for_init->name, sub);
+                emit_decl(arena, out, s->for_init->type, local_c_name(arena, s->for_init->name), sub);
+                emit_local_add(arena, s->for_init->name);
                 if (s->for_init->expr) {
                     emit_cstr(arena, out, " = ");
                     emit_expr(arena, out, s->for_init->expr, sub, generic_name);
                 }
             } else if (s->for_init->kind == Stmt_Assign) {
-                emit_string8(arena, out, s->for_init->name);
+                emit_assign_name(arena, out, s->for_init->name);
                 emit_cstr(arena, out, " = ");
                 emit_expr_value(arena, out, s->for_init->expr, sub, generic_name);
             } else if (s->for_init->kind == Stmt_Expr) {
@@ -23881,7 +23991,7 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
             if (s->for_step->kind == Stmt_Assign && emit_defined_compound(arena, out, s->for_step, sub, generic_name)) {
             } else if (s->for_step->kind == Stmt_Assign) {
                 if (s->for_step->lhs) emit_expr(arena, out, s->for_step->lhs, sub, generic_name);
-                else emit_string8(arena, out, s->for_step->name);
+                else emit_assign_name(arena, out, s->for_step->name);
                 emit_assign_op(arena, out, s->for_step->assign_op);
                 emit_expr_value(arena, out, s->for_step->expr, sub, generic_name);
             } else if (s->for_step->kind == Stmt_Expr) {
@@ -23951,10 +24061,12 @@ static void emit_stmt_inner(memops_arena *arena, string8 *out, Stmt *s, TypeSub 
             /* The block is real in C too, so locals in one case cannot collide
                with locals in another. */
             emit_cstr(arena, out, ": {\n");
+            i32 locals_before_case = g_emit_locals_made ? g_emit_locals.length : 0;
             for (i32 j = 0; j < sc->body.length; j++) {
                 emit_cstr(arena, out, "        ");
                 emit_stmt(arena, out, (Stmt *)sc->body.data[j], sub, generic_name);
             }
+            if (g_emit_locals_made) g_emit_locals.length = locals_before_case;
             emit_cstr(arena, out, "    }\n");
             /* A case takes a block, so it reads as self-contained and does not
                fall through. Without this the C fell into the next case: an
@@ -24611,7 +24723,7 @@ static void emit_proc_params(memops_arena *arena, string8 *out, ProcDecl *decl, 
                 emit_cstr(arena, out, "\n");
                 emit_line_directive_path(arena, out, decl->source_path, p->line);
             }
-            emit_decl(arena, out, p->type, p->name, sub);
+            emit_decl(arena, out, p->type, local_c_name(arena, p->name), sub);
         }
     }
     if (decl->is_variadic) {
@@ -24640,7 +24752,7 @@ static bool proc_has_noalias_slice(ProcDecl *decl) {
 }
 
 static void emit_param_c_name(memops_arena *arena, string8 *out, Param *p, const char *suffix) {
-    emit_string8(arena, out, c_ident(arena, reflect_runtime_c_name(arena, p->name)));
+    emit_string8(arena, out, local_c_name(arena, p->name));
     if (suffix) emit_cstr(arena, out, suffix);
 }
 
@@ -24717,6 +24829,12 @@ static void emit_proc_body(memops_arena *arena, string8 *out, ProcDecl *decl, Ty
     bool returns_void = !decl->ret_type || (decl->ret_type->kind == Type_Name && string8_equals_cstr(&decl->ret_type->name, "void"));
     g_emit_ret_type = returns_void ? null : decl->ret_type;
     g_emit_ret_sub = sub;
+    emit_locals_reset(arena);
+    g_emit_in_body = true;
+    for (i32 i = 0; i < decl->params.length; i++) {
+        Param *param = (Param *)decl->params.data[i];
+        if (param->name.length > 0) emit_local_add(arena, param->name);
+    }
     /* A parameter the body never reads is a -Wunused-parameter error under
        -Wextra -Werror, which the generated C must survive: std's generic
        procs take an arena some instances do not need. */
@@ -24724,7 +24842,7 @@ static void emit_proc_body(memops_arena *arena, string8 *out, ProcDecl *decl, Ty
         Param *param = (Param *)decl->params.data[i];
         if (param->name.length == 0 || string8_equals_cstr(&param->name, "_")) continue;
         emit_cstr(arena, out, "    (void)");
-        emit_string8(arena, out, c_ident(arena, reflect_runtime_c_name(arena, param->name)));
+        emit_string8(arena, out, local_c_name(arena, param->name));
         emit_cstr(arena, out, ";\n");
     }
     Vec_voidptr *emitted_body = proc_instance_body(decl, sub, false, arena);
@@ -24741,6 +24859,8 @@ static void emit_proc_body(memops_arena *arena, string8 *out, ProcDecl *decl, Ty
         emit_cstr(arena, out, "    ");
         emit_stmt(arena, out, (Stmt *)emitted_body->data[i], sub, generic_name);
     }
+    g_emit_in_body = false;
+    g_emit_locals.length = 0;
     /* C's main returns 0 from its end; any other proc must say what it returns. */
     if (!returns_void && !string8_equals_cstr(&decl->name, "main")) {
         emit_cstr(arena, out, "    rin_no_return(__FILE__, __LINE__);\n");
@@ -24764,12 +24884,12 @@ static void emit_noalias_helper(memops_arena *arena, string8 *out, ProcDecl *dec
             TypeExpr *ptr = type_new(arena, Type_Ptr);
             ptr->elem = type_slice_elem(p->type);
             ptr->is_noalias = true;
-            string8 c_name = c_ident(arena, reflect_runtime_c_name(arena, p->name));
+            string8 c_name = local_c_name(arena, p->name);
             emit_decl(arena, out, ptr, concat_name2(arena, c_name, "_rin_", string8_from_cstr(arena, "data")), sub);
             emit_cstr(arena, out, ", u64 ");
             emit_param_c_name(arena, out, p, "_rin_length");
         } else {
-            emit_decl(arena, out, p->type, p->name, sub);
+            emit_decl(arena, out, p->type, local_c_name(arena, p->name), sub);
         }
     }
     emit_cstr(arena, out, ") {\n");

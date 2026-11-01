@@ -1,0 +1,40 @@
+// A local is name__ in C: it shares a spelling with no global, and scopes end where they do in rin.
+import "std/print.rin"
+total: i32 = 100;
+other: i32 = 5;
+pick: proc(other: i32) -> i32 = { return other + total; }
+branches: proc(c: b32) -> i32 = {
+    if (c) {
+        total: i32 = 1;
+        return total;
+    } else {
+        return total;
+    }
+}
+each: proc(v: i32) -> i32 = {
+    switch (v) {
+        case 0: { total: i32 = 7; return total; }
+        case 1: { return total; }
+    }
+    for (total: i32 = 0; total < 3; total += 1) { other = total; }
+    return total + other;
+}
+twice: proc(x: i32) -> i32 = { return x * 2; }
+call: proc() -> i32 = {
+    f: *proc(x: i32) -> i32 = twice;
+    return f(4);
+}
+sized: proc() -> u64 = {
+    total: [3]i32 = {};
+    total[0] = 1;
+    return sizeof(total);
+}
+main: proc() -> i32 = {
+    printfmt("{} {} {}\n", pick(1), branches(1), branches(0));
+    printfmt("{} {} {}\n", each(0), each(1), each(2));
+    printfmt("{} {}\n", call(), sized());
+    total: i32 = 3;
+    total += 1;
+    printfmt("{}\n", total);
+    return 0;
+}
