@@ -1,4 +1,4 @@
-// expect: 'r' may be stale: 'q
+// expect: this keeps the address of a pointer
 // borrows_leave_scope skips pointer locals because a copy of one takes nothing with it, but r holds q's own address: r** after the block is stack-use-after-scope
 import "std/print.rin"
 main: proc() -> i32 = {

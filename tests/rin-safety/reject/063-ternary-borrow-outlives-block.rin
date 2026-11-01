@@ -1,4 +1,4 @@
-// expect: may be stale
+// expect: may be dangling
 import "std/print.rin"
 main: proc(argc: i32, argv: ^^char) -> i32 = {
     y: i32 = 1;

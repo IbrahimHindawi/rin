@@ -15016,7 +15016,8 @@ static void safety_check_carrier_value(const char *what, Program *prog, TypeExpr
     char message[512];
     snprintf(message, sizeof(message),
              "%s holds '%.*s' by value, and it carries a pointer whose region the checker cannot see; safe code "
-             "keeps such a value through a pointer into a region, '*%.*s in R', made by a proc of its own",
+             "keeps such a value through a pointer into a region, '*%.*s in R', made by a proc of its own; if a field of it "
+             "is stored from two regions, write its region on the field",
              what, (int)shown.length, shown.data, (int)shown.length, shown.data);
     type_error_message(message, line, col);
 }
@@ -15501,8 +15502,14 @@ static bool region_flow_rejects(Program *prog, TypeExpr *dst, TypeExpr *src, i32
         return true;
     }
     if (!region_ge(prog, sreg, dreg)) {
-        region_error("a pointer into region '%.*s' cannot be kept where region '%.*s' is promised: it may end first",
-                     sreg, dreg, line, col);
+        if (string8_equals_cstr(&dreg, "permanent")) {
+            region_error("a pointer into region '%.*s' cannot be kept here: this place lasts the whole program, as a global "
+                         "or a field does when nothing stored in it says otherwise; write its region on it, '*T in %.*s'",
+                         sreg, sreg, line, col);
+        } else {
+            region_error("a pointer into region '%.*s' cannot be kept where region '%.*s' is promised: it may end first",
+                         sreg, dreg, line, col);
+        }
         return true;
     }
     return false;
@@ -19069,14 +19076,20 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
     if (e->kind == Expr_Name && g_safe_body) {
         Borrow *b = borrow_find(e->name);
         if (b && b->dead && b->reportable) {
-            if (b->paths.length > 0) {
+            if (b->paths.length > 0 && b->scope_killed) {
+                /* '&q' is the path for q's own storage, which is the name people wrote. */
+                string8 from = b->paths.data[0];
+                if (from.length > 1 && from.data[0] == '&') { from.data++; from.length--; }
+                region_error("'%.*s' may be dangling: '%.*s', which it points into, ended with its block; keep it inside "
+                             "that block, or declare what it points into further out", e->name, from, e->line, e->col);
+            } else if (b->paths.length > 0) {
                 region_error("'%.*s' may be stale: '%.*s', which it was taken from, has been changed since; take it again",
                              e->name, b->paths.data[0], e->line, e->col);
             } else if (b->regions.length == 0) {
                 region_error("'%.*s' may be dangling%.0s: a region has been reset since it was taken, and it could have "
                              "pointed there; take it again", e->name, (string8){0}, e->line, e->col);
             } else {
-                region_error("'%.*s' may be dangling: it was made in region '%.*s', whose block has ended",
+                region_error("'%.*s' may be dangling: it was made in region '%.*s', whose block has ended or which has been reset",
                              e->name, b->regions.length > 0 ? b->regions.data[0] : (string8){0}, e->line, e->col);
             }
         }

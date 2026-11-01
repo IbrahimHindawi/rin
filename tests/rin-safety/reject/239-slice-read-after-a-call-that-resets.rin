@@ -1,4 +1,4 @@
-// expect: stale
+// expect: may be dangling
 level: region;
 frame: region in level;
 enemy: struct = { hp: i32; }

@@ -1,4 +1,4 @@
-// expect: may be stale
+// expect: a raw pointer into a buffer or a region lasts only
 import "std/print.rin"
 import "std/cstr.rin"
 main: proc() -> i32 = {

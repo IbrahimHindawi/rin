@@ -1,4 +1,4 @@
-// expect: may be stale
+// expect: may be dangling
 import "std/print.rin"
 main: proc() -> i32 = {
     s: []i32 = {};
