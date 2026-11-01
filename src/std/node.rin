@@ -18,7 +18,9 @@ node<T>create: proc[unsafe]<T>(arena: *memops_arena, data: T) -> *node<T> = {
 }
 
 node<T>destroy: proc[unsafe]<T>(arena: *memops_arena, node: **node<T>) -> void = {
-    unsafe { node* = null; }
+    unsafe {
+        node* = null;
+    }
 }
 
 node<T>value: proc[unsafe]<T>(node: *node<T>) -> option<T> = {

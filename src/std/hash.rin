@@ -49,7 +49,9 @@ hash: proc<c8>(x: c8) -> u64 = {
 }
 
 hash: proc<[]c8>(s: []c8) -> u64 = {
-    unsafe { return hash_bytes(cast(s.data, ^const u8), s.length); }
+    unsafe {
+        return hash_bytes(cast(s.data, ^const u8), s.length);
+    }
 }
 
 hash: proc[unsafe]<string8slice>(s: string8slice) -> u64 = {

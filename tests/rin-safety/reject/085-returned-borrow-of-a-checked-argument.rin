@@ -1,7 +1,15 @@
 // expect: may be stale
 H: struct = { v: *H in permanent; }
-first: proc(ctx: *H) -> *H = { unsafe { return ctx; } }
-touch: proc(ctx: *H) -> void = { unsafe { ctx*.v = ctx*.v; } }
+first: proc(ctx: *H) -> *H = {
+    unsafe {
+        return ctx;
+    }
+}
+touch: proc(ctx: *H) -> void = {
+    unsafe {
+        ctx*.v = ctx*.v;
+    }
+}
 use: proc(ctx: *H) -> i32 = {
     f: *H = first(ctx);
     touch(ctx);

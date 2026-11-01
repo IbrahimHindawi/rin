@@ -647,22 +647,24 @@ string8_builder_begin: proc[unsafe](arena: *memops_arena) -> string8_builder = {
 
 /* The head check. Cheap enough to run on every append, and the only thing
    standing between an interleaved build and silent corruption. */
-string8_builder_reserve_: proc(b: *string8_builder, count: u64) -> *u8 = { unsafe {
-    if (b == null || b*.arena == null) {
-        printf("rin runtime: string8 builder invalid argument\n");
-        exit(1);
+string8_builder_reserve_: proc(b: *string8_builder, count: u64) -> *u8 = {
+    unsafe {
+        if (b == null || b*.arena == null) {
+            printf("rin runtime: string8 builder invalid argument\n");
+            exit(1);
+        }
+        if (b*.start + b*.length != b*.arena*.cursor) {
+            printf("rin runtime: string8 builder lost the arena head (interleaved allocation)\n");
+            exit(1);
+        }
+        p: *u8 = cast(memops_arena_extend(b*.arena, count), *u8);
+        if (p == null) {
+            printf("rin runtime: string8 builder allocation failure\n");
+            exit(1);
+        }
+        return p;
     }
-    if (b*.start + b*.length != b*.arena*.cursor) {
-        printf("rin runtime: string8 builder lost the arena head (interleaved allocation)\n");
-        exit(1);
-    }
-    p: *u8 = cast(memops_arena_extend(b*.arena, count), *u8);
-    if (p == null) {
-        printf("rin runtime: string8 builder allocation failure\n");
-        exit(1);
-    }
-    return p;
-} }
+}
 
 string8_builder_append_byte: proc(b: *string8_builder, byte: u8) -> void = {
     p: *u8 = string8_builder_reserve_(b, 1);

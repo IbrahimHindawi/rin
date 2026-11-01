@@ -1,6 +1,8 @@
 import "std/print.rin"
 f: proc() -> i32 = {
-    unsafe { return 1; }
+    unsafe {
+        return 1;
+    }
 }
 g2: proc() -> i32 = {
     q: option<*i32> = null;

@@ -6,7 +6,11 @@ import "std/print.rin"
 import "std/option.rin"
 level: region global;
 g: option<*i32 in level> = null;
-stash: proc(src: *i32) -> void = { unsafe { g = src; } }
+stash: proc(src: *i32) -> void = {
+    unsafe {
+        g = src;
+    }
+}
 main: proc() -> i32 = {
     scratch { q: *i32 in scratch = new<i32>(scratch, 7); stash(q); }
     h: option<*i32 in level> = g;

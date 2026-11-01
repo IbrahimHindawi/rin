@@ -36,11 +36,13 @@ hashmap: struct<K, V> = {
 
 /* A map that lives in a region, for safe code: the header and everything it
    grows into come from the region's arena. */
-hashmap<K, V>make: proc<K, V>(r: region R) -> *hashmap<K, V> in R = { unsafe {
-    m: *hashmap<K, V> in R = cast(memops_arena_push_zero(r, sizeof(hashmap<K, V>), alignof(hashmap<K, V>)), *hashmap<K, V> in R);
-    m*.arena = r;
-    return m;
-} }
+hashmap<K, V>make: proc<K, V>(r: region R) -> *hashmap<K, V> in R = {
+    unsafe {
+        m: *hashmap<K, V> in R = cast(memops_arena_push_zero(r, sizeof(hashmap<K, V>), alignof(hashmap<K, V>)), *hashmap<K, V> in R);
+        m*.arena = r;
+        return m;
+    }
+}
 
 /* put, for a map made by hashmap<K, V>make. The pointer returned is borrowed;
    it is stale after the next set. */

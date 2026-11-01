@@ -2,7 +2,11 @@
 import "std/vec.rin"
 level: region;
 
-shrink: proc[no_move](v: *vec<i32>) -> void = { unsafe { v*.length = 0; } }
+shrink: proc[no_move](v: *vec<i32>) -> void = {
+    unsafe {
+        v*.length = 0;
+    }
+}
 
 main: proc() -> i32 = {
     return 0;

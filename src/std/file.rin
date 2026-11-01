@@ -76,15 +76,17 @@ file_end_: proc[unsafe](arg: ^void) -> void = {
 }
 
 /* A file that closes when the region ends, whichever way it ends. */
-file_open_in: proc(r: region R, path: ^const char, mode: ^const char) -> file = { unsafe {
-    f: file = file_open(path, mode);
-    if (file_is_open(f)) {
-        kept: ^file = cast(memops_arena_push_zero(r, sizeof(file), alignof(file)), ^file);
-        kept[0] = f;
-        memops_arena_on_end(r, file_end_, kept);
+file_open_in: proc(r: region R, path: ^const char, mode: ^const char) -> file = {
+    unsafe {
+        f: file = file_open(path, mode);
+        if (file_is_open(f)) {
+            kept: ^file = cast(memops_arena_push_zero(r, sizeof(file), alignof(file)), ^file);
+            kept[0] = f;
+            memops_arena_on_end(r, file_end_, kept);
+        }
+        return f;
     }
-    return f;
-} }
+}
 
 /* How many bytes were read, up to out's length. */
 file_read: proc(f: file, out: []u8) -> u64 = {
@@ -118,14 +120,16 @@ file_flush: proc(f: file) -> void = {
     unsafe { fflush(cast(file_stream(f), *FILE)); }
 }
 
-file_size: proc(f: file) -> i64 = { unsafe {
-    stream: *FILE = cast(file_stream(f), *FILE);
-    at: long = ftell(stream);
-    fseek(stream, 0, 2);
-    size: long = ftell(stream);
-    fseek(stream, at, 0);
-    return cast(size, i64);
-} }
+file_size: proc(f: file) -> i64 = {
+    unsafe {
+        stream: *FILE = cast(file_stream(f), *FILE);
+        at: long = ftell(stream);
+        fseek(stream, 0, 2);
+        size: long = ftell(stream);
+        fseek(stream, at, 0);
+        return cast(size, i64);
+    }
+}
 
 file_seek: proc(f: file, offset: i64) -> b32 = {
     /* C's long may be narrower, and a truncated offset would land somewhere else. */

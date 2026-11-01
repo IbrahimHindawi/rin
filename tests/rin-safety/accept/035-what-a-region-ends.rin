@@ -6,13 +6,19 @@ import "std/file.rin"
 level: region;
 order: i32 = 0;
 
-note: proc(arg: ^void) -> void = { unsafe { order = order * 10 + cast(arg, ^i32)[0]; } }
+note: proc(arg: ^void) -> void = {
+    unsafe {
+        order = order * 10 + cast(arg, ^i32)[0];
+    }
+}
 
-noted: proc(r: region R, n: i32) -> void = { unsafe {
-    kept: ^i32 = cast(memops_arena_push_zero(r, sizeof(i32), alignof(i32)), ^i32);
-    kept[0] = n;
-    memops_arena_on_end(r, note, kept);
-} }
+noted: proc(r: region R, n: i32) -> void = {
+    unsafe {
+        kept: ^i32 = cast(memops_arena_push_zero(r, sizeof(i32), alignof(i32)), ^i32);
+        kept[0] = n;
+        memops_arena_on_end(r, note, kept);
+    }
+}
 
 early: proc() -> i32 = {
     tmp: region of permanent = {

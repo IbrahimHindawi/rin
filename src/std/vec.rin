@@ -28,15 +28,17 @@ vec<T>reserve: proc[unsafe]<T>(arena: *memops_arena, length: u64) -> vec<T> = {
 /* A vec that lives in a region, for safe code: the header and its storage both
    come from the region's arena, so a `*vec<T> in R` points into R and nothing
    in it outlives R. Grows into the same arena. */
-vec<T>make: proc<T>(r: region R, reserve: u64) -> *vec<T> in R = { unsafe {
-    v: *vec<T> in R = cast(memops_arena_push_zero(r, sizeof(vec<T>), alignof(vec<T>)), *vec<T> in R);
-    v*.arena = r;
-    if (reserve > 0) {
-        v*.data = cast(memops_arena_push_zero(r, memops_bytes(sizeof(T), reserve), alignof(T)), *T);
-        v*.border = reserve;
+vec<T>make: proc<T>(r: region R, reserve: u64) -> *vec<T> in R = {
+    unsafe {
+        v: *vec<T> in R = cast(memops_arena_push_zero(r, sizeof(vec<T>), alignof(vec<T>)), *vec<T> in R);
+        v*.arena = r;
+        if (reserve > 0) {
+            v*.data = cast(memops_arena_push_zero(r, memops_bytes(sizeof(T), reserve), alignof(T)), *T);
+            v*.border = reserve;
+        }
+        return v;
     }
-    return v;
-} }
+}
 /* Push onto a vec made by vec<T>make: it grows into the arena it was made
    from. The pointer returned is borrowed; it is stale after the next push. */
 vec<T>push: proc<T>(array: *vec<T>, elem: T) -> *T = {

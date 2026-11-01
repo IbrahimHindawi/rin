@@ -20,7 +20,9 @@ binode<T>create: proc[unsafe]<T>(arena: *memops_arena, data: T) -> *binode<T> = 
 }
 
 binode<T>destroy: proc[unsafe]<T>(arena: *memops_arena, node: **binode<T>) -> void = {
-    unsafe { node* = null; }
+    unsafe {
+        node* = null;
+    }
 }
 
 binode<T>value: proc[unsafe]<T>(node: *binode<T>) -> option<T> = {

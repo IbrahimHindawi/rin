@@ -3,8 +3,16 @@ import "std/print.rin"
 /* A handle from a raw name is no borrow of the name. */
 H: struct = { x: i32; }
 g_h: H = {};
-open: proc(path: ^const char) -> *H = { unsafe { return g_h&; } }
-wr: proc(f: *H) -> void = { unsafe { f*.x += 1; } }
+open: proc(path: ^const char) -> *H = {
+    unsafe {
+        return g_h&;
+    }
+}
+wr: proc(f: *H) -> void = {
+    unsafe {
+        f*.x += 1;
+    }
+}
 save: proc(path: ^const char) -> i32 = {
     f: *H = open(path);
     wr(f);
@@ -15,9 +23,21 @@ save: proc(path: ^const char) -> i32 = {
 /* A proc handed plain data can overwrite it and can move nothing. */
 T: struct = { a: i32; b: [2]f32; }
 g_arr: [4]T = {};
-set_a: proc(out: *i32) -> void = { unsafe { out* = 5; } }
-hit: proc(t: *T) -> void = { unsafe { t*.a += 1; } }
-fill: proc(xs: []i32) -> void = { unsafe { xs[0] = 3; } }
+set_a: proc(out: *i32) -> void = {
+    unsafe {
+        out* = 5;
+    }
+}
+hit: proc(t: *T) -> void = {
+    unsafe {
+        t*.a += 1;
+    }
+}
+fill: proc(xs: []i32) -> void = {
+    unsafe {
+        xs[0] = 3;
+    }
+}
 elements: proc() -> i32 = {
     x: *T = g_arr[0]&;
     y: *T = g_arr[1]&;

@@ -24,19 +24,21 @@ table: struct<T> = {
     free_head: u32;
 }
 
-table<T>make: proc<T>(r: region R, capacity: u32) -> *table<T> in R = { unsafe {
-    t: *table<T> in R = cast(memops_arena_push_zero(r, sizeof(table<T>), alignof(table<T>)), *table<T> in R);
-    t*.capacity = capacity;
-    if (capacity > 0) {
-        t*.data = cast(memops_arena_push_zero(r, memops_bytes(sizeof(T), capacity), alignof(T)), ^T);
-        t*.generations = cast(memops_arena_push_zero(r, memops_bytes(sizeof(u32), capacity), alignof(u32)), ^u32);
-        t*.next_free = cast(memops_arena_push_zero(r, memops_bytes(sizeof(u32), capacity), alignof(u32)), ^u32);
-        for (i: u32 = 0; i < capacity; i += 1) {
-            t*.next_free[i] = i + 1;
+table<T>make: proc<T>(r: region R, capacity: u32) -> *table<T> in R = {
+    unsafe {
+        t: *table<T> in R = cast(memops_arena_push_zero(r, sizeof(table<T>), alignof(table<T>)), *table<T> in R);
+        t*.capacity = capacity;
+        if (capacity > 0) {
+            t*.data = cast(memops_arena_push_zero(r, memops_bytes(sizeof(T), capacity), alignof(T)), ^T);
+            t*.generations = cast(memops_arena_push_zero(r, memops_bytes(sizeof(u32), capacity), alignof(u32)), ^u32);
+            t*.next_free = cast(memops_arena_push_zero(r, memops_bytes(sizeof(u32), capacity), alignof(u32)), ^u32);
+            for (i: u32 = 0; i < capacity; i += 1) {
+                t*.next_free[i] = i + 1;
+            }
         }
+        return t;
     }
-    return t;
-} }
+}
 
 /* A full table gives back the empty index, which finds nothing. */
 table<T>add: proc[no_move]<T>(t: *table<T>, value: T) -> index<T> = {
@@ -98,11 +100,13 @@ table<T>capacity: proc[no_move]<T>(t: *const table<T>) -> u32 = {
 
 /* To go through everything in use: for each slot below the capacity, this is its index,
    or the empty one if the slot is free. */
-table<T>index_at: proc[no_move]<T>(t: *const table<T>, slot: u32) -> index<T> = { unsafe {
-    out: index<T> = {};
-    if (slot < t*.capacity && (t*.generations[slot] & 1) == 1) {
-        out.slot = slot;
-        out.generation = t*.generations[slot];
+table<T>index_at: proc[no_move]<T>(t: *const table<T>, slot: u32) -> index<T> = {
+    unsafe {
+        out: index<T> = {};
+        if (slot < t*.capacity && (t*.generations[slot] & 1) == 1) {
+            out.slot = slot;
+            out.generation = t*.generations[slot];
+        }
+        return out;
     }
-    return out;
-} }
+}

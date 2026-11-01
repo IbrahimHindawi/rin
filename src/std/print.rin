@@ -11,15 +11,21 @@ print_cstr: proc(text: ^const char) -> void = {
 }
 
 print: proc<i8>(x: i8) -> void = {
-    unsafe { printf("%d", x); }
+    unsafe {
+        printf("%d", x);
+    }
 }
 
 print: proc<i16>(x: i16) -> void = {
-    unsafe { printf("%d", x); }
+    unsafe {
+        printf("%d", x);
+    }
 }
 
 print: proc<i32>(x: i32) -> void = {
-    unsafe { printf("%d", x); }
+    unsafe {
+        printf("%d", x);
+    }
 }
 
 print: proc<i64>(x: i64) -> void = {
@@ -27,15 +33,21 @@ print: proc<i64>(x: i64) -> void = {
 }
 
 print: proc<u8>(x: u8) -> void = {
-    unsafe { printf("%u", x); }
+    unsafe {
+        printf("%u", x);
+    }
 }
 
 print: proc<u16>(x: u16) -> void = {
-    unsafe { printf("%u", x); }
+    unsafe {
+        printf("%u", x);
+    }
 }
 
 print: proc<u32>(x: u32) -> void = {
-    unsafe { printf("%u", x); }
+    unsafe {
+        printf("%u", x);
+    }
 }
 
 print: proc<u64>(x: u64) -> void = {
@@ -43,19 +55,27 @@ print: proc<u64>(x: u64) -> void = {
 }
 
 print: proc<usize>(x: usize) -> void = {
-    unsafe { printf("%zu", x); }
+    unsafe {
+        printf("%zu", x);
+    }
 }
 
 print: proc<f32>(x: f32) -> void = {
-    unsafe { printf("%f", cast(x, f64)); }
+    unsafe {
+        printf("%f", cast(x, f64));
+    }
 }
 
 print: proc<f64>(x: f64) -> void = {
-    unsafe { printf("%f", x); }
+    unsafe {
+        printf("%f", x);
+    }
 }
 
 print: proc<char>(x: char) -> void = {
-    unsafe { printf("%c", x); }
+    unsafe {
+        printf("%c", x);
+    }
 }
 
 print: proc<b32>(x: b32) -> void = {

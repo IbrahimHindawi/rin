@@ -67,5 +67,7 @@ dsu_same: proc[unsafe](d: *dsu, a: u64, b: u64) -> b32 = {
 }
 
 dsu_set_size: proc[unsafe](d: *dsu, x: u64) -> u64 = {
-    unsafe { return d*.size[dsu_find(d, x)]; }
+    unsafe {
+        return d*.size[dsu_find(d, x)];
+    }
 }

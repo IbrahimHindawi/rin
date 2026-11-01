@@ -6,7 +6,11 @@ frame: region in level;
 H: struct = { x: i32; }
 clobber: proc(r: region R) -> void = { t: region of r = { x: []i32 in t = new_slice<i32>(t, 64); for (i: u64 = 0; i < 64; i += 1) { x[i] = 99; } } }
 W: struct = { v: *vec<i32> in permanent; }
-grow: proc(w: *W) -> void = { unsafe { for (i: i32 = 0; i < 100; i += 1) { _ = vec<i32>push(w*.v, 1); } } }
+grow: proc(w: *W) -> void = {
+    unsafe {
+        for (i: i32 = 0; i < 100; i += 1) { _ = vec<i32>push(w*.v, 1); }
+    }
+}
 main: proc() -> i32 = {
     w: W = { .v = vec<i32>make(permanent, 1) };
     _ = vec<i32>push(w.v, 42);

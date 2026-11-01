@@ -32,13 +32,17 @@ slice<T>from_parts: proc[unsafe]<T>(data: ^T, length: u64) -> slice<T> = {
     return s;
 }
 
-slice<T>from_array: proc<T>(array: array<T>) -> slice<T> = { unsafe {
-    return slice<T>from_parts(array.data, array.length);
-} }
+slice<T>from_array: proc<T>(array: array<T>) -> slice<T> = {
+    unsafe {
+        return slice<T>from_parts(array.data, array.length);
+    }
+}
 
-slice<T>from_vec: proc<T>(vec: vec<T>) -> slice<T> = { unsafe {
-    return slice<T>from_parts(vec.data, vec.length);
-} }
+slice<T>from_vec: proc<T>(vec: vec<T>) -> slice<T> = {
+    unsafe {
+        return slice<T>from_parts(vec.data, vec.length);
+    }
+}
 
 slice<T>is_empty: proc<T>(s: slice<T>) -> b32 = {
     return s.length == 0;
@@ -123,19 +127,23 @@ slice<T>copy_to: proc[unsafe]<T>(dst: ^T, s: slice<T>) -> void = {
 /* The owning copy, when a view has to outlive what it borrowed from. */
 /* memcpy for safe code: both lengths must match, or it stops, as an index out
    of bounds does. The two may overlap. */
-slice<T>copy: proc<T>(dst: []T, src: []const T) -> void = { unsafe {
-    if (dst.length != src.length) {
-        printf("rin runtime: copy between slices of %llu and %llu\n", cast(dst.length, u64), cast(src.length, u64));
-        exit(1);
+slice<T>copy: proc<T>(dst: []T, src: []const T) -> void = {
+    unsafe {
+        if (dst.length != src.length) {
+            printf("rin runtime: copy between slices of %llu and %llu\n", cast(dst.length, u64), cast(src.length, u64));
+            exit(1);
+        }
+        if (dst.length > 0) { memmove(dst.data, src.data, sizeof(T) * dst.length); }
     }
-    if (dst.length > 0) { memmove(dst.data, src.data, sizeof(T) * dst.length); }
-} }
+}
 
 /* memset to zero for safe code. Refused for a T with a '*T' in it by what it
    would hold: zero is not a value of that type. */
-slice<T>zero: proc<T>(s: []T) -> void = { unsafe {
-    if (s.length > 0) { memset(s.data, 0, sizeof(T) * s.length); }
-} }
+slice<T>zero: proc<T>(s: []T) -> void = {
+    unsafe {
+        if (s.length > 0) { memset(s.data, 0, sizeof(T) * s.length); }
+    }
+}
 
 slice<T>to_array: proc[unsafe]<T>(arena: *memops_arena, s: slice<T>) -> array<T> = {
     out: array<T> = array<T>reserve(arena, s.length);

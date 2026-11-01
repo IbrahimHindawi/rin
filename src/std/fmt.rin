@@ -36,13 +36,15 @@ fmt_to: proc[unsafe](buf: []c8) -> fmt = {
 
 /* A formatter that lives in a region, for safe code: its buffer comes from
    the region's arena, and the text is always NUL-terminated. */
-fmt_make: proc(r: region R, capacity: u64) -> *fmt in R = { unsafe {
-    f: *fmt in R = cast(memops_arena_push_zero(r, sizeof(fmt), alignof(fmt)), *fmt in R);
-    if (capacity == 0) { capacity = 1; }
-    f*.data = cast(memops_arena_push_zero(r, capacity, 1), ^c8);
-    f*.capacity = capacity;
-    return f;
-} }
+fmt_make: proc(r: region R, capacity: u64) -> *fmt in R = {
+    unsafe {
+        f: *fmt in R = cast(memops_arena_push_zero(r, sizeof(fmt), alignof(fmt)), *fmt in R);
+        if (capacity == 0) { capacity = 1; }
+        f*.data = cast(memops_arena_push_zero(r, capacity, 1), ^c8);
+        f*.capacity = capacity;
+        return f;
+    }
+}
 
 /* Back to empty, keeping the buffer. */
 fmt_reset: proc(f: *fmt) -> void = {
@@ -110,7 +112,9 @@ fmt_cstr: proc(f: *fmt, s: ^const c8) -> void = {
 }
 
 fmt_slice: proc[unsafe](f: *fmt, s: string8slice) -> void = {
-    unsafe { fmt_bytes(f, cast(s.data, ^const c8), s.length); }
+    unsafe {
+        fmt_bytes(f, cast(s.data, ^const c8), s.length);
+    }
 }
 
 /* Left-justified in a field of `width`, like %-24s. Longer input is written in
