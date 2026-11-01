@@ -1,0 +1,12 @@
+// Two type arguments: the rest of the name is two types.
+import "std/print.rin"
+pair: struct<A, B> = { a: u64; b: u64; x: A; y: B; }
+level: region global;
+main: proc() -> i32 = {
+    pair_u8_u8: [1]u8 = {};
+    n: u64 = 64;
+    s: []pair<u8, u8> in level = new_slice<pair<u8, u8>>(level, n);
+    s[63].b = 7;
+    printfmt("{} {}\n", s[63].b, pair_u8_u8[0]);
+    return 0;
+}

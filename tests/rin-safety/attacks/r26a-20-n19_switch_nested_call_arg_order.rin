@@ -1,0 +1,17 @@
+// switch(f(read, call)): plain order, for a compiler that goes right to left (clang on Windows, in its ABI).
+import "std/print.rin"
+S: struct = { x: i32; }
+H: struct = { p: option<*S in permanent>; }
+g: H = {};
+clear: proc() -> i32 = { g.p = null; return 1; }
+sum2: proc(a: i32, b: i32) -> i32 = { return a + b; }
+main: proc() -> i32 = {
+    g.p = new<S>(permanent, { .x = 1 });
+    if (g.p) {
+        switch (sum2(g.p*.x, clear())) {
+            case 2: { printfmt("two\n"); }
+            default: { printfmt("other\n"); }
+        }
+    }
+    return 0;
+}

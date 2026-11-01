@@ -1,0 +1,10 @@
+// C continues after a designator: { [1] = x, y } is a[1], a[2]. The checker counts y as index 0, and a[0] stays zero.
+import "std/print.rin"
+S: struct = { x: i32; }
+H: struct = { p: *S in permanent; }
+main: proc() -> i32 = {
+    n: *S in permanent = new<S>(permanent, { .x = 1 });
+    a: [2]H = { [1] = { .p = n }, { .p = n } };
+    printfmt("{}\n", a[0].p*.x);
+    return 0;
+}

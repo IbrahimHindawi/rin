@@ -1,0 +1,13 @@
+// print_S opens the region its caller has open: when it ends, the caller's memory goes.
+import "std/print.rin"
+S: struct = { x: i32; }
+frame: region;
+print_S: proc(s: S) -> void = { frame: region = { y: *i32 in frame = new<i32>(frame, 1); } }
+main: proc() -> i32 = {
+    frame: region = {
+        a: S = { .x = 1 };
+        p: *S in frame = new<S>(frame, { .x = 7 });
+        printfmt("{} {}\n", a, p*.x);
+    }
+    return 0;
+}

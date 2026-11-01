@@ -1,0 +1,10 @@
+import "std/print.rin"
+S: struct = { x: i32; }
+H: struct = { p: *S in permanent; q: *S in permanent; }
+level: region global;
+main: proc() -> i32 = {
+    n: *S in permanent = new<S>(permanent, { .x = 1 });
+    h: *H in level = new<H>(level, { .q = n, n });
+    printfmt("{}\n", h*.p*.x);
+    return 0;
+}

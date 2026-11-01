@@ -1,0 +1,12 @@
+// expect: this pointer may be null
+// C gives the arguments no order, so clear may run before the read: a for condition is an expression like any other.
+S: struct = { x: i32; }
+H: struct = { p: option<*S in permanent>; }
+g: H = {};
+clear: proc() -> i32 = { g.p = null; return 1; }
+sum2: proc(a: i32, b: i32) -> i32 = { return a + b; }
+main: proc() -> i32 = {
+    g.p = new<S>(permanent, { .x = 1 });
+    if (g.p) { for (i: i32 = 0; sum2(g.p*.x, clear()) > i; i += 1) { return 0; } }
+    return 0;
+}

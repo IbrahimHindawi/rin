@@ -117,10 +117,12 @@ std's `unsafe { }` is narrowed: `python tests/rin_trusted_lines.py` gives 329 li
 invariant if called from outside is `proc[static]`; a public view that reaches uninitialized slots is a hole, and
 the suites will not catch it: this one was found by reading the patch, and `attacks/r25b-*` now hold it.
 
-Twenty-three attack rounds have run. Rounds five to twenty each found dozens of holes in the old rules, all closed. Against the
+Twenty-six attack rounds have run. Rounds five to twenty each found dozens of holes in the old rules, all closed. Against the
 second pass: round 21 found six (two causes, closed) and none in std; rounds 22 and 23 found nothing inside the claim in
 fifty-one realistic programs and two rounds on the pass, and ten programs outside it (an `unsafe` block weakening the checks
-around it, closed). The rounds have converged; keep running them. The checked build is the sanitizer build plus a quarantine in
+around it, closed). The pass has converged; the rules beside it have not. Rounds 25 and 26, aimed at those, found six causes
+in about 370 programs, each a rule reasoning from a name or a shape (`docs/regions-v2.md`). Aim the next rounds there: a round
+that finds nothing says only that it found nothing where it looked. The checked build is the sanitizer build plus a quarantine in
 `memops_arena_clear` (`memops_os_quarantine`): a reset region is not reused until a budget has gone by, so a stale
 pointer into it meets poison (`poison/021`).
 Run a fresh round per new rule, and `tests/gen_rin_safe.py` with `run_rin_vm.py --compare`. Verify with a script

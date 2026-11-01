@@ -1,0 +1,12 @@
+// A generic prints its T, and the instance's print is a plain proc that resets.
+import "std/print.rin"
+S: struct = { x: i32; }
+level: region global;
+print_S: proc(s: S) -> void = { reset level; }
+show: proc<T>(v: T, p: *i32 in level) -> void = { printfmt("{} {}\n", v, p*); }
+main: proc() -> i32 = {
+    a: S = { .x = 1 };
+    p: *i32 in level = new<i32>(level, 7);
+    show<S>(a, p);
+    return 0;
+}

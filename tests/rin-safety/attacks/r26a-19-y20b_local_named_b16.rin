@@ -1,0 +1,10 @@
+import "std/print.rin"
+level: region global;
+main: proc() -> i32 = {
+    b16: u8 = 0;
+    n: u64 = 64;
+    s: []b16 in level = new_slice<b16>(level, n);
+    s[63] = 7;
+    printfmt("{}\n", b16);
+    return 0;
+}

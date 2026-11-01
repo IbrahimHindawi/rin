@@ -1,0 +1,27 @@
+// equal_ky is a plain proc: not a specialisation, so the rule never looks. It grows the map under find,
+// and get then hands back a slot of the new arrays that nothing wrote. V is a pointer that may not be null.
+import "std/print.rin"
+import "std/hashmap.rin"
+ky: struct = { k: i64; }
+level: region global;
+gm: option<*hashmap<ky, *i32 in level> in level> = null;
+n: i32 = 0;
+hash_ky: proc(k: ky) -> u64 = { return cast(k.k, u64); }
+equal_ky: proc(a: ky, b: ky) -> b32 = {
+    h: option<*hashmap<ky, *i32 in level> in level> = gm;
+    if (n == 0 && h) {
+        n = 1;
+        v: *i32 in level = new<i32>(level, 5);
+        for (i: i64 = 100; i < 400; i += 1) { hashmap<ky, *i32 in level>set(h, { .k = i }, v); }
+    }
+    return a.k == b.k;
+}
+main: proc() -> i32 = {
+    m: *hashmap<ky, *i32 in level> in level = hashmap<ky, *i32 in level>make(level);
+    gm = m;
+    v: *i32 in level = new<i32>(level, 1);
+    hashmap<ky, *i32 in level>set(m, { .k = 19 }, v);
+    r: option<**i32 in level> = hashmap<ky, *i32 in level>get(m, { .k = 19 });
+    if (r) { printfmt("{}\n", r**); }
+    return 0;
+}

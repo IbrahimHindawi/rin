@@ -1,0 +1,14 @@
+// A second form: a local as the instance in a generic's own body, T given as box<u8>.
+import "std/print.rin"
+box: struct<T> = { a: u64; b: u64; v: T; }
+level: region global;
+mk: proc<T>(n: u64) -> []T in level = {
+    box_u8: u8 = 1;
+    return new_slice<T>(level, n);
+}
+main: proc() -> i32 = {
+    s: []box<u8> in level = mk<box<u8>>(64);
+    s[63].b = 7;
+    printfmt("{}\n", s[63].b);
+    return 0;
+}

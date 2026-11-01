@@ -1,0 +1,13 @@
+// The proper spelling still works, and a plain proc with a print-like name for another type is left alone.
+import "std/print.rin"
+S: struct = { x: i32; }
+world: struct = { n: i32; }
+print: proc<S>(s: S) -> void = { printfmt("S({})", s.x); }
+print_world: proc(w: *world) -> void = { printfmt("world {}\n", w*.n); }
+main: proc() -> i32 = {
+    a: S = { .x = 1 };
+    b: world = { .n = 2 };
+    printfmt("{}\n", a);
+    print_world(b&);
+    return 0;
+}

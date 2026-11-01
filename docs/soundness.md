@@ -142,6 +142,10 @@ only be read by std's readers, with no call that could write beside it in any pl
 (`safety_check_open_cstr`). A proc of the program's own takes a `[]const c8` instead, which has a length to stop
 at. This used to ask whether such a proc could write the buffer, and that question had holes (round 25).
 
+What answers for a type operation is what was declared to: `hash: proc<ky>` answers for `hash<ky>`, and a plain
+proc only spelled `hash_ky` does not, for `printfmt`'s `print` as well. A value with no designator may not follow
+one with a designator.
+
 ## What the emitted C assumes
 
 Arithmetic reaches C with both operands cast to the type rin gave the operation, and a shift's amount masked

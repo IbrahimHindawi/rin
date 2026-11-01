@@ -1,0 +1,32 @@
+// The slot nothing wrote holds what the region held before its reset: a pointer the program chose, and a write through it.
+import "std/print.rin"
+import "std/hashmap.rin"
+ky: struct = { k: i64; }
+level: region global;
+gm: option<*hashmap<ky, *i64 in level> in level> = null;
+n: i32 = 0;
+hash_ky: proc(k: ky) -> u64 = { return cast(k.k, u64); }
+equal_ky: proc(a: ky, b: ky) -> b32 = {
+    h: option<*hashmap<ky, *i64 in level> in level> = gm;
+    if (n == 0 && h) {
+        n = 1;
+        v: *i64 in level = new<i64>(level, 5);
+        for (i: i64 = 100; i < 400; i += 1) { hashmap<ky, *i64 in level>set(h, { .k = i }, v); }
+    }
+    return a.k == b.k;
+}
+fill: proc() -> void = {
+    xs: []u64 in level = new_slice<u64>(level, 200000);
+    for (i: u64 = 0; i < xs.length; i += 1) { xs[i] = 0x4141414141414141'u64; }
+}
+main: proc() -> i32 = {
+    fill();
+    reset level;
+    m: *hashmap<ky, *i64 in level> in level = hashmap<ky, *i64 in level>make(level);
+    gm = m;
+    v: *i64 in level = new<i64>(level, 1);
+    hashmap<ky, *i64 in level>set(m, { .k = 19 }, v);
+    r: option<**i64 in level> = hashmap<ky, *i64 in level>get(m, { .k = 19 });
+    if (r) { r** = 1; printfmt("wrote\n"); }
+    return 0;
+}

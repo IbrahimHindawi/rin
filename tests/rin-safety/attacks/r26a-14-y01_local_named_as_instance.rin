@@ -1,0 +1,12 @@
+// A local named as a generic instance's C type: sizeof in the same scope takes the local.
+import "std/print.rin"
+box: struct<T> = { a: u64; b: u64; v: T; }
+level: region global;
+main: proc() -> i32 = {
+    box_u8: [1]u8 = {};
+    n: u64 = 64;
+    s: []box<u8> in level = new_slice<box<u8>>(level, n);
+    s[63].b = 7;
+    printfmt("{} {}\n", s[63].b, box_u8[0]);
+    return 0;
+}

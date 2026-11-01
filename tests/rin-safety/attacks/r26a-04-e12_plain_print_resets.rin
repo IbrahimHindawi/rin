@@ -1,0 +1,11 @@
+// print_S is what printfmt calls; a plain proc of that name is no print, so the rule never looks.
+import "std/print.rin"
+S: struct = { x: i32; }
+level: region global;
+print_S: proc(s: S) -> void = { reset level; }
+main: proc() -> i32 = {
+    a: S = { .x = 1 };
+    p: *S in level = new<S>(level, { .x = 7 });
+    printfmt("{} {}\n", a, p*.x);
+    return 0;
+}

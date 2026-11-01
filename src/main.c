@@ -11039,6 +11039,9 @@ static ProcDecl *lookup_call_proc_decl(
         string8 mangle = type_mangle(arena, resolved_arg, (TypeSub){0});
         string8 concrete_name = mono_proc_name_from_mangle(arena, call->name, mangle);
         ProcDecl *concrete = lookup_proc_decl(prog, concrete_name);
+        /* `hash: proc<ky>` answers for `hash<ky>`. A plain `hash_ky` is only spelled like it, and no rule about what
+           answers for a type operation would ever look at it. */
+        if (concrete && g_safety && !string8_equals(&concrete->specialized_from, &call->name)) concrete = null;
         if (concrete) {
             if (out_concrete_specialization) *out_concrete_specialization = true;
             return concrete;
@@ -14689,6 +14692,13 @@ static void type_check_initializer_against(
     g_init_list_depth = outer_depth;
 }
 
+static bool initializer_positional_after_designator(Expr *init, i32 at) {
+    for (i32 i = 0; i < at; i++) {
+        if (init->designator_kinds.data[i] != InitDesignator_None) return true;
+    }
+    return false;
+}
+
 static void type_check_initializer_list(
     Expr *init,
     TypeExpr *expected,
@@ -14753,6 +14763,10 @@ static void type_check_initializer_list(
                     }
                 }
             } else if (init->designator_kinds.data[i] == InitDesignator_None) {
+                if (g_safe_body && initializer_positional_after_designator(init, i)) {
+                    type_error_message("a value with no designator after one with a designator: C continues from the "
+                                       "designator, so name this one too", init->line, init->col);
+                }
                 if (array_count >= 0 && positional_index >= array_count) {
                     type_error_initializer_count(expected, init->line, init->col, arena);
                 }
@@ -14807,6 +14821,10 @@ static void type_check_initializer_list(
         Expr *value = (Expr *)init->args.data[i];
         i32 init_line = init->line;
         i32 init_col = init->col;
+        if (g_safe_body && designator_kind == InitDesignator_None && initializer_positional_after_designator(init, i)) {
+            type_error_message("a value with no designator after one with a designator: C continues from the "
+                               "designator, so name this one too", init->line, init->col);
+        }
 
         if (designator_kind == InitDesignator_Field) {
             for (i32 f = 0; f < decl->fields.length; f++) {
@@ -16604,7 +16622,9 @@ static bool name_is_type(Program *prog, string8 name, memops_arena *arena) {
     bool is_signed = false;
     if (type_int_info(&probe, &bits, &is_signed) || type_is_float(&probe)) return true;
     if (string8_equals_cstr(&name, "void") || string8_equals_cstr(&name, "str") || string8_equals_cstr(&name, "b8") ||
-        string8_equals_cstr(&name, "b32")) return true;
+        string8_equals_cstr(&name, "b16") || string8_equals_cstr(&name, "b32") || string8_equals_cstr(&name, "b64") ||
+        string8_equals_cstr(&name, "char") || string8_equals_cstr(&name, "c8") || string8_equals_cstr(&name, "usize") ||
+        string8_equals_cstr(&name, "long") || string8_equals_cstr(&name, "int")) return true;
     TypeSub sub = {0};
     StructDecl *aggregate = lookup_aggregate_decl(prog, &probe, &sub, arena);
     if (aggregate && !aggregate->is_generic) return true;
@@ -16630,6 +16650,26 @@ static bool name_is_enum_member(Program *prog, string8 name) {
 }
 
 /* `slice_i32`, `ptr_entity`, `vec_ptr_entity`: what an instance of a type is called in C. */
+static bool name_is_generated_type(Program *prog, string8 name, memops_arena *arena);
+
+/* The tail of an instance's name: its arguments, one after another, each a type, a generated type or an array's count. */
+static bool name_is_type_arguments(Program *prog, string8 name, memops_arena *arena) {
+    if (name.length == 0) return false;
+    if (name_is_type(prog, name, arena) || name_is_generated_type(prog, name, arena)) return true;
+    bool digits = true;
+    for (u64 i = 0; i < name.length; i++) {
+        if (name.data[i] < '0' || name.data[i] > '9') digits = false;
+    }
+    if (digits) return true;
+    for (u64 i = 1; i + 1 < name.length; i++) {
+        if (name.data[i] != '_') continue;
+        string8 first = { name.data, i };
+        string8 rest = { name.data + i + 1, name.length - i - 1 };
+        if (name_is_type_arguments(prog, first, arena) && name_is_type_arguments(prog, rest, arena)) return true;
+    }
+    return false;
+}
+
 static bool name_is_generated_type(Program *prog, string8 name, memops_arena *arena) {
     for (u64 i = 0; i + 1 < name.length; i++) {
         if (name.data[i] != '_') continue;
@@ -16637,15 +16677,11 @@ static bool name_is_generated_type(Program *prog, string8 name, memops_arena *ar
         string8 rest = { name.data + i + 1, name.length - i - 1 };
         bool generated = string8_equals_cstr(&head, "slice") || string8_equals_cstr(&head, "ptr") || string8_equals_cstr(&head, "nptr") ||
                          string8_equals_cstr(&head, "raw") || string8_equals_cstr(&head, "array") || string8_equals_cstr(&head, "const");
-        if (!generated) {
-            TypeExpr probe = {0};
-            probe.kind = Type_Name;
-            probe.name = head;
-            TypeSub sub = {0};
-            StructDecl *decl = lookup_aggregate_decl(prog, &probe, &sub, arena);
-            generated = decl && decl->is_generic;
+        for (i32 k = 0; !generated && k < prog->structs.length; k++) {
+            StructDecl *decl = (StructDecl *)prog->structs.data[k];
+            if (decl->is_generic && string8_equals(&decl->name, &head)) generated = true;
         }
-        if (generated && (name_is_type(prog, rest, arena) || name_is_generated_type(prog, rest, arena))) return true;
+        if (generated && name_is_type_arguments(prog, rest, arena)) return true;
     }
     return false;
 }
@@ -16843,7 +16879,7 @@ static void safety_check_program_names(Program *prog, memops_arena *arena) {
         }
         if (path_is_std(p->source_path) || p->is_external) continue;
         /* `hash: proc<point>`, or a pattern, `hash: proc<key<T>>`. */
-        string8 base = p->specialized_from.length > 0 ? p->specialized_from : (p->generic_pattern ? p->name : (string8){0});
+        string8 base = p->specialized_from.length > 0 ? p->specialized_from : (p->generic_pattern || p->is_generic ? p->name : (string8){0});
         if (!(string8_equals_cstr(&base, "hash") || string8_equals_cstr(&base, "equal") ||
               string8_equals_cstr(&base, "runtime_equal") || string8_equals_cstr(&base, "order"))) continue;
         if (p->is_unsafe || p->answers_for_signature || !p->noalias_contained || p->resets.length > 0) {
@@ -18270,6 +18306,27 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
                 /* printfmt can run the program's own print between its arguments: a field
                    narrowed before it may not be so by the time an argument is read. */
                 if (g_user_print) narrow_end_fields(arena, scope, NarrowEnd_All, (string8){0});
+                /* What the print it will call is, in each instance: a print of the type's own, not a proc only
+                   spelled like the C of one, which no rule about prints would look at. */
+                for (i32 i = string8_equals_cstr(&call->name, "printfmt") ? 0 : 1; i < call->args.length; i++) {
+                    Expr *arg = (Expr *)call->args.data[i];
+                    TypeExpr *at = infer_expr_type(arg, scope, prog, arena);
+                    TypeExpr *ar = at ? resolve_alias_type(prog, type_scope_apply_sub(scope, arena, at)) : null;
+                    if (!ar || !(ar->kind == Type_Array || type_is_declared_aggregate(prog, ar)) || type_slice_elem(ar)) continue;
+                    if (lookup_enum_decl(prog, ar->name)) continue;
+                    Expr probe = {0};
+                    probe.kind = Expr_Call;
+                    probe.name = string8_from_cstr(arena, "print");
+                    probe.type_args = ptr_array_reserve(arena, 1);
+                    ptr_array_append(arena, &probe.type_args, ar);
+                    bool specialization = false;
+                    TypeExpr *bound = null;
+                    ProcDecl *answers = lookup_call_proc_decl(prog, &probe, scope, arena, &bound, &specialization);
+                    if (!specialization && !(answers && answers->is_generic)) {
+                        type_error_message("printfmt has no print for this type: write 'print: proc<T>' for it, or print "
+                                           "its fields", arg->line, arg->col);
+                    }
+                }
                 for (i32 i = 0; i < call->args.length; i++) {
                     Expr *arg = (Expr *)call->args.data[i];
                     if (!expr_has_open_cstr(arg, scope, prog, arena)) continue;
@@ -19300,6 +19357,12 @@ static void type_check_stmt(
         narrow_guard_unsequenced(s->expr, false, scope, prog, arena);
     } else if (s->kind == Stmt_Var || s->kind == Stmt_Assign || s->kind == Stmt_Expr || s->kind == Stmt_Return) {
         narrow_guard_unsequenced(s->expr, true, scope, prog, arena);
+    } else if (s->kind == Stmt_For) {
+        narrow_guard_unsequenced(s->for_cond, true, scope, prog, arena);
+    } else if (s->kind == Stmt_DoWhile) {
+        narrow_guard_unsequenced(s->while_cond, true, scope, prog, arena);
+    } else if (s->kind == Stmt_Switch) {
+        narrow_guard_unsequenced(s->switch_expr, true, scope, prog, arena);
     }
     if (s->kind == Stmt_Var) {
         narrow_end_fields(arena, scope, NarrowEnd_Root, s->name); // a local may shadow a global path's root
@@ -21841,7 +21904,9 @@ static void printfmt_append_print_arg(memops_arena *arena, Vec_voidptr *out, Stm
     if (enum_decl) {
         string8 own_print = mono_proc_name_from_mangle(arena, string8_from_cstr(arena, "print"),
                                                        type_mangle(arena, resolved, (TypeSub){0}));
-        if (!lookup_proc_decl(prog, own_print)) {
+        ProcDecl *own_print_decl = lookup_proc_decl(prog, own_print);
+        if (own_print_decl && g_safety && !string8_equals_cstr(&own_print_decl->specialized_from, "print")) own_print_decl = null;
+        if (!own_print_decl) {
             Expr *record = expr_new(arena, Expr_Name);
             record->name = concat_name2(arena, enum_decl->name, "_", string8_from_cstr(arena, "reflect"));
             record->line = arg->line;

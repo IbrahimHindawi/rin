@@ -1,0 +1,13 @@
+import "std/print.rin"
+S: struct = { x: i32; }
+H: struct = { p: option<*S in permanent>; }
+g: H = {};
+clear: proc() -> i32 = { g.p = null; return 1; }
+sum2: proc(a: i32, b: i32) -> i32 = { return a + b; }
+main: proc() -> i32 = {
+    g.p = new<S>(permanent, { .x = 1 });
+    if (g.p) {
+        do { printfmt("x\n"); } while (sum2(g.p*.x, clear()) > 5);
+    }
+    return 0;
+}

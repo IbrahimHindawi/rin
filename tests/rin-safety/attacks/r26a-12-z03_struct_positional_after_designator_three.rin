@@ -1,0 +1,10 @@
+// With a third field that takes it: nothing is dropped, and the first field is null.
+import "std/print.rin"
+S: struct = { x: i32; }
+H: struct = { p: *S in permanent; q: *S in permanent; r: option<*S in permanent>; }
+main: proc() -> i32 = {
+    n: *S in permanent = new<S>(permanent, { .x = 1 });
+    h: H = { .q = n, n, .r = null };
+    printfmt("{}\n", h.p*.x);
+    return 0;
+}

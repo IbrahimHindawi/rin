@@ -1,0 +1,8 @@
+// expect: missing type operation proc 'hash_ky'
+// hash_ky is spelled like hash<ky>, and is no hash: the rule on what std may call would not look at it.
+import "std/hashmap.rin"
+ky: struct = { k: i64; }
+level: region global;
+hash_ky: proc(k: ky) -> u64 = { return cast(k.k, u64); }
+equal: proc<ky>(a: ky, b: ky) -> b32 = { return a.k == b.k; }
+main: proc() -> i32 = { m: *hashmap<ky, i32> in level = hashmap<ky, i32>make(level); _ = hashmap<ky, i32>set(m, { .k = 1 }, 2); return 0; }

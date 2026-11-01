@@ -1,0 +1,12 @@
+import "std/print.rin"
+box: struct<T> = { a: u64; b: u64; v: T; }
+level: region global;
+mk: proc(box_u8: u8, n: u64) -> []box<u8> in level = {
+    return new_slice<box<u8>>(level, n);
+}
+main: proc() -> i32 = {
+    s: []box<u8> in level = mk(1, 64);
+    s[63].b = 7;
+    printfmt("{}\n", s[63].b);
+    return 0;
+}

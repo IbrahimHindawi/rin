@@ -1,0 +1,10 @@
+// The same for a struct: { .q = n, m } is q, then the field after q. The checker gives m to the first field, p.
+import "std/print.rin"
+S: struct = { x: i32; }
+H: struct = { p: *S in permanent; q: *S in permanent; }
+main: proc() -> i32 = {
+    n: *S in permanent = new<S>(permanent, { .x = 1 });
+    h: H = { .q = n, n };
+    printfmt("{}\n", h.p*.x);
+    return 0;
+}

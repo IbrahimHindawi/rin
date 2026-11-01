@@ -1,0 +1,13 @@
+// A local pointer read in a later statement, with the plain print's reset before it: the pass sees no reset.
+import "std/print.rin"
+S: struct = { x: i32; }
+level: region global;
+print_S: proc(s: S) -> void = { reset level; }
+main: proc() -> i32 = {
+    a: S = { .x = 1 };
+    p: *S in level = new<S>(level, { .x = 7 });
+    printfmt("{}\n", a);
+    p*.x = 9;
+    printfmt("{}\n", p*.x);
+    return 0;
+}

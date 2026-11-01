@@ -1,0 +1,7 @@
+// expect: printfmt has no print for this type
+// print_S is spelled like what printfmt would call, and is no print: no rule about prints would look at it.
+import "std/print.rin"
+S: struct = { x: i32; }
+level: region global;
+print_S: proc(s: S) -> void = { reset level; }
+main: proc() -> i32 = { a: S = { .x = 1 }; p: *i32 in level = new<i32>(level, 7); printfmt("{} {}\n", a, p*); return 0; }

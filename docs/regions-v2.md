@@ -349,6 +349,32 @@ would run out. No type changes, no ABI change, release builds untouched. It is n
 pass: the pass refuses at compile time, the checked build stops at run time, and the second is there for the
 day the first is wrong.
 
+## Rounds 25 and 26: the rules the pass did not replace
+
+Attacks on the pass have dried up. The holes moved to the rules beside it, and two rounds aimed at those found
+six causes in about 370 programs, where rounds 22 and 23 had reported nothing. Those rounds were aimed at the pass,
+so their silence said nothing about these rules.
+
+| Round | Rule | What it assumed | What was done |
+|---|---|---|---|
+| 25 | `cstr_of` of a slice | A proc's signature shows whether it can write the buffer | The question is gone: such a proc takes a `[]const c8` |
+| 25 | Beside `cstr_of` | Only a call's arguments have no order | Sums, indexes, initializers and assignments too |
+| 26 | `hash`, `equal`, `print` | What answers for `hash<ky>` carries the name `hash`, and is not a catch-all | A proc only spelled `hash_ky` no longer answers, in a generic instance too, and the rule covers a catch-all |
+| 26 | Initializer lists | Positional values count from zero | Refused after a designator, as C continues from it |
+| 26 | Local names | Listed builtins; instances with one argument | Every builtin; an instance whatever its arguments |
+| 26 | Field narrowing | `for`, `do` and `switch` conditions read nothing beside a call | The same guard as every other expression |
+
+Every one reasoned from a name or a syntactic shape, and the fixes removed a question or made a rule uniform.
+ None needed a change to the course or the engine. Some programs in these rounds are accepted and then
+refused by the C compiler. That fails closed, but the checker and the emitter disagree about them, so it is listed
+here rather than called done: `sizeof` of a static proc's call, `reflect<>&` and `FILE<>&`, a struct named `key` as
+a generic argument, a cast of a float to `long`, specialising `vec<T>resize`, and a compound literal in a `for` or
+`do` condition.
+
+The name rules are a family: a local hiding a proc, an enum member, a type, a generated type. They exist because a
+rin local is a C local of the same name. Emitting locals under a prefix of their own would remove the family, at
+the cost of the names a debugger shows. That has not been done.
+
 ## What this still is not
 
 Not a proof. It is an instance of a known system, regions with a lexical order plus liveness,

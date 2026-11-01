@@ -1,0 +1,15 @@
+// With no program print seen, printfmt does not end a narrowing: g_user_print stays false.
+import "std/print.rin"
+S: struct = { x: i32; }
+H: struct = { p: option<*S in permanent>; }
+g: H = {};
+A: struct = { n: i32; }
+print_A: proc(a: A) -> void = { g.p = null; }
+main: proc() -> i32 = {
+    g.p = new<S>(permanent, { .x = 1 });
+    a: A = {};
+    if (g.p) {
+        printfmt("{} {}\n", a, g.p*.x);
+    }
+    return 0;
+}
