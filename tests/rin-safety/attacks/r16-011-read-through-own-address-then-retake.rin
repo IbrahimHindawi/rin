@@ -1,0 +1,16 @@
+// z = r* takes r's paths {q, &q, what q held when r was made}, not what q holds now; `q = y&` is a strong update that clears q's x, so the block's end kills nothing that z names: stack-use-after-scope at z*
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: i32 = 1;
+    q: *i32 = y&;
+    r: **i32 = q&;
+    z: *i32 = y&;
+    if (y > 0) {
+        x: i32 = 2;
+        q = x&;
+        z = r*;
+        q = y&;
+    }
+    printfmt("{}\n", z*);
+    return 0;
+}

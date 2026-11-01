@@ -1,0 +1,16 @@
+// as 003 with a slice local: r* reads the slice header after s's scope: stack-use-after-scope in the bounds check
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [2]i32 = {1,2};
+    s0: []i32 = a[0..2];
+    r: *[]i32 = s0&;
+    for (i: i32 = 0; i < 2; i += 1) {
+        printfmt("{}\n", r*[0]);
+        if (i == 0) {
+            s: []i32 = a[0..2];
+            r = s&;
+            continue;
+        }
+    }
+    return 0;
+}

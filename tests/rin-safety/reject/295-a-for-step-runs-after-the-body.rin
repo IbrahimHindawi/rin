@@ -1,0 +1,12 @@
+// expect: a returned pointer with no region
+f: proc(a: *i32, n: i32) -> *i32 = {
+    x: i32 = 0;
+    y: i32 = 0;
+    q: *i32 = a;
+    for (i: i32 = 0; i < n; q = x&) {
+        i += 1;
+        if (i > n) { q = a; }
+    }
+    return q;
+}
+main: proc() -> i32 = { return 0; }

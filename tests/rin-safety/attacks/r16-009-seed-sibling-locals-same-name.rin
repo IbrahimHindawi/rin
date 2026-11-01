@@ -1,0 +1,17 @@
+// the seed keys body locals by name: both r's get a record and borrow_find returns the last, so `q = r` in the first branch seeds q from y, not x; out = q then misses x; out holds x after the second pass: stack-use-after-scope at out*
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: i32 = 1;
+    out: *i32 = y&;
+    q: *i32 = y&;
+    if (y > 0) {
+        x: i32 = 2;
+        for (i: i32 = 0; i < 2; i += 1) {
+            out = q;
+            if (i == 0) { r: *i32 = x&; q = r; }
+            else { r: *i32 = y&; q = r; }
+        }
+    }
+    printfmt("{}\n", out*);
+    return 0;
+}

@@ -1,0 +1,6 @@
+// `return (a&)*&`: expr_returns_caller_memory takes the place's path root a, a pointer parameter, as the caller's memory; it is the parameter variable: stack-use-after-return at q**
+import "std/print.rin"
+f: proc(a: *i32) -> **i32 = {
+    return (a&)*&;
+}
+main: proc() -> i32 = { y: i32 = 1; q: **i32 = f(y&); printfmt("{}\n", q**); return 0; }

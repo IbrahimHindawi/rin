@@ -1,0 +1,12 @@
+// as 014 with a slice: stack-use-after-scope at q[0]
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: [2]i32 = {1, 2};
+    q: []i32 = y[0..2];
+    if (y[0] > 0) {
+        x: [2]i32 = {3, 4};
+        for (i: i32 = 0; i < 1; q = x[0..2]) { q = y[0..2]; i += 1; }
+    }
+    printfmt("{}\n", q[0]);
+    return 0;
+}

@@ -1,0 +1,15 @@
+// as 011 with region memory: z = r* gets no 'scratch' in its regions, and q's retake clears q's: use-after-poison at z*
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: i32 = 1;
+    q: *i32 = y&;
+    r: **i32 = q&;
+    z: *i32 = y&;
+    scratch {
+        q = new<i32>(scratch, 2);
+        z = r*;
+        q = y&;
+    }
+    printfmt("{}\n", z*);
+    return 0;
+}

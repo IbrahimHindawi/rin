@@ -106,6 +106,6 @@ Next, in the order that pays:
    approves first because it can take the machine down with it if the VM's limits fail.
 3. Threads, last.
 
-Fifteen attack rounds have run. From round five on each found dozens of holes in safe code, and all are closed; the rounds are not slowing down.
+Sixteen attack rounds have run. From round five on each found dozens of holes in safe code, and all are closed; the rounds are not slowing down.
 Run a fresh round per new rule, and `tests/gen_rin_safe.py` with `run_rin_vm.py --compare`. Verify with a script
 that fails on a missing line or a skipped program: a filtered log hid a failing suite here twice.

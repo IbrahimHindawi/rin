@@ -1,0 +1,19 @@
+// as 001 out of a switch: the `if` always leaves so only the break state flows on, with '&q' never killed: stack-use-after-scope at r**
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: i32 = 1;
+    yp: *i32 = y&;
+    r: **i32 = yp&;
+    switch (y) {
+        case 1: {
+            if (y > 0) {
+                q: *i32 = y&;
+                r = q&;
+                break;
+            }
+        }
+        default: { y = 2; }
+    }
+    printfmt("{}\n", r**);
+    return 0;
+}

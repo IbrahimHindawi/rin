@@ -166,6 +166,9 @@ cstr_starts_with: proc(s: ^const c8, prefix: ^const c8) -> b32 = {
 }
 
 cstr_ends_with: proc(s: ^const c8, suffix: ^const c8) -> b32 = {
+    if (s == null || suffix == null) {
+        return 0;
+    }
     sn: u64 = cstr_length(s);
     fn_: u64 = cstr_length(suffix);
     if (fn_ > sn) {

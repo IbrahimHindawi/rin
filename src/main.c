@@ -17165,6 +17165,22 @@ static void safety_check_option(Program *prog, TypeExpr *type, memops_arena *are
     }
 }
 
+static void borrow_refuse_address_of_borrow(Vec_string8 *paths, Expr *init, TypeScope *scope, Program *prog) {
+    if (!g_safe_body) return;
+    for (i32 i = 0; i < paths->length; i++) {
+        string8 path = paths->data[i];
+        if (path.length < 2 || path.data[0] != '&') continue;
+        string8 name = { .data = path.data + 1, .length = path.length - 1 };
+        TypeExpr *t = type_scope_lookup(scope, name);
+        if (t && type_is_checked_pointer(prog, t) && type_region_of(prog, t).length == 0) {
+            type_error_message("this keeps the address of a pointer with no region, and what it reads changes with every "
+                               "assignment to that pointer: pass the address to a call, or say the pointer's region",
+                               init ? init->line : 0, init ? init->col : 0);
+            return;
+        }
+    }
+}
+
 static void borrow_register(string8 name, Expr *init, TypeScope *scope, Program *prog, memops_arena *arena) {
     Borrow *b = memops_arena_push_struct(arena, Borrow);
     b->name = name;
@@ -17179,6 +17195,7 @@ static void borrow_register(string8 name, Expr *init, TypeScope *scope, Program 
     b->reportable = !t || type_region_of(prog, t).length == 0;
     b->regions = Vec_string8_reserve(arena, 1);
     borrow_paths_from_expr(init, scope, prog, arena, &b->paths, &b->regions);
+    borrow_refuse_address_of_borrow(&b->paths, init, scope, prog);
     ptr_array_append(arena, &g_borrows, b);
 }
 
@@ -17285,6 +17302,7 @@ static void borrow_retake(string8 name, Expr *init, TypeScope *scope, Program *p
     /* Read before the fields change: the walk finds this record through a self-reference. */
     bool was_dead = b->dead;
     borrow_paths_from_expr(init, scope, prog, arena, &paths, &regions);
+    borrow_refuse_address_of_borrow(&paths, init, scope, prog);
     (void)was_dead;
     b->paths = Vec_string8_reserve(arena, 2);
     b->regions = regions;
@@ -17569,9 +17587,16 @@ static bool borrow_take_in(Borrow *b, Expr *value, TypeScope *scope, Program *pr
     borrow_paths_from_expr(value, scope, prog, arena, &paths, &regions);
     bool changed = false;
     for (i32 i = 0; i < paths.length; i++) {
-        string8 root = path_root(paths.data[i]);
-        if (string8_equals(&root, &b->name) || array_string8_contains(&b->paths, paths.data[i])) continue;
-        Vec_string8_append(arena, &b->paths, paths.data[i]);
+        string8 path = paths.data[i];
+        string8 root = path_root(path);
+        if (string8_equals(&root, &b->name)) continue;
+        /* `p = p*.next` walks forever: past a few fields it is the place they start from, which overlaps them all. */
+        i32 dots = 0;
+        for (u64 k = 0; k < path.length; k++) {
+            if (path.data[k] == '.' && ++dots == 4) { path.length = k; break; }
+        }
+        if (array_string8_contains(&b->paths, path)) continue;
+        Vec_string8_append(arena, &b->paths, path);
         changed = true;
     }
     for (i32 i = 0; i < regions.length; i++) {
@@ -17601,20 +17626,29 @@ static void borrows_seed_loop(Vec_voidptr *body, Stmt *step, TypeScope *scope, P
     }
     i32 mark = g_borrows.length;
     for (i32 i = 0; i < scan.decls.length; i++) {
+        /* Sibling blocks can use one name for two locals: one record holds what either can. */
         Stmt *d = (Stmt *)scan.decls.data[i];
-        Borrow *b = memops_arena_push_struct(arena, Borrow);
-        b->name = d->name;
-        b->paths = Vec_string8_reserve(arena, 2);
-        b->regions = Vec_string8_reserve(arena, 1);
+        Borrow *b = null;
+        for (i32 k = mark; k < g_borrows.length && !b; k++) {
+            if (string8_equals(&((Borrow *)g_borrows.data[k])->name, &d->name)) b = (Borrow *)g_borrows.data[k];
+        }
+        if (!b) {
+            b = memops_arena_push_struct(arena, Borrow);
+            b->name = d->name;
+            b->paths = Vec_string8_reserve(arena, 2);
+            b->regions = Vec_string8_reserve(arena, 1);
+            ptr_array_append(arena, &g_borrows, b);
+        }
         string8 said = d->type ? type_region_of(prog, d->type) : (string8){0};
-        if (said.length > 0) Vec_string8_append(arena, &b->regions, said);
-        ptr_array_append(arena, &g_borrows, b);
+        if (said.length > 0 && !array_string8_contains(&b->regions, said)) Vec_string8_append(arena, &b->regions, said);
     }
-    for (i32 round = 0; round < 16; round++) {
+    bool settled = false;
+    for (i32 round = 0; round < 256; round++) {
         bool changed = false;
         for (i32 i = 0; i < scan.decls.length; i++) {
             Stmt *d = (Stmt *)scan.decls.data[i];
-            if (borrow_take_in((Borrow *)g_borrows.data[mark + i], d->expr, &seen, prog, arena)) changed = true;
+            Borrow *b = borrow_find(d->name);
+            if (b && borrow_take_in(b, d->expr, &seen, prog, arena)) changed = true;
         }
         for (i32 i = 0; i < scan.assigns.length; i++) {
             Stmt *a = (Stmt *)scan.assigns.data[i];
@@ -17627,9 +17661,13 @@ static void borrows_seed_loop(Vec_voidptr *body, Stmt *step, TypeScope *scope, P
             if (borrow_take_in(b, a->expr, &seen, prog, arena)) changed = true;
             b->retaken = true;
         }
-        if (!changed) break;
+        if (!changed) { settled = true; break; }
     }
     g_borrows.length = mark;
+    if (!settled) {
+        Stmt *first = (Stmt *)scan.assigns.data[0];
+        type_error_message("this loop passes pointers through too many locals to follow: use fewer", first->line, first->col);
+    }
 }
 
 /* Branches: what either branch kills stays dead after; what a branch brings
@@ -18066,6 +18104,7 @@ static bool return_root_ok(string8 name, ProcDecl *proc, TypeScope *scope, Progr
         return true;
     }
     Borrow *b = borrow_find(name);
+    if (b && !nt) return false;
     if (b) {
         for (i32 i = 0; i < b->regions.length; i++) {
             if (array_string8_contains(&g_active_regions, b->regions.data[i])) return false;
@@ -18804,6 +18843,9 @@ static bool type_scope_lookup_local(TypeScope *scope, string8 name) {
 static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_arena *arena) {
     if (!e) return;
     e->checked = true;
+    if (g_safe_body && e->kind == Expr_Index && e->base && e->base->kind == Expr_Addr) {
+        type_error_message("this reads through an address just taken: use the place itself", e->line, e->col);
+    }
     if (e->kind == Expr_Number && g_safe_body && number_is_float_form(number_digits(e->number))) {
         string8 float_suffix = number_suffix_type(e->number);
         if (float_suffix.length > 0 && !string8_equals_cstr(&float_suffix, "f32") && !string8_equals_cstr(&float_suffix, "f64")) {
@@ -19759,6 +19801,7 @@ static void type_check_stmt_inner(
                 g_leaving_scope = true;
                 for (i32 d = c->decl_mark; d < g_decl_names.length; d++) {
                     TypeExpr *dr = resolve_alias_type(prog, (TypeExpr *)g_decl_types.data[d]);
+                    if (dr && dr->kind != Type_Region) borrow_kill_written(own_address_path(arena, g_decl_names.data[d]));
                     if (dr && (dr->kind == Type_Ptr || type_slice_elem(dr) || dr->kind == Type_Region)) continue;
                     borrow_kill_written(g_decl_names.data[d]);
                 }
@@ -19803,9 +19846,15 @@ static void type_check_stmt_inner(
         }
         narrow_undo_assigned_in(&s->for_body, s->for_step, &loop_scope, arena);
         type_check_condition("for", s->for_cond, &loop_scope, prog, arena);
+        i32 errors_before_body = g_error_count;
         if (s->for_step) type_check_stmt(s->for_step, &loop_scope, prog, return_type, current_proc, arena);
         for (i32 i = 0; i < s->for_body.length; i++) {
             type_check_stmt((Stmt *)s->for_body.data[i], &loop_scope, prog, return_type, current_proc, arena);
+        }
+        /* The step runs after the body: checked first so it cannot name the body's locals, and again
+           here for what it leaves behind, assignments and resets as much as kills. */
+        if (s->for_step && g_safe_body && g_error_count == errors_before_body) {
+            type_check_stmt(s->for_step, &loop_scope, prog, return_type, current_proc, arena);
         }
         /* The step runs after the body, so what it kills is dead at the
            condition, where the loop leaves. */

@@ -1,0 +1,9 @@
+// the step's kill() is checked first, so the body's retake brings q back; the prescan after the body applies moves and writes, not resets: q leaves the loop dead, unreported: use-after-poison at `return q*`
+import "std/print.rin"
+level: region global;
+kill: proc() -> void = { reset level; }
+main: proc() -> i32 = {
+    q: *i32 in level = new<i32>(level, 1);
+    for (i: i32 = 0; i < 2; kill()) { q = new<i32>(level, 1); i += 1; printfmt("{}\n", q*); }
+    return q*;
+}

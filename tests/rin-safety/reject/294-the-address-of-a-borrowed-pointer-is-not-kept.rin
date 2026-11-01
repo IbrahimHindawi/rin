@@ -1,0 +1,7 @@
+// expect: this keeps the address of a pointer with no region
+main: proc() -> i32 = {
+    x: i32 = 1;
+    q: *i32 = x&;
+    r: **i32 = q&;
+    return r** - 1;
+}

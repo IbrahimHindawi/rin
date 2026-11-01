@@ -1,0 +1,16 @@
+// as 011 with the value put back in q: `q = z` has z's path rooted at q, which retake treats as a self-assignment and keeps q's old sources: q holds x, recorded as y: stack-use-after-scope at q*
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: i32 = 1;
+    q: *i32 = y&;
+    if (y > 0) {
+        x: i32 = 2;
+        r: **i32 = q&;
+        q = x&;
+        z: *i32 = r*;
+        q = y&;
+        q = z;
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

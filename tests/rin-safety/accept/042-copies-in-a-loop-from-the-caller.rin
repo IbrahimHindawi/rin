@@ -1,5 +1,5 @@
 // Everything a loop's copies can hold is the caller's, so returning one of them
-// is fine, on any pass; and a pointer to a local stays inside the block.
+// is fine, on any pass.
 import "std/print.rin"
 pick: proc(s: []i32, want: i32) -> *i32 = {
     h: *i32 = s[0]&;
@@ -13,9 +13,5 @@ pick: proc(s: []i32, want: i32) -> *i32 = {
 main: proc() -> i32 = {
     a: [3]i32 = { 1, 2, 3 };
     printfmt("{}\n", pick(a, 2)*);
-    x: i32 = 4;
-    p: *i32 = x&;
-    q: **i32 = p&;
-    printfmt("{}\n", q**);
     return 0;
 }

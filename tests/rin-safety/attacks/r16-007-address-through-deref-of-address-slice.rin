@@ -1,0 +1,13 @@
+// as 005 with a slice local: r = (s1&)*& is the header's address, read after its scope: stack-use-after-scope at r*[0]
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [2]i32 = {1, 2};
+    s0: []i32 = a[0..2];
+    r: *[]i32 = s0&;
+    if (a[0] > 0) {
+        s1: []i32 = a[0..1];
+        r = (s1&)*&;
+    }
+    printfmt("{}\n", r*[0]);
+    return 0;
+}

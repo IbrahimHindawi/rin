@@ -1,0 +1,12 @@
+// the for step is checked before the body, so the body's `q = y&` overwrites the step's `q = x&` in the state, though the step runs last and q leaves the loop holding x: stack-use-after-scope at q*
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: i32 = 1;
+    q: *i32 = y&;
+    if (y > 0) {
+        x: i32 = 2;
+        for (i: i32 = 0; i < 1; q = x&) { q = y&; i += 1; }
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}
