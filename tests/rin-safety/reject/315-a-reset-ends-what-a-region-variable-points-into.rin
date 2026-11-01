@@ -1,0 +1,9 @@
+// expect: may be reset here
+import "std/print.rin"
+level: region global;
+f: proc(r: region R) -> i32 = {
+    p: *i32 in R = new<i32>(r, 7);
+    reset level;
+    return p*;
+}
+main: proc() -> i32 = { printfmt("{}\n", f(level)); return 0; }

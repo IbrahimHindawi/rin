@@ -20361,7 +20361,6 @@ static void sh_hold_visit(Expr *e, void *ctx, memops_arena *arena) {
         i32 l = sh_lookup(h->n->names, e->name);
         if (l < 0) return;
         ShLocal *L = (ShLocal *)h->sh->locals.data[l];
-        if (L->track >= 0 && h->holds != h->into && shset_union(h->into, &h->holds[L->track])) h->changed = true;
         if (L->track >= 0 && &h->holds[L->track] != h->into && shset_union(h->into, &h->holds[L->track])) h->changed = true;
     }
 }
@@ -20786,7 +20785,7 @@ static void sh_check_reset_at(Sh *sh, i32 i, ShNode *n, ShSet *state, i32 reset_
     for (i32 a = 0; a < sh->atoms.length; a++) {
         ShAtom *A = (ShAtom *)sh->atoms.data[a];
         if (A->kind == ShAtom_Named && region_is_gone_with(sh->prog, A->name, R->name)) sh_check_gone(sh, n, state, &live_out, a, "is reset here");
-        if (A->kind == ShAtom_Param) sh_check_gone(sh, n, state, &live_out, a, "may be reset here, for all this proc knows");
+        if (A->kind == ShAtom_Param || A->kind == ShAtom_Var) sh_check_gone(sh, n, state, &live_out, a, "may be reset here, for all this proc knows");
     }
 }
 
@@ -20895,7 +20894,11 @@ static void shadow_check_proc(Program *prog, ProcDecl *p, Vec_voidptr *body, Typ
         if (n->next == -2) n->next = i + 1 < count ? i + 1 : -1;
         if (n->alt == -2) n->alt = i + 1 < count ? i + 1 : -1;
     }
-    if (sh->too_big) { fprintf(stderr, "shadow: %s: proc '%.*s' is too big for this pass\n", p->source_path, (int)p->name.length, p->name.data); return; }
+    if (sh->too_big) {
+        ShNode *first = (ShNode *)sh->nodes.data[0];
+        sh_report(sh, first, "this proc has more blocks, regions or pointer locals than the checker follows: split it");
+        return;
+    }
     /* Uses. */
     for (i32 i = 0; i < count; i++) {
         ShNode *n = (ShNode *)sh->nodes.data[i];
@@ -20997,8 +21000,7 @@ static void shadow_check_proc(Program *prog, ProcDecl *p, Vec_voidptr *body, Typ
         if (!changed) settled = true;
     }
     if (!settled) {
-        fprintf(stderr, "shadow: %s: proc '%.*s' did not settle, and is not checked\n", p->source_path, (int)p->name.length, p->name.data);
-        g_shadow_refusals++;
+        sh_report(sh, (ShNode *)sh->nodes.data[0], "this proc passes pointers through more places than the checker can settle: split it");
         free(sh->live_in); free(sh->in_state); free(entry); free(cur);
         return;
     }
@@ -21057,7 +21059,10 @@ static void shadow_check_proc(Program *prog, ProcDecl *p, Vec_voidptr *body, Typ
             ShResetScan rs = { sh, i, n, state };
             expr_walk(n->value, sh_reset_call_visit, &rs, arena);
         }
-        if (n->place) { ShCallScan c = { sh, n, state }; expr_walk(n->place, sh_check_call_visit, &c, arena); }
+        if (n->place) {
+            ShCallScan c = { sh, n, state }; expr_walk(n->place, sh_check_call_visit, &c, arena);
+            ShResetScan rs = { sh, i, n, state }; expr_walk(n->place, sh_reset_call_visit, &rs, arena);
+        }
     }
     free(sh->live_in); free(sh->in_state); free(entry); free(cur);
 }
@@ -22658,13 +22663,17 @@ static void emit_binary_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub
     }
     bool masked_shift = (e->op == Token_Keyword_Shl || e->op == Token_Keyword_Shr) &&
                         (e->shift_bits == 8 || e->shift_bits == 16 || e->shift_bits == 32 || e->shift_bits == 64);
-    if (masked_shift) {
-        char operand[32];
-        snprintf(operand, sizeof(operand), "((%c%d)(", e->shift_signed ? 'i' : 'u', (int)e->shift_bits);
-        emit_cstr(arena, out, operand);
-    }
+    /* Explicit C: when rin knows the operation's type, both operands reach C as that type, so C's own
+       promotion never decides what is computed. A shift's left operand is its own width; the amount is
+       masked below. */
+    bool typed = e->arith_code > 1 && e->arith_code != 255 && !masked_shift &&
+                 e->op != Token_AmpAmp && e->op != Token_PipePipe;
+    char operand[32] = {0};
+    if (typed) snprintf(operand, sizeof(operand), "((%c%d)(", (e->arith_code & 1) ? 'i' : 'u', (int)(e->arith_code / 2));
+    if (masked_shift) snprintf(operand, sizeof(operand), "((%c%d)(", e->shift_signed ? 'i' : 'u', (int)e->shift_bits);
+    if (masked_shift || typed) emit_cstr(arena, out, operand);
     emit_expr(arena, out, e->left, sub, generic_name);
-    if (masked_shift) emit_cstr(arena, out, "))");
+    if (masked_shift || typed) emit_cstr(arena, out, "))");
     emit_binary_op(arena, out, e->op);
     if (masked_shift) {
         /* `x shl n` shifts by n mod the width of x, as Rust does in release;
@@ -22675,7 +22684,9 @@ static void emit_binary_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub
         emit_string8(arena, out, string8_from_i64(arena, e->shift_bits - 1));
         emit_cstr(arena, out, ")");
     } else {
+        if (typed) emit_cstr(arena, out, operand);
         emit_expr(arena, out, e->right, sub, generic_name);
+        if (typed) emit_cstr(arena, out, "))");
     }
     if (wrap || narrow) emit_cstr(arena, out, ")");
     if (narrow) emit_cstr(arena, out, ")");

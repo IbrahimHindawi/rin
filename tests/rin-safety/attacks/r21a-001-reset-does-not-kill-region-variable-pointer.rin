@@ -1,0 +1,15 @@
+// sh_check_reset_at kills only ShAtom_Named and ShAtom_Param atoms, never ShAtom_Var. A pointer typed
+// '*i32 in R' (R a region parameter) carries a Var atom, so 'reset level' never invalidates it. At run
+// time f(level) binds R=level, new allocates in level, 'reset level' poisons it, and p* reads freed
+// memory: use-after-poison under ASan.
+import "std/print.rin"
+level: region global;
+f: proc(r: region R in level) -> void = {
+    p: *i32 in R = new<i32>(r, 7);
+    reset level;
+    printfmt("{}\n", p*);
+}
+main: proc() -> i32 = {
+    f(level);
+    return 0;
+}

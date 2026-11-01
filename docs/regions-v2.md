@@ -237,7 +237,7 @@ Three things the measurement corrected in the design above, now part of it:
    one accepted is either a hole or a stack view the program must write differently, with the
    count known.
 3. **Switch, one week.** Done in a day, above, up to the fresh rounds.
-4. **Explicit C, two to three days,** independent of the above.
+4. **Explicit C, two to three days,** independent of the above. Done, above.
 5. **Later:** a checked build in which pointers carry their region's tag, checked on dereference,
    so a hole nobody has found is a stop and not corruption.
 
@@ -261,6 +261,26 @@ the rule back.
 Every attack program from twenty rounds is refused as before, the course and the engine pass, and `main.c` is
 about 500 lines shorter net, with the pass about 900 lines of that. What remains of the old records is the
 stale lint and a few dead fields, to be cleaned when nothing else is moving.
+
+## The first rounds against it
+
+Round 21, two attackers, the day of the switch. One aimed at the pass's model and found six holes from two
+causes, all confirmed in the VM and closed: `reset` did not end what a pointer typed in a region *variable*
+pointed into (`*T in R` with `R` bound to the reset region); and the pass's limits, on atoms and tracked
+locals and on the fixed point settling, accepted a proc they could not follow. They refuse now: a proc past
+them is split by its author, not waved through. The other attacker read every std proc safe code can reach
+against what elision makes a caller believe about its result, built about twenty-five programs, and found
+nothing. It noted three promises that rest on an invariant rather than on a body alone: a container header's
+arena is the region the header lives in (only `make` sets it, and safe code cannot write it); `fmt_text`
+points into `fmt`'s own region because `fmt_make` is the one safe constructor; and `cstr_of` is known by
+name. Each is written down here so that a new constructor is checked against it.
+
+## Explicit C
+
+Round 17's emitter bugs were C's promotion rules deciding what rin had already decided. The emitter now
+casts both operands of every operation whose type rin knows to that type before C sees them
+(`emit_binary_expr`, `typed`), so `u8 | i8` is computed as `u8`, and a shift's left operand is its own
+width. What C still decides: an operation on an enum or a C typedef, where rin has no width to name.
 
 ## What this still is not
 

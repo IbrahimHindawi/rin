@@ -134,6 +134,11 @@ call beside it (`safety_check_open_cstr`).
 
 ## What the emitted C assumes
 
+Arithmetic reaches C with both operands cast to the type rin gave the operation, and a shift's amount masked
+to its width, so C's integer promotions and `int` arithmetic never decide a result rin typed narrower or
+unsigned ([regions-v2.md](regions-v2.md), "Explicit C"). The checker refuses a proc its pointer pass cannot
+follow within its limits, rather than accepting it unchecked.
+
 C has undefined behaviour that the rules above cannot see, and an optimiser may use any of it to
 remove a check. So the emitter never relies on a C flag to define these:
 

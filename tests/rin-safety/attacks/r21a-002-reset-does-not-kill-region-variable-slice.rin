@@ -1,0 +1,15 @@
+// Same gap for a slice: '[]i32 in R' carries a Var atom (R a region parameter), which sh_check_reset_at
+// never kills. f(level) binds R=level, new_slice allocates in level, 'reset level' poisons it, and xs[0]
+// then reads freed memory: use-after-poison under ASan (the read is in-bounds against the stale length).
+import "std/print.rin"
+level: region global;
+f: proc(r: region R in level) -> void = {
+    xs: []i32 in R = new_slice<i32>(r, 4);
+    xs[0] = 9;
+    reset level;
+    printfmt("{}\n", xs[0]);
+}
+main: proc() -> i32 = {
+    f(level);
+    return 0;
+}

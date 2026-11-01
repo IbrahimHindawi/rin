@@ -113,6 +113,7 @@ Next, in the order that pays:
 2. Strangers, in a VM. The crash-containment test is off the list, by the user's decision.
 3. Threads, last.
 
-Twenty attack rounds have run. From round five on each found dozens of holes in safe code, and all are closed; the rounds are not slowing down.
+Twenty-one attack rounds have run. Rounds five to twenty each found dozens of holes in the old rules, all closed. Round 21, the first
+against the second pass, found six from two causes in the pass and none in std under it; both causes are closed.
 Run a fresh round per new rule, and `tests/gen_rin_safe.py` with `run_rin_vm.py --compare`. Verify with a script
 that fails on a missing line or a skipped program: a filtered log hid a failing suite here twice.

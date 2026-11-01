@@ -1,0 +1,15 @@
+// The gap reaches through an aggregate: option<*i32 in R> collects the Var atom R via sh_inside_atoms,
+// which sh_check_reset_at still never kills. 'reset level' zeroes only globals (emit_region_forget), so
+// the LOCAL option keeps has_value==1 and a dangling value; the null test passes and p* dereferences
+// freed level memory: use-after-poison under ASan.
+import "std/print.rin"
+level: region global;
+f: proc(r: region R in level) -> void = {
+    p: option<*i32 in R> = new<i32>(r, 7);
+    reset level;
+    if (p) { printfmt("{}\n", p*); }
+}
+main: proc() -> i32 = {
+    f(level);
+    return 0;
+}

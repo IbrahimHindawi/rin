@@ -1,0 +1,15 @@
+// The region-variable gap also defeats the transitive-reset path (sh_reset_call_visit): wipe() is seen to
+// reset 'level', so a Named level pointer would be killed, but p is typed '*i32 in R' (Var atom) and is
+// left live. wipe() frees level, p* reads freed memory: use-after-poison under ASan.
+import "std/print.rin"
+level: region global;
+wipe: proc() -> void = { reset level; }
+f: proc(r: region R in level) -> void = {
+    p: *i32 in R = new<i32>(r, 7);
+    wipe();
+    printfmt("{}\n", p*);
+}
+main: proc() -> i32 = {
+    f(level);
+    return 0;
+}
