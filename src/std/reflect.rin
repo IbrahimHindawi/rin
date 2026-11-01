@@ -149,14 +149,13 @@ reflect_values: proc(type: *const reflect) -> ^const reflect_value = {
 }
 
 // ---------------------------------------------------------------------------
-// The tables and the strings as slices
+// The tables as slices
 //
-// These three are the whole of this file's trust, for every proc that safe code
-// can call. The first two put together the pointer and the count the compiler
-// emitted: only this file sets a field of a `reflect`, so the count is the
-// table's. The third measures a C string, and a raw string safe code holds is
-// terminated: a literal, a `str`, or what cstr_of looked inside its array for.
-// Everything else below indexes the results and is checked.
+// These two are the whole of this file's trust, for every proc that safe code
+// can call. They put together the pointer and the count the compiler emitted:
+// only this file sets a field of a `reflect`, so the count is the table's.
+// Everything else below indexes the results, and reads strings through
+// cstr_view, and is checked.
 // ---------------------------------------------------------------------------
 
 reflect_field_slice: proc(type: *const reflect) -> []const reflect_field in permanent = {
@@ -183,19 +182,6 @@ reflect_value_slice: proc(type: *const reflect) -> []const reflect_value in perm
     return out;
 }
 
-// The chars of a C string, without its terminator. Null is the empty slice.
-reflect_text: proc(s: ^const char) -> []const char = {
-    out: []const char = {};
-    if (s == null) { return out; }
-    unsafe {
-        n: u64 = 0;
-        while (s[n] != 0) { n += 1; }
-        out.data = s;
-        out.length = n;
-    }
-    return out;
-}
-
 reflect_field_count: proc(type: *const reflect) -> u64 = {
     return reflect_field_slice(type).length;
 }
@@ -210,8 +196,8 @@ reflect_value_count: proc(type: *const reflect) -> u64 = {
 
 reflect_cstr_equal: proc(a: ^const char, b: ^const char) -> b32 = {
     if (a == null || b == null) { return 0; }
-    x: []const char = reflect_text(a);
-    y: []const char = reflect_text(b);
+    x: []const char = cstr_view(a);
+    y: []const char = cstr_view(b);
     if (x.length != y.length) { return 0; }
     for (i: u64 = 0; i < x.length; i += 1) {
         if (x[i] != y[i]) { return 0; }
@@ -333,7 +319,7 @@ reflect_field_is_array: proc(field: *const reflect_field) -> b32 = {
 reflect_field_is_generic: proc(field: *const reflect_field) -> b32 = {
     if (field == null) { return 0; }
     if (field*.kind == reflect_field_kind_generic) { return 1; }
-    return reflect_text(field*.generic_arg_type).length > 0;
+    return cstr_view(field*.generic_arg_type).length > 0;
 }
 
 reflect_count_fields_with_kind: proc(type: *const reflect, kind: i32) -> u64 = {
@@ -464,8 +450,8 @@ reflect_attr_is_sep: proc(c: char) -> b32 = {
 
 reflect_field_has_attr: proc(field: *const reflect_field, attr: ^const char) -> b32 = {
     if (field == null) { return 0; }
-    attrs: []const char = reflect_text(field*.attrs);
-    want: []const char = reflect_text(attr);
+    attrs: []const char = cstr_view(field*.attrs);
+    want: []const char = cstr_view(attr);
     if (want.length == 0) { return 0; }
     scan: u64 = 0;
     while (scan < attrs.length) {

@@ -1,0 +1,11 @@
+// expect: is static, and belongs to the file that declares it
+// A slot of a map that is not in use holds bytes nothing wrote, so the map's view of its states is its own.
+import "std/hashmap.rin"
+level: region global;
+main: proc() -> i32 = {
+    m: *hashmap<i64, i32> in level = hashmap<i64, i32>make(level);
+    _ = hashmap<i64, i32>set(m, 1, 2);
+    states: []u8 = hashmap<i64, i32>states_(m);
+    states[0] = 1;
+    return 0;
+}

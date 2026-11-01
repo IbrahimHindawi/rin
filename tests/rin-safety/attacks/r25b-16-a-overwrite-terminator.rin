@@ -1,0 +1,15 @@
+// The raw string and a writable view of the same array go into one call, and the callee
+// writes the terminator away before it reads the string.
+import "std/print.rin"
+import "std/cstr.rin"
+
+bad: proc(s: ^const c8, buf: []c8) -> u64 = {
+    for (i: u64 = 0; i < buf.length; i += 1) { buf[i] = 65; }
+    return cstr_length(s);
+}
+
+main: proc() -> i32 = {
+    line: [8]c8 = {};
+    printfmt("{}\n", bad(cstr_of(line), line));
+    return 0;
+}

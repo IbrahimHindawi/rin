@@ -932,6 +932,7 @@ struct ProcDecl {
     Vec_voidptr parsed_body;
     bool has_parsed_body;
     bool no_move; // proc[no_move]: std says this trusted body moves nothing
+    bool is_file_static; // proc[static]: only the file that declares it may call it
     string8 specialized_from; // `hash: proc<point>`: hash
     bool noalias_contained; // reaches memory only through its parameters and what it allocates
     u64 moves; // bit i: a call through parameter i may move storage; see compute_proc_moves
@@ -2421,6 +2422,9 @@ typedef struct DeclAttributes {
     /* proc[no_move], std's alone: this trusted body hands out a pointer into what a
        parameter holds, and moves nothing it reaches, which its signature cannot show. */
     bool no_move;
+    /* proc[static]: this proc keeps an invariant of the file that declares it, as its private fields and static
+       globals do, so nothing else may name it. */
+    bool is_file_static;
     /* proc[trusted]: the body may use raw pointers, casts and C, and the author
        vouches for its signature; anyone may call it. proc[unsafe]: the same
        body, but calling it is itself unsafe. See docs/regions.md. */
@@ -4448,10 +4452,13 @@ static DeclAttributes parse_decl_attributes(Parser *p, bool is_enum) {
     DeclAttributes attrs = {0};
     if (!parser_match(p, Token_LBracket)) return attrs;
     do {
-        Token *tok = parser_expect(p, Token_Identifier, "expected attribute name");
+        Token *tok = parser_peek(p)->kind == Token_Keyword_Static ? parser_next(p)
+                                                                  : parser_expect(p, Token_Identifier, "expected attribute name");
         if (!tok) break;
 
-        if (string8slice_equals_cstr(tok->text, "external")) {
+        if (tok->kind == Token_Keyword_Static) {
+            attrs.is_file_static = true;
+        } else if (string8slice_equals_cstr(tok->text, "external")) {
             attrs.is_external = true;
         } else if (string8slice_equals_cstr(tok->text, "external_emit")) {
             attrs.is_external = true;
@@ -4509,7 +4516,7 @@ static DeclAttributes parse_decl_attributes(Parser *p, bool is_enum) {
         } else {
             parser_error_token(p, tok,
                 "unknown attribute; expected one of external, external_emit, "
-                "no_layout_check, packed, align(N), callconv(NAME), must_use, trusted, unsafe, no_move");
+                "no_layout_check, packed, align(N), callconv(NAME), must_use, trusted, unsafe, no_move, static");
         }
     } while (parser_match(p, Token_Comma));
     parser_expect(p, Token_RBracket, "expected ']' after attributes");
@@ -4831,6 +4838,7 @@ static ProcDecl *parse_proc_decl(Parser *p, Token *name_tok) {
         decl->emit_external_proto = proc_attrs.emit_external_proto;
     }
     decl->is_unsafe = proc_attrs.is_unsafe;
+    decl->is_file_static = proc_attrs.is_file_static;
     decl->no_move = proc_attrs.no_move;
 
     if (parser_match(p, Token_LAngle)) {
@@ -8165,7 +8173,6 @@ static const char *g_reflect_runtime_names[] = {
     "reflect_name_from_value_or",
     "reflect_next_field_with_attr",
     "reflect_next_field_with_kind",
-    "reflect_text",
     "reflect_type_kind",
     "reflect_type_kind_name",
     "reflect_value",
@@ -17344,6 +17351,15 @@ static bool param_type_may_move(Program *prog, TypeExpr *pt, bool trusted, memop
     return type_has_pointer_deep(prog, elem, arena, 0);
 }
 
+static ProcDecl *g_region_check_proc;
+
+/* A proc[static] named from a body in another file. */
+static bool proc_is_static_elsewhere(ProcDecl *decl) {
+    if (!decl || !decl->is_file_static) return false;
+    if (!g_region_check_proc || !g_region_check_proc->source_path || !decl->source_path) return true;
+    return strcmp(g_region_check_proc->source_path, decl->source_path) != 0;
+}
+
 /* The callee is known: a checked proc moves only through the parameters its
    body reaches a moving call with (compute_proc_moves); a trusted one
    through every non-const pointer in its signature. */
@@ -18333,6 +18349,12 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
             }
         }
     }
+    if (g_safe_body && proc_is_static_elsewhere(decl)) {
+        char message[512];
+        snprintf(message, sizeof(message), "'%.*s' is static, and belongs to the file that declares it",
+                 (int)decl->name.length, decl->name.data);
+        type_error_message(message, call->line, call->col);
+    }
     if (g_safe_body) {
         if (type_arg && string8_equals_cstr(&decl->name, "slice@zero")) {
             safety_check_zeroed("slice<T>zero", prog, type_arg, arena, call->line, call->col);
@@ -18642,6 +18664,10 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         /* A proc used as a value: a call through the pointer could not be
            checked against the regions open at that point. */
         ProcDecl *as_value = lookup_proc_decl(prog, e->name);
+        if (as_value && g_safe_body && proc_is_static_elsewhere(as_value)) {
+            region_error("'%.*s' is static, and belongs to the file that declares it%.0s",
+                         e->name, (string8){0}, e->line, e->col);
+        }
         if (as_value && g_safe_body && (as_value->is_unsafe || (as_value->is_external && proc_touches_pointers(prog, as_value)))) {
             region_error("'%.*s' is %.*s, and a call through a pointer would not be checked; it is called by name from "
                          "inside 'unsafe { }'", e->name, as_value->is_unsafe ? string8_from_cstr(arena, "an unsafe proc")
@@ -22586,6 +22612,11 @@ static bool emit_folded_constant(memops_arena *arena, string8 *out, Expr *e) {
     if (!e->literal_fold) return false;
     ConstVal folded = const_eval(e);
     if (!folded.ok || folded.is_float || folded.big) return false;
+    /* C has no literal for the smallest i64: its digits alone do not fit, and negating them is undefined. */
+    if (folded.value == -9223372036854775807LL - 1) {
+        emit_cstr(arena, out, "(-9223372036854775807LL - 1)");
+        return true;
+    }
     char buf[48];
     bool fits_int = folded.value <= 2147483647LL && folded.value >= -2147483647LL;
     snprintf(buf, sizeof(buf), fits_int ? "(%lld)" : "(%lldLL)", (long long)folded.value);
@@ -22843,6 +22874,14 @@ static void emit_number(memops_arena *arena, string8 *out, Expr *e) {
     bool is_signed = false;
     bool hex = digits.length > 1 && digits.data[0] == '0' &&
                (digits.data[1] == 'x' || digits.data[1] == 'X' || digits.data[1] == 'b' || digits.data[1] == 'B');
+    /* Digits past the largest i64: a u64, or the smallest i64 under its minus. C reads them as unsigned anyway, and
+       says so unless it is told. */
+    if (!float_bits && !hex && !number_is_float_form(digits) &&
+        (digits.length > 19 || (digits.length == 19 && memcmp(digits.data, "9223372036854775807", 19) > 0))) {
+        emit_string8(arena, out, digits);
+        emit_cstr(arena, out, "ULL");
+        return;
+    }
     if (float_bits) {
         if (number_is_float_form(digits)) {
             emit_string8(arena, out, digits);

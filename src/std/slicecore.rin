@@ -9,3 +9,18 @@ slice: struct<T> = {
     data: ^T;
     length: u64;
 }
+
+/* The chars of a C string as a slice, without its terminator. Null is the empty slice. This is the one place
+   a C string is measured: a raw string safe code holds is terminated, being a literal, a `str`, or what cstr_of
+   looked inside its array for, so every read of one past here can be checked. */
+cstr_view: proc(s: ^const c8) -> slice<const c8> = {
+    out: slice<const c8> = {};
+    if (s == null) { return out; }
+    unsafe {
+        n: u64 = 0;
+        while (s[n] != 0) { n += 1; }
+        out.data = s;
+        out.length = n;
+    }
+    return out;
+}

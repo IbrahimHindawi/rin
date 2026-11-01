@@ -1,0 +1,138 @@
+// The strings, the formatter and the map as safe code calls them, at their edges: empty, null, full, past the end.
+// Their bodies are checked now, so what this prints is what they compute.
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/fmt.rin"
+import "std/hashmap.rin"
+
+level: region global;
+
+strings: proc() -> void = {
+    printfmt("{} {} {}\n", cstr_length("abc"), cstr_length(""), cstr_length(null));
+    printfmt("{} {}\n", cstr_is_empty(""), cstr_is_empty("x"));
+    printfmt("{} {} {}\n", cstr_equals("abc", "abc"), cstr_equals("abc", "abd"), cstr_equals("abc", "ab"));
+    printfmt("{} {} {}\n", cstr_equals(null, null), cstr_equals(null, "a"), cstr_equals("a", null));
+    printfmt("{} {} {}\n", cstr_equals_n("abcd", "abzz", 2), cstr_equals_n("abcd", "abzz", 3), cstr_equals_n("ab", "ab", 9));
+    printfmt("{} {}\n", cstr_equals_n("ab", "abc", 3), cstr_equals_n("", "", 1));
+    printfmt("{} {} {}\n", cstr_order("a", "b") < 0, cstr_order("b", "a") > 0, cstr_order("a", "a") == 0);
+    printfmt("{} {}\n", cstr_order("ab", "a") > 0, cstr_order(null, "a") < 0);
+    printfmt("{} {} {}\n", cstr_find_char("hello", 'l'), cstr_find_char("hello", 'z'), cstr_find_char("hello", 0));
+    printfmt("{} {} {} {}\n", cstr_find("hello", "ll"), cstr_find("hello", "lo"), cstr_find("hello", "lox"), cstr_find("hi", "hello"));
+    printfmt("{} {}\n", cstr_find("hello", ""), cstr_find(null, "x"));
+    printfmt("{} {} {}\n", cstr_starts_with("hello", "he"), cstr_starts_with("hello", "hx"), cstr_starts_with("he", "hello"));
+    printfmt("{} {} {}\n", cstr_ends_with("hello", "lo"), cstr_ends_with("hello", "hello"), cstr_ends_with("lo", "hello"));
+    printfmt("{} {}\n", cstr_ends_with("hello", ""), cstr_ends_with("hello", "lx"));
+
+    line: [8]c8 = {};
+    printfmt("{}\n", cstr_copy(line, "abc"));
+    printfmt("{}\n", cstr_of(line));
+    printfmt("{}\n", cstr_copy(line, "abcdefghijk"));
+    printfmt("{}\n", cstr_of(line));
+    printfmt("{}\n", cstr_copy(line, null));
+    printfmt("[{}]\n", cstr_of(line));
+    _ = cstr_copy(line, "ab");
+    printfmt("{}\n", cstr_append(line, "cd"));
+    printfmt("{}\n", cstr_of(line));
+    printfmt("{}\n", cstr_append(line, "efghijk"));
+    printfmt("{}\n", cstr_of(line));
+    printfmt("{}\n", cstr_append(line, "more"));
+    printfmt("{}\n", cstr_of(line));
+
+    n: i64 = 0;
+    printfmt("{}", cstr_parse_i64("  -42x", n&)); printfmt(" {}\n", n);
+    printfmt("{}", cstr_parse_i64("+7", n&)); printfmt(" {}\n", n);
+    printfmt("{} {} {}\n", cstr_parse_i64("", n&), cstr_parse_i64("-", n&), cstr_parse_i64("abc", n&));
+    printfmt("{}", cstr_parse_i64("9223372036854775807", n&)); printfmt(" {}\n", n);
+    printfmt("{}", cstr_parse_i64("-9223372036854775808", n&)); printfmt(" {}\n", n);
+    printfmt("{} {}\n", cstr_parse_i64("9223372036854775808", n&), cstr_parse_i64(null, n&));
+    x: f64 = 0.0;
+    printfmt("{}", cstr_parse_f64(" -2.5e", x&)); printfmt(" {:0.2}\n", x);
+    printfmt("{}", cstr_parse_f64(".25", x&)); printfmt(" {:0.2}\n", x);
+    printfmt("{} {} {}\n", cstr_parse_f64("", x&), cstr_parse_f64(".", x&), cstr_parse_f64("-", x&));
+}
+
+formatter: proc() -> void = {
+    tmp: region of level = {
+        f: *fmt in tmp = fmt_make(tmp, 16);
+        fmt_cstr(f, "ab");
+        fmt_char(f, 'c');
+        fmt_u64(f, 0);
+        fmt_i64(f, -12);
+        printfmt("{} {} {}\n", fmt_text(f), fmt_done(f), fmt_truncated(f));
+        fmt_reset(f);
+        fmt_i64(f, -9223372036854775807 - 1);
+        printfmt("{} {} {}\n", fmt_text(f), fmt_done(f), fmt_truncated(f));
+        fmt_reset(f);
+        fmt_hex(f, 255, 4, 0);
+        fmt_char(f, ' ');
+        fmt_hex(f, 171, 0, 1);
+        printfmt("{}\n", fmt_text(f));
+        fmt_reset(f);
+        fmt_cstr_pad(f, "ab", 4);
+        fmt_cstr_pad(f, "abcdef", 2);
+        fmt_cstr(f, null);
+        printfmt("[{}]\n", fmt_text(f));
+        fmt_reset(f);
+        fmt_f64(f, 3.25, 2);
+        printfmt("{}\n", fmt_text(f));
+        fmt_reset(f);
+        // Cut at the capacity, keeping the first digits, and saying so.
+        fmt_cstr(f, "0123456789");
+        fmt_u64(f, 987654321);
+        printfmt("{} {} {}\n", fmt_text(f), fmt_done(f), fmt_truncated(f));
+    }
+    line: [12]c8 = {};
+    printfmt("{}", fmt_cat1(line, "abc")); printfmt(" {}\n", cstr_of(line));
+    printfmt("{}", fmt_cat2(line, "abc", "de")); printfmt(" {}\n", cstr_of(line));
+    printfmt("{}", fmt_cat3(line, "a", null, "c")); printfmt(" {}\n", cstr_of(line));
+    printfmt("{}", fmt_cat4(line, "a", "b", "c", "d")); printfmt(" {}\n", cstr_of(line));
+    printfmt("{}", fmt_cat5(line, "abcd", "efgh", "ijkl", "mnop", "qrst")); printfmt(" {}\n", cstr_of(line));
+    printfmt("{}", fmt_cat2(line, null, null)); printfmt(" [{}]\n", cstr_of(line));
+    printfmt("{}", fmt_expand_i64(line, "n=%d;", 42)); printfmt(" {}\n", cstr_of(line));
+    printfmt("{}", fmt_expand_i64(line, "%d%d", -7)); printfmt(" {}\n", cstr_of(line));
+    printfmt("{}", fmt_expand_i64(line, "%s %", 1)); printfmt(" {}\n", cstr_of(line));
+    printfmt("{}", fmt_expand_i64(line, "very long text %d", 1)); printfmt(" {}\n", cstr_of(line));
+    printfmt("{}", fmt_expand_i64(line, null, 1)); printfmt(" [{}]\n", cstr_of(line));
+    small: [1]c8 = {};
+    printfmt("{}", fmt_cat2(small, "a", "b")); printfmt(" [{}]\n", cstr_of(small));
+    printfmt("{}", fmt_expand_i64(small, "%d", 5)); printfmt(" [{}]\n", cstr_of(small));
+}
+
+maps: proc() -> void = {
+    m: *hashmap<i64, i32> in level = hashmap<i64, i32>make(level);
+    printfmt("{} {}\n", hashmap<i64, i32>has(m, 1), hashmap<i64, i32>get_or(m, 1, -1));
+    printfmt("{}\n", hashmap<i64, i32>first(m) >= m*.capacity);
+    // Enough to grow several times, with every third one removed on the way.
+    for (i: i64 = 0; i < 100; i += 1) {
+        _ = hashmap<i64, i32>set(m, i, cast(i * 2, i32));
+        if (i % 3 == 0) { _ = hashmap<i64, i32>remove(m, i); }
+    }
+    printfmt("{}\n", m*.length);
+    printfmt("{} {}\n", hashmap<i64, i32>has(m, 3), hashmap<i64, i32>has(m, 4));
+    printfmt("{} {}\n", hashmap<i64, i32>get_or(m, 3, -1), hashmap<i64, i32>get_or(m, 4, -1));
+    printfmt("{} {}\n", hashmap<i64, i32>remove(m, 3), hashmap<i64, i32>remove(m, 4));
+    _ = hashmap<i64, i32>set(m, 3, 33);
+    got: option<*i32> = hashmap<i64, i32>get(m, 3);
+    if (got != null) { printfmt("{}\n", got*); got* = 34; }
+    printfmt("{}\n", hashmap<i64, i32>get_or(m, 3, -1));
+    keys: i64 = 0;
+    values: i64 = 0;
+    seen: u64 = 0;
+    for (i: u64 = hashmap<i64, i32>first(m); i < m*.capacity; i = hashmap<i64, i32>next(m, i)) {
+        keys += hashmap<i64, i32>key_at(m, i)*;
+        values += cast(hashmap<i64, i32>value_at(m, i)*, i64);
+        seen += 1;
+    }
+    printfmt("{} {} {}\n", keys, values, seen);
+    hashmap<i64, i32>clear(m);
+    printfmt("{} {} {}\n", m*.length, hashmap<i64, i32>has(m, 3), hashmap<i64, i32>first(m) >= m*.capacity);
+    _ = hashmap<i64, i32>set(m, 5, 55);
+    printfmt("{} {}\n", m*.length, hashmap<i64, i32>get_or(m, 5, -1));
+}
+
+main: proc() -> i32 = {
+    strings();
+    formatter();
+    maps();
+    return 0;
+}

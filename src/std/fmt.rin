@@ -1,5 +1,6 @@
 import "memops.rin"
 import "string8.rin"
+import "cstr.rin"
 
 /* A bounded writer over a buffer the caller owns.
 
@@ -101,19 +102,11 @@ fmt_bytes: proc[unsafe](f: *fmt, src: ^const c8, count: u64) -> void = {
     f*.data[f*.length] = 0;
 }
 
-cstr_len_: proc(s: ^const c8) -> u64 = { unsafe {
-    if (s == null) {
-        return 0;
-    }
-    n: u64 = 0;
-    while (s[n] != 0) {
-        n += 1;
-    }
-    return n;
-} }
-
 fmt_cstr: proc(f: *fmt, s: ^const c8) -> void = {
-    unsafe { fmt_bytes(f, s, cstr_len_(s)); }
+    chars: []const c8 = cstr_view(s);
+    for (i: u64 = 0; i < chars.length; i += 1) {
+        fmt_char(f, chars[i]);
+    }
 }
 
 fmt_slice: proc[unsafe](f: *fmt, s: string8slice) -> void = {
@@ -123,10 +116,7 @@ fmt_slice: proc[unsafe](f: *fmt, s: string8slice) -> void = {
 /* Left-justified in a field of `width`, like %-24s. Longer input is written in
    full rather than truncated, which is what printf does too. */
 fmt_cstr_pad: proc(f: *fmt, s: ^const c8, width: u64) -> void = {
-    n: u64 = 0;
-    if (s != null) {
-        n = cstr_len_(s);
-    }
+    n: u64 = cstr_view(s).length;
     fmt_cstr(f, s);
     while (n < width) {
         fmt_char(f, cast(32, c8));
@@ -134,11 +124,8 @@ fmt_cstr_pad: proc(f: *fmt, s: ^const c8, width: u64) -> void = {
     }
 }
 
-/* Digits come out backwards, so they are staged and reversed rather than
-   written straight into the buffer -- a truncated number must not leave its
-   most significant digits behind and drop the rest. */
-fmt_u64: proc(f: *fmt, value: u64) -> void = {
-    digits: [24]c8 = {};
+/* A number's decimal digits, least significant first, and how many. */
+fmt_digits_: proc[static](digits: []c8, value: u64) -> u64 = {
     n: u64 = 0;
     v: u64 = value;
     if (v == 0) {
@@ -150,11 +137,17 @@ fmt_u64: proc(f: *fmt, value: u64) -> void = {
         v /= 10;
         n += 1;
     }
-    out: [24]c8 = {};
-    for (i: u64 = 0; i < n; i += 1) {
-        out[i] = digits[n - 1 - i];
+    return n;
+}
+
+/* Digits come out backwards, so they are staged and then written from the most
+   significant -- a truncated number keeps its most significant digits. */
+fmt_u64: proc(f: *fmt, value: u64) -> void = {
+    digits: [24]c8 = {};
+    n: u64 = fmt_digits_(digits, value);
+    for (i: u64 = n; i > 0; i -= 1) {
+        fmt_char(f, digits[i - 1]);
     }
-    unsafe { fmt_bytes(f, out[0]&, n); }
 }
 
 fmt_i64: proc(f: *fmt, value: i64) -> void = {
@@ -191,11 +184,9 @@ fmt_hex: proc(f: *fmt, value: u64, min_digits: u64, upper: b32) -> void = {
         digits[n] = cast(48, c8);
         n += 1;
     }
-    out: [24]c8 = {};
-    for (i: u64 = 0; i < n; i += 1) {
-        out[i] = digits[n - 1 - i];
+    for (i: u64 = n; i > 0; i -= 1) {
+        fmt_char(f, digits[i - 1]);
     }
-    unsafe { fmt_bytes(f, out[0]&, n); }
 }
 
 /* A whole number too big for a u64, every digit of it. Dividing a float by 2^32 is
@@ -313,68 +304,73 @@ fmt_truncated: proc(f: *const fmt) -> b32 = {
     return f*.truncated;
 }
 
+/* One char into dst at `at`, terminated, holding one byte back for the terminator as a fmt does. */
+fmt_put_: proc[static](dst: []c8, at: u64, c: c8) -> u64 = {
+    if (at + 1 >= dst.length) {
+        return at;
+    }
+    dst[at] = c;
+    dst[at + 1] = 0;
+    return at + 1;
+}
+
 /* Expands a format string held in data, which is the one case a call site
    cannot be rewritten into explicit calls: the format arrives from a table.
    Only "%d" is recognised, because that is the only conversion those tables
    use; anything else is copied through verbatim so a stray "%s" shows up in
    the output rather than reading a stack slot that was never passed. */
-fmt_expand_i64: proc(dst: []c8, format: ^const c8, value: i64) -> u64 = { unsafe {
-    f: fmt = fmt_to(dst);
-    if (format == null) {
-        return 0;
+fmt_expand_i64: proc(dst: []c8, format: ^const c8, value: i64) -> u64 = {
+    if (dst.length > 0) {
+        dst[0] = 0;
     }
+    text: []const c8 = cstr_view(format);
+    n: u64 = 0;
     i: u64 = 0;
-    while (format[i] != 0) {
-        if (format[i] == cast(37, c8) && format[i + 1] == cast(100, c8)) {
-            fmt_i64(f&, value);
+    while (i < text.length) {
+        if (text[i] == cast(37, c8) && i + 1 < text.length && text[i + 1] == cast(100, c8)) {
+            /* Negating the most negative value overflows, so widen first. */
+            whole: u64 = cast(value, u64);
+            if (value < 0) {
+                n = fmt_put_(dst, n, cast(45, c8));
+                whole = cast(0, u64) - whole;
+            }
+            digits: [24]c8 = {};
+            count: u64 = fmt_digits_(digits, whole);
+            for (k: u64 = count; k > 0; k -= 1) {
+                n = fmt_put_(dst, n, digits[k - 1]);
+            }
             i += 2;
         } else {
-            fmt_char(f&, format[i]);
+            n = fmt_put_(dst, n, text[i]);
             i += 1;
         }
     }
-    return f.length;
-} }
+    return n;
+}
 
 /* The dominant snprintf shape by a wide margin is literal fragments joined with
    strings -- "res/fx/%s.json", "%s/%s", "res/%s/mesh/%s.gltf". These cover it
    without a builder at the call site. Each returns the length written. */
-fmt_cat1: proc(dst: []c8, a: ^const c8) -> u64 = { unsafe {
-    f: fmt = fmt_to(dst);
-    fmt_cstr(f&, a);
-    return f.length;
-} }
+fmt_cat_more_: proc[static](dst: []c8, at: u64, s: ^const c8) -> u64 = {
+    return at + cstr_copy(dst[at..dst.length], s);
+}
 
-fmt_cat2: proc(dst: []c8, a: ^const c8, b: ^const c8) -> u64 = { unsafe {
-    f: fmt = fmt_to(dst);
-    fmt_cstr(f&, a);
-    fmt_cstr(f&, b);
-    return f.length;
-} }
+fmt_cat1: proc(dst: []c8, a: ^const c8) -> u64 = {
+    return fmt_cat_more_(dst, 0, a);
+}
 
-fmt_cat3: proc(dst: []c8, a: ^const c8, b: ^const c8, c: ^const c8) -> u64 = { unsafe {
-    f: fmt = fmt_to(dst);
-    fmt_cstr(f&, a);
-    fmt_cstr(f&, b);
-    fmt_cstr(f&, c);
-    return f.length;
-} }
+fmt_cat2: proc(dst: []c8, a: ^const c8, b: ^const c8) -> u64 = {
+    return fmt_cat_more_(dst, fmt_cat1(dst, a), b);
+}
 
-fmt_cat4: proc(dst: []c8, a: ^const c8, b: ^const c8, c: ^const c8, d: ^const c8) -> u64 = { unsafe {
-    f: fmt = fmt_to(dst);
-    fmt_cstr(f&, a);
-    fmt_cstr(f&, b);
-    fmt_cstr(f&, c);
-    fmt_cstr(f&, d);
-    return f.length;
-} }
+fmt_cat3: proc(dst: []c8, a: ^const c8, b: ^const c8, c: ^const c8) -> u64 = {
+    return fmt_cat_more_(dst, fmt_cat2(dst, a, b), c);
+}
 
-fmt_cat5: proc(dst: []c8, a: ^const c8, b: ^const c8, c: ^const c8, d: ^const c8, e: ^const c8) -> u64 = { unsafe {
-    f: fmt = fmt_to(dst);
-    fmt_cstr(f&, a);
-    fmt_cstr(f&, b);
-    fmt_cstr(f&, c);
-    fmt_cstr(f&, d);
-    fmt_cstr(f&, e);
-    return f.length;
-} }
+fmt_cat4: proc(dst: []c8, a: ^const c8, b: ^const c8, c: ^const c8, d: ^const c8) -> u64 = {
+    return fmt_cat_more_(dst, fmt_cat3(dst, a, b, c), d);
+}
+
+fmt_cat5: proc(dst: []c8, a: ^const c8, b: ^const c8, c: ^const c8, d: ^const c8, e: ^const c8) -> u64 = {
+    return fmt_cat_more_(dst, fmt_cat4(dst, a, b, c, d), e);
+}

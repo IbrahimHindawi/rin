@@ -77,11 +77,11 @@ print: proc<^const char>(x: ^const char) -> void = {
 // What printfmt prints for an enum with no print<E> of its own: the member's
 // name, or `type(value)` when the value is not a member -- one read from a
 // file or a cast, say -- so a miss still says which enum and what it held.
-print_enum: proc(type: *const reflect, value: i32) -> void = { unsafe {
+print_enum: proc(type: *const reflect, value: i32) -> void = {
     name: ^const char = reflect_name_from_value(type, value);
     if (name != null) {
-        printf("%s", name);
+        unsafe { printf("%s", name); }
         return;
     }
-    printf("%s(%d)", type*.name, value);
-} }
+    unsafe { printf("%s(%d)", type*.name, value); }
+}

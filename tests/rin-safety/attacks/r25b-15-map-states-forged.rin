@@ -1,0 +1,25 @@
+// Mark a slot live through the map's own view of its states, then read a value nothing ever wrote.
+import "std/print.rin"
+import "std/hashmap.rin"
+
+thing: struct = { x: i64; }
+level: region global;
+
+main: proc() -> i32 = {
+    // Fill a stretch of the arena, then give it back, so the map's arrays land on old bytes.
+    junk: []u64 in level = new_slice<u64>(level, 4096);
+    for (i: u64 = 0; i < junk.length; i += 1) { junk[i] = 0x4141414141414141'u64; }
+    reset level;
+    m: *hashmap<i64, *thing in level> in level = hashmap<i64, *thing in level>make(level);
+    t: *thing in level = new<thing>(level);
+    _ = hashmap<i64, *thing in level>set(m, 1, t);
+    states: []u8 = hashmap<i64, *thing in level>states_(m);
+    for (i: u64 = 0; i < states.length; i += 1) {
+        if (states[i] == 0) {
+            states[i] = 1;
+            printfmt("{}\n", hashmap<i64, *thing in level>value_at(m, i)**.x);
+            break;
+        }
+    }
+    return 0;
+}

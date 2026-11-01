@@ -109,9 +109,13 @@ the pass, in one place: extend `sh_value_regions`, `sh_place_memory` or one of t
 
 Next, in the order that pays:
 
-1. Narrow std's `unsafe { }` bodies. `python tests/rin_trusted_lines.py` gives the honest measure: the lines of it safe code can reach.
-2. Strangers, in a VM. The crash-containment test is off the list, by the user's decision.
-3. Threads, last.
+1. Strangers, in a VM. The crash-containment test is off the list, by the user's decision.
+2. Threads, last.
+
+std's `unsafe { }` is narrowed: `python tests/rin_trusted_lines.py` gives 329 lines safe code can reach, down from
+748, and what is left is the arena, the containers' allocation and calls to C. A helper in std that would break an
+invariant if called from outside is `proc[static]`; a public view that reaches uninitialized slots is a hole, and
+the suites will not catch it: this one was found by reading the patch, and `attacks/r25b-*` now hold it.
 
 Twenty-three attack rounds have run. Rounds five to twenty each found dozens of holes in the old rules, all closed. Against the
 second pass: round 21 found six (two causes, closed) and none in std; rounds 22 and 23 found nothing inside the claim in

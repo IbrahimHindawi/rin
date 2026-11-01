@@ -1,0 +1,18 @@
+// The same, the writer holding the array through a pointer to a struct around it.
+import "std/print.rin"
+import "std/cstr.rin"
+
+box: struct = { text: [8]c8; }
+
+bad: proc(s: ^const c8, b: *box) -> u64 = {
+    for (i: u64 = 0; i < 8; i += 1) { b*.text[i] = 65; }
+    return cstr_length(s);
+}
+
+level: region global;
+
+main: proc() -> i32 = {
+    b: *box in level = new<box>(level);
+    printfmt("{}\n", bad(cstr_of(b*.text), b));
+    return 0;
+}

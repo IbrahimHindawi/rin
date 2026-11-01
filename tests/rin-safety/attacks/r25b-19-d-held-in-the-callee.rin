@@ -1,0 +1,18 @@
+// The callee keeps its view past the write, then indexes: this one is only a bounds question, and is fine.
+import "std/print.rin"
+import "std/cstr.rin"
+
+line: [8]c8 = {};
+
+ok: proc(s: ^const c8) -> u64 = {
+    view: []const c8 = cstr_view(s);
+    for (i: u64 = 0; i < 8; i += 1) { line[i] = 65; }
+    n: u64 = 0;
+    for (i: u64 = 0; i < view.length; i += 1) { if (view[i] == 65) { n += 1; } }
+    return n;
+}
+
+main: proc() -> i32 = {
+    printfmt("{}\n", ok(cstr_of(line)));
+    return 0;
+}

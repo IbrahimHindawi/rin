@@ -354,4 +354,4 @@ day the first is wrong.
 Not a proof. It is an instance of a known system, regions with a lexical order plus liveness,
 which is what step 7 of the original order of work asked for and what the current checker cannot
 be. Not Rust: no ownership, no moves, no destructors, no `&mut`, no lifetime parameters to write.
-Not threads. And the trusted base, now 748 lines of std and the emitter, stays trusted by reading.
+Not threads. And the trusted base, now 329 lines of std and the emitter, stays trusted by reading.

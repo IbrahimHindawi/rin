@@ -44,25 +44,24 @@ file_stream: proc[unsafe](f: file) -> ^FILE = {
 }
 
 /* The zero `file` when it did not open, which is never open. */
-file_open: proc(path: ^const char, mode: ^const char) -> file = { unsafe {
+file_open: proc(path: ^const char, mode: ^const char) -> file = {
     result: file = {};
     if (path == null || mode == null) { return result; }
     for (i: u32 = 0; i < 256; i += 1) {
         if (file_table_stream[i] == null) {
-            stream: ^FILE = cast(fopen(path, mode), ^FILE);
-            if (stream == null) { return result; }
+            unsafe { file_table_stream[i] = cast(fopen(path, mode), ^FILE); }
+            if (file_table_stream[i] == null) { return result; }
             file_table_last[i] = 0;
-            file_table_stream[i] = stream;
             file_table_generation[i] += 1;
             result.slot = i;
             result.generation = file_table_generation[i];
             return result;
         }
     }
-    printf("rin runtime: more than 256 files open\n");
+    unsafe { printf("rin runtime: more than 256 files open\n"); }
     exit(1);
     return result;
-} }
+}
 
 /* Closing what is already closed does nothing. */
 file_close: proc(f: file) -> void = {

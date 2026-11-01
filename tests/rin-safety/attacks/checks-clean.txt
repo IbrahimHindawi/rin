@@ -261,3 +261,7 @@ r23a-002-unsafe-cast-raw-ptr-to-bare-launders-scratch-into-level.rin
 r25a-18-y4-oob-checked.rin
 r25a-19-y5-subrange.rin
 r25a-20-z-info-of-table.rin
+r25b-16-a-overwrite-terminator.rin
+r25b-17-b-through-a-pointer.rin
+r25b-18-c-through-a-global.rin
+r25b-19-d-held-in-the-callee.rin

@@ -1,0 +1,7 @@
+import "std/print.rin"
+import "std/hashmap.rin"
+import "std/cstr.rin"
+import "std/fmt.rin"
+thing: struct = { x: i64; }
+level: region global;
+main: proc() -> i32 = { m: *hashmap<i64, *thing in level> in level = hashmap<i64, *thing in level>make(level); s: []u8 = {}; a: []i64 = {}; b: []*thing in level = {}; hashmap<i64, *thing in level>rehash_(m, a, b, s); return 0; }

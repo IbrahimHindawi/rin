@@ -1,0 +1,15 @@
+// The smallest i32 and i64, each way they can be written: C has no literal for the smallest i64.
+import "std/print.rin"
+take: proc(x: i64) -> i64 = { return x; }
+small: const i64 = -9223372036854775807 - 1;
+main: proc() -> i32 = {
+    a: i64 = -9223372036854775807 - 1;
+    b: i64 = -9223372036854775807;
+    b -= 1;
+    c: i64 = -9223372036854775808;
+    d: i64 = small;
+    e: i32 = -2147483647 - 1;
+    f: i32 = -2147483648;
+    printfmt("{} {} {} {} {} {} {}\n", a, b, c, d, e, f, take(-9223372036854775807 - 1));
+    return 0;
+}

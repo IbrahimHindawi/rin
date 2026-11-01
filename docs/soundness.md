@@ -24,7 +24,14 @@ The patterns come from a shipped engine, and a feature earns its place by a patt
 Std's containers in the safe subset are `vec`, `table` and `hashmap`. `list`, `dlist`, `map`, `hashset`, `deque`,
 `stack`, `queue`, `heap`, `dsu`, `array` and the node types are `proc[unsafe]`: no safe program relies on them, so
 their bodies are not part of what the claim trusts. `python tests/rin_trusted_lines.py` counts what it does trust:
-the lines of `unsafe` that safe code can reach, following calls by name.
+the lines of `unsafe` that safe code can reach, following calls by name, now 329. What is left is what cannot be
+written otherwise: the arena, the allocations of the containers, and the calls to C. Strings, formatting,
+reflection and the map's probing are checked code, through a few views.
+
+A proc can be `proc[static]`, like a static global: it belongs to the file that declares it, and a body anywhere
+else may not name it. It is how a file keeps a helper that would break an invariant if anyone could call it: the
+map's views of its arrays reach slots nothing wrote, so they are `hashmap`'s alone. An `unsafe { }` block may still
+call one, and is then the author's.
 
 The generated C is GNU C, for clang and gcc: `__typeof__`, an empty struct and a zero-length array mean what
 those compilers define them to, and standard C does not cover them.
@@ -67,6 +74,8 @@ The argument rests on these and checks none of them:
 |---|---|---|
 | The bodies of `unsafe { }` in std | Every safe program inherits the bug | Count them: `tests/run_rin_vm.py` runs the attacks against them |
 | `proc[no_move]` in std | It says a trusted body moves nothing, so pointers taken before the call stay good. Only std may say it | Read `vec<T>at`, `last` and `items` |
+| A raw C string safe code holds is terminated | `cstr_view` measures it by reading to the terminator. It is a literal, a `str`, or what `cstr_of` found a terminator in; `cstr_of` as an argument is copied first, so nothing can write that terminator away | `cstr_view`, in `slicecore.rin` |
+| A `reflect` is as the compiler emitted it | The slices in `reflect_field_slice` and `reflect_value_slice` take their length from its count. Safe code cannot make, hold by value or change one | Those two procs |
 | C the program links, and calls from `unsafe` | Anything | Per program |
 | What a program says of C: `proc[external]`, `proc[external_emit]`, `struct[external]`, a global with no value, `cinclude` | No checker can see past a declaration. `free: proc[external](p: u64)` is callable from safe code, and is a lie | Per program; they are excluded from the claim above |
 | The checker and emitter in `src/main.c` | A rule below does not hold | About 26,000 lines |

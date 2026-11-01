@@ -1,0 +1,8 @@
+// A proc[static] is called like any other from the file that declares it, in a generic too.
+import "std/print.rin"
+twice: proc[static](x: i32) -> i32 = { return x * 2; }
+same: proc[static]<T>(x: T) -> T = { return x; }
+main: proc() -> i32 = {
+    printfmt("{} {}\n", twice(21), same<i32>(7));
+    return 0;
+}

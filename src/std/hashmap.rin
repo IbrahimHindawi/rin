@@ -52,30 +52,55 @@ hashmap<K, V>set: proc<K, V>(m: *hashmap<K, V>, key: K, value: V) -> *V = {
     unsafe { return hashmap<K, V>put(m*.arena[0]&, m, key, value); }
 }
 
-hashmap<K, V>find: proc<K, V>(m: *const hashmap<K, V>, key: K) -> u64 = { unsafe {
+/* The three arrays as slices of the capacity. These lines, and the allocation in hashmap<K, V>storage_, are the
+   map's whole trust: only this file sets the fields, so the capacity is the arrays'. Everything else is indexed.
+   They are static because of what else they can reach: a slot that is not in use holds bytes nothing wrote, and
+   only the procs here know which those are. */
+hashmap<K, V>keys_: proc[static, no_move]<K, V>(m: *const hashmap<K, V>) -> []K = {
+    out: []K = {};
+    if (m*.capacity > 0) {
+        unsafe { return m*.keys[0..m*.capacity]; }
+    }
+    return out;
+}
+
+hashmap<K, V>values_: proc[static, no_move]<K, V>(m: *const hashmap<K, V>) -> []V = {
+    out: []V = {};
+    if (m*.capacity > 0) {
+        unsafe { return m*.values[0..m*.capacity]; }
+    }
+    return out;
+}
+
+hashmap<K, V>states_: proc[static, no_move]<K, V>(m: *const hashmap<K, V>) -> []u8 = {
+    out: []u8 = {};
+    if (m*.capacity > 0) {
+        unsafe { return m*.states[0..m*.capacity]; }
+    }
+    return out;
+}
+
+hashmap<K, V>find: proc<K, V>(m: *const hashmap<K, V>, key: K) -> u64 = {
     if (m*.capacity == 0) {
         return 0;
     }
+    keys: []K = hashmap<K, V>keys_(m);
+    states: []u8 = hashmap<K, V>states_(m);
     mask: u64 = m*.capacity - 1;
     i: u64 = hash<K>(key) & mask;
-    while (m*.states[i] != 0) {
-        if (m*.states[i] == 1 && equal<K>(m*.keys[i], key)) {
-            return i;
+    while (states[i] != 0) {
+        if (states[i] == 1) {
+            held: K = keys[i];
+            if (equal<K>(held, key)) {
+                return i;
+            }
         }
         i = (i + 1) & mask;
     }
     return m*.capacity;
-} }
+}
 
-hashmap<K, V>grow: proc[unsafe]<K, V>(arena: *memops_arena, m: *hashmap<K, V>) -> void = {
-    old_keys: ^K = m*.keys;
-    old_values: ^V = m*.values;
-    old_states: ^u8 = m*.states;
-    old_capacity: u64 = m*.capacity;
-    capacity: u64 = 16;
-    while (capacity * 3 <= (m*.length + 1) * 8) {
-        capacity *= 2;
-    }
+hashmap<K, V>storage_: proc[unsafe]<K, V>(arena: *memops_arena, m: *hashmap<K, V>, capacity: u64) -> void = {
     m*.keys = cast(memops_arena_push(arena, memops_bytes(sizeof(K), capacity), alignof(K)), ^K);
     m*.values = cast(memops_arena_push(arena, memops_bytes(sizeof(V), capacity), alignof(V)), ^V);
     m*.states = cast(memops_arena_push_zero(arena, capacity, 1), ^u8);
@@ -85,19 +110,56 @@ hashmap<K, V>grow: proc[unsafe]<K, V>(arena: *memops_arena, m: *hashmap<K, V>) -
     }
     m*.capacity = capacity;
     m*.removed = 0;
-    mask: u64 = capacity - 1;
-    for (j: u64 = 0; j < old_capacity; j += 1) {
+}
+
+/* The live entries of the old arrays into the map's new, empty ones. */
+hashmap<K, V>rehash_: proc[static]<K, V>(m: *hashmap<K, V>, old_keys: []K, old_values: []V, old_states: []u8) -> void = {
+    keys: []K = hashmap<K, V>keys_(m);
+    values: []V = hashmap<K, V>values_(m);
+    states: []u8 = hashmap<K, V>states_(m);
+    mask: u64 = m*.capacity - 1;
+    for (j: u64 = 0; j < old_states.length; j += 1) {
         if (old_states[j] != 1) {
             continue;
         }
         i: u64 = hash<K>(old_keys[j]) & mask;
-        while (m*.states[i] != 0) {
+        while (states[i] != 0) {
             i = (i + 1) & mask;
         }
-        m*.keys[i] = old_keys[j];
-        m*.values[i] = old_values[j];
-        m*.states[i] = 1;
+        keys[i] = old_keys[j];
+        values[i] = old_values[j];
+        states[i] = 1;
     }
+}
+
+hashmap<K, V>grow: proc[unsafe]<K, V>(arena: *memops_arena, m: *hashmap<K, V>) -> void = {
+    old_keys: []K = hashmap<K, V>keys_(m);
+    old_values: []V = hashmap<K, V>values_(m);
+    old_states: []u8 = hashmap<K, V>states_(m);
+    capacity: u64 = 16;
+    while (capacity * 3 <= (m*.length + 1) * 8) {
+        capacity *= 2;
+    }
+    hashmap<K, V>storage_(arena, m, capacity);
+    hashmap<K, V>rehash_(m, old_keys, old_values, old_states);
+}
+
+/* Takes a slot for a key that is not in the map, which has room: its index. */
+hashmap<K, V>claim_: proc[static]<K, V>(m: *hashmap<K, V>, key: K) -> u64 = {
+    keys: []K = hashmap<K, V>keys_(m);
+    states: []u8 = hashmap<K, V>states_(m);
+    mask: u64 = m*.capacity - 1;
+    i: u64 = hash<K>(key) & mask;
+    while (states[i] == 1) {
+        i = (i + 1) & mask;
+    }
+    if (states[i] == 2) {
+        m*.removed -= 1;
+    }
+    keys[i] = key;
+    states[i] = 1;
+    m*.length += 1;
+    return i;
 }
 
 // The value slot for key, inserting a zeroed value when it is not there yet.
@@ -109,18 +171,8 @@ hashmap<K, V>slot: proc[unsafe]<K, V>(arena: *memops_arena, m: *hashmap<K, V>, k
     if ((m*.length + m*.removed + 1) * 4 > m*.capacity * 3) {
         hashmap<K, V>grow(arena, m);
     }
-    mask: u64 = m*.capacity - 1;
-    i: u64 = hash<K>(key) & mask;
-    while (m*.states[i] == 1) {
-        i = (i + 1) & mask;
-    }
-    if (m*.states[i] == 2) {
-        m*.removed -= 1;
-    }
-    m*.keys[i] = key;
+    i: u64 = hashmap<K, V>claim_(m, key);
     memset(m*.values[i]&, 0, sizeof(V));
-    m*.states[i] = 1;
-    m*.length += 1;
     return m*.values[i]&;
 }
 
@@ -135,7 +187,8 @@ hashmap<K, V>get: proc<K, V>(m: *const hashmap<K, V>, key: K) -> option<*V> = {
     if (i >= m*.capacity) {
         return null;
     }
-    unsafe { return m*.values[i]&; }
+    values: []V = hashmap<K, V>values_(m);
+    return values[i]&;
 }
 
 hashmap<K, V>get_or: proc<K, V>(m: *const hashmap<K, V>, key: K, fallback: V) -> V = {
@@ -143,7 +196,8 @@ hashmap<K, V>get_or: proc<K, V>(m: *const hashmap<K, V>, key: K, fallback: V) ->
     if (i >= m*.capacity) {
         return fallback;
     }
-    unsafe { return m*.values[i]; }
+    values: []V = hashmap<K, V>values_(m);
+    return values[i];
 }
 
 hashmap<K, V>has: proc<K, V>(m: *const hashmap<K, V>, key: K) -> b32 = {
@@ -155,7 +209,8 @@ hashmap<K, V>remove: proc<K, V>(m: *hashmap<K, V>, key: K) -> b32 = {
     if (i >= m*.capacity) {
         return 0;
     }
-    unsafe { m*.states[i] = 2; }
+    states: []u8 = hashmap<K, V>states_(m);
+    states[i] = 2;
     m*.length -= 1;
     m*.removed += 1;
     return 1;
@@ -170,12 +225,13 @@ hashmap<K, V>clear: proc<K, V>(m: *hashmap<K, V>) -> void = {
 }
 
 // The first occupied slot at or after i, or capacity when there is none.
-hashmap<K, V>scan: proc<K, V>(m: *const hashmap<K, V>, i: u64) -> u64 = { unsafe {
-    while (i < m*.capacity && m*.states[i] != 1) {
+hashmap<K, V>scan: proc<K, V>(m: *const hashmap<K, V>, i: u64) -> u64 = {
+    states: []u8 = hashmap<K, V>states_(m);
+    while (i < states.length && states[i] != 1) {
         i += 1;
     }
     return i;
-} }
+}
 
 /* The key and value in a live slot, for walking a map from safe code:
 
@@ -184,20 +240,24 @@ hashmap<K, V>scan: proc<K, V>(m: *const hashmap<K, V>, i: u64) -> u64 = { unsafe
        }
 
    Both are borrowed from the map: good until the next set or remove. */
-hashmap<K, V>key_at: proc<K, V>(m: *const hashmap<K, V>, i: u64) -> *const K = { unsafe {
-    if (i >= m*.capacity || m*.states[i] != 1) {
-        printf("rin runtime: hashmap slot is not in use\n");
+hashmap<K, V>key_at: proc<K, V>(m: *const hashmap<K, V>, i: u64) -> *const K = {
+    states: []u8 = hashmap<K, V>states_(m);
+    if (i >= states.length || states[i] != 1) {
+        unsafe { printf("rin runtime: hashmap slot is not in use\n"); }
         exit(1);
     }
-    return m*.keys[i]&;
-} }
-hashmap<K, V>value_at: proc<K, V>(m: *const hashmap<K, V>, i: u64) -> *V = { unsafe {
-    if (i >= m*.capacity || m*.states[i] != 1) {
-        printf("rin runtime: hashmap slot is not in use\n");
+    keys: []K = hashmap<K, V>keys_(m);
+    return keys[i]&;
+}
+hashmap<K, V>value_at: proc<K, V>(m: *const hashmap<K, V>, i: u64) -> *V = {
+    states: []u8 = hashmap<K, V>states_(m);
+    if (i >= states.length || states[i] != 1) {
+        unsafe { printf("rin runtime: hashmap slot is not in use\n"); }
         exit(1);
     }
-    return m*.values[i]&;
-} }
+    values: []V = hashmap<K, V>values_(m);
+    return values[i]&;
+}
 
 hashmap<K, V>first: proc<K, V>(m: *const hashmap<K, V>) -> u64 = {
     return hashmap<K, V>scan(m, 0);
