@@ -5,6 +5,21 @@ proof. Each section says what is claimed, which rule holds it up, and what that 
 To break the language, break an assumption or find a path the table misses, then see
 [attacks/README.md](../tests/rin-safety/attacks/README.md).
 
+## What is promised
+
+The promise is Rust's, and it is a definition: **any program `rin check` accepts, with no `unsafe`, `[external]` or
+`cinclude` of its own, that commits a memory error is a bug in rin**, however contrived the program is. Nothing is out
+of scope for being hostile.
+
+That says what counts as a bug. It does not say none are left:
+
+- What is known to be open is in [known-holes.md](known-holes.md). What could be hit by code written in good faith is
+  fixed first, and what takes a deliberate attack is fixed or listed there.
+- This is young and has not been tested by anyone outside the project. Every attack round so far has been run from
+  inside it, and most have found something. Build with the sanitizers while developing.
+- rin is not a sandbox. Do not compile source you do not trust.
+- It covers the code outside `unsafe`. An engine's boundary with C and the C it links are checked only by reading them.
+
 ## What safe rin is for
 
 Safe rin does not try to make any program safe. It makes one way of programming safe, the way
