@@ -1,0 +1,21 @@
+// The same over-promotion by the natural idiom the prompt names, "a raw pointer cast back to checked".
+// `raw: ^i32 = cast(q, ^i32)` makes raw hold a scratch address (sh_assign_value gives a raw dest
+// {permanent}, but that is only the raw local's own word). Reading it back needs a cast raw->checked;
+// `cast(raw, *i32)` -- a region-LESS target -- hits the same Expr_Cast branch and yields {permanent},
+// discarding the scratch provenance the checker could have kept. `r` (typed `in level`) accepts it and
+// is returned. At run time r points into the poisoned scratch block.
+// Expect: ASan use-after-poison on deref of the returned pointer.
+import "std/print.rin"
+level: region global;
+leak: proc() -> *i32 in level = {
+    r: *i32 in level = new<i32>(level, 0);
+    scratch {
+        q: *i32 in scratch = new<i32>(scratch, 5);
+        unsafe {
+            raw: ^i32 = cast(q, ^i32);
+            r = cast(raw, *i32);
+        }
+    }
+    return r;
+}
+main: proc() -> i32 = { printfmt("{}\n", leak()*); return 0; }

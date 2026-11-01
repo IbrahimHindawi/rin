@@ -16963,8 +16963,6 @@ typedef struct Borrow {
     Vec_string8 regions; // the regions it was made in: gone when their block ends
     bool dead;
     bool movable;        // into storage that may move: a call's result, not a fixed array or a region's slice
-    bool retaken;        // assigned since it was declared: for a parameter, no longer what the caller passed
-    bool scope_killed;   // died because a block or a region ended, which comes round again in a loop
 } Borrow;
 
 static Vec_voidptr g_borrows; // Borrow*, the current proc's
@@ -17172,7 +17170,6 @@ static void borrow_register(string8 name, Expr *init, TypeScope *scope, Program 
 }
 
 
-static bool g_leaving_scope = false;
 static memops_arena *g_borrow_arena;
 
 /* `pq = q&`: what q holds is read through pq, so when q's target ends, pq has nothing good either. */
@@ -17241,8 +17238,6 @@ static void borrow_retake(string8 name, Expr *init, TypeScope *scope, Program *p
         string8_vec_union(arena, &b->regions, &old_regions);
     }
     b->dead = false;
-    b->retaken = true;
-    b->scope_killed = false;
     b->movable = expr_may_be_moved(init, scope, prog, arena, 0);
 }
 
@@ -17295,9 +17290,9 @@ static void borrow_kill_written(string8 written) {
     if (written.length == 0) return;
     for (i32 i = 0; i < g_borrows.length; i++) {
         Borrow *b = (Borrow *)g_borrows.data[i];
-        if (b->dead && !g_leaving_scope) continue;
+        if (b->dead) continue;
         for (i32 j = 0; j < b->paths.length; j++) {
-            if (path_has_prefix(b->paths.data[j], written)) { b->dead = true; b->scope_killed = b->scope_killed || g_leaving_scope; break; }
+            if (path_has_prefix(b->paths.data[j], written)) { b->dead = true; break; }
         }
     }
 }
@@ -17503,7 +17498,7 @@ static void string8_vec_union(memops_arena *arena, Vec_string8 *into, Vec_string
 /* Branches: what either branch kills stays dead after; what a branch brings
    back does not. */
 typedef struct BorrowState { i32 length; Vec_i32 dead; Vec_voidptr saved; } BorrowState;
-typedef struct BorrowSaved { Vec_string8 paths; Vec_string8 regions; bool movable; bool scope_killed; } BorrowSaved;
+typedef struct BorrowSaved { Vec_string8 paths; Vec_string8 regions; bool movable; } BorrowSaved;
 
 static void string8_vec_union(memops_arena *arena, Vec_string8 *into, Vec_string8 *from) {
     for (i32 i = 0; i < from->length; i++) {
@@ -17517,19 +17512,16 @@ static void borrow_set_union(i32 i, BorrowState **states, i32 count, memops_aren
     Vec_string8 paths = Vec_string8_reserve(arena, 2);
     Vec_string8 regions = Vec_string8_reserve(arena, 1);
     bool movable = false;
-    bool scope_killed = false;
     for (i32 s = 0; s < count; s++) {
         if (!states[s] || i >= states[s]->length) continue;
         BorrowSaved *saved = (BorrowSaved *)states[s]->saved.data[i];
         string8_vec_union(arena, &paths, &saved->paths);
         string8_vec_union(arena, &regions, &saved->regions);
         movable = movable || saved->movable;
-        scope_killed = scope_killed || saved->scope_killed;
     }
     b->paths = paths;
     b->regions = regions;
     b->movable = movable;
-    b->scope_killed = scope_killed;
 }
 
 static BorrowState borrows_save(memops_arena *arena) {
@@ -17543,7 +17535,6 @@ static BorrowState borrows_save(memops_arena *arena) {
         saved->paths = b->paths;
         saved->regions = b->regions;
         saved->movable = b->movable;
-        saved->scope_killed = b->scope_killed;
         ptr_array_append(arena, &st.saved, saved);
     }
     for (i32 i = 0; i < g_borrows.length; i++) Vec_i32_append(arena, &st.dead, ((Borrow *)g_borrows.data[i])->dead ? 1 : 0);
@@ -17559,7 +17550,6 @@ static void borrows_restore(BorrowState *st) {
         b->paths = saved->paths;
         b->regions = saved->regions;
         b->movable = saved->movable;
-        b->scope_killed = saved->scope_killed;
     }
 }
 
@@ -19997,7 +19987,6 @@ typedef struct Sh {
     ShScope *names; TypeScope *types; i32 block; bool in_unsafe;
     ShSet *in_state;     // [node][track]
     ShSet *live_in;      // [node], bits are tracks
-    ShSet always_live;   // tracks whose address is taken: read through it, whenever
     bool too_big;
 } Sh;
 
@@ -20522,8 +20511,9 @@ static void sh_value_regions(Sh *sh, ShNode *n, ShSet *state, Expr *e, ShSet *ou
             TypeExpr *to = resolve_alias_type(prog, e->cast_type ? e->cast_type : infer_expr_type(e, n->types, prog, sh->arena));
             if (n->in_unsafe && to && (to->kind == Type_Ptr || type_slice_elem(to))) {
                 i32 named = sh_type_atom(sh, to, at);
-                shset_add(out, named >= 0 ? named : sh->permanent_atom);
-                return;
+                if (named >= 0) { shset_add(out, named); return; }
+                if (to->kind == Type_Ptr && to->is_raw) { shset_add(out, sh->permanent_atom); return; }
+                /* A cast to a bare checked pointer says nothing about the region: the operand's stands. */
             }
             sh_value_regions(sh, n, state, e->inner, out, depth + 1);
             return;
@@ -20760,7 +20750,6 @@ static void sh_check_call_visit(Expr *e, void *ctx, memops_arena *arena) {
 static void sh_live_out(Sh *sh, i32 i, ShSet *out) {
     ShNode *n = (ShNode *)sh->nodes.data[i];
     memset(out, 0, sizeof(*out));
-    shset_union(out, &sh->always_live);
     if (n->next >= 0) shset_union(out, &sh->live_in[n->next]);
     if (n->alt >= 0) shset_union(out, &sh->live_in[n->alt]);
     for (i32 k = 0; k < n->more.length; k++) if (n->more.data[k] >= 0) shset_union(out, &sh->live_in[n->more.data[k]]);

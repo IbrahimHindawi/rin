@@ -113,8 +113,9 @@ Next, in the order that pays:
 2. Strangers, in a VM. The crash-containment test is off the list, by the user's decision.
 3. Threads, last.
 
-Twenty-two attack rounds have run. Rounds five to twenty each found dozens of holes in the old rules, all closed. Against the
-second pass: round 21 found six (two causes, closed) and none in std; round 22 found six outside the claim (an `unsafe` block
-weakening the checks around it, closed) and none in eleven realistic programs. The rounds have converged; keep running them.
+Twenty-three attack rounds have run. Rounds five to twenty each found dozens of holes in the old rules, all closed. Against the
+second pass: round 21 found six (two causes, closed) and none in std; rounds 22 and 23 found nothing inside the claim in
+fifty-one realistic programs and two rounds on the pass, and ten programs outside it (an `unsafe` block weakening the checks
+around it, closed). The rounds have converged; keep running them, and the checked build (`regions-v2.md`) is the next step.
 Run a fresh round per new rule, and `tests/gen_rin_safe.py` with `run_rin_vm.py --compare`. Verify with a script
 that fails on a missing line or a skipped program: a filtered log hid a failing suite here twice.

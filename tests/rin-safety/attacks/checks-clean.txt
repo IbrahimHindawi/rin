@@ -257,3 +257,4 @@ r22b-008-parser-ast-root.rin
 r22b-009-text-layout-run.rin
 r22b-010-asset-stream-staged.rin
 r22b-011-streaming-reset-staging.rin
+r23a-002-unsafe-cast-raw-ptr-to-bare-launders-scratch-into-level.rin

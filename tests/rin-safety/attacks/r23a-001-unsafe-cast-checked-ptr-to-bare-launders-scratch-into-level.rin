@@ -1,0 +1,19 @@
+// sh_value_regions' Expr_Cast in_unsafe branch: a cast to a pointer type with NO region (`*i32`,
+// region-less) sets named<0 and returns {permanent}, the longest lifetime -- instead of inferring
+// the operand's region as the design's "a bare *T is a region the checker works out" requires (and
+// as the r22a assignment fix now does for `p = q`). So `r = cast(q, *i32)` inside unsafe promotes r
+// from {scratch} to {permanent}; the cast exists only because pointer->pointer casts need unsafe, yet
+// it silently relaxes the SURROUNDING checked code. `return r` (typed `in level`) then passes. At run
+// time r points into scratch, poisoned when the block ends; main dereferences the dangling result.
+// Expect: ASan use-after-poison (heap-use-after-free on the poisoned scratch arena page).
+import "std/print.rin"
+level: region global;
+leak: proc() -> *i32 in level = {
+    r: *i32 in level = new<i32>(level, 0);
+    scratch {
+        q: *i32 in scratch = new<i32>(scratch, 5);
+        unsafe { r = cast(q, *i32); }
+    }
+    return r;
+}
+main: proc() -> i32 = { printfmt("{}\n", leak()*); return 0; }

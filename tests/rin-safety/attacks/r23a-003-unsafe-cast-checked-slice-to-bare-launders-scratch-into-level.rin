@@ -1,0 +1,16 @@
+// The over-promotion is not pointer-specific: the Expr_Cast in_unsafe branch takes type_slice_elem(to)
+// too, so a cast to a region-LESS slice `[]i32` also returns {permanent}. `r = cast(q, []i32)` inside
+// unsafe launders a scratch slice to {permanent}; `r` typed `[]i32 in level` accepts it and is returned.
+// At run time the slice's data points into the poisoned scratch block, and main reads xs[0].
+// Expect: ASan use-after-poison on the slice read.
+import "std/print.rin"
+level: region global;
+leak: proc() -> []i32 in level = {
+    r: []i32 in level = new_slice<i32>(level, 2);
+    scratch {
+        q: []i32 in scratch = new_slice<i32>(scratch, 2);
+        unsafe { r = cast(q, []i32); }
+    }
+    return r;
+}
+main: proc() -> i32 = { xs: []i32 in level = leak(); printfmt("{}\n", xs[0]); return 0; }

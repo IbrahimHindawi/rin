@@ -1,0 +1,22 @@
+// The laundered pointer reaches a real heap container, not just a return slot. `cast(q, *i32)` inside
+// unsafe yields {permanent} (region-less cast target, same Expr_Cast branch), so it passes the argument
+// check of `vec<*i32 in level>push` -- which demands a value outliving level -- although q is a scratch
+// pointer. The scratch address is stored into a vec that lives in level and survives the block. After
+// scratch ends, reading element 0 of the returned vec dereferences the dangling pointer.
+// Expect: ASan use-after-poison on `vec<..>at(v, 0)**`.
+import "std/print.rin"
+import "std/vec.rin"
+level: region global;
+leak: proc() -> *vec<*i32 in level> in level = {
+    v: *vec<*i32 in level> in level = vec<*i32 in level>make(level, 4);
+    scratch {
+        q: *i32 in scratch = new<i32>(scratch, 5);
+        unsafe { vec<*i32 in level>push(v, cast(q, *i32)); }
+    }
+    return v;
+}
+main: proc() -> i32 = {
+    v: *vec<*i32 in level> in level = leak();
+    printfmt("{}\n", vec<*i32 in level>at(v, 0)**);
+    return 0;
+}

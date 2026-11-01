@@ -290,6 +290,20 @@ every shape it could think of. All eleven ran clean in the VM: such a global mus
 region's end empties it, so the read is a checked stop. They are in the corpus as clean by design. Its
 complaint that a table of proc pointers was refused as a carrier was right, and is fixed: code has no region.
 
+Round 23's realistic attacker, told to stay away from that family, built forty programs across level reloads
+through calls, bare results redirected through globals and statics, generics instantiated with two regions,
+proc-pointer tables, array views and copies, loops of every shape, aggregates by value and names kept in
+tables, and filed none: everything was refused, or safe by construction where it was accepted. Its friction
+report is about spelling, not safety: `level: region global;`, `level: region;` opened by a block, and
+`r: region R` are three things with overlapping syntax, and a bare struct field cannot take a region
+parameter's region, so the field must say `*T in R` itself.
+
+Round 23's attacker on the pass found one more slip in the unsafe model: a cast inside `unsafe` to a checked
+pointer that names no region took the value for permanent, where a bare `*T` says nothing about the region
+and the operand's stands. Three programs closed; the fourth launders through a raw pointer, which inside
+`unsafe` is the author's word, and stays clean by design. Everything else it pushed on held: bare struct
+fields, address edges at two levels, region variables bound to `scratch`, elision through std, array copies.
+
 ## Explicit C
 
 Round 17's emitter bugs were C's promotion rules deciding what rin had already decided. The emitter now
@@ -297,24 +311,22 @@ casts both operands of every operation whose type rin knows to that type before 
 (`emit_binary_expr`, `typed`), so `u8 | i8` is computed as `u8`, and a shift's left operand is its own
 width. What C still decides: an operation on an enum or a C typedef, where rin has no width to name.
 
-## The checked build, as planned
+## The checked build
 
-Defence in depth for what no round has found. In a checked build (`RIN_CHECKED`, the build the engine runs
-in debug), every checked pointer and slice carries two words beside its address: the id of the region it
-points into and that region's epoch at the time it was made. A region's epoch is a counter in its arena,
-bumped by `reset` and by a block's end for a region the block opened. A dereference or an index compares the
-pointer's epoch with the region's current one, and stops the program with the pointer's origin when they
-differ. The stack is region 0 with the frame's depth as its epoch, so a dangling pointer to a local stops too.
+Defence in depth for what no round has found. The first plan here was a two-word pointer, address plus
+region tag, in checked builds; the engine rules it out, since structs with pointer fields cross the C
+boundary to Win32 and D3D11 as they are. What the sanitizer build already does is most of a checked build:
+every arena is poisoned when it ends, so a pointer into an ended region stops the program with the pointer's
+origin, and the stack is covered by use-after-return and use-after-scope. The gap is a region *reused* after
+`reset`: the next allocations land where the old ones were, and a stale pointer reads fresh objects of
+another type with no complaint.
 
-What it needs in the emitter: a `rin_ptr<T>` representation for `*T`, `option<*T>` and `[]T` in checked
-builds, set where pointers are made (`new`, `new_slice`, `x&`, a subrange, a `vec` or `table` accessor's
-result in std, a region's `make`), read where they are used (deref, index, the slice's data for C), and
-unwrapped at every external call and at every `^T` conversion. What it costs: two words per pointer and a
-compare per dereference, in checked builds only; release builds keep plain pointers. What it does not
-cover: raw pointers, and anything an external proc keeps.
-
-It is not a replacement for the pass: the pass refuses at compile time, the checked build stops at run
-time, and the second is there for the day the first is wrong.
+The checked build closes that with a quarantine, in the arena and only under the sanitizer: a cleared
+region does not hand out its old range again until the arena has moved on by a budget, so a stale pointer
+into it meets poison for as long as the budget lasts, and the arena wraps to its base when the reservation
+would run out. No type changes, no ABI change, release builds untouched. It is not a replacement for the
+pass: the pass refuses at compile time, the checked build stops at run time, and the second is there for the
+day the first is wrong.
 
 ## What this still is not
 
