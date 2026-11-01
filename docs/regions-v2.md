@@ -371,9 +371,12 @@ here rather than called done: `sizeof` of a static proc's call, `reflect<>&` and
 a generic argument, specialising `vec<T>resize`, a plain proc colliding with a generated instance, and a compound literal in a `for` or
 `do` condition.
 
-The name rules are a family: a local hiding a proc, an enum member, a type, a generated type. They exist because a
-rin local is a C local of the same name. Emitting locals under a prefix of their own would remove the family, at
-the cost of the names a debugger shows. That has not been done.
+The name rules were a family: a local hiding a proc, an enum member, a type, a generated type. They existed because
+a rin local was a C local of the same name, and rounds 26, 27 and 28 each found another member. A local is `name__`
+in C now, and a program's own names may not end that way, so the family is gone: the rules were deleted, and every
+attack program that had been refused by one was run in the VM and found harmless. The cost is the name a debugger
+shows. What is left of the family is what the compiler itself reads by name, `printfmt`, `unwrap` and so on, which a
+program may not take; and a name at file scope, which shares the linker's namespace with the C library.
 
 ## What this still is not
 

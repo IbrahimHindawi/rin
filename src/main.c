@@ -16786,47 +16786,15 @@ static void safety_check_directive_lines(Program *prog, Vec_string8 *lines, cons
 }
 
 /* `vec<T>at` is `vec_i32_at` in C, and `hash<T>` is `hash_i32`. */
-static bool name_is_generated_proc(Program *prog, string8 name, memops_arena *arena) {
-    for (i32 i = 0; i < prog->procs.length; i++) {
-        ProcDecl *p = (ProcDecl *)prog->procs.data[i];
-        if (!p->is_generic) continue;
-        u64 at = p->name.length;
-        for (u64 k = 0; k < p->name.length; k++) {
-            if (p->name.data[k] == '@') { at = k; break; }
-        }
-        u64 tail = at < p->name.length ? p->name.length - at - 1 : 0;
-        if (name.length < at + tail + 2 || memcmp(name.data, p->name.data, at) != 0 || name.data[at] != '_') continue;
-        if (tail > 0) {
-            if (memcmp(name.data + name.length - tail, p->name.data + at + 1, tail) == 0 && name.data[name.length - tail - 1] == '_') return true;
-        } else {
-            string8 rest = { .data = name.data + at + 1, .length = name.length - at - 1 };
-            if (name_is_type(prog, rest, arena)) return true;
-        }
-    }
-    return false;
-}
 
 static void safety_check_local_name(Program *prog, string8 name, i32 line, i32 col, memops_arena *arena) {
     if (!g_safety || g_checking_std || name.length == 0) return;
     const char *why = null;
     if (string8_equals_cstr(&name, "exit") || string8_equals_cstr(&name, "abort")) {
         why = "is how the checker knows a branch does not come back";
-    } else if (name_is_runtime(name)) why = "belongs to rin's runtime, which the generated C calls by name";
-    else if (name_is_enum_member(prog, name)) why = "is what the generated C calls an enum's member, and an array's length may be spelled with it";
-    else if (name_is_type(prog, name, arena)) why = "is a type, and the generated C spells the type by name wherever it needs its size";
-    else if (name_is_generated_type(prog, name, arena)) why = "is what the generated C calls a type";
-    else if (name_is_generated_proc(prog, name, arena)) why = "is what the generated C may call a generic proc";
+    }
     else if (string8_ends_with_cstr(name, "_reflect")) why = "is what the generated C calls a type's reflection table";
     else if (name_is_compilers(name)) why = "is read by name as rin's own";
-    else if (string8_equals_cstr(&name, "print_enum") || (lookup_proc_decl(prog, name) && lookup_proc_decl(prog, name)->specialized_from.length > 0)) why = "is a proc the generated C calls by name";
-    else {
-        for (i32 i = 0; i < prog->globals.length; i++) {
-            Stmt *g = (Stmt *)prog->globals.data[i];
-            if (string8_equals(&g->name, &name) && g->type && g->type->is_const) {
-                why = "is a constant, and an array's length may be spelled with it";
-            }
-        }
-    }
     if (why) {
         char message[320];
         snprintf(message, sizeof(message), "'%.*s' %s; call the local something else", (int)name.length, name.data, why);

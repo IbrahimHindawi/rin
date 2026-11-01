@@ -142,6 +142,10 @@ only be read by std's readers, with no call that could write beside it in any pl
 (`safety_check_open_cstr`). A proc of the program's own takes a `[]const c8` instead, which has a length to stop
 at. This used to ask whether such a proc could write the buffer, and that question had holes (round 25).
 
+A local or parameter `x` is `x__` in C, and a program's own names may not end in two underscores, so a local cannot
+hide anything the generated C says by name. What the checker or the generated C reads by name, `printfmt`, `unwrap`,
+`new`, `cstr_of`, `print_cstr`, `print_enum`, is not a program's to name.
+
 What answers for a type operation is what was declared to: `hash: proc<ky>` answers for `hash<ky>`, and a plain
 proc only spelled `hash_ky` does not, for `printfmt`'s `print` as well. A value with no designator may not follow
 one with a designator.

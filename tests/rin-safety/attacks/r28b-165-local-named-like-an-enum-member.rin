@@ -1,0 +1,6 @@
+// Was refused: a local hid this name in C. A local is name__ now, so it is harmless, and the VM says so.
+E: enum = { one = 1, }
+main: proc() -> i32 = {
+    E_one: u64 = 100000;
+    return cast(E_one, i32);
+}

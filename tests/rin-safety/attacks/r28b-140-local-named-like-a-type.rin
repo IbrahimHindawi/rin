@@ -1,0 +1,5 @@
+// Was refused: a local hid this name in C. A local is name__ now, so it is harmless, and the VM says so.
+main: proc() -> i32 = {
+    i64: u8 = 1;
+    return cast(i64, i32);
+}
