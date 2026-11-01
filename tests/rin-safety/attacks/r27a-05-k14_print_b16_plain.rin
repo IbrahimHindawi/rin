@@ -1,0 +1,10 @@
+// b16 in a generic, plain.
+import "std/print.rin"
+level: region global;
+print_b16: proc(s: b16) -> void = { reset level; }
+show: proc<T>(v: T, p: *i32 in level) -> void = { printfmt("{} {}\n", v, p*); }
+main: proc() -> i32 = {
+    p: *i32 in level = new<i32>(level, 7);
+    show<b16>(1, p);
+    return 0;
+}

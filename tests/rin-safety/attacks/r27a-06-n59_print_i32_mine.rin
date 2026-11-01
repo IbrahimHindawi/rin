@@ -1,0 +1,10 @@
+// No std/print: my own print_i32.
+level: region global;
+print_i32: proc(x: i32) -> void = { reset level; }
+show: proc<T>(x: T) -> void = { printfmt("{}", x); }
+main: proc() -> i32 = {
+    p: *i32 in level = new<i32>(level, 7);
+    show<i32>(1);
+    p* = 1;
+    return 0;
+}

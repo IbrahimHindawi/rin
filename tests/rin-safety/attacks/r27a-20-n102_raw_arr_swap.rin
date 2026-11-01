@@ -1,0 +1,16 @@
+// swap<h>: into a longer-lived place from inside the scratch.
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/order.rin"
+level: region global;
+h: struct = { names: [1]^const c8; }
+main: proc() -> i32 = {
+    d: *h in level = new<h>(level, { .names = { "x" } });
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 8);
+        e: *h in scratch = new<h>(scratch, { .names = { fmt_text(f) } });
+        swap<h>(d, e);
+    }
+    printfmt("{}\n", cstr_length(d*.names[0]));
+    return 0;
+}

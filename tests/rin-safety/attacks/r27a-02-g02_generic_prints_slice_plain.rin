@@ -1,0 +1,13 @@
+// T = []S.
+import "std/print.rin"
+S: struct = { x: i32; }
+level: region global;
+print_slice_S: proc(s: []S) -> void = { reset level; }
+show: proc<T>(v: T, p: *i32 in level) -> void = { printfmt("{} {}\n", v, p*); }
+main: proc() -> i32 = {
+    a: [1]S = { { .x = 1 } };
+    b: []S = a;
+    p: *i32 in level = new<i32>(level, 7);
+    show<[]S>(b, p);
+    return 0;
+}

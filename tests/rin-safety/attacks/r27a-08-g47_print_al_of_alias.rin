@@ -1,0 +1,14 @@
+// Two aliases deep, and a generic struct alias.
+import "std/print.rin"
+box: struct<T> = { x: T; }
+al: alias = box<i32>;
+al2: alias = al;
+level: region global;
+print: proc<box<T>>(s: box<T>) -> void = { }
+print_al2: proc(s: al2) -> void = { reset level; }
+main: proc() -> i32 = {
+    a: al2 = { .x = 1 };
+    p: *i32 in level = new<i32>(level, 7);
+    printfmt("{} {}\n", a, p*);
+    return 0;
+}

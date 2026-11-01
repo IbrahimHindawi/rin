@@ -1,0 +1,16 @@
+// A map's value.
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/hashmap.rin"
+level: region global;
+h: struct = { names: [1]^const c8; }
+main: proc() -> i32 = {
+    m: *hashmap<i32, h> in level = hashmap<i32, h>make(level);
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 8);
+        hashmap<i32, h>set(m, 1, { .names = { fmt_text(f) } });
+    }
+    o: option<*h> = hashmap<i32, h>get(m, 1);
+    if (o) { printfmt("{}\n", cstr_length(o*.names[0])); }
+    return 0;
+}

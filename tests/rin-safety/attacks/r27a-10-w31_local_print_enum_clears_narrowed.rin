@@ -1,0 +1,15 @@
+// A local proc pointer named print_enum: printfmt's generated call finds it, no print is the program's, a narrowed global goes null.
+import "std/print.rin"
+level: region global;
+E: enum = { one }
+n: struct = { p: option<*i32 in level>; }
+g: n = { .p = null };
+wipe: proc(t: *const reflect, v: i32) -> void = { g.p = null; }
+main: proc() -> i32 = {
+    print_enum: *proc(t: *const reflect, v: i32) -> void = wipe;
+    g.p = new<i32>(level, 7);
+    if (g.p) {
+        printfmt("{} {}\n", E.one, g.p*);
+    }
+    return 0;
+}

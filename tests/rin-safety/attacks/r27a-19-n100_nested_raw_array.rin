@@ -1,0 +1,16 @@
+// Two arrays deep, and through a nested struct: raw hidden deeper.
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/vec.rin"
+level: region global;
+i1: struct = { names: [1][1]^const c8; }
+i2: struct = { a: i1; }
+main: proc() -> i32 = {
+    v: *vec<i2> in level = vec<i2>make(level, 2);
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 8);
+        vec<i2>push(v, { .a = { .names = { { fmt_text(f) } } } });
+    }
+    printfmt("{}\n", cstr_length(vec<i2>at(v, 0)*.a.names[0][0]));
+    return 0;
+}

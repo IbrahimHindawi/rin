@@ -1,0 +1,18 @@
+// option<h>some, unwrap and a return.
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/option.rin"
+h: struct = { names: [1]^const c8; }
+mk: proc() -> option<h> = {
+    out: option<h> = option<h>none();
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 8);
+        out = option<h>some({ .names = { fmt_text(f) } });
+    }
+    return out;
+}
+main: proc() -> i32 = {
+    y: option<h> = mk();
+    printfmt("{}\n", cstr_length(y.value.names[0]));
+    return 0;
+}

@@ -1,0 +1,16 @@
+// A local proc pointer named as print's instance for a raw C string: cstr_of goes to the program's own proc.
+import "std/print.rin"
+import "std/cstr.rin"
+level: region global;
+E: enum = { one }
+gb: []c8 in level = {};
+bad: proc(s: ^const c8) -> void = {
+    for (i: u64 = 0; i < gb.length; i += 1) { gb[i] = 65; }
+    printfmt("{}\n", cstr_length(s));
+}
+main: proc() -> i32 = {
+    print_raw_const_c8: *proc(s: ^const c8) -> void = bad;
+    gb = new_slice<c8>(level, 8);
+    printfmt("{} {}\n", E.one, cstr_of(gb));
+    return 0;
+}

@@ -1,0 +1,14 @@
+// A pointer to cstr_of.
+import "std/print.rin"
+import "std/cstr.rin"
+level: region global;
+bad: proc(s: ^const c8, buf: []c8) -> u64 = {
+    for (i: u64 = 0; i < buf.length; i += 1) { buf[i] = 65; }
+    return cstr_length(s);
+}
+main: proc() -> i32 = {
+    a: []c8 in level = new_slice<c8>(level, 8);
+    f: *proc(c: []const c8) -> ^const c8 = cstr_of;
+    printfmt("{}\n", bad(f(a), a));
+    return 0;
+}

@@ -1,0 +1,17 @@
+// sort over h: comparator reads raw; lower_bound(x).
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/sort.rin"
+level: region global;
+h: struct = { names: [1]^const c8; }
+main: proc() -> i32 = {
+    d: []h in level = new_slice<h>(level, 1);
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 8);
+        s: []h in scratch = new_slice<h>(scratch, 2);
+        s[1].names[0] = fmt_text(f);
+        d[0] = s[1];
+    }
+    printfmt("{}\n", cstr_length(d[0].names[0]));
+    return 0;
+}

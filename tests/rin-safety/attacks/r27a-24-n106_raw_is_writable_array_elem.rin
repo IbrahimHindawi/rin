@@ -1,0 +1,19 @@
+// Raw through a [N]^ of c8 with an index read from one, passed to cstr_view: a kept view.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region global;
+h: struct = { names: [1]^const c8; }
+main: proc() -> i32 = {
+    d: []h in level = new_slice<h>(level, 1);
+    out: []const c8 = {};
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 8);
+        fmt_cstr(f, "abc");
+        s: []h in scratch = new_slice<h>(scratch, 1);
+        s[0].names[0] = fmt_text(f);
+        d[0] = s[0];
+    }
+    out = cstr_view(d[0].names[0]);
+    printfmt("{}\n", out.length);
+    return 0;
+}

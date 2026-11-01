@@ -1,0 +1,16 @@
+// A value holding an array of raw, in a local, pushed.
+import "std/print.rin"
+import "std/fmt.rin"
+import "std/vec.rin"
+level: region global;
+h: struct = { names: [1]^const c8; }
+main: proc() -> i32 = {
+    v: *vec<h> in level = vec<h>make(level, 2);
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 8);
+        x: h = { .names = { fmt_text(f) } };
+        vec<h>push(v, x);
+    }
+    printfmt("{}\n", cstr_length(vec<h>at(v, 0)*.names[0]));
+    return 0;
+}

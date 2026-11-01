@@ -1,0 +1,15 @@
+// A proc makes the value, and its result's memory is not known to the caller: result of a call with no pointer in its signature's view.
+import "std/print.rin"
+import "std/fmt.rin"
+level: region global;
+h: struct = { names: [1]^const c8; }
+mk: proc(f: *const fmt) -> h = { x: h = { .names = { fmt_text(f) } }; return x; }
+g: h = { .names = { "x" } };
+main: proc() -> i32 = {
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 8);
+        g = mk(f);
+    }
+    printfmt("{}\n", cstr_length(g.names[0]));
+    return 0;
+}

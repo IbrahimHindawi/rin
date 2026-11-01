@@ -18,12 +18,12 @@ file_table_generation: static [256]u32 = {};
 /* What was done last to each stream: C wants a seek or a flush between a read and a write. */
 file_table_last: static [256]u8 = {};
 
-file_about_to_read: proc(f: file) -> void = {
+file_about_to_read: proc[static](f: file) -> void = {
     if (f.slot < 256 && file_table_last[f.slot] == 2) { unsafe { fflush(cast(file_stream(f), *FILE)); } }
     if (f.slot < 256) { file_table_last[f.slot] = 1; }
 }
 
-file_about_to_write: proc(f: file) -> void = {
+file_about_to_write: proc[static](f: file) -> void = {
     if (f.slot < 256 && file_table_last[f.slot] == 1) { unsafe { fseek(cast(file_stream(f), *FILE), 0, 1); } }
     if (f.slot < 256) { file_table_last[f.slot] = 2; }
 }

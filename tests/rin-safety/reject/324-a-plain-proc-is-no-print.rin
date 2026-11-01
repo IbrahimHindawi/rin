@@ -1,4 +1,4 @@
-// expect: printfmt has no print for this type
+// expect: a proc is spelled like the print of this type
 // print_S is spelled like what printfmt would call, and is no print: no rule about prints would look at it.
 import "std/print.rin"
 S: struct = { x: i32; }

@@ -1,0 +1,15 @@
+// In a struct's field.
+import "std/print.rin"
+import "std/cstr.rin"
+level: region global;
+ops: struct = { of: *proc(c: []const c8) -> ^const c8; }
+bad: proc(s: ^const c8, buf: []c8) -> u64 = {
+    for (i: u64 = 0; i < buf.length; i += 1) { buf[i] = 65; }
+    return cstr_length(s);
+}
+main: proc() -> i32 = {
+    a: []c8 in level = new_slice<c8>(level, 8);
+    o: ops = { .of = cstr_of };
+    printfmt("{}\n", bad(o.of(a), a));
+    return 0;
+}

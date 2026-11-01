@@ -1,0 +1,13 @@
+// A real print for S, and an alias of S: C calls print_al.
+import "std/print.rin"
+S: struct = { x: i32; }
+al: alias = S;
+level: region global;
+print: proc<S>(s: S) -> void = { printfmt("{}", s.x); }
+print_al: proc(s: al) -> void = { reset level; }
+main: proc() -> i32 = {
+    a: al = { .x = 1 };
+    p: *i32 in level = new<i32>(level, 7);
+    printfmt("{} {}\n", a, p*);
+    return 0;
+}

@@ -1,0 +1,22 @@
+// cstr_of(array)'s private copy, kept in a vec from a callee: past the frame.
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/vec.rin"
+level: region global;
+h: struct = { names: [1]^const c8; }
+put: proc(v: *vec<h>) -> void = {
+    line: [8]c8 = { 65, 0, 0, 0, 0, 0, 0, 0 };
+    vec<h>push(v, { .names = { cstr_of(line) } });
+}
+clobber: proc() -> i32 = {
+    x: [64]u8 = {};
+    for (i: u64 = 0; i < 64; i += 1) { x[i] = 66; }
+    return cast(x[3], i32);
+}
+main: proc() -> i32 = {
+    v: *vec<h> in level = vec<h>make(level, 2);
+    put(v);
+    printfmt("{}\n", clobber());
+    printfmt("{}\n", cstr_length(vec<h>at(v, 0)*.names[0]));
+    return 0;
+}

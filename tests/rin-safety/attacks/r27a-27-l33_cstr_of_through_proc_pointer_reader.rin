@@ -1,0 +1,13 @@
+// A pointer to cstr_of; the reader beside a writer.
+import "std/print.rin"
+import "std/cstr.rin"
+level: region global;
+two: proc(x: u64, y: u64) -> u64 = { return x + y; }
+over: proc(b: []c8) -> u64 = { for (i: u64 = 0; i < b.length; i += 1) { b[i] = 65; } return 1; }
+main: proc() -> i32 = {
+    a: []c8 in level = new_slice<c8>(level, 8);
+    f: *proc(c: []const c8) -> ^const c8 = cstr_of;
+    printfmt("{}\n", cstr_equals(f(a), over_(a)));
+    return 0;
+}
+over_: proc(b: []c8) -> ^const c8 = { for (i: u64 = 0; i < b.length; i += 1) { b[i] = 65; } return "x"; }

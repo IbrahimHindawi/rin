@@ -1,0 +1,11 @@
+// T = an enum: it is skipped in the rule, for printing by name, but a generic has no enum to see.
+import "std/print.rin"
+E: enum = { one, two }
+level: region global;
+print_E: proc(s: E) -> void = { reset level; }
+show: proc<T>(v: T, p: *i32 in level) -> void = { printfmt("{} {}\n", v, p*); }
+main: proc() -> i32 = {
+    p: *i32 in level = new<i32>(level, 7);
+    show<E>(E.one, p);
+    return 0;
+}

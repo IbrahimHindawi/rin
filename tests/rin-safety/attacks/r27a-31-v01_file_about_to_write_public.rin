@@ -1,0 +1,11 @@
+// file_about_to_write is public: a read-only stream is flushed, which C leaves undefined.
+import "std/print.rin"
+import "std/file.rin"
+main: proc() -> i32 = {
+    f: file = file_open("/etc/passwd", "r");
+    if (!file_is_open(f)) { return 1; }
+    file_about_to_write(f);
+    x: [4]u8 = {};
+    printfmt("{}\n", file_read(f, x));
+    return 0;
+}

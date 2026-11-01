@@ -15016,9 +15016,11 @@ static bool type_is_carrier_depth(Program *prog, TypeExpr *type, memops_arena *a
         if (r->kind == Type_Ptr && !r->is_str && (r->is_raw || r->region.length == 0)) return true;
         if (type_slice_elem(r) && r->region.length == 0) return true;
         if (r->kind == Type_Array) {
-            /* An array of raw pointers is as harmless as a raw pointer local:
-               safe code cannot make a raw pointer, only receive one. */
+            /* An array of raw pointers in a struct is a raw pointer in a struct: copied out of memory, it takes its
+               lifetime with it where the pass cannot follow. */
             TypeExpr *elem = resolve_alias_type(prog, r->elem);
+            while (elem && elem->kind == Type_Array) elem = resolve_alias_type(prog, elem->elem);
+            if (elem && elem->kind == Type_Ptr && elem->is_raw && !elem->is_str) return true;
             if (elem && elem->kind == Type_Ptr && !elem->is_raw && elem->region.length == 0 && !type_is_proc_pointer(prog, elem)) return true;
             if (elem && type_slice_elem(elem) && elem->region.length == 0) return true;
         }
@@ -16735,6 +16737,7 @@ static void safety_check_local_name(Program *prog, string8 name, i32 line, i32 c
     else if (name_is_type(prog, name, arena)) why = "is a type, and the generated C spells the type by name wherever it needs its size";
     else if (name_is_generated_type(prog, name, arena)) why = "is what the generated C calls a type";
     else if (name_is_generated_proc(prog, name, arena)) why = "is what the generated C may call a generic proc";
+    else if (string8_equals_cstr(&name, "print_enum") || (lookup_proc_decl(prog, name) && lookup_proc_decl(prog, name)->specialized_from.length > 0)) why = "is a proc the generated C calls by name";
     else {
         for (i32 i = 0; i < prog->globals.length; i++) {
             Stmt *g = (Stmt *)prog->globals.data[i];
@@ -16874,6 +16877,11 @@ static void safety_check_program_names(Program *prog, memops_arena *arena) {
        capacity and tables, so these may not reach the container or anything else. */
     for (i32 i = 0; i < prog->procs.length; i++) {
         ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+        if (!path_is_std(p->source_path) && (call_name_is_builtin(p->name) || string8_equals_cstr(&p->name, "new") ||
+                                             string8_equals_cstr(&p->name, "new_slice") || string8_equals_cstr(&p->name, "cstr_of"))) {
+            g_diag_source_path = p->source_path;
+            type_error_message("this name is rin's own, and the checker reads a call to it as rin's", p->line, p->col);
+        }
         if (p->no_move && !path_is_std(p->source_path)) {
             safety_error("'no_move' is std's: it is a promise about a body the checker cannot read", p->line, p->col);
         }
@@ -18312,6 +18320,16 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
                     Expr *arg = (Expr *)call->args.data[i];
                     TypeExpr *at = infer_expr_type(arg, scope, prog, arena);
                     TypeExpr *ar = at ? resolve_alias_type(prog, type_scope_apply_sub(scope, arena, at)) : null;
+                    if (at) {
+                        TypeExpr *as_written = type_scope_apply_sub(scope, arena, at);
+                        ProcDecl *spelled = lookup_proc_decl(prog, mono_proc_name_from_mangle(arena, string8_from_cstr(arena, "print"),
+                                                                                              type_mangle(arena, as_written, (TypeSub){0})));
+                        if (spelled && !string8_equals_cstr(&spelled->specialized_from, "print")) {
+                            type_error_message("a proc is spelled like the print of this type, and is not one: call it "
+                                               "something else, or write 'print: proc<T>'", arg->line, arg->col);
+                            continue;
+                        }
+                    }
                     if (!ar || !(ar->kind == Type_Array || type_is_declared_aggregate(prog, ar)) || type_slice_elem(ar)) continue;
                     if (lookup_enum_decl(prog, ar->name)) continue;
                     Expr probe = {0};
@@ -18759,6 +18777,10 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         /* A proc used as a value: a call through the pointer could not be
            checked against the regions open at that point. */
         ProcDecl *as_value = lookup_proc_decl(prog, e->name);
+        if (g_safe_body && string8_equals_cstr(&e->name, "cstr_of")) {
+            region_error("'%.*s' is called by name: the rules on what may run before its result is read look for that "
+                         "call%.0s", e->name, (string8){0}, e->line, e->col);
+        }
         if (as_value && g_safe_body && proc_is_static_elsewhere(as_value)) {
             region_error("'%.*s' is static, and belongs to the file that declares it%.0s",
                          e->name, (string8){0}, e->line, e->col);
