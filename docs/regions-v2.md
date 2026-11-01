@@ -304,6 +304,27 @@ and the operand's stands. Three programs closed; the fourth launders through a r
 `unsafe` is the author's word, and stays clean by design. Everything else it pushed on held: bare struct
 fields, address edges at two levels, region variables bound to `scratch`, elision through std, array copies.
 
+Round 24's realistic attacker went to domains no round had tried: a byte serializer, an interpreter with
+closures, an LZ compressor, hash-consing, a gap buffer, a scheduler's heap, a packet ring, graph search, a
+hand-rolled resource manager. Twenty-eight programs, none inside the claim. What each domain cannot write
+in safe rin is the list this document started with: a closure that outlives the frame it captured, a
+pointer into a growing table kept across the growth, a cursor as a pointer into a buffer that moves, a
+pointer handed out of a frame; each becomes an index, a copy, or an allocation in the region that outlives
+it, and a lying length field or a released handle is a checked stop. What stays open is wrong answers:
+aliasing two views of one object, an index reused, defined integer wrap, a stale read of memory that is
+still there.
+
+Round 24's attacker on the runtime and the oracle found nothing inside the claim across container moves,
+long containers of short elements, globals across resets in every option shape, region-variable resets,
+scratch escapes, float casts and uninitialised reads, and two things worth more than a hole. The
+quarantine's budget guard switched it off for regions above the budget, the large `level` it exists for;
+it is relative to the reservation now, with the biggest regions first. And the VM oracle judged by text:
+a sanitizer's words in the program's own output, which a program can print or drown. It now reads the
+sanitizers' own log files, which the program cannot write, keeps the exit code as a second signal, and the
+poison controls prove on every run that a report reaches the file; a program that merely prints the words
+is "ok (prints sanitizer words)". Its claim scan also took a struct field at column zero for a valueless
+global and so filed a safe program as outside the claim; it reads braces now.
+
 ## Explicit C
 
 Round 17's emitter bugs were C's promotion rules deciding what rin had already decided. The emitter now

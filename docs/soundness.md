@@ -183,6 +183,10 @@ Four things remain assumed of the C compiler, and are worth knowing:
 
 ## How the argument is tested
 
+The VM runner judges a program by the sanitizers' own report, written to a file the program cannot reach
+(`log_path`), and by the exit code; what the program prints decides nothing, and the poison controls prove
+on every run that a real report arrives in the file.
+
 | Check | What it would catch |
 |---|---|
 | `tests/run_rin_safety.py` | A rule that stopped holding |
