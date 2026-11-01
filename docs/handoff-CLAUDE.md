@@ -116,6 +116,8 @@ Next, in the order that pays:
 Twenty-three attack rounds have run. Rounds five to twenty each found dozens of holes in the old rules, all closed. Against the
 second pass: round 21 found six (two causes, closed) and none in std; rounds 22 and 23 found nothing inside the claim in
 fifty-one realistic programs and two rounds on the pass, and ten programs outside it (an `unsafe` block weakening the checks
-around it, closed). The rounds have converged; keep running them, and the checked build (`regions-v2.md`) is the next step.
+around it, closed). The rounds have converged; keep running them. The checked build is the sanitizer build plus a quarantine in
+`memops_arena_clear` (`memops_os_quarantine`): a reset region is not reused until a budget has gone by, so a stale
+pointer into it meets poison (`poison/021`).
 Run a fresh round per new rule, and `tests/gen_rin_safe.py` with `run_rin_vm.py --compare`. Verify with a script
 that fails on a missing line or a skipped program: a filtered log hid a failing suite here twice.

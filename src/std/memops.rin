@@ -10,6 +10,7 @@ memops_os_reserve: proc[external](size: u64) -> *u8 = {}
 memops_os_commit: proc[external](ptr: ^void, size: u64) -> ^void = {}
 memops_os_debug_break: proc[external]() -> void = {}
 memops_os_poison: proc[external](ptr: ^void, size: u64) -> void = {}
+memops_os_quarantine: proc[external]() -> u64 = {}
 memops_os_unpoison: proc[external](ptr: ^void, size: u64) -> void = {}
 memops_os_redzone: proc[external]() -> u64 = {}
 
@@ -204,9 +205,19 @@ memops_arena_run_ends_: proc[unsafe](arena: *memops_arena, used: u64) -> void = 
     }
 }
 
+/* How much a cleared arena keeps quarantined in the checked build before it wraps to its base: a stale
+   pointer into a reset region meets poison for this much new allocation, instead of fresh objects. */
+memops_quarantine_budget: const u64 = 268435456;
+
 memops_arena_clear: proc[unsafe](arena: *memops_arena) -> void = {
     memops_arena_run_ends_(arena, 0);
     old_used: u64 = arena*.used;
+    if (memops_os_quarantine() != 0 && old_used > 0 && old_used < memops_quarantine_budget &&
+        old_used + memops_quarantine_budget <= arena*.reserved) {
+        /* The checked build: the old range stays where it is, poisoned, and new allocations go past it. */
+        memops_os_poison(arena*.base, old_used);
+        return;
+    }
     arena*.cursor = arena*.base;
     arena*.used = 0;
     memops_arena_take_back_(arena, old_used);

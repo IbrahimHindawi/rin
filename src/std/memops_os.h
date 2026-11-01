@@ -37,6 +37,14 @@ static inline void memops_os_poison(void *ptr, uint64_t size) {
 #endif
 }
 
+/* The checked build: under the sanitizer a cleared arena quarantines its old range, see memops_arena_clear. */
+static inline uint64_t memops_os_quarantine(void) {
+#ifdef MEMOPS_OS_ASAN
+    return 1;
+#else
+    return 0;
+#endif
+}
 static inline void memops_os_unpoison(void *ptr, uint64_t size) {
 #ifdef MEMOPS_OS_ASAN
     __asan_unpoison_memory_region(ptr, (size_t)size);

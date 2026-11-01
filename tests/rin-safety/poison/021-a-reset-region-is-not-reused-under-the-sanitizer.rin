@@ -1,0 +1,16 @@
+// expect: use-after-poison
+// After `reset level` the next allocations would land where the old ones were, and a stale
+// pointer would read a fresh object of another type without complaint. The checked build
+// quarantines the old range, so the stale read meets poison instead.
+import "std/print.rin"
+level: region global;
+main: proc() -> i32 = {
+    unsafe {
+        p: ^i32 = new<i32>(level, 7);
+        reset level;
+        q: ^i64 = new<i64>(level, 9);
+        printfmt("{}\n", q[0]);
+        return p[0];
+    }
+    return 0;
+}
