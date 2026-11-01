@@ -1,0 +1,58 @@
+# Known holes
+
+Any program `rin check` accepts that commits a memory error is a soundness bug in rin, however contrived it is. This
+page lists what is known to be open, so that the claim in [soundness.md](soundness.md) is read with it. It is not a
+proof that nothing else is open: attack rounds 25 to 30 found about thirty causes in about 1,400 programs, each round
+found new ones, and none of the rounds was run by anyone outside this project.
+
+An entry leaves this page when it is closed and a test in `tests/rin-safety` holds it.
+
+## Memory errors
+
+None known to be open. Every program that has faulted in an attack round is closed, and is in `tests/rin-safety/attacks`.
+
+That is a statement about what has been found. Rounds keep finding more, so expect this section to fill.
+
+## Order of evaluation still left to C
+
+Calls, binary operators and assignments run left to right, in `emit_expr_in_order` and the assignment case of
+`emit_stmt_inner`. These do not yet, and rest on a checker rule against a call that could write beside a read:
+
+| Where | The rule it rests on | Why it matters |
+|---|---|---|
+| An index against its base, `a()[b()]` | `safety_check_open_cstr_beside`, `narrow_guard_unsequenced`, "read twice by its bounds check" | Those rules have leaked before |
+| The members of an initializer, `{ a(), b() }` | The same | The same |
+| A `for` step's assignment, which has no block to take a temporary | The same | The same |
+| An operand taking the address of a compound literal | The same | Left alone for the literal's lifetime |
+
+## The checker and the emitter disagree, and C refuses
+
+These pass `rin check` and are then refused by the C compiler. They cannot fault, because nothing is built, but the
+checker has signed off on something the emitter cannot write:
+
+- A plain proc named like a generated instance, such as `hashmap_i32_i32_find` or `swap_S`: a redefinition.
+- `printfmt` of a generic's `T` when there is no print for it, and `printfmt` of an integer or a C string in a program
+  that does not import `std/print.rin`: an undeclared `print_*`.
+- A file using `fprintfmt` with no `std/file.rin`: an undeclared `rin_file_printf`.
+- `case N` beside a local `N`.
+- A struct named `key` as a generic's argument: `key key` in C.
+- `reflect<>&`, `reflect_field<>&`, `reflect_variant<>&` and `FILE<>&`: an undeclared table.
+- A proc returning a proc pointer: emitted as `i32 * pick(...)`.
+- An alias of an enum, whose typedef comes before the enum.
+- `sizeof(q[0])` on a slice.
+- A float cast to `long`.
+
+## Not attacked yet
+
+- Anything since the left-to-right emitter change, until its round reports.
+- Threads: the claim is single-threaded.
+- `gcc`: the safety suites and the attack corpus are run with clang, and only the course check runs with `gcc` on Linux.
+- Long runs of the engine under the sanitizers: its smoke test is short, and is not a sanitizer build.
+
+## Outside the claim
+
+- A program's `unsafe { }`, `[external]` and `cinclude`, and the C it links. The engine's Win32 and D3D11 boundary is
+  in this group, and is checked only by reading it.
+- Running a compiler over source you do not trust. rin is not a sandbox, and the build runs C compilers on what it
+  writes.
+- Leaks, running out of memory and stack overflow, which stop a program or waste memory without corrupting it.
