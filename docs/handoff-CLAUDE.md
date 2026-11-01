@@ -100,8 +100,10 @@ cleanup, no `#define` numbers, no VLAs, no program unions, `noalias` only in `un
 level region, and its level meshes are released by the reset.
 
 The attack rounds did not converge, and `rin/docs/regions-v2.md` says why and what replaces the pointer rules:
-one outlives rule, checked on a lowered form of each body, with every pointer carrying a region. Read that before
-changing the checker; the plan there starts with a shadow mode beside the old rules, and the user decides first.
+one outlives rule, checked on a lowered form of each body, with every pointer carrying a region. The user decided
+to go. The new pass is in `main.c` behind `RIN_SHADOW=1` (`shadow_check_proc`), measured in the document; the
+switch is next: errors by default, then the old lifetime rules deleted family by family with the pipeline run
+after each. `scratchpad/shadow_run.py` and `shadow_lines.py` are the comparison tools.
 
 Next, in the order that pays:
 

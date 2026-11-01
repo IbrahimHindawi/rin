@@ -195,17 +195,52 @@ they drove. By family counts that is roughly a quarter of the checker, replaced 
 dataflows and five checks: by my estimate three thousand lines for six to eight thousand. The
 estimate is mine and unmeasured; shadow mode measures it.
 
+## Shadow mode, as measured
+
+The pass exists: `RIN_SHADOW=1 rin check file.rin` runs it after the old checker and prints what it
+would refuse as `shadow:` lines, changing no verdict. About 600 lines in `main.c`, from `shadow_check_proc`
+back to the `Sh` types. Measured on the day it was written, against the old checker:
+
+| Programs | Old accepts, shadow accepts | Both refuse | Shadow refuses, old accepts | Old refuses, shadow silent |
+|---|---|---|---|---|
+| 45 accept tests | 45 | 0 | 0 | 0 |
+| 300 generated programs | 300 | 0 | 0 | 0 |
+| 249 attack programs clean by design | 249 | 0 | 0 | 0 |
+| the course, 101 files | 75 | 0 | 0 | 26, imports that are not programs |
+| the engine | 1 | 0 | 0 | 0 |
+| 140 holes, rounds 13 to 20 | 11, clean by design | 75 | 0 | 41, all under rules that stay |
+| 1,123 refused attack programs, rounds 1 to 12 | - | 193 | - | 884, all under rules that stay, 46 at parse |
+
+"Rules that stay" was checked by message: region handles as values, const memory, temporaries, packed
+fields, zeroing, null narrowing, carriers, unions, directives, names, type invariance inside a pointer,
+raw void conversions, the stale lint. No lifetime family in either corpus is caught by the old rules
+alone.
+
+Three things the measurement corrected in the design above, now part of it:
+
+- **A raw result goes by elision**, like a checked one: it points into what the call was given, or lasts
+  for good when the call was given nothing. The engine keeps thirty such names from lookups by index.
+  Only `cstr_of` hands out a one-statement pointer, since the program can take its terminator. A raw
+  pointer read back out of a local's storage through a pointer is unknown, so it is a temporary too.
+- **An aggregate carries its fields' regions**, whoever holds it: a struct copied, passed or returned by
+  value is checked against the regions its fields name, not against the memory it was read from.
+- **A local whose address is taken is memory others read through**, so what is assigned to it must
+  outlive its block, as it must for a field.
+
 ## Plan
 
-1. **This document.** Read, argue, decide. Nothing in the compiler changes before that.
-2. **Shadow mode, one to two weeks.** The lowering and the analysis run beside the old checker on
+1. **This document.** Read, argue, decide. Done: the decision is to go.
+2. **Shadow mode, one to two weeks.** Done in a day, above. The lowering and the analysis run beside the old checker on
    every program: the safety suite, the 1,538 attack programs, the course, the engine, the 300
    generated programs. Every disagreement is listed with its line. Acceptance: the new checker
    refuses every program the VM has shown to be a hole, and every program it refuses that the old
    one accepted is either a hole or a stack view the program must write differently, with the
    count known.
-3. **Switch, one week.** Delete the old rules, port the course and engine where the count said,
-   run the twenty rounds' programs and two fresh rounds against the new checker.
+3. **Switch, one week.** The pass reports errors instead of `shadow:` lines, by default. Then the old
+   lifetime rules go, family by family, with the full pipeline run after each: an attack program that
+   becomes accepted names what that family still held, and the pass is extended there first. The rules
+   that stay are the ones the table above lists. Then the twenty rounds' programs and two fresh rounds
+   against the new checker.
 4. **Explicit C, two to three days,** independent of the above.
 5. **Later:** a checked build in which pointers carry their region's tag, checked on dereference,
    so a hole nobody has found is a stop and not corruption.

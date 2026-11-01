@@ -20615,6 +20615,922 @@ static bool type_holds_raw(Program *prog, TypeExpr *type, memops_arena *arena, i
     return false;
 }
 
+/* ---- The second pass on regions: docs/regions-v2.md. ------------------------------------------------------
+
+   One rule, checked on a lowered form of the body: a value may flow into a place only if every region it
+   may point into outlives the place's. Behind RIN_SHADOW it runs beside the rules above, changes no
+   verdict, and prints what it would refuse as `shadow:` lines, so the two can be compared on every program
+   before anything switches. */
+
+static bool g_shadow = false;
+static i32 g_shadow_refusals = 0;
+static bool region_is_gone_with(Program *prog, string8 field, string8 ending);
+static bool vec_i32_has(Vec_i32 *v, i32 x) { for (i32 i = 0; i < v->length; i++) if (v->data[i] == x) return true; return false; }
+
+enum { ShBits = 512 };
+typedef struct ShSet { u64 w[ShBits / 64]; } ShSet;
+static void shset_add(ShSet *s, i32 a) { if (a >= 0 && a < ShBits) s->w[a / 64] |= (u64)1 << (a % 64); }
+static bool shset_has(const ShSet *s, i32 a) { return a >= 0 && a < ShBits && ((s->w[a / 64] >> (a % 64)) & 1) != 0; }
+static bool shset_union(ShSet *into, const ShSet *from) {
+    bool changed = false;
+    for (i32 i = 0; i < ShBits / 64; i++) {
+        u64 n = into->w[i] | from->w[i];
+        if (n != into->w[i]) { into->w[i] = n; changed = true; }
+    }
+    return changed;
+}
+static bool shset_equal(const ShSet *a, const ShSet *b) { return memcmp(a->w, b->w, sizeof(a->w)) == 0; }
+
+typedef enum ShAtomKind { ShAtom_Permanent, ShAtom_Named, ShAtom_Var, ShAtom_Param, ShAtom_Block, ShAtom_Temp, ShAtom_Null } ShAtomKind;
+typedef struct ShAtom { ShAtomKind kind; string8 name; i32 block; } ShAtom;
+
+typedef enum ShKind { Sh_Nop, Sh_Assign, Sh_Call, Sh_Branch, Sh_Goto, Sh_Enter, Sh_Leave, Sh_Reset, Sh_Return } ShKind;
+typedef struct ShScope ShScope;
+struct ShScope { string8 name; i32 local; ShScope *parent; };
+typedef struct ShNode {
+    ShKind kind;
+    Expr *place;        // Assign: the place written, when it is not a whole local
+    Expr *value;        // Assign and Return: the value; Call: the call; Branch: the condition
+    i32 local;          // Assign: the whole local written, or -1; Enter and Leave: the block
+    i32 region_atom;    // Reset: the region; Enter and Leave: the named region this block opens, or -1
+    i32 next, alt;      // successors; -2 is the node after, -1 is none
+    Vec_i32 more;       // a switch's other successors
+    Vec_i32 leaves;     // Goto: the blocks left on the way
+    Vec_i32 uses;       // locals read here
+    i32 line, col;
+    const char *path;
+    bool in_unsafe;
+    ShScope *names;
+    TypeScope *types;
+} ShNode;
+typedef struct ShLocal { string8 name; TypeExpr *type; i32 block; i32 track; bool is_param; bool is_static; bool addr_taken; i32 param_atom; } ShLocal;
+typedef struct ShJump { bool is_loop; i32 block; Vec_i32 breaks; Vec_i32 conts; i32 cont_target; } ShJump;
+typedef struct ShOpen { string8 name; i32 block; i32 from, to; } ShOpen; // a block-lifetime region, by node range
+
+typedef struct Sh {
+    Program *prog; ProcDecl *proc; memops_arena *arena; TypeExpr *ret_type;
+    Vec_voidptr nodes;   // ShNode*
+    Vec_voidptr locals;  // ShLocal*
+    Vec_voidptr atoms;   // ShAtom*
+    Vec_voidptr jumps;   // ShJump*
+    Vec_voidptr opens;   // ShOpen*
+    Vec_i32 block_parent;
+    Vec_i32 block_atom;
+    i32 permanent_atom, temp_atom, null_atom;
+    i32 tracked;         // how many locals have a set
+    ShScope *names; TypeScope *types; i32 block; bool in_unsafe;
+    ShSet *in_state;     // [node][track]
+    ShSet *live_in;      // [node], bits are tracks
+    bool too_big;
+} Sh;
+
+static i32 sh_atom(Sh *sh, ShAtomKind kind, string8 name, i32 block) {
+    for (i32 i = 0; i < sh->atoms.length; i++) {
+        ShAtom *a = (ShAtom *)sh->atoms.data[i];
+        if (a->kind == kind && a->block == block && string8_equals(&a->name, &name)) return i;
+    }
+    if (sh->atoms.length >= ShBits) { sh->too_big = true; return sh->permanent_atom; }
+    ShAtom *a = memops_arena_push_struct(sh->arena, ShAtom);
+    a->kind = kind; a->name = name; a->block = block;
+    ptr_array_append(sh->arena, &sh->atoms, a);
+    return sh->atoms.length - 1;
+}
+
+/* The atom a region name means at this node: `permanent`, a declared region, a block-lifetime region open
+   here (`scratch`, `tmp: region of r`), or a region variable of the signature. */
+static i32 sh_region_atom(Sh *sh, string8 name, i32 at) {
+    if (name.length == 0) return -1;
+    if (string8_equals_cstr(&name, "permanent")) return sh->permanent_atom;
+    for (i32 i = sh->opens.length - 1; i >= 0; i--) {
+        ShOpen *o = (ShOpen *)sh->opens.data[i];
+        if (string8_equals(&o->name, &name) && at >= o->from && (o->to < 0 || at <= o->to)) return sh->block_atom.data[o->block];
+    }
+    if (region_rank(sh->prog, name) >= 0) return sh_atom(sh, ShAtom_Named, name, -1);
+    return sh_atom(sh, ShAtom_Var, name, -1);
+}
+
+static bool sh_block_encloses(Sh *sh, i32 outer, i32 inner) {
+    for (i32 b = inner; b >= 0; b = sh->block_parent.data[b]) if (b == outer) return true;
+    return false;
+}
+
+/* Does memory in atom `a` live at least as long as a place in atom `d`? */
+static bool sh_outlives(Sh *sh, i32 a, i32 d) {
+    if (a == d || a == sh->permanent_atom || a == sh->null_atom || d == sh->temp_atom) return true;
+    if (a == sh->temp_atom || d == sh->permanent_atom) return false;
+    ShAtom *A = (ShAtom *)sh->atoms.data[a];
+    ShAtom *D = (ShAtom *)sh->atoms.data[d];
+    if (A->kind == ShAtom_Named || A->kind == ShAtom_Var) {
+        if (D->kind == ShAtom_Named || D->kind == ShAtom_Var) return region_ge(sh->prog, A->name, D->name);
+        return D->kind == ShAtom_Block;
+    }
+    if (A->kind == ShAtom_Param) return D->kind == ShAtom_Block;
+    if (A->kind == ShAtom_Block) return D->kind == ShAtom_Block && sh_block_encloses(sh, A->block, D->block);
+    return false;
+}
+
+static void sh_atom_text(Sh *sh, i32 a, char *buf, size_t n) {
+    if (a < 0) { snprintf(buf, n, "?"); return; }
+    ShAtom *A = (ShAtom *)sh->atoms.data[a];
+    switch (A->kind) {
+        case ShAtom_Permanent: snprintf(buf, n, "permanent"); break;
+        case ShAtom_Named: case ShAtom_Var: snprintf(buf, n, "region '%.*s'", (int)A->name.length, A->name.data); break;
+        case ShAtom_Param: snprintf(buf, n, "what parameter '%.*s' points into", (int)A->name.length, A->name.data); break;
+        case ShAtom_Block: snprintf(buf, n, "the block at line %.*s", (int)A->name.length, A->name.data); break;
+        case ShAtom_Temp: snprintf(buf, n, "this statement"); break;
+        case ShAtom_Null: snprintf(buf, n, "null"); break;
+    }
+}
+
+static void sh_report(Sh *sh, ShNode *n, const char *message) {
+    g_shadow_refusals++;
+    fprintf(stderr, "shadow: %s:%d:%d: %s\n", n->path ? n->path : "?", n->line, n->col, message);
+}
+
+static ShNode *sh_emit(Sh *sh, ShKind kind, i32 line, i32 col, const char *path) {
+    ShNode *n = memops_arena_push_struct(sh->arena, ShNode);
+    n->kind = kind; n->local = -1; n->region_atom = -1; n->next = -2; n->alt = -1;
+    n->more = Vec_i32_reserve(sh->arena, 1); n->leaves = Vec_i32_reserve(sh->arena, 1); n->uses = Vec_i32_reserve(sh->arena, 2);
+    n->line = line; n->col = col; n->path = path ? path : sh->proc->source_path;
+    n->in_unsafe = sh->in_unsafe; n->names = sh->names; n->types = sh->types;
+    ptr_array_append(sh->arena, &sh->nodes, n);
+    return n;
+}
+static i32 sh_index(Sh *sh, ShNode *n) { for (i32 i = sh->nodes.length - 1; i >= 0; i--) if (sh->nodes.data[i] == n) return i; return -1; }
+
+static i32 sh_lookup(ShScope *s, string8 name) {
+    for (; s; s = s->parent) if (string8_equals(&s->name, &name)) return s->local;
+    return -1;
+}
+
+static bool sh_type_tracked(Sh *sh, TypeExpr *t) {
+    TypeExpr *r = resolve_alias_type(sh->prog, t);
+    if (!r) return false;
+    if (type_is_proc_pointer(sh->prog, r)) return false;
+    if (r->kind == Type_Ptr) return !r->is_str;
+    if (type_slice_elem(r)) return true;
+    if (r->kind == Type_Region) return false;
+    return type_has_pointer_deep(sh->prog, r, sh->arena, 0);
+}
+
+static i32 sh_declare(Sh *sh, string8 name, TypeExpr *type, bool is_param, bool is_static) {
+    ShLocal *l = memops_arena_push_struct(sh->arena, ShLocal);
+    l->name = name; l->type = type; l->block = sh->block; l->is_param = is_param; l->is_static = is_static; l->param_atom = -1;
+    l->track = sh_type_tracked(sh, type) ? sh->tracked++ : -1;
+    l->addr_taken = array_string8_contains(&g_addr_taken, name);
+    if (sh->tracked > ShBits) sh->too_big = true;
+    ptr_array_append(sh->arena, &sh->locals, l);
+    ShScope *s = memops_arena_push_struct(sh->arena, ShScope);
+    s->name = name; s->local = sh->locals.length - 1; s->parent = sh->names;
+    sh->names = s;
+    if (type) type_scope_add(sh->arena, sh->types, name, type);
+    return s->local;
+}
+
+static TypeExpr *type_new(memops_arena *arena, TypeKind kind);
+static i32 sh_block_begin(Sh *sh, i32 line, i32 col, const char *path, string8 region_name) {
+    i32 id = sh->block_parent.length;
+    Vec_i32_append(sh->arena, &sh->block_parent, sh->block);
+    char tag[32]; snprintf(tag, sizeof(tag), "%d", line);
+    Vec_i32_append(sh->arena, &sh->block_atom, sh_atom(sh, ShAtom_Block, string8_from_cstr(sh->arena, tag), id));
+    ShNode *n = sh_emit(sh, Sh_Enter, line, col, path);
+    n->local = id;
+    if (region_name.length > 0) {
+        if (region_rank(sh->prog, region_name) >= 0) {
+            n->region_atom = sh_atom(sh, ShAtom_Named, region_name, -1);
+        } else {
+            ShOpen *o = memops_arena_push_struct(sh->arena, ShOpen);
+            o->name = region_name; o->block = id; o->from = sh->nodes.length - 1; o->to = -1;
+            ptr_array_append(sh->arena, &sh->opens, o);
+        }
+    }
+    sh->block = id;
+    TypeScope *inner = memops_arena_push_struct(sh->arena, TypeScope);
+    *inner = type_scope_copy(sh->arena, sh->types);
+    sh->types = inner;
+    if (region_name.length > 0 && !type_scope_lookup(inner, region_name)) {
+        TypeExpr *t = type_new(sh->arena, Type_Region);
+        t->region = region_name;
+        type_scope_add(sh->arena, inner, region_name, t);
+    }
+    return id;
+}
+
+static void sh_block_end(Sh *sh, i32 id, ShScope *names_before, TypeScope *types_before, i32 line, i32 col, const char *path) {
+    ShNode *n = sh_emit(sh, Sh_Leave, line, col, path);
+    n->local = id;
+    for (i32 i = 0; i < sh->opens.length; i++) {
+        ShOpen *o = (ShOpen *)sh->opens.data[i];
+        if (o->block == id && o->to < 0) o->to = sh->nodes.length - 1;
+    }
+    for (i32 i = 0; i < sh->nodes.length; i++) {
+        ShNode *e = (ShNode *)sh->nodes.data[i];
+        if (e->kind == Sh_Enter && e->local == id) { n->region_atom = e->region_atom; break; }
+    }
+    sh->block = sh->block_parent.data[id];
+    sh->names = names_before;
+    sh->types = types_before;
+}
+
+static void sh_lower_stmts(Sh *sh, Vec_voidptr *body);
+static void sh_lower_stmt(Sh *sh, Stmt *s);
+
+/* A body in a block of its own. */
+static void sh_lower_block(Sh *sh, Vec_voidptr *body, i32 line, i32 col, const char *path, string8 region_name) {
+    ShScope *names = sh->names; TypeScope *types = sh->types;
+    i32 id = sh_block_begin(sh, line, col, path, region_name);
+    sh_lower_stmts(sh, body);
+    sh_block_end(sh, id, names, types, line, col, path);
+}
+
+/* The blocks a jump leaves on its way out to the statement that owns `ctx`. */
+static void sh_jump_leaves(Sh *sh, ShNode *n, i32 ctx_block) {
+    for (i32 b = sh->block; b >= 0 && b != ctx_block; b = sh->block_parent.data[b]) Vec_i32_append(sh->arena, &n->leaves, b);
+}
+
+static void sh_lower_stmts(Sh *sh, Vec_voidptr *body) {
+    for (i32 i = 0; i < body->length; i++) sh_lower_stmt(sh, (Stmt *)body->data[i]);
+}
+
+static void sh_lower_stmt(Sh *sh, Stmt *s) {
+    if (!s) return;
+    Program *prog = sh->prog;
+    memops_arena *arena = sh->arena;
+    const char *path = s->source_path;
+    if (s->kind == Stmt_Var) {
+        TypeExpr *t = s->type ? type_scope_apply_sub(sh->types, arena, s->type) : null;
+        if (!t && s->expr) t = infer_expr_type(s->expr, sh->types, prog, arena);
+        ShNode *n = sh_emit(sh, Sh_Assign, s->line, s->col, path);
+        n->value = s->is_uninitialized ? null : s->expr;
+        /* The value is read in the scope before the name exists. */
+        n->local = sh_declare(sh, s->name, t, false, s->is_static);
+        return;
+    }
+    if (s->kind == Stmt_Assign) {
+        ShNode *n = sh_emit(sh, Sh_Assign, s->line, s->col, path);
+        if (s->assign_op != Token_Equal) { n->kind = Sh_Call; n->value = s->lhs; return; } // `p += 1` keeps its region
+        n->value = s->expr;
+        i32 local = s->lhs && s->lhs->kind == Expr_Name ? sh_lookup(sh->names, s->lhs->name) : -1;
+        if (local >= 0) n->local = local; else n->place = s->lhs;
+        return;
+    }
+    if (s->kind == Stmt_Expr) { ShNode *n = sh_emit(sh, Sh_Call, s->line, s->col, path); n->value = s->expr; return; }
+    if (s->kind == Stmt_Return) { ShNode *n = sh_emit(sh, Sh_Return, s->line, s->col, path); n->value = s->expr; n->next = -1; return; }
+    if (s->kind == Stmt_Reset) {
+        ShNode *n = sh_emit(sh, Sh_Reset, s->line, s->col, path);
+        n->region_atom = sh_region_atom(sh, s->region_parent, sh->nodes.length - 1);
+        return;
+    }
+    if (s->kind == Stmt_If) {
+        ShNode *br = sh_emit(sh, Sh_Branch, s->line, s->col, path);
+        br->value = s->if_cond;
+        sh_lower_block(sh, &s->if_then_body, s->line, s->col, path, (string8){0});
+        ShNode *skip = sh_emit(sh, Sh_Goto, s->line, s->col, path);
+        skip->next = -1;
+        br->alt = sh->nodes.length;
+        if (s->if_else_if) sh_lower_stmt(sh, s->if_else_if);
+        else if (s->if_else_body.length > 0) sh_lower_block(sh, &s->if_else_body, s->line, s->col, path, (string8){0});
+        skip->alt = sh->nodes.length;
+        return;
+    }
+    if (s->kind == Stmt_While || s->kind == Stmt_DoWhile || s->kind == Stmt_For) {
+        ShScope *names = sh->names; TypeScope *types = sh->types;
+        i32 outer = sh_block_begin(sh, s->line, s->col, path, (string8){0});
+        ShJump *j = memops_arena_push_struct(arena, ShJump);
+        j->is_loop = true; j->block = outer; j->breaks = Vec_i32_reserve(arena, 2); j->conts = Vec_i32_reserve(arena, 2); j->cont_target = -1;
+        ptr_array_append(arena, &sh->jumps, j);
+        Vec_voidptr *body = s->kind == Stmt_For ? &s->for_body : &s->while_body;
+        if (s->kind == Stmt_DoWhile) {
+            i32 start = sh->nodes.length;
+            sh_lower_block(sh, body, s->line, s->col, path, (string8){0});
+            j->cont_target = sh->nodes.length;
+            ShNode *br = sh_emit(sh, Sh_Branch, s->line, s->col, path);
+            br->value = s->while_cond; br->next = start; br->alt = -2;
+            for (i32 i = 0; i < j->conts.length; i++) ((ShNode *)sh->nodes.data[j->conts.data[i]])->alt = j->cont_target;
+            ShNode *fix = sh_emit(sh, Sh_Nop, s->line, s->col, path); br->alt = sh_index(sh, fix);
+        } else {
+            if (s->kind == Stmt_For && s->for_init) sh_lower_stmt(sh, s->for_init);
+            i32 head = sh->nodes.length;
+            ShNode *br = sh_emit(sh, Sh_Branch, s->line, s->col, path);
+            br->value = s->kind == Stmt_For ? s->for_cond : s->while_cond;
+            sh_lower_block(sh, body, s->line, s->col, path, (string8){0});
+            j->cont_target = sh->nodes.length;
+            if (s->kind == Stmt_For && s->for_step) sh_lower_stmt(sh, s->for_step);
+            else sh_emit(sh, Sh_Nop, s->line, s->col, path);
+            ShNode *back = sh_emit(sh, Sh_Goto, s->line, s->col, path);
+            back->next = -1; back->alt = head;
+            for (i32 i = 0; i < j->conts.length; i++) ((ShNode *)sh->nodes.data[j->conts.data[i]])->alt = j->cont_target;
+            br->alt = sh->nodes.length;
+        }
+        for (i32 i = 0; i < j->breaks.length; i++) ((ShNode *)sh->nodes.data[j->breaks.data[i]])->alt = sh->nodes.length;
+        sh->jumps.length--;
+        sh_block_end(sh, outer, names, types, s->line, s->col, path);
+        return;
+    }
+    if (s->kind == Stmt_Switch) {
+        ShScope *names = sh->names; TypeScope *types = sh->types;
+        i32 outer = sh_block_begin(sh, s->line, s->col, path, (string8){0});
+        ShJump *j = memops_arena_push_struct(arena, ShJump);
+        j->is_loop = false; j->block = outer; j->breaks = Vec_i32_reserve(arena, 2); j->conts = Vec_i32_reserve(arena, 1); j->cont_target = -1;
+        ptr_array_append(arena, &sh->jumps, j);
+        ShNode *sw = sh_emit(sh, Sh_Branch, s->line, s->col, path);
+        sw->value = s->switch_expr; sw->next = -1;
+        Vec_i32 ends = Vec_i32_reserve(arena, 4);
+        for (i32 i = 0; i < s->switch_cases.length; i++) {
+            SwitchCase *sc = (SwitchCase *)s->switch_cases.data[i];
+            Vec_i32_append(arena, &sw->more, sh->nodes.length);
+            sh_lower_block(sh, &sc->body, sc->line, sc->col, path, (string8){0});
+            ShNode *g = sh_emit(sh, Sh_Goto, sc->line, sc->col, path); g->next = -1;
+            Vec_i32_append(arena, &ends, sh_index(sh, g));
+        }
+        if (s->has_switch_default) {
+            Vec_i32_append(arena, &sw->more, sh->nodes.length);
+            sh_lower_block(sh, &s->switch_default_body, s->line, s->col, path, (string8){0});
+        } else {
+            Vec_i32_append(arena, &sw->more, sh->nodes.length); // no case taken
+        }
+        for (i32 i = 0; i < ends.length; i++) ((ShNode *)sh->nodes.data[ends.data[i]])->alt = sh->nodes.length;
+        for (i32 i = 0; i < j->breaks.length; i++) ((ShNode *)sh->nodes.data[j->breaks.data[i]])->alt = sh->nodes.length;
+        sh->jumps.length--;
+        sh_block_end(sh, outer, names, types, s->line, s->col, path);
+        return;
+    }
+    if (s->kind == Stmt_Break || s->kind == Stmt_Continue) {
+        ShNode *n = sh_emit(sh, Sh_Goto, s->line, s->col, path);
+        n->next = -1;
+        for (i32 i = sh->jumps.length - 1; i >= 0; i--) {
+            ShJump *j = (ShJump *)sh->jumps.data[i];
+            if (s->kind == Stmt_Continue && !j->is_loop) continue;
+            sh_jump_leaves(sh, n, j->block);
+            Vec_i32_append(arena, s->kind == Stmt_Break ? &j->breaks : &j->conts, sh->nodes.length - 1);
+            return;
+        }
+        return;
+    }
+    if (s->kind == Stmt_Region) {
+        sh_lower_block(sh, &s->while_body, s->line, s->col, path, s->name);
+        return;
+    }
+    if (s->kind == Stmt_Unsafe) {
+        bool was = sh->in_unsafe;
+        sh->in_unsafe = true;
+        sh_lower_block(sh, &s->while_body, s->line, s->col, path, (string8){0});
+        sh->in_unsafe = was;
+        return;
+    }
+    if (s->kind == Stmt_Label) { sh_lower_block(sh, &s->while_body, s->line, s->col, path, (string8){0}); return; }
+    sh_emit(sh, Sh_Nop, s->line, s->col, path);
+}
+
+/* ---- Uses, for liveness. */
+typedef struct ShUseScan { Sh *sh; ShNode *n; } ShUseScan;
+static void sh_use_visit(Expr *e, void *ctx, memops_arena *arena) {
+    ShUseScan *u = (ShUseScan *)ctx;
+    if (e->kind != Expr_Name) return;
+    i32 l = sh_lookup(u->n->names, e->name);
+    if (l < 0) return;
+    ShLocal *L = (ShLocal *)u->sh->locals.data[l];
+    if (L->track >= 0 && !vec_i32_has(&u->n->uses, L->track)) Vec_i32_append(arena, &u->n->uses, L->track);
+}
+/* The root a place is written through: a deref or index of a pointer reads that pointer. */
+static void sh_place_uses(Sh *sh, ShNode *n, Expr *place) {
+    for (Expr *e = place; e; ) {
+        if (e->kind == Expr_Index) {
+            ShUseScan u = { sh, n };
+            if (e->index_expr) expr_walk(e->index_expr, sh_use_visit, &u, sh->arena);
+            if (e->index_end) expr_walk(e->index_end, sh_use_visit, &u, sh->arena);
+            TypeExpr *bt = resolve_alias_type(sh->prog, infer_expr_type(e->base, n->types, sh->prog, sh->arena));
+            if (bt && (bt->kind == Type_Ptr || type_slice_elem(bt))) { expr_walk(e->base, sh_use_visit, &u, sh->arena); return; }
+            e = e->base;
+        } else if (e->kind == Expr_Field) {
+            e = e->base;
+        } else if (e->kind == Expr_Name) {
+            return; // a holder's own field: not a read of what it holds
+        } else {
+            ShUseScan u = { sh, n };
+            expr_walk(e, sh_use_visit, &u, sh->arena);
+            return;
+        }
+    }
+}
+
+/* ---- Values and places, as sets of atoms. */
+static void sh_value_regions(Sh *sh, ShNode *n, ShSet *state, Expr *e, ShSet *out, i32 depth);
+static ProcDecl *sh_callee(Sh *sh, ShNode *n, Expr *call);
+
+/* The regions a type names inside it: what a struct's fields promise, whoever holds the struct. */
+static void sh_inside_atoms(Sh *sh, TypeExpr *t, i32 at, ShSet *out) {
+    Vec_string8 inside = Vec_string8_reserve(sh->arena, 2);
+    type_collect_regions(sh->prog, t, &inside, sh->arena, 0);
+    for (i32 k = 0; k < inside.length; k++) {
+        i32 a = sh_region_atom(sh, inside.data[k], at);
+        if (a >= 0) shset_add(out, a);
+    }
+}
+static bool sh_is_aggregate(Sh *sh, TypeExpr *t) {
+    TypeExpr *r = resolve_alias_type(sh->prog, t);
+    return r && r->kind != Type_Ptr && !type_slice_elem(r) && r->kind != Type_Region && (r->kind == Type_Name || r->kind == Type_Generic || r->kind == Type_Array);
+}
+
+static i32 sh_type_atom(Sh *sh, TypeExpr *t, i32 at) {
+    string8 r = type_region_of(sh->prog, t);
+    return r.length > 0 ? sh_region_atom(sh, r, at) : -1;
+}
+
+static bool sh_is_pointerish(Sh *sh, TypeExpr *t) {
+    TypeExpr *r = resolve_alias_type(sh->prog, t);
+    if (!r) return false;
+    if (type_is_proc_pointer(sh->prog, r)) return false;
+    return r->kind == Type_Ptr || type_slice_elem(r) || r->kind == Type_Region || r->kind == Type_Array ||
+           type_has_pointer_deep(sh->prog, r, sh->arena, 0);
+}
+
+/* What the memory behind a place is in: for `p*.f`, what p points into; for `x.f`, x's own storage. */
+static void sh_place_memory(Sh *sh, ShNode *n, ShSet *state, Expr *place, ShSet *out, i32 *holder, i32 depth) {
+    *holder = -1;
+    if (!place || depth > 32) return;
+    i32 at = sh_index(sh, n);
+    if (place->kind == Expr_Index) {
+        TypeExpr *bt = resolve_alias_type(sh->prog, infer_expr_type(place->base, n->types, sh->prog, sh->arena));
+        if (bt && (bt->kind == Type_Ptr || type_slice_elem(bt))) { sh_value_regions(sh, n, state, place->base, out, depth + 1); return; }
+        sh_place_memory(sh, n, state, place->base, out, holder, depth + 1);
+        return;
+    }
+    if (place->kind == Expr_Field) { sh_place_memory(sh, n, state, place->base, out, holder, depth + 1); return; }
+    if (place->kind == Expr_Name) {
+        i32 l = sh_lookup(n->names, place->name);
+        if (l >= 0) {
+            ShLocal *L = (ShLocal *)sh->locals.data[l];
+            if (L->is_static) { shset_add(out, sh->permanent_atom); return; }
+            *holder = l;
+            shset_add(out, sh->block_atom.data[L->block]);
+            return;
+        }
+        shset_add(out, sh->permanent_atom); // a global
+        return;
+    }
+    if (place->kind == Expr_Call || place->kind == Expr_Ternary || place->kind == Expr_Cast || place->kind == Expr_Addr) {
+        if (place->kind == Expr_Addr) { sh_place_memory(sh, n, state, place->inner, out, holder, depth + 1); return; }
+        sh_value_regions(sh, n, state, place, out, depth + 1);
+        return;
+    }
+    (void)at;
+}
+
+static void sh_call_result_regions(Sh *sh, ShNode *n, ShSet *state, Expr *call, ShSet *out, i32 depth) {
+    Program *prog = sh->prog;
+    i32 at = sh_index(sh, n);
+    if (call_is_new(call)) {
+        TypeExpr *rt = resolve_alias_type(prog, infer_expr_type((Expr *)call->args.data[0], n->types, prog, sh->arena));
+        if (rt && rt->kind == Type_Region) { i32 a = sh_region_atom(sh, rt->region, at); if (a >= 0) shset_add(out, a); }
+        return;
+    }
+    if (call_is_must(call)) { sh_value_regions(sh, n, state, (Expr *)call->args.data[0], out, depth + 1); return; }
+    TypeExpr *result = resolve_alias_type(prog, infer_expr_type(call, n->types, prog, sh->arena));
+    if (!result) return;
+    if (result->kind == Type_Ptr && result->is_raw && result->is_str) { shset_add(out, sh->permanent_atom); return; }
+    if (!call->base && string8_equals_cstr(&call->name, "cstr_of")) { shset_add(out, sh->temp_atom); return; }
+    i32 named = sh_type_atom(sh, result, at);
+    if (named >= 0) { shset_add(out, named); return; }
+    if (!sh_is_pointerish(sh, result)) return;
+    if (sh_is_aggregate(sh, result)) { sh_inside_atoms(sh, result, at, out); return; }
+    /* Elision: the result points into what the call was given, pointers, arrays and regions alike. */
+    bool any = false;
+    for (i32 i = 0; i < call->args.length; i++) {
+        Expr *arg = (Expr *)call->args.data[i];
+        TypeExpr *at_t = resolve_alias_type(prog, infer_expr_type(arg, n->types, prog, sh->arena));
+        if (!at_t) continue;
+        if (at_t->kind == Type_Region) { i32 a = sh_region_atom(sh, at_t->region, at); if (a >= 0) { shset_add(out, a); any = true; } continue; }
+        if (!sh_is_pointerish(sh, at_t)) continue;
+        ShSet s = {0};
+        if (at_t->kind == Type_Array) { i32 holder; sh_place_memory(sh, n, state, arg, &s, &holder, depth + 1); }
+        else sh_value_regions(sh, n, state, arg, &s, depth + 1);
+        shset_union(out, &s);
+        any = true;
+    }
+    if (!any) shset_add(out, sh->permanent_atom);
+}
+
+static void sh_value_regions(Sh *sh, ShNode *n, ShSet *state, Expr *e, ShSet *out, i32 depth) {
+    if (!e || depth > 48) return;
+    Program *prog = sh->prog;
+    i32 at = sh_index(sh, n);
+    switch (e->kind) {
+        case Expr_Name: {
+            if (string8_equals_cstr(&e->name, "null")) { shset_add(out, sh->null_atom); return; }
+            i32 l = sh_lookup(n->names, e->name);
+            if (l >= 0) {
+                ShLocal *L = (ShLocal *)sh->locals.data[l];
+                if (L->track >= 0) shset_union(out, &state[L->track]);
+                return;
+            }
+            TypeExpr *t = type_scope_lookup(n->types, e->name);
+            if (t && sh_is_pointerish(sh, t)) { i32 a = sh_type_atom(sh, t, at); shset_add(out, a >= 0 ? a : sh->permanent_atom); }
+            return;
+        }
+        case Expr_String: shset_add(out, sh->permanent_atom); return;
+        case Expr_Number: case Expr_Char: case Expr_SizeofType: case Expr_AlignofType: case Expr_ZeroInit: return;
+        case Expr_Addr: { i32 holder; sh_place_memory(sh, n, state, e->inner, out, &holder, depth + 1); return; }
+        case Expr_Cast: sh_value_regions(sh, n, state, e->inner, out, depth + 1); return;
+        case Expr_Unary: sh_value_regions(sh, n, state, e->inner, out, depth + 1); return;
+        case Expr_Binary: sh_value_regions(sh, n, state, e->left, out, depth + 1); sh_value_regions(sh, n, state, e->right, out, depth + 1); return;
+        case Expr_Ternary: sh_value_regions(sh, n, state, e->right, out, depth + 1); sh_value_regions(sh, n, state, e->third, out, depth + 1); return;
+        case Expr_InitList: case Expr_CompoundInit:
+            for (i32 i = 0; i < e->args.length; i++) sh_value_regions(sh, n, state, (Expr *)e->args.data[i], out, depth + 1);
+            return;
+        case Expr_Call: sh_call_result_regions(sh, n, state, e, out, depth); return;
+        case Expr_Field: case Expr_Index: {
+            TypeExpr *t = resolve_alias_type(prog, infer_expr_type(e, n->types, prog, sh->arena));
+            if (!t || !sh_is_pointerish(sh, t)) return;
+            if (t->kind == Type_Ptr && t->is_str) { shset_add(out, sh->permanent_atom); return; }
+            i32 named = sh_type_atom(sh, t, at);
+            if (named >= 0) { shset_add(out, named); return; }
+            if (e->kind == Expr_Index && e->index_end) { // a subrange: into what the whole is in
+                TypeExpr *bt = resolve_alias_type(prog, infer_expr_type(e->base, n->types, prog, sh->arena));
+                if (bt && bt->kind == Type_Array) { i32 holder; sh_place_memory(sh, n, state, e->base, out, &holder, depth + 1); return; }
+                sh_value_regions(sh, n, state, e->base, out, depth + 1);
+                return;
+            }
+            {
+                i32 holder = -1;
+                ShSet mem = {0};
+                sh_place_memory(sh, n, state, e, &mem, &holder, depth + 1);
+                if (holder >= 0) {
+                    ShLocal *L = (ShLocal *)sh->locals.data[holder];
+                    if (L->track >= 0) shset_union(out, &state[L->track]);
+                    return;
+                }
+                /* A bare pointer read out of memory outlives that memory, by the rule that put it there; a raw
+                   one was stored only if it lasts for good, by the raw store rules that stay. */
+                if (t->kind == Type_Ptr && t->is_raw) {
+                    /* Out of a local's storage, reached through a pointer, it is whatever that local was given. */
+                    bool local_memory = false;
+                    for (i32 a = 0; a < sh->atoms.length; a++) {
+                        if (shset_has(&mem, a) && ((ShAtom *)sh->atoms.data[a])->kind == ShAtom_Block) local_memory = true;
+                    }
+                    shset_add(out, local_memory ? sh->temp_atom : sh->permanent_atom);
+                    return;
+                }
+                if (!sh_is_aggregate(sh, t)) { shset_union(out, &mem); return; }
+                sh_inside_atoms(sh, t, at, out);
+            }
+            return;
+        }
+    }
+}
+
+/* ---- The checks. */
+static void sh_check_outlives(Sh *sh, ShNode *n, ShSet *value, ShSet *place, const char *what) {
+    for (i32 a = 0; a < sh->atoms.length; a++) {
+        if (!shset_has(value, a)) continue;
+        for (i32 d = 0; d < sh->atoms.length; d++) {
+            if (!shset_has(place, d)) continue;
+            if (sh_outlives(sh, a, d)) continue;
+            char va[96], pa[96], message[400];
+            sh_atom_text(sh, a, va, sizeof(va)); sh_atom_text(sh, d, pa, sizeof(pa));
+            snprintf(message, sizeof(message), "%s may point into %s, and the place it goes to lasts as long as %s", what, va, pa);
+            sh_report(sh, n, message);
+            return;
+        }
+    }
+}
+
+static TypeExpr *sh_param_type(Sh *sh, ShNode *n, Expr *call, i32 i) {
+    Program *prog = sh->prog;
+    if (call->base) {
+        TypeExpr *ct = infer_expr_type(call->base, n->types, prog, sh->arena);
+        TypeExpr *pt = ct ? type_proc_from_callable_type(prog, ct) : null;
+        return pt && i < pt->args.length ? (TypeExpr *)pt->args.data[i] : null;
+    }
+    TypeExpr *type_arg = null;
+    ProcDecl *decl = lookup_call_proc_decl(prog, call, n->types, sh->arena, &type_arg, null);
+    if (decl) {
+        if (i >= decl->params.length) return null;
+        TypeExpr *t = ((Param *)decl->params.data[i])->type;
+        if (decl->is_generic) {
+            TypeSub sub = proc_call_sub_in_scope(sh->arena, decl, call, type_arg, n->types);
+            if (sub.has) t = substitute_type_sub(sh->arena, t, sub);
+        }
+        RegionBindings rb = call_region_bindings(prog, decl, call, n->types, sh->arena, false);
+        return regions_substitute(sh->arena, t, &rb);
+    }
+    TypeExpr *ct = type_scope_lookup(n->types, call->name);
+    TypeExpr *pt = ct ? type_proc_from_callable_type(prog, ct) : null;
+    return pt && i < pt->args.length ? (TypeExpr *)pt->args.data[i] : null;
+}
+
+static ProcDecl *sh_callee(Sh *sh, ShNode *n, Expr *call) {
+    if (call->base || call_is_new(call) || call_is_must(call)) return null;
+    TypeExpr *type_arg = null;
+    return lookup_call_proc_decl(sh->prog, call, n->types, sh->arena, &type_arg, null);
+}
+
+typedef struct ShCallScan { Sh *sh; ShNode *n; ShSet *state; } ShCallScan;
+static void sh_check_call_visit(Expr *e, void *ctx, memops_arena *arena) {
+    ShCallScan *c = (ShCallScan *)ctx;
+    Sh *sh = c->sh; ShNode *n = c->n;
+    if (e->kind != Expr_Call || n->in_unsafe) return;
+    i32 at = sh_index(sh, n);
+    if (call_is_new(e)) {
+        if (e->args.length == 2 && !string8_equals_cstr(&e->name, "new_slice")) {
+            ShSet value = {0}, place = {0};
+            sh_value_regions(sh, n, c->state, (Expr *)e->args.data[1], &value, 0);
+            TypeExpr *rt = resolve_alias_type(sh->prog, infer_expr_type((Expr *)e->args.data[0], n->types, sh->prog, arena));
+            if (rt && rt->kind == Type_Region) { i32 a = sh_region_atom(sh, rt->region, at); if (a >= 0) shset_add(&place, a); }
+            if (e->type_args.length > 0) {
+                Vec_string8 inside = Vec_string8_reserve(arena, 2);
+                type_collect_regions(sh->prog, type_scope_apply_sub(n->types, arena, (TypeExpr *)e->type_args.data[0]), &inside, arena, 0);
+                for (i32 k = 0; k < inside.length; k++) {
+                    if (string8_equals_cstr(&inside.data[k], "permanent")) continue;
+                    i32 a = sh_region_atom(sh, inside.data[k], at);
+                    if (a >= 0) shset_add(&place, a);
+                }
+            }
+            sh_check_outlives(sh, n, &value, &place, "what new stores");
+        }
+        return;
+    }
+    if (call_is_must(e)) return;
+    for (i32 i = 0; i < e->args.length; i++) {
+        Expr *arg = (Expr *)e->args.data[i];
+        TypeExpr *pt = sh_param_type(sh, n, e, i);
+        if (!pt) continue;
+        Vec_string8 named = Vec_string8_reserve(arena, 2);
+        TypeExpr *r = resolve_alias_type(sh->prog, pt);
+        if (r && (r->kind == Type_Ptr || type_slice_elem(r))) {
+            string8 reg = type_region_of(sh->prog, r);
+            if (reg.length > 0) Vec_string8_append(arena, &named, reg);
+        } else if (r && r->kind != Type_Region) {
+            type_collect_regions(sh->prog, r, &named, arena, 0);
+        }
+        if (named.length == 0) continue;
+        ShSet value = {0}, place = {0};
+        sh_value_regions(sh, n, c->state, arg, &value, 0);
+        for (i32 k = 0; k < named.length; k++) {
+            if (string8_equals_cstr(&named.data[k], "permanent")) continue;
+            i32 a = sh_region_atom(sh, named.data[k], at);
+            if (a >= 0) shset_add(&place, a);
+        }
+        sh_check_outlives(sh, n, &value, &place, "this argument");
+    }
+}
+
+static void sh_live_out(Sh *sh, i32 i, ShSet *out) {
+    ShNode *n = (ShNode *)sh->nodes.data[i];
+    memset(out, 0, sizeof(*out));
+    if (n->next >= 0) shset_union(out, &sh->live_in[n->next]);
+    if (n->alt >= 0) shset_union(out, &sh->live_in[n->alt]);
+    for (i32 k = 0; k < n->more.length; k++) if (n->more.data[k] >= 0) shset_union(out, &sh->live_in[n->more.data[k]]);
+}
+
+static const char *sh_local_name(Sh *sh, i32 track, i32 *out_local) {
+    for (i32 i = 0; i < sh->locals.length; i++) {
+        ShLocal *L = (ShLocal *)sh->locals.data[i];
+        if (L->track == track) { *out_local = i; return (const char *)L->name.data; }
+    }
+    *out_local = -1;
+    return "?";
+}
+
+static void sh_check_gone(Sh *sh, ShNode *n, ShSet *state, ShSet *live_out, i32 atom, const char *how) {
+    if (atom < 0) return;
+    for (i32 t = 0; t < sh->tracked; t++) {
+        if (!shset_has(live_out, t) || !shset_has(&state[t], atom)) continue;
+        i32 local; const char *name = sh_local_name(sh, t, &local);
+        ShLocal *L = local >= 0 ? (ShLocal *)sh->locals.data[local] : null;
+        char what[96], message[400];
+        sh_atom_text(sh, atom, what, sizeof(what));
+        snprintf(message, sizeof(message), "'%.*s' may point into %s, which %s, and it is read after", L ? (int)L->name.length : 1, L ? (const char *)L->name.data : name, what, how);
+        sh_report(sh, n, message);
+    }
+}
+
+/* Leaving a block ends its locals and any region it opened; a reset ends a region and the regions inside it. */
+static void sh_check_leave(Sh *sh, i32 i, ShNode *n, ShSet *state, i32 block) {
+    ShSet live_out; sh_live_out(sh, i, &live_out);
+    sh_check_gone(sh, n, state, &live_out, sh->block_atom.data[block], "ends here");
+    for (i32 k = 0; k < sh->nodes.length; k++) {
+        ShNode *e = (ShNode *)sh->nodes.data[k];
+        if (e->kind == Sh_Enter && e->local == block && e->region_atom >= 0) {
+            ShAtom *R = (ShAtom *)sh->atoms.data[e->region_atom];
+            for (i32 a = 0; a < sh->atoms.length; a++) {
+                ShAtom *A = (ShAtom *)sh->atoms.data[a];
+                if (A->kind == ShAtom_Named && region_is_gone_with(sh->prog, A->name, R->name)) sh_check_gone(sh, n, state, &live_out, a, "ends with this block");
+            }
+        }
+    }
+}
+
+static void sh_check_reset_at(Sh *sh, i32 i, ShNode *n, ShSet *state, i32 reset_atom) {
+    if (reset_atom < 0) return;
+    ShSet live_out; sh_live_out(sh, i, &live_out);
+    ShAtom *R = (ShAtom *)sh->atoms.data[reset_atom];
+    for (i32 a = 0; a < sh->atoms.length; a++) {
+        ShAtom *A = (ShAtom *)sh->atoms.data[a];
+        if (A->kind == ShAtom_Named && region_is_gone_with(sh->prog, A->name, R->name)) sh_check_gone(sh, n, state, &live_out, a, "is reset here");
+        if (A->kind == ShAtom_Param) sh_check_gone(sh, n, state, &live_out, a, "may be reset here, for all this proc knows");
+    }
+}
+
+typedef struct ShResetScan { Sh *sh; i32 i; ShNode *n; ShSet *state; } ShResetScan;
+static void sh_reset_call_visit(Expr *e, void *ctx, memops_arena *arena) {
+    ShResetScan *c = (ShResetScan *)ctx;
+    if (e->kind != Expr_Call || c->n->in_unsafe) return;
+    ProcDecl *callee = sh_callee(c->sh, c->n, e);
+    if (!callee) return;
+    for (i32 k = 0; k < callee->resets.length; k++) {
+        sh_check_reset_at(c->sh, c->i, c->n, c->state, sh_region_atom(c->sh, callee->resets.data[k], c->i));
+    }
+    (void)arena;
+}
+
+static void sh_check_return(Sh *sh, ShNode *n, ShSet *state) {
+    if (!n->value || !sh->ret_type) return;
+    TypeExpr *rt = resolve_alias_type(sh->prog, sh->ret_type);
+    if (!rt || !sh_is_pointerish(sh, rt)) return;
+    if (rt->kind == Type_Ptr && rt->is_raw && rt->is_str) return;
+    ShSet value = {0}, place = {0};
+    sh_value_regions(sh, n, state, n->value, &value, 0);
+    i32 at = sh_index(sh, n);
+    if (sh_is_aggregate(sh, rt)) { sh_inside_atoms(sh, rt, at, &place); sh_check_outlives(sh, n, &value, &place, "the result"); return; }
+    i32 named = sh_type_atom(sh, rt, at);
+    if (named >= 0) { shset_add(&place, named); sh_check_outlives(sh, n, &value, &place, "the result"); return; }
+    /* Bare: the caller's memory, through the pointer parameters, or something that lasts. */
+    for (i32 a = 0; a < sh->atoms.length; a++) {
+        if (!shset_has(&value, a)) continue;
+        ShAtom *A = (ShAtom *)sh->atoms.data[a];
+        if (A->kind == ShAtom_Permanent || A->kind == ShAtom_Null || A->kind == ShAtom_Param) continue;
+        char what[96], message[300];
+        sh_atom_text(sh, a, what, sizeof(what));
+        snprintf(message, sizeof(message), "the result names no region, and may point into %s: say the region, '-> *T in R'", what);
+        sh_report(sh, n, message);
+        return;
+    }
+}
+
+/* ---- The pass. */
+static void shadow_check_proc(Program *prog, ProcDecl *p, Vec_voidptr *body, TypeScope *scope, TypeExpr *ret_type, memops_arena *arena) {
+    Sh shv = {0}, *sh = &shv;
+    sh->prog = prog; sh->proc = p; sh->arena = arena; sh->ret_type = ret_type;
+    sh->nodes = ptr_array_reserve(arena, 64); sh->locals = ptr_array_reserve(arena, 16); sh->atoms = ptr_array_reserve(arena, 16);
+    sh->jumps = ptr_array_reserve(arena, 4); sh->opens = ptr_array_reserve(arena, 2);
+    sh->block_parent = Vec_i32_reserve(arena, 8); sh->block_atom = Vec_i32_reserve(arena, 8);
+    sh->permanent_atom = sh_atom(sh, ShAtom_Permanent, string8_from_cstr(arena, "permanent"), -1);
+    sh->temp_atom = sh_atom(sh, ShAtom_Temp, string8_from_cstr(arena, "temp"), -1);
+    sh->null_atom = sh_atom(sh, ShAtom_Null, string8_from_cstr(arena, "null"), -1);
+    sh->block = -1;
+    TypeScope *top = memops_arena_push_struct(arena, TypeScope);
+    *top = type_scope_copy(arena, scope);
+    sh->types = top;
+    i32 root = sh_block_begin(sh, p->line, p->col, p->source_path, (string8){0});
+    for (i32 i = 0; i < p->params.length; i++) {
+        Param *param = (Param *)p->params.data[i];
+        TypeExpr *pt = type_scope_apply_sub(scope, arena, param->type);
+        i32 l = sh_declare(sh, param->name, pt, true, false);
+        ShLocal *L = (ShLocal *)sh->locals.data[l];
+        TypeExpr *r = resolve_alias_type(prog, pt);
+        if (L->track >= 0 && r) {
+            i32 named = sh_type_atom(sh, r, 0);
+            L->param_atom = named >= 0 ? named : sh_atom(sh, ShAtom_Param, param->name, -1);
+            if (named < 0 && sh_is_aggregate(sh, r)) {
+                ShSet inside = {0};
+                sh_inside_atoms(sh, r, 0, &inside);
+                for (i32 a = 0; a < sh->atoms.length; a++) if (shset_has(&inside, a)) { L->param_atom = -2; break; }
+                if (L->param_atom == -2) { L->param_atom = -1; /* set below from the type */ }
+            }
+        }
+    }
+    sh_lower_stmts(sh, body);
+    sh_block_end(sh, root, null, top, p->line, p->col, p->source_path);
+    i32 count = sh->nodes.length;
+    for (i32 i = 0; i < count; i++) {
+        ShNode *n = (ShNode *)sh->nodes.data[i];
+        if (n->next == -2) n->next = i + 1 < count ? i + 1 : -1;
+        if (n->alt == -2) n->alt = i + 1 < count ? i + 1 : -1;
+    }
+    if (sh->too_big) { fprintf(stderr, "shadow: %s: proc '%.*s' is too big for this pass\n", p->source_path, (int)p->name.length, p->name.data); return; }
+    /* Uses. */
+    for (i32 i = 0; i < count; i++) {
+        ShNode *n = (ShNode *)sh->nodes.data[i];
+        ShUseScan u = { sh, n };
+        if (n->value) expr_walk(n->value, sh_use_visit, &u, arena);
+        if (n->place) sh_place_uses(sh, n, n->place);
+    }
+    /* Liveness, backward, to a fixed point. */
+    sh->live_in = (ShSet *)calloc((size_t)count, sizeof(ShSet));
+    sh->in_state = (ShSet *)calloc((size_t)count * (size_t)(sh->tracked > 0 ? sh->tracked : 1), sizeof(ShSet));
+    if (!sh->live_in || !sh->in_state) { free(sh->live_in); free(sh->in_state); return; }
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (i32 i = count - 1; i >= 0; i--) {
+            ShNode *n = (ShNode *)sh->nodes.data[i];
+            ShSet out; sh_live_out(sh, i, &out);
+            if (n->kind == Sh_Assign && n->local >= 0) {
+                ShLocal *L = (ShLocal *)sh->locals.data[n->local];
+                if (L->track >= 0) out.w[L->track / 64] &= ~((u64)1 << (L->track % 64));
+            }
+            for (i32 k = 0; k < n->uses.length; k++) shset_add(&out, n->uses.data[k]);
+            if (!shset_equal(&out, &sh->live_in[i])) { sh->live_in[i] = out; changed = true; }
+        }
+    }
+    /* May-point-into, forward, to a fixed point. */
+    i32 T = sh->tracked;
+    ShSet *entry = (ShSet *)calloc((size_t)(T > 0 ? T : 1), sizeof(ShSet));
+    for (i32 i = 0; i < sh->locals.length; i++) {
+        ShLocal *L = (ShLocal *)sh->locals.data[i];
+        if (!L->is_param || L->track < 0) continue;
+        if (L->param_atom >= 0) shset_add(&entry[L->track], L->param_atom);
+        else if (L->type && sh_is_aggregate(sh, L->type)) sh_inside_atoms(sh, L->type, 0, &entry[L->track]);
+    }
+    if (T > 0) memcpy(&sh->in_state[0], entry, sizeof(ShSet) * (size_t)T);
+    ShSet *cur = (ShSet *)calloc((size_t)(T > 0 ? T : 1), sizeof(ShSet));
+    bool settled = false;
+    for (i32 round = 0; round < 256 && !settled; round++) {
+        bool changed = false;
+        for (i32 i = 0; i < count; i++) {
+            ShNode *n = (ShNode *)sh->nodes.data[i];
+            if (T > 0) memcpy(cur, &sh->in_state[(size_t)i * T], sizeof(ShSet) * (size_t)T);
+            if (n->kind == Sh_Assign) {
+                ShSet value = {0};
+                if (n->in_unsafe) {
+                    TypeExpr *pt = n->local >= 0 ? ((ShLocal *)sh->locals.data[n->local])->type : (n->place ? infer_expr_type(n->place, n->types, prog, arena) : null);
+                    i32 named = pt ? sh_type_atom(sh, pt, i) : -1;
+                    if (named < 0 && pt && sh_is_aggregate(sh, pt)) sh_inside_atoms(sh, pt, i, &value);
+                    else shset_add(&value, named >= 0 ? named : sh->permanent_atom);
+                }
+                else if (n->value) sh_value_regions(sh, n, cur, n->value, &value, 0);
+                if (n->local >= 0) {
+                    ShLocal *L = (ShLocal *)sh->locals.data[n->local];
+                    if (L->track >= 0) cur[L->track] = value;
+                } else if (n->place) {
+                    ShSet mem = {0}; i32 holder = -1;
+                    sh_place_memory(sh, n, cur, n->place, &mem, &holder, 0);
+                    if (holder >= 0) {
+                        ShLocal *L = (ShLocal *)sh->locals.data[holder];
+                        if (L->track >= 0) shset_union(&cur[L->track], &value);
+                    }
+                }
+            }
+            i32 succ[3] = { n->next, n->alt, -1 };
+            for (i32 s = 0; s < 2 + n->more.length; s++) {
+                i32 to = s < 2 ? succ[s] : n->more.data[s - 2];
+                if (to < 0 || to >= count || T == 0) continue;
+                for (i32 t = 0; t < T; t++) if (shset_union(&sh->in_state[(size_t)to * T + t], &cur[t])) changed = true;
+            }
+        }
+        if (!changed) settled = true;
+    }
+    if (!settled) {
+        fprintf(stderr, "shadow: %s: proc '%.*s' did not settle, and is not checked\n", p->source_path, (int)p->name.length, p->name.data);
+        g_shadow_refusals++;
+        free(sh->live_in); free(sh->in_state); free(entry); free(cur);
+        return;
+    }
+    /* The checks, once, on the final states. */
+    for (i32 i = 0; i < count; i++) {
+        ShNode *n = (ShNode *)sh->nodes.data[i];
+        ShSet *state = T > 0 ? &sh->in_state[(size_t)i * T] : cur;
+        if (n->in_unsafe) continue;
+        if (n->kind == Sh_Assign) {
+            ShSet value = {0};
+            if (n->value) sh_value_regions(sh, n, state, n->value, &value, 0);
+            if (n->local >= 0) {
+                ShLocal *L = (ShLocal *)sh->locals.data[n->local];
+                if (L->track >= 0 && shset_has(&value, sh->temp_atom)) sh_report(sh, n, "a raw pointer from a call lasts only for a statement: pass it on, do not keep it");
+                /* A local of a type that names a region: what goes in must be in it. */
+                i32 named = L->type ? sh_type_atom(sh, L->type, i) : -1;
+                if (named >= 0) { ShSet place = {0}; shset_add(&place, named); sh_check_outlives(sh, n, &value, &place, "this value"); }
+                else if (L->addr_taken && L->track >= 0) {
+                    ShSet place = {0}; shset_add(&place, sh->block_atom.data[L->block]);
+                    sh_check_outlives(sh, n, &value, &place, "this value, in a local whose address is taken,");
+                }
+            } else if (n->place) {
+                ShSet mem = {0}; i32 holder = -1;
+                sh_place_memory(sh, n, state, n->place, &mem, &holder, 0);
+                TypeExpr *pt = infer_expr_type(n->place, n->types, prog, arena);
+                i32 named = pt ? sh_type_atom(sh, pt, i) : -1;
+                if (named >= 0) { ShSet place = {0}; shset_add(&place, named); sh_check_outlives(sh, n, &value, &place, "this value"); }
+                else if (pt && sh_is_aggregate(sh, pt) && holder < 0) { ShSet place = {0}; sh_inside_atoms(sh, pt, i, &place); sh_check_outlives(sh, n, &value, &place, "this value"); }
+                else if (holder < 0) sh_check_outlives(sh, n, &value, &mem, "this value");
+                else if (shset_has(&value, sh->temp_atom)) sh_report(sh, n, "a raw pointer from a call lasts only for a statement: pass it on, do not keep it");
+                else if (((ShLocal *)sh->locals.data[holder])->addr_taken) sh_check_outlives(sh, n, &value, &mem, "this value, in a local whose address is taken,");
+            }
+        }
+        if (n->kind == Sh_Return) sh_check_return(sh, n, state);
+        if (n->kind == Sh_Leave) sh_check_leave(sh, i, n, state, n->local);
+        if (n->kind == Sh_Goto) for (i32 k = 0; k < n->leaves.length; k++) sh_check_leave(sh, i, n, state, n->leaves.data[k]);
+        if (n->kind == Sh_Reset) sh_check_reset_at(sh, i, n, state, n->region_atom);
+        if (n->value) {
+            ShCallScan c = { sh, n, state };
+            expr_walk(n->value, sh_check_call_visit, &c, arena);
+            ShResetScan rs = { sh, i, n, state };
+            expr_walk(n->value, sh_reset_call_visit, &rs, arena);
+        }
+        if (n->place) { ShCallScan c = { sh, n, state }; expr_walk(n->place, sh_check_call_visit, &c, arena); }
+    }
+    free(sh->live_in); free(sh->in_state); free(entry); free(cur);
+}
+
 static void type_check_proc_body(
     Program *prog,
     ProcDecl *p,
@@ -20755,6 +21671,11 @@ static void type_check_proc_body(
     }
     for (i32 j = 0; j < checked_body->length; j++) {
         type_check_stmt((Stmt *)checked_body->data[j], &scope, prog, return_type, p, arena);
+    }
+    {
+        static i32 shadow_flag = -1;
+        if (shadow_flag < 0) { shadow_flag = getenv("RIN_SHADOW") != null; g_shadow = shadow_flag != 0; }
+        if (g_shadow && g_safe_body && !g_checking_std) shadow_check_proc(prog, p, checked_body, &scope, return_type, arena);
     }
     g_safe_body = prev_safe_body;
 
