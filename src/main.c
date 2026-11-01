@@ -20622,7 +20622,8 @@ static bool type_holds_raw(Program *prog, TypeExpr *type, memops_arena *arena, i
    verdict, and prints what it would refuse as `shadow:` lines, so the two can be compared on every program
    before anything switches. */
 
-static bool g_shadow = false;
+static bool g_shadow = false;      // RIN_SHADOW=1: print what the pass refuses as `shadow:` lines, refuse nothing
+static bool g_regions_v2 = true;   // the pass's refusals are errors; RIN_REGIONS=v1 turns that off
 static i32 g_shadow_refusals = 0;
 static bool region_is_gone_with(Program *prog, string8 field, string8 ending);
 static bool vec_i32_has(Vec_i32 *v, i32 x) { for (i32 i = 0; i < v->length; i++) if (v->data[i] == x) return true; return false; }
@@ -20744,7 +20745,14 @@ static void sh_atom_text(Sh *sh, i32 a, char *buf, size_t n) {
 
 static void sh_report(Sh *sh, ShNode *n, const char *message) {
     g_shadow_refusals++;
-    fprintf(stderr, "shadow: %s:%d:%d: %s\n", n->path ? n->path : "?", n->line, n->col, message);
+    if (g_shadow) fprintf(stderr, "shadow: %s:%d:%d: %s\n", n->path ? n->path : "?", n->line, n->col, message);
+    if (g_regions_v2) {
+        const char *prev = g_diag_source_path;
+        if (n->path) g_diag_source_path = n->path;
+        type_error_message(message, n->line, n->col);
+        g_diag_source_path = prev;
+    }
+    (void)sh;
 }
 
 static ShNode *sh_emit(Sh *sh, ShKind kind, i32 line, i32 col, const char *path) {
@@ -21674,8 +21682,13 @@ static void type_check_proc_body(
     }
     {
         static i32 shadow_flag = -1;
-        if (shadow_flag < 0) { shadow_flag = getenv("RIN_SHADOW") != null; g_shadow = shadow_flag != 0; }
-        if (g_shadow && g_safe_body && !g_checking_std) shadow_check_proc(prog, p, checked_body, &scope, return_type, arena);
+        if (shadow_flag < 0) {
+            shadow_flag = getenv("RIN_SHADOW") != null;
+            g_shadow = shadow_flag != 0;
+            const char *v = getenv("RIN_REGIONS");
+            g_regions_v2 = !(v && strcmp(v, "v1") == 0);
+        }
+        if ((g_shadow || g_regions_v2) && g_safe_body && !g_checking_std) shadow_check_proc(prog, p, checked_body, &scope, return_type, arena);
     }
     g_safe_body = prev_safe_body;
 
