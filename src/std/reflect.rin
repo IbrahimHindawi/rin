@@ -187,14 +187,14 @@ reflect_find_field: proc(type: *const reflect, name: ^const char) -> option<*con
     return null;
 } }
 
-reflect_find_field_index: proc(type: *const reflect, name: ^const char, fallback: u64) -> u64 = { unsafe {
+reflect_find_field_index: proc[unsafe](type: *const reflect, name: ^const char, fallback: u64) -> u64 = {
     fields: ^const reflect_field = reflect_fields(type);
     if (fields == null || name == null) { return fallback; }
     for (i: u64 = 0; i < type*.count; i += 1) {
         if (reflect_cstr_equal(fields[i].name, name) != 0) { return i; }
     }
     return fallback;
-} }
+}
 
 // The record for a field's own type, so a walk can recurse instead of stopping
 // at the type-name string. Null when the field's type has no table: a builtin,
@@ -204,7 +204,7 @@ reflect_field_info: proc(field: *const reflect_field) -> option<*const reflect> 
     unsafe { return field*.info; }
 }
 
-reflect_find_field_info: proc(type: *const reflect, name: ^const char) -> option<*const reflect> = {
+reflect_find_field_info: proc[unsafe](type: *const reflect, name: ^const char) -> option<*const reflect> = {
     unsafe { return reflect_field_info(reflect_find_field(type, name)); }
 }
 
@@ -282,13 +282,13 @@ reflect_field_is_array: proc(field: *const reflect_field) -> b32 = {
     return field*.kind == reflect_field_kind_array || field*.array_count > 0;
 }
 
-reflect_field_is_generic: proc(field: *const reflect_field) -> b32 = {
+reflect_field_is_generic: proc[unsafe](field: *const reflect_field) -> b32 = {
     if (field == null) { return 0; }
     if (field*.kind == reflect_field_kind_generic) { return 1; }
     unsafe { return field*.generic_arg_type != null && field*.generic_arg_type[0] != 0; }
 }
 
-reflect_count_fields_with_kind: proc(type: *const reflect, kind: i32) -> u64 = { unsafe {
+reflect_count_fields_with_kind: proc[unsafe](type: *const reflect, kind: i32) -> u64 = {
     fields: ^const reflect_field = reflect_fields(type);
     count: u64 = 0;
     if (fields == null) { return 0; }
@@ -296,20 +296,20 @@ reflect_count_fields_with_kind: proc(type: *const reflect, kind: i32) -> u64 = {
         if (fields[i].kind == kind) { count += 1; }
     }
     return count;
-} }
+}
 
-reflect_find_field_with_kind: proc(type: *const reflect, kind: i32) -> option<*const reflect_field> = { unsafe {
+reflect_find_field_with_kind: proc[unsafe](type: *const reflect, kind: i32) -> option<*const reflect_field> = {
     fields: ^const reflect_field = reflect_fields(type);
     if (fields == null) { return null; }
     for (i: u64 = 0; i < type*.count; i += 1) {
         if (fields[i].kind == kind) { return fields[i]&; }
     }
     return null;
-} }
+}
 
 // `after` walks the matches in order: pass null for the first, then the previous
 // result for each one after it.
-reflect_next_field_with_kind: proc(type: *const reflect, kind: i32, after: *const reflect_field) -> option<*const reflect_field> = { unsafe {
+reflect_next_field_with_kind: proc[unsafe](type: *const reflect, kind: i32, after: *const reflect_field) -> option<*const reflect_field> = {
     fields: ^const reflect_field = reflect_fields(type);
     start: u64 = 0;
     if (fields == null) { return null; }
@@ -322,16 +322,16 @@ reflect_next_field_with_kind: proc(type: *const reflect, kind: i32, after: *cons
         if (fields[i].kind == kind) { return fields[i]&; }
     }
     return null;
-} }
+}
 
-reflect_field_index: proc(type: *const reflect, field: *const reflect_field, fallback: u64) -> u64 = { unsafe {
+reflect_field_index: proc[unsafe](type: *const reflect, field: *const reflect_field, fallback: u64) -> u64 = {
     fields: ^const reflect_field = reflect_fields(type);
     if (fields == null || field == null) { return fallback; }
     for (i: u64 = 0; i < type*.count; i += 1) {
         if (fields[i]& == field) { return i; }
     }
     return fallback;
-} }
+}
 
 // ---------------------------------------------------------------------------
 // Offsets
@@ -342,17 +342,17 @@ reflect_field_end_offset: proc(field: *const reflect_field) -> u64 = {
     return field*.offset + field*.size;
 }
 
-reflect_find_field_by_offset: proc(type: *const reflect, offset: u64) -> option<*const reflect_field> = { unsafe {
+reflect_find_field_by_offset: proc[unsafe](type: *const reflect, offset: u64) -> option<*const reflect_field> = {
     fields: ^const reflect_field = reflect_fields(type);
     if (fields == null) { return null; }
     for (i: u64 = 0; i < type*.count; i += 1) {
         if (fields[i].offset == offset) { return fields[i]&; }
     }
     return null;
-} }
+}
 
 // The field an arbitrary byte falls inside, rather than one that starts there.
-reflect_find_field_containing_offset: proc(type: *const reflect, offset: u64) -> option<*const reflect_field> = { unsafe {
+reflect_find_field_containing_offset: proc[unsafe](type: *const reflect, offset: u64) -> option<*const reflect_field> = {
     fields: ^const reflect_field = reflect_fields(type);
     if (fields == null) { return null; }
     for (i: u64 = 0; i < type*.count; i += 1) {
@@ -361,7 +361,7 @@ reflect_find_field_containing_offset: proc(type: *const reflect, offset: u64) ->
         }
     }
     return null;
-} }
+}
 
 // ---------------------------------------------------------------------------
 // Reading and writing a field through its record
@@ -444,7 +444,7 @@ reflect_field_has_attr: proc(field: *const reflect_field, attr: ^const char) -> 
     return 0;
 } }
 
-reflect_count_fields_with_attr: proc(type: *const reflect, attr: ^const char) -> u64 = { unsafe {
+reflect_count_fields_with_attr: proc[unsafe](type: *const reflect, attr: ^const char) -> u64 = {
     fields: ^const reflect_field = reflect_fields(type);
     count: u64 = 0;
     if (fields == null || attr == null || attr[0] == 0) { return 0; }
@@ -452,18 +452,18 @@ reflect_count_fields_with_attr: proc(type: *const reflect, attr: ^const char) ->
         if (reflect_field_has_attr(fields[i]&, attr) != 0) { count += 1; }
     }
     return count;
-} }
+}
 
-reflect_find_field_with_attr: proc(type: *const reflect, attr: ^const char) -> option<*const reflect_field> = { unsafe {
+reflect_find_field_with_attr: proc[unsafe](type: *const reflect, attr: ^const char) -> option<*const reflect_field> = {
     fields: ^const reflect_field = reflect_fields(type);
     if (fields == null || attr == null || attr[0] == 0) { return null; }
     for (i: u64 = 0; i < type*.count; i += 1) {
         if (reflect_field_has_attr(fields[i]&, attr) != 0) { return fields[i]&; }
     }
     return null;
-} }
+}
 
-reflect_next_field_with_attr: proc(type: *const reflect, attr: ^const char, after: *const reflect_field) -> option<*const reflect_field> = { unsafe {
+reflect_next_field_with_attr: proc[unsafe](type: *const reflect, attr: ^const char, after: *const reflect_field) -> option<*const reflect_field> = {
     fields: ^const reflect_field = reflect_fields(type);
     start: u64 = 0;
     if (fields == null || attr == null || attr[0] == 0) { return null; }
@@ -476,4 +476,4 @@ reflect_next_field_with_attr: proc(type: *const reflect, attr: ^const char, afte
         if (reflect_field_has_attr(fields[i]&, attr) != 0) { return fields[i]&; }
     }
     return null;
-} }
+}

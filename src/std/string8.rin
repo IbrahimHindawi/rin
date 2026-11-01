@@ -205,7 +205,7 @@ string8_append_cstr: proc[unsafe](arena: *memops_arena, s: *string8, cstr: ^cons
     string8_append_bytes(arena, s, cast(cstr, *const u8), count);
 }
 
-string8_clear: proc(s: *string8) -> void = {
+string8_clear: proc[unsafe](s: *string8) -> void = {
     if (s == null) {
         return;
     }
@@ -237,7 +237,7 @@ string8_read_file: proc[unsafe](arena: *memops_arena, filename: ^const char) -> 
     return s;
 }
 
-string8_equals: proc(a: *const string8, b: *const string8) -> b32 = {
+string8_equals: proc[unsafe](a: *const string8, b: *const string8) -> b32 = {
     if (a == null || b == null) {
         return a == b;
     }
@@ -250,7 +250,7 @@ string8_equals: proc(a: *const string8, b: *const string8) -> b32 = {
     unsafe { return memcmp(a*.data, b*.data, a*.length) == 0; }
 }
 
-string8_equals_cstr: proc(a: *const string8, cstr: ^const char) -> b32 = { unsafe {
+string8_equals_cstr: proc[unsafe](a: *const string8, cstr: ^const char) -> b32 = {
     if (a == null || cstr == null) {
         return 0;
     }
@@ -262,9 +262,9 @@ string8_equals_cstr: proc(a: *const string8, cstr: ^const char) -> b32 = { unsaf
         return 1;
     }
     return memcmp(a*.data, cstr, length) == 0;
-} }
+}
 
-string8_print: proc(s: *const string8) -> void = {
+string8_print: proc[unsafe](s: *const string8) -> void = {
     if (s == null || s*.data == null) {
         return;
     }
@@ -687,7 +687,7 @@ string8_builder_append_string8: proc[unsafe](b: *string8_builder, src: string8) 
     string8_builder_append_bytes(b, src.data, src.length);
 }
 
-string8_builder_append_cstr: proc(b: *string8_builder, cstr: ^const char) -> void = {
+string8_builder_append_cstr: proc[unsafe](b: *string8_builder, cstr: ^const char) -> void = {
     if (cstr == null) {
         return;
     }
