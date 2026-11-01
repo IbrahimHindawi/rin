@@ -1,0 +1,12 @@
+// A table of proc pointers is plain data: code lasts for the whole program, so it carries no region.
+import "std/print.rin"
+job_fn: alias = *proc(x: i32) -> i32;
+twice: proc(x: i32) -> i32 = { return x * 2; }
+triple: proc(x: i32) -> i32 = { return x * 3; }
+jobs: struct = { table: [2]job_fn; }
+main: proc() -> i32 = {
+    table: [2]job_fn = { twice, triple };
+    j: jobs = { .table = { triple, twice } };
+    printfmt("{} {}\n", table[1](5), j.table[1](5));
+    return 0;
+}

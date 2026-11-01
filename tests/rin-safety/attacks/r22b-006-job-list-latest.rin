@@ -1,0 +1,42 @@
+// SHOULD GO WRONG: jobs are allocated in the frame arena and dispatched by an
+// enum op in a branch; the scheduler keeps the last job it ran in `latest` for
+// a profiler read-out, read after the frame region closes (poisoned memory).
+// (A proc-pointer dispatch table cannot be written here: an array of proc
+// pointers is a carrier the checker rejects, so dispatch is a branch instead.)
+import "std/print.rin"
+import "std/vec.rin"
+
+level: region global;
+frame: region in level;
+
+op: enum = { add, mul, neg }
+job: struct = { kind: op; a: i32; b: i32; result: i32; }
+
+// The last job run, kept for the profiler.
+latest: option<*job in frame> = null;
+
+run_all: proc(jobs: *vec<*job in frame> in frame) -> void = {
+    for (i: u64 = 0; i < jobs*.length; i += 1) {
+        j: *job in frame = vec<*job in frame>at(jobs, i)*;
+        r: i32 = 0;
+        if (j*.kind == op.add) { r = j*.a + j*.b; }
+        else if (j*.kind == op.mul) { r = j*.a * j*.b; }
+        else { r = -j*.a; }
+        j*.result = r;
+        latest = j;
+    }
+}
+
+main: proc() -> i32 = {
+    n: i32 = 0;
+    frame: region = {
+        jobs: *vec<*job in frame> in frame = vec<*job in frame>make(frame, 8);
+        _ = vec<*job in frame>push(jobs, new<job>(frame, { .kind = op.add, .a = 3, .b = 4, .result = 0 }));
+        _ = vec<*job in frame>push(jobs, new<job>(frame, { .kind = op.mul, .a = 5, .b = 6, .result = 0 }));
+        run_all(jobs);
+        n = cast(jobs*.length, i32);
+    }
+    // `frame` is closed; `latest` points into the poisoned arena.
+    printfmt("ran {} jobs; last result {}\n", n, unwrap(latest)*.result);
+    return 0;
+}

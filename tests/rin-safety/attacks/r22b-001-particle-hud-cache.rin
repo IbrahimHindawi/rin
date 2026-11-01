@@ -1,0 +1,57 @@
+// SHOULD GO WRONG: `hottest` keeps a pointer into the per-frame `frame` arena;
+// the HUD reads it after the frame region has closed, so it dereferences
+// poisoned frame memory (use-after-region-end). The checker accepts the global
+// because a global of nested-region type is never emptied when `frame` ends.
+import "std/print.rin"
+import "std/vec.rin"
+
+level: region global;
+frame: region in level;
+
+particle: struct = { x: f32; y: f32; heat: f32; life: f32; }
+
+// The HUD wants the hottest particle of the frame just simulated. A programmer
+// reaches for a global so the render pass can pick it up "after the sim".
+hottest: option<*particle in frame> = null;
+
+emit: proc(r: region frame, n: u32, seed: f32) -> *vec<particle> in frame = {
+    ps: *vec<particle> in frame = vec<particle>make(r, n);
+    for (i: u32 = 0; i < n; i += 1) {
+        f: f32 = cast(i, f32);
+        _ = vec<particle>push(ps, { .x = f, .y = seed, .heat = seed + f * 0.5, .life = 1.0 });
+    }
+    return ps;
+}
+
+// Walk the frame's particles; the hottest, chosen by a ternary in the loop, is
+// stashed in the global for the HUD.
+simulate: proc(ps: *vec<particle> in frame) -> void = {
+    best: option<*particle in frame> = null;
+    best_heat: f32 = -1.0;
+    for (i: u64 = 0; i < ps*.length; i += 1) {
+        p: *particle in frame = vec<particle>at(ps, i);
+        p*.life -= 0.1;
+        hotter: b32 = p*.heat > best_heat;
+        best = hotter ? p : best;
+        best_heat = hotter ? p*.heat : best_heat;
+    }
+    hottest = best;
+}
+
+// The render pass, run after the frame's sim. Takes the cached pointer.
+draw_hud: proc(p: *particle in frame, count: i32) -> void = {
+    printfmt("hud: hottest heat {:5.2} at ({:.0},{:.0}); {} particles\n",
+        cast(p*.heat, f64), cast(p*.x, f64), cast(p*.y, f64), count);
+}
+
+main: proc() -> i32 = {
+    count: i32 = 0;
+    frame: region = {
+        ps: *vec<particle> in frame = emit(frame, 6, 2.0);
+        simulate(ps);
+        count = cast(ps*.length, i32);
+    }
+    // `frame` is closed here; `hottest` dangles into its poisoned arena.
+    draw_hud(unwrap(hottest), count);
+    return 0;
+}

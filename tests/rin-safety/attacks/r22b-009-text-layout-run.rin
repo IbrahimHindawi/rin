@@ -1,0 +1,45 @@
+// SHOULD GO WRONG: text shaping writes per-frame glyph quads into the frame
+// arena; the layout result (a struct carrying the slice by value) is copied out
+// and its slice kept in the `measured` global. After the frame region closes,
+// the renderer reads the poisoned quad storage. The slice travels through a
+// struct copy, which the checker must see through.
+import "std/print.rin"
+
+level: region global;
+frame: region in level;
+
+quad: struct = { x: f32; w: f32; glyph: u32; }
+layout_result: struct = { count: u32; advance: f32; quads: []quad in frame; }
+
+// The glyph run of the last shaped string, kept for the draw pass.
+measured: []quad in frame = {};
+
+shape: proc(r: region frame, n: u32) -> layout_result = {
+    count: u64 = cast(n, u64);
+    qs: []quad in frame = new_slice<quad>(r, count);
+    pen: f32 = 0.0;
+    for (i: u64 = 0; i < qs.length; i += 1) {
+        w: f32 = 6.0 + cast(i % 4, f32);
+        qs[i] = { .x = pen, .w = w, .glyph = cast(i, u32) + 65 };
+        pen += w;
+    }
+    return { .count = n, .advance = pen, .quads = qs };
+}
+
+main: proc() -> i32 = {
+    adv: f32 = 0.0;
+    n: u32 = 0;
+    frame: region = {
+        res: layout_result = shape(frame, 5);
+        // struct copy carries the slice out of `shape`
+        measured = res.quads;
+        adv = res.advance;
+        n = res.count;
+    }
+    // `frame` is closed; `measured` points into the poisoned quad storage.
+    if (measured.length > 0) {
+        printfmt("run advance {:.1}, {} glyphs, first glyph {} w {:.1}\n",
+            cast(adv, f64), n, measured[0].glyph, cast(measured[0].w, f64));
+    }
+    return 0;
+}

@@ -68,7 +68,6 @@ r4-191-fprintfmt-zero-file.rin
 r4-192-fprintfmt-forged.rin
 r4-195-file-read-stale-reopen.rin
 r4-196-must-user-named.rin
-r4-270-unsafe-addr-borrow-of-value.rin
 r4-282-tmp-to-bound-keeps-level.rin
 r4-290-slice-copy-overlap.rin
 r4-291-array-param-short-zero.rin
@@ -247,3 +246,14 @@ r18-009-hashmap-value-at-empty-pointer.rin
 r18-010-null-str-to-cstr.rin
 r18-011-cstr-copy-empty-tail.rin
 r18-012-table-remove-then-pointer-holds-non-null.rin
+r22b-001-particle-hud-cache.rin
+r22b-002-spatial-grid-cell.rin
+r22b-003-command-buffer-deferred.rin
+r22b-004-ui-hover-widget.rin
+r22b-005-event-queue-drain.rin
+r22b-006-job-list-latest.rin
+r22b-007-undo-snapshot-top.rin
+r22b-008-parser-ast-root.rin
+r22b-009-text-layout-run.rin
+r22b-010-asset-stream-staged.rin
+r22b-011-streaming-reset-staging.rin

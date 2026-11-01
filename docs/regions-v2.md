@@ -275,6 +275,21 @@ arena is the region the header lives in (only `make` sets it, and safe code cann
 points into `fmt`'s own region because `fmt_make` is the one safe constructor; and `cstr_of` is known by
 name. Each is written down here so that a new constructor is checked against it.
 
+Round 22's first attacker found the pass treating an `unsafe { }` block inside a safe body as more trusted
+than checked code: what it assigned to a bare pointer became permanent, and nothing inside it was checked,
+so `unsafe { reset level; }` silenced the reset check around it. Six programs, all faulting in the VM. The
+pass now checks every statement, inside `unsafe` as outside, with these as the author's word: a cast speaks
+for its declared type's region; a raw pointer, however it got there, lasts as long as the author says it does;
+what an external or unsafe proc returns is its signature's; a `return` inside the block is the signature's
+promise. A checked pointer keeps its region inside the block as outside, and a reset or a block's end inside
+it counts for everything around it. An unsafe block weakens nothing around it.
+
+Round 22's second attacker wrote eleven realistic programs from the design document alone, each keeping a
+pointer into `frame` in a global typed `option<*T in frame>` and reading it after the frame ended, through
+every shape it could think of. All eleven ran clean in the VM: such a global must be `option` because the
+region's end empties it, so the read is a checked stop. They are in the corpus as clean by design. Its
+complaint that a table of proc pointers was refused as a carrier was right, and is fixed: code has no region.
+
 ## Explicit C
 
 Round 17's emitter bugs were C's promotion rules deciding what rin had already decided. The emitter now

@@ -1,0 +1,14 @@
+// The shadow pass skips every node marked in_unsafe (`if (n->in_unsafe) continue;`), including a
+// Sh_Reset node. `reset level` is a fully safe statement on its own, so sh_check_reset_at would
+// normally flag that live `p` points into level. Placed inside unsafe, the reset node is skipped and
+// nothing invalidates p. At run time `reset level` poisons level and `p*` reads freed memory:
+// use-after-poison. Wrapping a safe statement in unsafe should never WEAKEN a check on the code
+// around it; here it silences the use-after-reset check entirely.
+import "std/print.rin"
+level: region global;
+f: proc() -> void = {
+    p: *i32 in level = new<i32>(level, 5);
+    unsafe { reset level; }
+    printfmt("{}\n", p*);
+}
+main: proc() -> i32 = { f(); return 0; }

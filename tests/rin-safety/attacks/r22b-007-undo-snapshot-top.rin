@@ -1,0 +1,38 @@
+// SHOULD GO WRONG: a snapshot holds an array of pointers into the frame arena,
+// and the undo stack's `top` is a frame-typed global. After the frame region
+// closes, both the snapshot and every cell pointer inside it dangle; the undo
+// read walks poisoned memory. (Snapshots belong in a persistent region; the
+// programmer reached for the frame arena they already had open.)
+import "std/print.rin"
+
+level: region global;
+frame: region in level;
+
+cell: struct = { v: i32; }
+MAXC: const u32 = 4;
+snapshot: struct = { tick: u32; n: u32; cells: [MAXC]option<*cell in frame>; }
+
+// Top of the undo stack, kept for the next "undo" press.
+undo_top: option<*snapshot in frame> = null;
+
+take_snapshot: proc(r: region frame, tick: u32, src: []cell in frame) -> *snapshot in frame = {
+    s: *snapshot in frame = new<snapshot>(r, { .tick = tick, .n = 0, .cells = {} });
+    for (i: u32 = 0; i < MAXC && cast(i, u64) < src.length; i += 1) {
+        s*.cells[i] = src[cast(i, u64)]&;
+        s*.n += 1;
+    }
+    return s;
+}
+
+main: proc() -> i32 = {
+    tick: u32 = 0;
+    frame: region = {
+        board: []cell in frame = new_slice<cell>(frame, 4);
+        for (i: u64 = 0; i < board.length; i += 1) { board[i].v = cast(i, i32) * 10; }
+        undo_top = take_snapshot(frame, 7, board);
+        tick = 7;
+    }
+    // `frame` is closed; the snapshot and its cell pointers are poisoned.
+    printfmt("undo tick {}; cell0 = {}\n", tick, unwrap(unwrap(undo_top)*.cells[0])*.v);
+    return 0;
+}

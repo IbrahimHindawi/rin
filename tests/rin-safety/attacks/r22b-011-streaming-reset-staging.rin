@@ -1,0 +1,37 @@
+// SHOULD GO WRONG: the streamer reuses one `frame` staging region per chunk and
+// `reset frame`s it between chunks. A `pinned` global holds a pointer into the
+// staging region across the reset (the programmer meant to copy it into the
+// world first). The read after the reset touches poisoned memory. `reset frame`
+// does not empty globals that point into frame, though `reset` of the top-level
+// region does empty its globals.
+import "std/print.rin"
+
+level: region global;
+frame: region in level;
+
+chunk: struct = { id: u32; height: f32; }
+
+// A chunk the streamer decided to keep a handle to.
+pinned: option<*chunk in frame> = null;
+
+stage_chunk: proc(r: region frame, id: u32, h: f32) -> *chunk in frame = {
+    return new<chunk>(r, { .id = id, .height = h });
+}
+
+main: proc() -> i32 = {
+    kept_id: u32 = 0;
+    frame: region = {
+        a: *chunk in frame = stage_chunk(frame, 1, 10.0);
+        pinned = a;
+        kept_id = a*.id;
+        // Done with chunk 1's staging bytes; clear the arena for the next chunk.
+        reset frame;
+        // BUG: read the pinned handle into chunk 1's now-poisoned slot. The
+        // checker accepts it because `reset frame` does not empty globals that
+        // point into frame (unlike `reset` of the top-level region).
+        printfmt("after reset: pinned id {} height {:.1}\n",
+            unwrap(pinned)*.id, cast(unwrap(pinned)*.height, f64));
+    }
+    printfmt("kept {}\n", kept_id);
+    return 0;
+}

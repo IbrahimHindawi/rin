@@ -1,0 +1,45 @@
+// SHOULD GO WRONG: the event queue is consumed while it is being filled; the
+// `last_urgent` global keeps the last urgent event for the post-frame log, and
+// is read after the frame region closes (poisoned frame memory). Events are
+// individual frame allocations, so the pointer itself is stable in-frame; the
+// bug is purely that it outlives the frame.
+import "std/print.rin"
+import "std/vec.rin"
+
+level: region global;
+frame: region in level;
+
+event: struct = { kind: u32; value: i32; }
+
+// Kept for the log printed after the frame.
+last_urgent: option<*event in frame> = null;
+
+main: proc() -> i32 = {
+    processed: i32 = 0;
+    frame: region = {
+        q: *vec<*event in frame> in frame = vec<*event in frame>make(frame, 16);
+        _ = vec<*event in frame>push(q, new<event>(frame, { .kind = 0, .value = 1 }));
+        _ = vec<*event in frame>push(q, new<event>(frame, { .kind = 2, .value = 5 }));
+        i: u64 = 0;
+        while (i < q*.length) {
+            e: *event in frame = vec<*event in frame>at(q, i)*;
+            i += 1;
+            if (e*.kind == 0) {
+                // handling spawns a follow-up event
+                _ = vec<*event in frame>push(q, new<event>(frame, { .kind = 1, .value = e*.value + 1 }));
+                continue;
+            }
+            if (e*.kind == 2) {
+                last_urgent = e;
+                _ = vec<*event in frame>push(q, new<event>(frame, { .kind = 3, .value = 0 }));
+                processed += 1;
+                if (processed >= 3) { break; }
+                continue;
+            }
+            processed += 1;
+        }
+    }
+    // `frame` is closed; `last_urgent` points into the poisoned arena.
+    printfmt("processed {}; last urgent value {}\n", processed, unwrap(last_urgent)*.value);
+    return 0;
+}

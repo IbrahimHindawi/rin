@@ -1,0 +1,15 @@
+// The in_unsafe skip also drops the outlives check on an ordinary store. `g = src` inside unsafe is
+// never checked, so a bare `*i32` parameter (caller memory) is written into a level global with no
+// region check. main passes a scratch pointer; after the scratch block ends, reading g dereferences
+// freed memory: use-after-poison. The same `g = src` outside unsafe is correctly rejected.
+import "std/print.rin"
+import "std/option.rin"
+level: region global;
+g: option<*i32 in level> = null;
+stash: proc(src: *i32) -> void = { unsafe { g = src; } }
+main: proc() -> i32 = {
+    scratch { q: *i32 in scratch = new<i32>(scratch, 7); stash(q); }
+    h: option<*i32 in level> = g;
+    if (h) { printfmt("{}\n", unwrap(h)*); }
+    return 0;
+}

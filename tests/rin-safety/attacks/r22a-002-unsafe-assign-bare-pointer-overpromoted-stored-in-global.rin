@@ -1,0 +1,20 @@
+// Same over-promotion, escaping through a global instead of a return. `p = x` assigns a bare `*i32`
+// parameter to a bare `*i32` local inside unsafe; that is a checked-legal statement, but the in_unsafe
+// branch makes p's region {permanent} instead of the parameter's. Then `g = p` (checked code) stores
+// it into a level global -- accepted because {permanent} outlives level. main passes a scratch pointer,
+// the scratch block ends, and reading g afterwards dereferences freed memory: use-after-poison.
+import "std/print.rin"
+import "std/option.rin"
+level: region global;
+g: option<*i32 in level> = null;
+stash: proc(x: *i32) -> void = {
+    p: *i32 = x;
+    unsafe { p = x; }
+    g = p;
+}
+main: proc() -> i32 = {
+    scratch { q: *i32 in scratch = new<i32>(scratch, 7); stash(q); }
+    h: option<*i32 in level> = g;
+    if (h) { printfmt("{}\n", unwrap(h)*); }
+    return 0;
+}

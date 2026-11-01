@@ -1,0 +1,53 @@
+// SHOULD GO WRONG: the parser builds an expression tree in the frame arena from
+// a scratch token buffer, and keeps the root in the `ast_root` global. After the
+// frame region closes, evaluating the tree recurses through poisoned nodes.
+import "std/print.rin"
+
+level: region global;
+frame: region in level;
+
+nkind: enum = { num, add, mul }
+node: struct = { kind: nkind; value: i32; lhs: option<*node in frame>; rhs: option<*node in frame>; }
+
+// The parsed tree, kept for the evaluator that runs after parsing.
+ast_root: option<*node in frame> = null;
+
+leaf: proc(r: region frame, v: i32) -> *node in frame = {
+    return new<node>(r, { .kind = nkind.num, .value = v, .lhs = null, .rhs = null });
+}
+
+combine: proc(r: region frame, k: nkind, a: *node in frame, b: *node in frame) -> *node in frame = {
+    return new<node>(r, { .kind = k, .value = 0, .lhs = a, .rhs = b });
+}
+
+eval: proc(n: *node in frame) -> i32 = {
+    if (n*.kind == nkind.num) { return n*.value; }
+    a: i32 = 0;
+    b: i32 = 0;
+    l: option<*node in frame> = n*.lhs;
+    if (l) { a = eval(l); }
+    r: option<*node in frame> = n*.rhs;
+    if (r) { b = eval(r); }
+    if (n*.kind == nkind.add) { return a + b; }
+    return a * b;
+}
+
+// Build (toks[0] + toks[1]) * toks[2] from a token slice in the frame arena.
+parse: proc(r: region frame, toks: []i32 in frame) -> option<*node in frame> = {
+    if (toks.length < 3) { return null; }
+    sum: *node in frame = combine(r, nkind.add, leaf(r, toks[0]), leaf(r, toks[1]));
+    return combine(r, nkind.mul, sum, leaf(r, toks[2]));
+}
+
+main: proc() -> i32 = {
+    frame: region = {
+        toks: []i32 in frame = new_slice<i32>(frame, 3);
+        toks[0] = 2;
+        toks[1] = 3;
+        toks[2] = 4;
+        ast_root = parse(frame, toks);
+    }
+    // `frame` is closed; the AST nodes are poisoned.
+    printfmt("result {}\n", eval(unwrap(ast_root)));
+    return 0;
+}

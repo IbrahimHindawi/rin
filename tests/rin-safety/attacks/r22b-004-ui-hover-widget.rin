@@ -1,0 +1,57 @@
+// SHOULD GO WRONG: the UI tree is laid out every frame in the frame arena, and
+// the `hovered` global keeps the widget under the cursor for the input pass.
+// It is read after the frame region closes (poisoned frame memory). Parent and
+// child pointers all point into the same dead arena.
+import "std/print.rin"
+
+level: region global;
+frame: region in level;
+
+widget: struct = {
+    id: u32;
+    x: i32; y: i32; w: i32; h: i32;
+    parent: option<*widget in frame>;
+    first_child: option<*widget in frame>;
+    next: option<*widget in frame>;
+}
+
+// The hovered widget, kept between the layout pass and the input pass.
+hovered: option<*widget in frame> = null;
+
+mk: proc(r: region frame, id: u32, x: i32, y: i32, w: i32, h: i32, parent: option<*widget in frame>) -> *widget in frame = {
+    return new<widget>(r, { .id = id, .x = x, .y = y, .w = w, .h = h,
+                            .parent = parent, .first_child = null, .next = null });
+}
+
+inside: proc(wid: *widget in frame, px: i32, py: i32) -> b32 = {
+    return px >= wid*.x && px < wid*.x + wid*.w && py >= wid*.y && py < wid*.y + wid*.h;
+}
+
+// Depth-first hit test: the deepest widget under the cursor.
+hit: proc(wid: *widget in frame, px: i32, py: i32) -> option<*widget in frame> = {
+    if (!inside(wid, px, py)) { return null; }
+    c: option<*widget in frame> = wid*.first_child;
+    while (c) {
+        deeper: option<*widget in frame> = hit(c, px, py);
+        if (deeper) { return deeper; }
+        c = c*.next;
+    }
+    return wid;
+}
+
+main: proc() -> i32 = {
+    depth: i32 = 0;
+    frame: region = {
+        root: *widget in frame = mk(frame, 0, 0, 0, 100, 100, null);
+        panel: *widget in frame = mk(frame, 1, 10, 10, 50, 50, root);
+        root*.first_child = panel;
+        button: *widget in frame = mk(frame, 2, 15, 15, 20, 20, panel);
+        panel*.first_child = button;
+        hovered = hit(root, 20, 20);
+        p: option<*widget in frame> = hovered;
+        while (p) { depth += 1; p = p*.parent; }
+    }
+    // `frame` is closed; `hovered` and its parent chain point into dead memory.
+    printfmt("hover id {}, depth {}\n", unwrap(hovered)*.id, depth);
+    return 0;
+}

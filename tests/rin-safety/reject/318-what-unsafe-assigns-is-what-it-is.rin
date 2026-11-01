@@ -1,0 +1,10 @@
+// expect: the result names no region
+f: proc() -> *i32 = {
+    p: *i32 = null;
+    scratch {
+        q: *i32 in scratch = new<i32>(scratch, 1);
+        unsafe { p = q; }
+    }
+    return p;
+}
+main: proc() -> i32 = { return 0; }

@@ -1,0 +1,45 @@
+// SHOULD GO WRONG: a deferred "boss spawn" command is recorded in the frame
+// arena and stashed in the `deferred` global through a three-call handoff
+// (record -> enqueue -> stash). It is applied after the frame region closes,
+// dereferencing poisoned frame memory.
+import "std/print.rin"
+import "std/vec.rin"
+
+level: region global;
+frame: region in level;
+
+spawn_cmd: struct = { kind: u32; x: f32; y: f32; }
+
+// The boss spawn a system deferred, kept for the post-frame apply step.
+deferred: option<*spawn_cmd in frame> = null;
+
+record: proc(r: region frame, kind: u32, x: f32, y: f32) -> *spawn_cmd in frame = {
+    return new<spawn_cmd>(r, { .kind = kind, .x = x, .y = y });
+}
+
+enqueue: proc(buf: *vec<*spawn_cmd in frame> in frame, c: *spawn_cmd in frame) -> *spawn_cmd in frame = {
+    _ = vec<*spawn_cmd in frame>push(buf, c);
+    return c;
+}
+
+stash_boss: proc(buf: *vec<*spawn_cmd in frame> in frame, c: *spawn_cmd in frame) -> void = {
+    deferred = enqueue(buf, c);
+}
+
+apply_boss: proc(c: *spawn_cmd in frame) -> void = {
+    printfmt("apply: spawn kind {} at ({:.0},{:.0})\n", c*.kind, cast(c*.x, f64), cast(c*.y, f64));
+}
+
+main: proc() -> i32 = {
+    recorded: i32 = 0;
+    frame: region = {
+        buf: *vec<*spawn_cmd in frame> in frame = vec<*spawn_cmd in frame>make(frame, 8);
+        _ = enqueue(buf, record(frame, 1, 0.0, 0.0));
+        stash_boss(buf, record(frame, 99, 16.0, 4.0));
+        recorded = cast(buf*.length, i32);
+    }
+    // `frame` is closed; the deferred command points into the poisoned arena.
+    printfmt("recorded {} commands\n", recorded);
+    apply_boss(unwrap(deferred));
+    return 0;
+}

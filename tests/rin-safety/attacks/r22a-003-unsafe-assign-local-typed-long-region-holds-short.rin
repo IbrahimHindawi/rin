@@ -1,0 +1,18 @@
+// The over-promotion also bites when the local names a region LONGER than the value's. p is typed
+// `*i32 in level`; inside unsafe it is assigned a `*i32 in frame`. The in_unsafe branch types the
+// result by p's declared type, {level}, discarding the frame-ness. `return p` (level) then passes.
+// At run time p points into the frame block, which is poisoned on exit, so main dereferences a
+// dangling pointer: use-after-poison. (r4-263 used a frame-TYPED local, which is caught; a
+// level-typed local that actually holds a frame pointer is not.)
+import "std/print.rin"
+level: region global;
+frame: region in level;
+leak: proc() -> *i32 in level = {
+    p: *i32 in level = new<i32>(level, 0);
+    frame: region = {
+        y: *i32 in frame = new<i32>(frame, 9);
+        unsafe { p = y; }
+    }
+    return p;
+}
+main: proc() -> i32 = { printfmt("{}\n", leak()*); return 0; }

@@ -1,0 +1,41 @@
+// SHOULD GO WRONG: the asset table (names -> ids) lives in level and is fine.
+// The streamer decodes a mesh into a frame staging arena and a generic helper
+// hands back a `*mesh in frame`, cached in the `staged` global. After the frame
+// region closes, the upload step reads the poisoned staging memory.
+import "std/print.rin"
+import "std/hashmap.rin"
+
+level: region global;
+frame: region in level;
+
+mesh: struct = { verts: u32; first: f32; };
+
+// The most recently staged mesh, kept for the GPU upload after decode.
+staged: option<*mesh in frame> = null;
+
+// A generic "hand me the thing you just made in r" helper; elision reasons
+// about the result's region from r.
+stage_in: proc<T>(r: region frame, value: T) -> *T in frame = {
+    return new<T>(r, value);
+}
+
+decode: proc(r: region frame, name: ^const char, verts: u32) -> *mesh in frame = {
+    return stage_in<mesh>(r, { .verts = verts, .first = cast(verts, f32) * 0.5 });
+}
+
+main: proc() -> i32 = {
+    names: *hashmap<u64, u32> in level = hashmap<u64, u32>make(level);
+    _ = hashmap<u64, u32>set(names, 1001, 0);
+    _ = hashmap<u64, u32>set(names, 1002, 1);
+    total: u32 = 0;
+    frame: region = {
+        m0: *mesh in frame = decode(frame, "rock", 128);
+        staged = decode(frame, "tree", 512);
+        total = m0*.verts + unwrap(staged)*.verts;
+    }
+    // `frame` is closed; `staged` points into the poisoned staging arena.
+    id: option<*u32> = hashmap<u64, u32>get(names, 1002);
+    printfmt("staged mesh verts {}, asset id {}, total {}\n",
+        unwrap(staged)*.verts, id ? cast(id*, i32) : -1, total);
+    return 0;
+}

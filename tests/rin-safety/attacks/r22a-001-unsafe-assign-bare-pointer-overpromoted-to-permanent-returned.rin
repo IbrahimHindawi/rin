@@ -1,0 +1,19 @@
+// sh_assign_value's in_unsafe branch types the assigned value by the place's DECLARED type.
+// A bare `*i32` local (no region) has no region atom, so named<0 and the value becomes {permanent}
+// -- the longest lifetime -- no matter what short-lived pointer is actually assigned. `p = q` is a
+// plain, checked-legal assignment (not an unsafe act); wrapping it in unsafe promotes p from {scratch}
+// to {permanent}, so `return p` (typed level) passes. At run time p points into scratch, which is
+// poisoned when the block ends, and main dereferences the returned dangling pointer: use-after-poison.
+// (r4-262/263 are the same idea but used a region-TYPED local, which is caught; a bare local is not.)
+import "std/print.rin"
+level: region global;
+leak: proc() -> *i32 in level = {
+    seed: *i32 in level = new<i32>(level, 0);
+    p: *i32 = seed;
+    scratch {
+        q: *i32 in scratch = new<i32>(scratch, 5);
+        unsafe { p = q; }
+    }
+    return p;
+}
+main: proc() -> i32 = { printfmt("{}\n", leak()*); return 0; }

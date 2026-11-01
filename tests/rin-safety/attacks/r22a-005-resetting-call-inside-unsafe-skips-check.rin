@@ -1,0 +1,15 @@
+// Same skip through a resetting CALLEE. sh_reset_call_visit walks a node's calls for procs whose
+// transitive `resets` include the region, but it runs only on nodes the checks loop reaches, and that
+// loop skips in_unsafe nodes. `doreset()` is a safe call; inside unsafe its reset of level is never
+// checked against live `p`. At run time level is poisoned and `p*` reads freed memory: use-after-poison.
+// (The companion region-reentry check runs statically and catches opener-in-unsafe, r4-265, but the
+// reset-dangle check lives in the shadow pass and is skipped.)
+import "std/print.rin"
+level: region global;
+doreset: proc() -> void = { reset level; }
+f: proc() -> void = {
+    p: *i32 in level = new<i32>(level, 5);
+    unsafe { doreset(); }
+    printfmt("{}\n", p*);
+}
+main: proc() -> i32 = { f(); return 0; }

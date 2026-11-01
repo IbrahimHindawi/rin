@@ -1,0 +1,59 @@
+// SHOULD GO WRONG: `last_cell` is a slice into the per-frame grid storage; it is
+// indexed after the frame region closes, reading poisoned memory. No `unwrap`
+// is needed: a global slice has no null gate, only a bounds check, which passes.
+import "std/print.rin"
+import "std/vec.rin"
+
+level: region global;
+frame: region in level;
+
+body: struct = { id: u32; cx: i32; cy: i32; }
+
+// The broadphase remembers the last cell it returned, for the debug overlay.
+last_cell: []body in frame = {};
+
+// A grid rebuilt every frame: one bucket per cell, bodies bucketed by (cx,cy).
+grid: struct = {
+    cols: u32;
+    buckets: *vec<*vec<body> in frame> in frame;
+}
+
+grid_make: proc(r: region frame, cols: u32, rows: u32) -> grid = {
+    g: grid = { .cols = cols, .buckets = vec<*vec<body> in frame>make(r, cols * rows) };
+    for (i: u32 = 0; i < cols * rows; i += 1) {
+        _ = vec<*vec<body> in frame>push(g.buckets, vec<body>make(r, 2));
+    }
+    return g;
+}
+
+insert: proc(g: *grid, b: body) -> void = {
+    idx: u64 = cast(cast(b.cy, u32) * g*.cols + cast(b.cx, u32), u64);
+    bucket: *vec<body> in frame = vec<*vec<body> in frame>at(g*.buckets, idx)*;
+    _ = vec<body>push(bucket, b);
+}
+
+// Return the bodies in one cell, and remember the cell for the overlay.
+query_cell: proc(g: *grid, cx: u32, cy: u32) -> []body in frame = {
+    idx: u64 = cast(cy * g*.cols + cx, u64);
+    bucket: *vec<body> in frame = vec<*vec<body> in frame>at(g*.buckets, idx)*;
+    cell: []body in frame = vec<body>items(bucket);
+    last_cell = cell;
+    return cell;
+}
+
+main: proc() -> i32 = {
+    hits: u32 = 0;
+    frame: region = {
+        g: grid = grid_make(frame, 4, 4);
+        insert(g&, { .id = 1, .cx = 1, .cy = 2 });
+        insert(g&, { .id = 2, .cx = 1, .cy = 2 });
+        insert(g&, { .id = 3, .cx = 3, .cy = 0 });
+        found: []body in frame = query_cell(g&, 1, 2);
+        hits = cast(found.length, u32);
+    }
+    // `frame` is closed; `last_cell` points into its poisoned storage.
+    if (last_cell.length > 0) {
+        printfmt("overlay: cell holds {} bodies, first id {}\n", hits, last_cell[0].id);
+    }
+    return 0;
+}

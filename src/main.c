@@ -14957,7 +14957,7 @@ static bool type_is_carrier_depth(Program *prog, TypeExpr *type, memops_arena *a
         /* An array of pointers that name no region is memory holding borrows:
            the same thing as a struct field holding one. */
         TypeExpr *elem = resolve_alias_type(prog, type->elem);
-        if (elem && elem->kind == Type_Ptr && !elem->is_raw && elem->region.length == 0) return true;
+        if (elem && elem->kind == Type_Ptr && !elem->is_raw && elem->region.length == 0 && !type_is_proc_pointer(prog, elem)) return true;
         if (elem && type_slice_elem(elem) && elem->region.length == 0) return true;
         return type_is_carrier_depth(prog, type->elem, arena, depth + 1);
     }
@@ -20449,6 +20449,17 @@ static void sh_call_result_regions(Sh *sh, ShNode *n, ShSet *state, Expr *call, 
     TypeExpr *result = resolve_alias_type(prog, infer_expr_type(call, n->types, prog, sh->arena));
     if (!result) return;
     if (result->kind == Type_Ptr && result->is_raw && result->is_str) { shset_add(out, sh->permanent_atom); return; }
+    /* Inside unsafe a raw pointer is the author's: how long it lasts is not for the statement to say. And what an
+       external or unsafe proc gives back is its signature's word: the region it names, or for good. */
+    if (n->in_unsafe && result->kind == Type_Ptr && result->is_raw) { shset_add(out, sh->permanent_atom); return; }
+    if (n->in_unsafe) {
+        ProcDecl *callee = sh_callee(sh, n, call);
+        if (callee && (callee->is_external || callee->is_unsafe)) {
+            i32 said = sh_type_atom(sh, result, at);
+            shset_add(out, said >= 0 ? said : sh->permanent_atom);
+            return;
+        }
+    }
     if (!call->base && string8_equals_cstr(&call->name, "cstr_of")) { shset_add(out, sh->temp_atom); return; }
     i32 named = sh_type_atom(sh, result, at);
     if (named >= 0) { shset_add(out, named); return; }
@@ -20475,6 +20486,11 @@ static void sh_value_regions(Sh *sh, ShNode *n, ShSet *state, Expr *e, ShSet *ou
     if (!e || depth > 48) return;
     Program *prog = sh->prog;
     i32 at = sh_index(sh, n);
+    if (n->in_unsafe && e->kind != Expr_InitList && e->kind != Expr_CompoundInit && e->kind != Expr_Ternary) {
+        /* Inside unsafe a raw pointer is the author's, however it got here; a checked pointer keeps its region. */
+        TypeExpr *t = resolve_alias_type(prog, infer_expr_type(e, n->types, prog, sh->arena));
+        if (t && t->kind == Type_Ptr && t->is_raw) { shset_add(out, sh->permanent_atom); return; }
+    }
     switch (e->kind) {
         case Expr_Name: {
             if (string8_equals_cstr(&e->name, "null")) { shset_add(out, sh->null_atom); return; }
@@ -20500,7 +20516,18 @@ static void sh_value_regions(Sh *sh, ShNode *n, ShSet *state, Expr *e, ShSet *ou
         case Expr_String: shset_add(out, sh->permanent_atom); return;
         case Expr_Number: case Expr_Char: case Expr_SizeofType: case Expr_AlignofType: case Expr_ZeroInit: return;
         case Expr_Addr: { i32 holder; sh_place_memory(sh, n, state, e->inner, out, &holder, depth + 1); return; }
-        case Expr_Cast: sh_value_regions(sh, n, state, e->inner, out, depth + 1); return;
+        case Expr_Cast: {
+            /* Inside unsafe a cast to a pointer is the author's word: the target type says the region, or that it
+               lasts for good. Outside, a cast to or from a pointer is refused, so this is a number. */
+            TypeExpr *to = resolve_alias_type(prog, e->cast_type ? e->cast_type : infer_expr_type(e, n->types, prog, sh->arena));
+            if (n->in_unsafe && to && (to->kind == Type_Ptr || type_slice_elem(to))) {
+                i32 named = sh_type_atom(sh, to, at);
+                shset_add(out, named >= 0 ? named : sh->permanent_atom);
+                return;
+            }
+            sh_value_regions(sh, n, state, e->inner, out, depth + 1);
+            return;
+        }
         case Expr_Unary: sh_value_regions(sh, n, state, e->inner, out, depth + 1); return;
         case Expr_Binary: sh_value_regions(sh, n, state, e->left, out, depth + 1); sh_value_regions(sh, n, state, e->right, out, depth + 1); return;
         case Expr_Ternary: sh_value_regions(sh, n, state, e->right, out, depth + 1); sh_value_regions(sh, n, state, e->third, out, depth + 1); return;
@@ -20559,14 +20586,13 @@ static void sh_value_regions(Sh *sh, ShNode *n, ShSet *state, Expr *e, ShSet *ou
 /* The set a node assigns: an unsafe block's word, an array copy's elements, or the value's regions. */
 static void sh_assign_value(Sh *sh, ShNode *n, i32 i, ShSet *state, ShSet *value, Program *prog, memops_arena *arena) {
     memset(value, 0, sizeof(*value));
-    if (n->in_unsafe) {
-        TypeExpr *pt = n->local >= 0 ? ((ShLocal *)sh->locals.data[n->local])->type : (n->place ? infer_expr_type(n->place, n->types, prog, arena) : null);
-        i32 named = pt ? sh_type_atom(sh, pt, i) : -1;
-        if (named < 0 && pt && sh_is_aggregate(sh, pt)) sh_inside_atoms(sh, pt, i, value);
-        else shset_add(value, named >= 0 ? named : sh->permanent_atom);
-        return;
-    }
     if (!n->value) return;
+    if (n->in_unsafe) {
+        /* A raw local or place assigned inside unsafe holds what the author says, whatever was assigned. */
+        TypeExpr *dt = n->local >= 0 ? ((ShLocal *)sh->locals.data[n->local])->type : (n->place ? infer_expr_type(n->place, n->types, prog, arena) : null);
+        TypeExpr *dr = resolve_alias_type(prog, dt);
+        if (dr && dr->kind == Type_Ptr && dr->is_raw) { shset_add(value, sh->permanent_atom); return; }
+    }
     if (n->array_copy) {
         /* The elements are copied; where the source array sits is no part of the value. */
         if (n->value->kind == Expr_Name) {
@@ -20683,7 +20709,7 @@ typedef struct ShCallScan { Sh *sh; ShNode *n; ShSet *state; } ShCallScan;
 static void sh_check_call_visit(Expr *e, void *ctx, memops_arena *arena) {
     ShCallScan *c = (ShCallScan *)ctx;
     Sh *sh = c->sh; ShNode *n = c->n;
-    if (e->kind != Expr_Call || n->in_unsafe) return;
+    if (e->kind != Expr_Call) return;
     i32 at = sh_index(sh, n);
     if (call_is_new(e)) {
         if (e->args.length == 2 && !string8_equals_cstr(&e->name, "new_slice")) {
@@ -20792,7 +20818,7 @@ static void sh_check_reset_at(Sh *sh, i32 i, ShNode *n, ShSet *state, i32 reset_
 typedef struct ShResetScan { Sh *sh; i32 i; ShNode *n; ShSet *state; } ShResetScan;
 static void sh_reset_call_visit(Expr *e, void *ctx, memops_arena *arena) {
     ShResetScan *c = (ShResetScan *)ctx;
-    if (e->kind != Expr_Call || c->n->in_unsafe) return;
+    if (e->kind != Expr_Call) return;
     ProcDecl *callee = sh_callee(c->sh, c->n, e);
     if (!callee) return;
     for (i32 k = 0; k < callee->resets.length; k++) {
@@ -21008,18 +21034,17 @@ static void shadow_check_proc(Program *prog, ProcDecl *p, Vec_voidptr *body, Typ
     for (i32 i = 0; i < count; i++) {
         ShNode *n = (ShNode *)sh->nodes.data[i];
         ShSet *state = T > 0 ? &sh->in_state[(size_t)i * T] : cur;
-        if (n->in_unsafe) continue;
-        if (n->kind == Sh_Assign && n->value && !n->in_unsafe) {
+        if (n->kind == Sh_Assign && n->value) {
             TypeExpr *lt = n->local >= 0 ? ((ShLocal *)sh->locals.data[n->local])->type : (n->place ? infer_expr_type(n->place, n->types, prog, arena) : null);
             if (lt) sh_check_init_list(sh, n, state, lt, n->value, 0);
         }
-        if (n->kind == Sh_Return && n->value && !n->in_unsafe && sh->ret_type) sh_check_init_list(sh, n, state, sh->ret_type, n->value, 0);
+        if (n->kind == Sh_Return && n->value && sh->ret_type && !n->in_unsafe) sh_check_init_list(sh, n, state, sh->ret_type, n->value, 0);
         if (n->kind == Sh_Assign) {
             ShSet value = {0};
             sh_assign_value(sh, n, i, state, &value, prog, arena);
             if (n->local >= 0) {
                 ShLocal *L = (ShLocal *)sh->locals.data[n->local];
-                if (L->track >= 0 && shset_has(&value, sh->temp_atom)) sh_report(sh, n, "a raw pointer from a call lasts only for a statement: pass it on, do not keep it");
+                if (L->track >= 0 && shset_has(&value, sh->temp_atom) && !n->in_unsafe) sh_report(sh, n, "a raw pointer from a call lasts only for a statement: pass it on, do not keep it");
                 /* A local of a type that names a region: what goes in must be in it. */
                 i32 named = L->type ? sh_type_atom(sh, L->type, i) : -1;
                 if (named >= 0) { ShSet place = {0}; shset_add(&place, named); sh_check_outlives(sh, n, &value, &place, "this value"); }
@@ -21049,7 +21074,8 @@ static void shadow_check_proc(Program *prog, ProcDecl *p, Vec_voidptr *body, Typ
                 else if (((ShLocal *)sh->locals.data[holder])->addr_taken) sh_check_outlives(sh, n, &value, &mem, "this value, in a local whose address is taken,");
             }
         }
-        if (n->kind == Sh_Return) sh_check_return(sh, n, state);
+        /* A return inside unsafe is the signature's promise, the author's to keep. */
+        if (n->kind == Sh_Return && !n->in_unsafe) sh_check_return(sh, n, state);
         if (n->kind == Sh_Leave) sh_check_leave(sh, i, n, state, n->local);
         if (n->kind == Sh_Goto) for (i32 k = 0; k < n->leaves.length; k++) sh_check_leave(sh, i, n, state, n->leaves.data[k]);
         if (n->kind == Sh_Reset) sh_check_reset_at(sh, i, n, state, n->region_atom);
