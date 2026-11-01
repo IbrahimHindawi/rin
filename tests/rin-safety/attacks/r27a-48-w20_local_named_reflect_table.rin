@@ -1,0 +1,8 @@
+// E_reflect, a local.
+import "std/print.rin"
+E: enum = { one }
+main: proc() -> i32 = {
+    E_reflect: [4]u8 = {};
+    printfmt("{}\n", E.one);
+    return 0;
+}

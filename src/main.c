@@ -2490,6 +2490,25 @@ static void parse_region_suffix(Parser *p, TypeExpr *t) {
 
    The stub keeps the parser moving instead of unwinding into the same error at
    every level, which is what parse_expr does for the same reason. */
+/* Decimal with no leading zero, which C would read as octal; or hex. No suffix, no separator, and small enough to be
+   a size. */
+static bool array_count_is_plain(string8 text) {
+    if (text.length == 0) return false;
+    if (text.length > 2 && text.data[0] == '0' && (text.data[1] == 'x' || text.data[1] == 'X')) {
+        if (text.length > 16) return false;
+        for (u64 i = 2; i < text.length; i++) {
+            u8 c = text.data[i];
+            if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
+        }
+        return true;
+    }
+    if (text.length > 18 || (text.length > 1 && text.data[0] == '0')) return false;
+    for (u64 i = 0; i < text.length; i++) {
+        if (text.data[i] < '0' || text.data[i] > '9') return false;
+    }
+    return true;
+}
+
 static TypeExpr *parse_type(Parser *p) {
     p->region_type_here = p->region_type_ok;
     p->region_type_ok = false;
@@ -2730,6 +2749,10 @@ static TypeExpr *parse_type_inner(Parser *p) {
         } else {
             Token *count_tok = parser_expect(p, Token_Number, "expected array count");
             array->array_count = token_to_string8(p->arena, count_tok);
+            if (count_tok && g_safety && !array_count_is_plain(array->array_count)) {
+                parser_error_token(p, count_tok, "an array's length is plain digits, or hex: C would read anything else "
+                                                 "differently from rin, or not at all");
+            }
             /* `[0]T` is a GNU extension, not ISO C, and clang takes it without a
                word. Nothing in the tree uses one, and the C trick it exists for
                -- a flexible array member -- has its own spelling. */
@@ -4475,6 +4498,18 @@ static DeclAttributes parse_decl_attributes(Parser *p, bool is_enum) {
             parser_expect(p, Token_LParen, "expected '(' after align");
             n = parser_expect(p, Token_Number, "expected an alignment in align(N)");
             if (n) attrs.align = token_to_string8(p->arena, n);
+            if (n && g_safety) {
+                string8 digits = attrs.align;
+                u64 value = 0;
+                bool plain = digits.length > 0 && digits.length < 10;
+                for (u64 i = 0; plain && i < digits.length; i++) {
+                    if (digits.data[i] < '0' || digits.data[i] > '9') plain = false;
+                    else value = value * 10 + (u64)(digits.data[i] - '0');
+                }
+                if (!plain || value == 0 || (value & (value - 1)) != 0) {
+                    parser_error_token(p, n, "an alignment is a power of two");
+                }
+            }
             parser_expect(p, Token_RParen, "expected ')' after align(N)");
         } else if (string8slice_equals_cstr(tok->text, "callconv")) {
             Token *c = null;
@@ -13955,6 +13990,7 @@ static i64 parse_nonnegative_i64(string8 text) {
     if (text.length == 0) return -1;
     /* C reads 010 as eight, so this says nothing about a length written that way. */
     if (text.length > 1 && text.data[0] == '0') return -1;
+    if (text.length > 18) return -1;
     i64 value = 0;
     for (u64 i = 0; i < text.length; i++) {
         u8 c = text.data[i];
@@ -14750,6 +14786,13 @@ static void type_check_initializer_list(
             if (init->designator_kinds.data[i] == InitDesignator_Index) {
                 Expr *designator = (Expr *)init->designators.data[i];
                 type_check_expr(designator, scope, prog, arena);
+                if (g_safe_body && designator && designator->kind != Expr_Number) {
+                    ConstVal at = const_eval(designator);
+                    if (!at.ok || at.is_float || at.big || at.value < 0 || (array_count >= 0 && at.value >= array_count)) {
+                        type_error_message("an array designator is a number inside the array that rin can compute",
+                                           designator->line, designator->col);
+                    }
+                }
                 if (designator && designator->kind == Expr_Number) {
                     index_name = designator->number;
                     index_line = designator->line;
@@ -16652,6 +16695,25 @@ static bool name_is_enum_member(Program *prog, string8 name) {
 }
 
 /* `slice_i32`, `ptr_entity`, `vec_ptr_entity`: what an instance of a type is called in C. */
+/* What an enum's value may mention: numbers, and the members of its own enum. */
+typedef struct EnumValueScan { EnumDecl *decl; bool bad; } EnumValueScan;
+static void visit_enum_value(Expr *e, void *ctx, memops_arena *arena) {
+    (void)arena;
+    EnumValueScan *scan = (EnumValueScan *)ctx;
+    /* A sibling reaches here qualified, `E.a`. */
+    if (e->kind == Expr_Field && !(e->base && e->base->kind == Expr_Name && string8_equals(&e->base->name, &scan->decl->name))) { scan->bad = true; return; }
+    if (e->kind == Expr_Call || e->kind == Expr_Index) { scan->bad = true; return; }
+    if (e->kind != Expr_Name || string8_equals(&e->name, &scan->decl->name)) return;
+    for (i32 k = 0; k < scan->decl->items.length; k++) {
+        EnumItem *other = (EnumItem *)scan->decl->items.data[k];
+        if (string8_equals(&other->name, &e->name)) return;
+        u64 head = scan->decl->name.length;
+        if (e->name.length == head + 1 + other->name.length && memcmp(e->name.data, scan->decl->name.data, head) == 0 &&
+            e->name.data[head] == '_' && memcmp(e->name.data + head + 1, other->name.data, other->name.length) == 0) return;
+    }
+    scan->bad = true;
+}
+
 static bool name_is_generated_type(Program *prog, string8 name, memops_arena *arena);
 
 /* The tail of an instance's name: its arguments, one after another, each a type, a generated type or an array's count. */
@@ -16737,6 +16799,7 @@ static void safety_check_local_name(Program *prog, string8 name, i32 line, i32 c
     else if (name_is_type(prog, name, arena)) why = "is a type, and the generated C spells the type by name wherever it needs its size";
     else if (name_is_generated_type(prog, name, arena)) why = "is what the generated C calls a type";
     else if (name_is_generated_proc(prog, name, arena)) why = "is what the generated C may call a generic proc";
+    else if (string8_ends_with_cstr(name, "_reflect")) why = "is what the generated C calls a type's reflection table";
     else if (string8_equals_cstr(&name, "print_enum") || (lookup_proc_decl(prog, name) && lookup_proc_decl(prog, name)->specialized_from.length > 0)) why = "is a proc the generated C calls by name";
     else {
         for (i32 i = 0; i < prog->globals.length; i++) {
@@ -16894,6 +16957,34 @@ static void safety_check_program_names(Program *prog, memops_arena *arena) {
             g_diag_source_path = p->source_path;
             type_error_message("std calls this in the middle of an operation on a container, so it must touch no global and "
                                "call only procs that do the same", p->line, p->col);
+        }
+    }
+    /* An enum's values reach C before anything else in the file, so they are what rin can compute by then. */
+    for (i32 i = 0; i < prog->enums.length; i++) {
+        EnumDecl *decl = (EnumDecl *)prog->enums.data[i];
+        if (decl->is_external || path_is_std(decl->source_path)) continue;
+        for (i32 j = 0; j < decl->items.length; j++) {
+            EnumItem *item = (EnumItem *)decl->items.data[j];
+            bool bad = false;
+            if (item->value_expr) {
+                EnumValueScan scan = { decl, false };
+                expr_walk(item->value_expr, visit_enum_value, &scan, arena);
+                bad = scan.bad;
+            } else if (item->value.data && item->value.length > 0 && !(item->value.data[0] >= '0' && item->value.data[0] <= '9')) {
+                bad = true;
+                for (i32 k = 0; k < decl->items.length; k++) {
+                    EnumItem *other = (EnumItem *)decl->items.data[k];
+                    u64 head = decl->name.length;
+                    if (string8_equals(&other->name, &item->value)) bad = false;
+                    if (item->value.length == head + 1 + other->name.length && memcmp(item->value.data, decl->name.data, head) == 0 &&
+                        item->value.data[head] == '_' && memcmp(item->value.data + head + 1, other->name.data, other->name.length) == 0) bad = false;
+                }
+            }
+            if (bad) {
+                g_diag_source_path = decl->source_path;
+                type_error_message("an enum's value is a number, or a member of the same enum: C sees it before the rest "
+                                   "of the file", decl->line, decl->col);
+            }
         }
     }
     /* A directive is applied to the text of the C, under every rule above: `#define length
@@ -18646,15 +18737,26 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
         /* `sizeof(a)` parses as a type, with a's name, whichever a is. */
         string8 named = e->inner && e->inner->kind == Expr_Name ? e->inner->name
                       : e->cast_type && e->cast_type->kind == Type_Name ? e->cast_type->name : (string8){0};
+        if (named.length > 0 && !type_scope_lookup_local(scope, named) &&
+            (array_string8_contains(&prog->regions, named) || lookup_proc_decl(prog, named))) {
+            type_error_message("sizeof takes a type or a value: a region and a proc have no size to ask for", e->line, e->col);
+        }
         if (named.length > 0 && name_is_param(g_check_proc, named, prog)) {
             TypeExpr *of = resolve_alias_type(prog, type_scope_lookup(scope, named));
             if (of && of->kind == Type_Array) {
-                type_error_message("an array parameter is an address, and sizeof would say so: use the type, sizeof([N]T)", e->line, e->col);
+                type_error_message("an array parameter is an address, and sizeof would say so: multiply the element's size by the length", e->line, e->col);
             }
         }
     }
     if (g_safe_body && e->kind == Expr_Index && e->base && e->base->kind == Expr_Addr) {
         type_error_message("this reads through an address just taken: use the place itself", e->line, e->col);
+    }
+    if (e->kind == Expr_Number && g_safe_body && !number_is_float_form(number_digits(e->number))) {
+        string8 digits = number_digits(e->number);
+        bool hex_form = digits.length > 1 && digits.data[0] == '0' && (digits.data[1] == 'x' || digits.data[1] == 'X' || digits.data[1] == 'b' || digits.data[1] == 'B');
+        if (!hex_form && (digits.length > 20 || (digits.length == 20 && memcmp(digits.data, "18446744073709551615", 20) > 0))) {
+            type_error_message("this number is too big for any type", e->line, e->col);
+        }
     }
     if (e->kind == Expr_Number && g_safe_body && number_is_float_form(number_digits(e->number))) {
         string8 float_suffix = number_suffix_type(e->number);
@@ -19389,6 +19491,13 @@ static void type_check_stmt(
         narrow_guard_unsequenced(s->while_cond, true, scope, prog, arena);
     } else if (s->kind == Stmt_Switch) {
         narrow_guard_unsequenced(s->switch_expr, true, scope, prog, arena);
+    }
+    if (s->kind == Stmt_Var && g_safe_body && !g_checking_std && s->expr && s->expr->kind != Expr_InitList &&
+        s->expr->kind != Expr_ZeroInit && s->expr->kind != Expr_CompoundInit) {
+        TypeExpr *declared = resolve_alias_type(prog, type_scope_apply_sub(scope, arena, s->type));
+        if (declared && declared->kind == Type_Array) {
+            type_error_message("an array local takes braces: declare it and then assign, 'a = b'", s->line, s->col);
+        }
     }
     if (s->kind == Stmt_Var) {
         narrow_end_fields(arena, scope, NarrowEnd_Root, s->name); // a local may shadow a global path's root
@@ -23992,9 +24101,16 @@ static void emit_enum_decl(memops_arena *arena, string8 *out, EnumDecl *decl) {
         emit_c_ident(arena, out, item->name);
         if (item->value_expr) {
             emit_cstr(arena, out, " = ");
-            g_emit_unevaluated++;
-            emit_expr(arena, out, item->value_expr, (TypeSub){0}, (string8){0});
-            g_emit_unevaluated--;
+            ConstVal known = const_eval(item->value_expr);
+            if (known.ok && !known.is_float && !known.big) {
+                char value_text[32];
+                snprintf(value_text, sizeof(value_text), "%lld", (long long)known.value);
+                emit_cstr(arena, out, value_text);
+            } else {
+                g_emit_unevaluated++;
+                emit_expr(arena, out, item->value_expr, (TypeSub){0}, (string8){0});
+                g_emit_unevaluated--;
+            }
         } else if (item->value.data) {
             emit_cstr(arena, out, " = ");
             emit_string8(arena, out, item->value);

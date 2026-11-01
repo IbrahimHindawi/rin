@@ -1,0 +1,12 @@
+// A value from a const, an expression with another enum.
+import "std/print.rin"
+K: const i32 = 7;
+F: enum = { p = K, q }
+E: enum = { a = F.q, b }
+main: proc() -> i32 = {
+    x: [E.b]i32 = {};
+    i: u64 = 8;
+    x[i] = 1;
+    printfmt("{}\n", E.b);
+    return 0;
+}

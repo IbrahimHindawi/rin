@@ -1,0 +1,7 @@
+// A count with rin's suffix: emitted as text?
+main: proc() -> i32 = {
+    x: [8'u8]i32 = {};
+    i: u64 = 7;
+    x[i] = 1;
+    return 0;
+}

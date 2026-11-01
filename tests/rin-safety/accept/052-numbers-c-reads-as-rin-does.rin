@@ -1,0 +1,9 @@
+// A length in decimal or hex, a designator, an enum built from its siblings and from numbers.
+import "std/print.rin"
+E: enum = { a = 3, b = a, c = 2 + 5 }
+main: proc() -> i32 = {
+    x: [4]i32 = { [2] = 7 };
+    y: [0x10]i32 = {};
+    printfmt("{} {} {} {}\n", x[2], y[15], cast(E.b, i32), cast(E.c, i32));
+    return 0;
+}

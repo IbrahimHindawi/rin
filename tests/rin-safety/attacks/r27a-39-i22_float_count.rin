@@ -1,0 +1,5 @@
+// A count with a dot, an e.
+main: proc() -> i32 = {
+    x: [1e3]i32 = {};
+    return 0;
+}

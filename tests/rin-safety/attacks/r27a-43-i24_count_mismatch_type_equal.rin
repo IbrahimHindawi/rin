@@ -1,0 +1,8 @@
+// [010] and [8] are one type to C, two to rin; [10] and [010] as names?
+import "std/print.rin"
+f: proc(a: *[010]i32) -> void = { a*[7] = 1; }
+main: proc() -> i32 = {
+    x: [010]i32 = {};
+    f(x&);
+    return 0;
+}

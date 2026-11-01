@@ -1,0 +1,10 @@
+// sizeof a region, alignof a proc.
+import "std/print.rin"
+level: region global;
+foo: proc() -> void = { }
+main: proc() -> i32 = {
+    printfmt("{}\n", sizeof(level));
+    printfmt("{}\n", sizeof(foo));
+    printfmt("{}\n", alignof(foo));
+    return 0;
+}

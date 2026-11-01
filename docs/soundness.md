@@ -24,7 +24,7 @@ The patterns come from a shipped engine, and a feature earns its place by a patt
 Std's containers in the safe subset are `vec`, `table` and `hashmap`. `list`, `dlist`, `map`, `hashset`, `deque`,
 `stack`, `queue`, `heap`, `dsu`, `array` and the node types are `proc[unsafe]`: no safe program relies on them, so
 their bodies are not part of what the claim trusts. `python tests/rin_trusted_lines.py` counts what it does trust:
-the lines of `unsafe` that safe code can reach, following calls by name, now 329. What is left is what cannot be
+the lines of `unsafe` that safe code can reach, following calls by name, now 353 as the block layout counts them. What is left is what cannot be
 written otherwise: the arena, the allocations of the containers, and the calls to C. Strings, formatting,
 reflection and the map's probing are checked code, through a few views.
 

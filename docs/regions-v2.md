@@ -352,7 +352,7 @@ day the first is wrong.
 ## Rounds 25 and 26: the rules the pass did not replace
 
 Attacks on the pass have dried up. The holes moved to the rules beside it, and two rounds aimed at those found
-six causes in about 370 programs, where rounds 22 and 23 had reported nothing. Those rounds were aimed at the pass,
+six causes in about 370 programs (round 27 found four more in 609, closed in the same way), where rounds 22 and 23 had reported nothing. Those rounds were aimed at the pass,
 so their silence said nothing about these rules.
 
 | Round | Rule | What it assumed | What was done |
@@ -368,7 +368,7 @@ Every one reasoned from a name or a syntactic shape, and the fixes removed a que
  None needed a change to the course or the engine. Some programs in these rounds are accepted and then
 refused by the C compiler. That fails closed, but the checker and the emitter disagree about them, so it is listed
 here rather than called done: `sizeof` of a static proc's call, `reflect<>&` and `FILE<>&`, a struct named `key` as
-a generic argument, a cast of a float to `long`, specialising `vec<T>resize`, and a compound literal in a `for` or
+a generic argument, specialising `vec<T>resize`, a plain proc colliding with a generated instance, and a compound literal in a `for` or
 `do` condition.
 
 The name rules are a family: a local hiding a proc, an enum member, a type, a generated type. They exist because a
@@ -380,4 +380,4 @@ the cost of the names a debugger shows. That has not been done.
 Not a proof. It is an instance of a known system, regions with a lexical order plus liveness,
 which is what step 7 of the original order of work asked for and what the current checker cannot
 be. Not Rust: no ownership, no moves, no destructors, no `&mut`, no lifetime parameters to write.
-Not threads. And the trusted base, now 329 lines of std and the emitter, stays trusted by reading.
+Not threads. And the trusted base, now 353 lines of std and the emitter, stays trusted by reading.

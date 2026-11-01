@@ -1,0 +1,12 @@
+// A whole-array assignment to an array parameter: memmove by sizeof.
+import "std/print.rin"
+f: proc(a: [4]i32, b: [4]i32) -> void = { a = b; a[3] = 1; }
+g: proc(a: [4]i32) -> void = { c: [4]i32 = a; c[3] = 2; printfmt("{}\n", c[3]); }
+main: proc() -> i32 = {
+    x: [4]i32 = { 1, 2, 3, 4 };
+    y: [4]i32 = { 5, 6, 7, 8 };
+    f(x, y);
+    g(x);
+    printfmt("{}\n", x[3]);
+    return 0;
+}

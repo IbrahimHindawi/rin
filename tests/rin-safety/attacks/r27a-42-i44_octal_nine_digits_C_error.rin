@@ -1,0 +1,5 @@
+// 09 is an error to C: fails closed.
+main: proc() -> i32 = {
+    a: [09]i32 = {};
+    return a[1];
+}

@@ -1,0 +1,6 @@
+// align(3), align(0).
+A: struct[align(3)] = { a: u8; }
+main: proc() -> i32 = {
+    x: A = { .a = 1 };
+    return x.a;
+}

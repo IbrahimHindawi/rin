@@ -1,0 +1,8 @@
+// Digit separators.
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: [1_0]i32 = {};
+    a[9] = 1;
+    printfmt("{}\n", a[9]);
+    return 0;
+}

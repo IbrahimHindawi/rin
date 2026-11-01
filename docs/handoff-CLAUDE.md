@@ -112,7 +112,7 @@ Next, in the order that pays:
 1. Strangers, in a VM. The crash-containment test is off the list, by the user's decision.
 2. Threads, last.
 
-std's `unsafe { }` is narrowed: `python tests/rin_trusted_lines.py` gives 329 lines safe code can reach, down from
+std's `unsafe { }` is narrowed: `python tests/rin_trusted_lines.py` gives 353 lines safe code can reach, down from
 748, and what is left is the arena, the containers' allocation and calls to C. A helper in std that would break an
 invariant if called from outside is `proc[static]`; a public view that reaches uninitialized slots is a hole, and
 the suites will not catch it: this one was found by reading the patch, and `attacks/r25b-*` now hold it.

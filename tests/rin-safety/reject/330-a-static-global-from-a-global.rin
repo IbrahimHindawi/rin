@@ -1,0 +1,5 @@
+// expect: this global is static, and belongs to the file that declares it
+// A global's initializer is checked in no proc, and the rule asked which proc.
+import "std/file.rin"
+gen: *u32 in permanent = file_table_generation[0]&;
+main: proc() -> i32 = { gen* = 5; return 0; }
