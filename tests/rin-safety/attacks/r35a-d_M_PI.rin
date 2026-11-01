@@ -1,0 +1,7 @@
+// A plain local named M_PI. Should print 3.
+import "std/print.rin"
+main: proc() -> i32 = {
+    M_PI: i32 = 3;
+    printfmt("{}\n", M_PI);
+    return 0;
+}

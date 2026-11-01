@@ -1,0 +1,7 @@
+// A plain local named RIN_RESTRICT. Should print 3.
+import "std/print.rin"
+main: proc() -> i32 = {
+    RIN_RESTRICT: i32 = 3;
+    printfmt("{}\n", RIN_RESTRICT);
+    return 0;
+}

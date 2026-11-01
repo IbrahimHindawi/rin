@@ -1,0 +1,16 @@
+// reset empties the global holding level memory, while a local of the global's name is in scope. Should print 1 3 null.
+import "std/print.rin"
+level: region global;
+S: struct = { v: i32; }
+keep: option<*S in level> = null;
+main: proc() -> i32 = {
+    keep = new<S>(level, { .v = 1 });
+    printfmt("{} ", unwrap(keep)*.v);
+    if (keep) {
+        keep: i32 = 3;
+        reset level;
+        printfmt("{} ", keep);
+    }
+    if (!keep) { printfmt("null\n"); } else { printfmt("still\n"); }
+    return 0;
+}

@@ -1,0 +1,17 @@
+// A parameter named like the type of a later one, and a local named like a type used by sizeof and a cast. Should print 8 1 4 2.
+import "std/print.rin"
+Foo: struct = { a: i32; b: i32; }
+f: proc(Foo: i32, y: Foo) -> i32 = { return y.b + Foo; }
+g: proc() -> u64 = { return sizeof(Foo); }
+Bar: alias = i32;
+h: proc() -> i32 = {
+    n: u64 = 9;
+    Bar2: i32 = cast(n, Bar);
+    return Bar2 - 7;
+}
+main: proc() -> i32 = {
+    z: Foo = { .a = 0, .b = 7 };
+    printfmt("{} {} ", f(1, z), 1);
+    printfmt("{} {}\n", sizeof(i32), h());
+    return cast(g(), i32) - 8;
+}

@@ -2,8 +2,8 @@
 
 Any program `rin check` accepts that commits a memory error is a soundness bug in rin, however contrived it is. This
 page lists what is known to be open, so that the claim in [soundness.md](soundness.md) is read with it. It is not a
-proof that nothing else is open: attack rounds 25 to 30 found about thirty causes in about 1,400 programs, each round
-found new ones, and none of the rounds was run by anyone outside this project.
+proof that nothing else is open: attack rounds 25 to 35 found about forty causes in about 1,600 programs, nearly every
+round found new ones, the last of them in the newest change, and none was run by anyone outside this project.
 
 An entry leaves this page when it is closed and a test in `tests/rin-safety` holds it.
 
@@ -50,6 +50,8 @@ checker has signed off on something the emitter cannot write:
 - A proc returning a pointer to an array, `*[3]i32`.
 - A proc pointer alias with an array parameter, whose typedef has a pointer to the wrong thing.
 - `_ = { 1, 2 };`
+- A local named like an object-like macro of a system header, which is then a syntax error in C. Most are listed and keep
+  the suffix; the headers cannot be read, so the list cannot be complete. Nothing is hidden: C refuses the declaration.
 - A float cast to `long`.
 
 ## A lost write, not a memory error
@@ -60,7 +62,7 @@ inline it is not. The same goes for a stale pointer passed beside a call that gr
 
 ## Not attacked yet
 
-- Anything since round 32, which attacked the left-to-right change and `$rin_local`.
+- Anything since round 35, which attacked plain local names. Its fixes have been through the suites, and not a round.
 - Threads: the claim is single-threaded.
 - `gcc` on the engine and on Windows. In the VM, gcc 16 builds and runs the generated programs, the clean-by-design
   attacks and the accept programs at -O0 with sanitizers and at -O2, with no reports, and prints what clang prints on all
@@ -73,6 +75,9 @@ inline it is not. The same goes for a stale pointer passed beside a call that gr
   The editors were not run, and the vendor libraries were not instrumented.
 
 ## Outside the claim
+
+- A macro in a program's own `cinclude` that names a variable, `#define LOG(x) (counter += (x))`, reaches a local
+  `counter` where the suffix has come off. That is what such a macro means in C.
 
 - A program's `unsafe { }`, `[external]` and `cinclude`, and the C it links. The engine's Win32 and D3D11 boundary is
   in this group, and is checked only by reading it.

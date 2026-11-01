@@ -1,0 +1,13 @@
+// A local that is called keeps its own C name, so it cannot turn into a macro: stdint.h has INT8_C, and core.h has Kilobytes.
+import "std/print.rin"
+S: struct = { x: i32; }
+fallback: S = { .x = -1 };
+sure: proc(p: option<*S>) -> *S = { if (p) { return p; } return fallback&; }
+triple: proc(v: i32) -> i32 = { return v * 3; }
+main: proc() -> i32 = {
+    INT8_C: *proc(p: option<*S>) -> *S = sure;
+    Kilobytes: *proc(v: i32) -> i32 = triple;
+    a: S = { .x = 7 };
+    printfmt("{} {} {}\n", INT8_C(a&)*.x, INT8_C(null)*.x, Kilobytes(2));
+    return 0;
+}

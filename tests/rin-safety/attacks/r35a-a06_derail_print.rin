@@ -1,0 +1,13 @@
+// A field named offsetof throws the scan off; print of T is then reached only by printfmt. Should print: 0 real 1
+import "std/print.rin"
+S: struct = { offsetof: i32; }
+T: struct = { v: i32; }
+print: proc<T>(t: T) -> void = { printfmt("real {}", t.v); }
+other: proc(t: T) -> void = { printfmt("wrong {}", t.v); }
+main: proc() -> i32 = {
+    s: S = {};
+    t: T = { .v = 1 };
+    print_T: *proc(t: T) -> void = other;
+    printfmt("{} {}\n", s.offsetof, t);
+    return 0;
+}

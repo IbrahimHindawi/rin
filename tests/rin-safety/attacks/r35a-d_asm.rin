@@ -1,0 +1,7 @@
+// A plain local named asm. Should print 3.
+import "std/print.rin"
+main: proc() -> i32 = {
+    asm: i32 = 3;
+    printfmt("{}\n", asm);
+    return 0;
+}

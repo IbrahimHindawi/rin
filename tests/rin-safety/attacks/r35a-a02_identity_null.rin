@@ -1,0 +1,20 @@
+// A local proc pointer named INT8_C, an identity macro in stdint.h. The callee turns an option into a sure pointer.
+// Should print 7 then -1. If the macro wins: a null *S and a fault.
+import "std/print.rin"
+S: struct = { v: i32; }
+fallback: S = { .v = -1 };
+sure: proc(o: option<*S>) -> *S = {
+    if (!o) { return fallback&; }
+    return o;
+}
+main: proc() -> i32 = {
+    INT8_C: *proc(o: option<*S>) -> *S = sure;
+    a: S = { .v = 7 };
+    x: option<*S> = a&;
+    n: option<*S> = null;
+    p: *S = INT8_C(x);
+    printfmt("{}\n", p*.v);
+    q: *S = INT8_C(n);
+    printfmt("{}\n", q*.v);
+    return 0;
+}

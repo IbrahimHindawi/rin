@@ -1,0 +1,12 @@
+// The local proc pointer named alloca, returning a big struct. Should print 7 (a level copy with room for all of it).
+import "std/print.rin"
+level: region global;
+Big: struct = { a: [512]i32; }
+make: proc(n: u64) -> *Big in level = { return new<Big>(level); }
+main: proc() -> i32 = {
+    alloca: *proc(n: u64) -> *Big in level = make;
+    p: *Big in level = alloca(1);
+    for (i: u64 = 0; i < 512; i += 1) { p*.a[i] = 7; }
+    printfmt("{}\n", p*.a[511]);
+    return 0;
+}

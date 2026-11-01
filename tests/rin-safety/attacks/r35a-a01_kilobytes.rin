@@ -1,0 +1,8 @@
+// A local proc pointer named like core.h's function-like macro. Should print 6 (twice(3)).
+import "std/print.rin"
+twice: proc(x: u64) -> u64 = { return x * 2; }
+main: proc() -> i32 = {
+    Kilobytes: *proc(x: u64) -> u64 = twice;
+    printfmt("{}\n", Kilobytes(3));
+    return 0;
+}

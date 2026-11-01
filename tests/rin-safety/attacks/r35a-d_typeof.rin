@@ -1,0 +1,7 @@
+// A plain local named typeof. Should print 3.
+import "std/print.rin"
+main: proc() -> i32 = {
+    typeof: i32 = 3;
+    printfmt("{}\n", typeof);
+    return 0;
+}

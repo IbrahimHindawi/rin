@@ -1,0 +1,27 @@
+// INT16_C again, on a proc that copies into the level. Should print 5: the copy is in level; the original's region has ended.
+import "std/print.rin"
+level: region global;
+S: struct = { v: i32; }
+promote: proc(p: *S) -> *S in level = { return new<S>(level, { .v = p*.v }); }
+g: option<*S in level> = null;
+run: proc() -> void = {
+    INT16_C: *proc(p: *S) -> *S in level = promote;
+    scratch {
+        p: *S in scratch = new<S>(scratch, { .v = 5 });
+        g = INT16_C(p);
+    }
+}
+smash: proc() -> i32 = {
+    scratch {
+        xs: []i32 in scratch = new_slice<i32>(scratch, 64);
+        xs[0] = 123;
+        return xs[0];
+    }
+    return 0;
+}
+main: proc() -> i32 = {
+    run();
+    printfmt("{}\n", smash());
+    printfmt("{}\n", unwrap(g)*.v);
+    return 0;
+}

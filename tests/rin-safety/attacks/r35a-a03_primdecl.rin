@@ -1,0 +1,10 @@
+// primdecl(x) expands to nothing. Should print 1.
+import "std/print.rin"
+n: i32 = 0;
+bump: proc(x: i32) -> void = { n += x; }
+main: proc() -> i32 = {
+    primdecl: *proc(x: i32) -> void = bump;
+    primdecl(1);
+    printfmt("{}\n", n);
+    return 0;
+}

@@ -1,0 +1,31 @@
+// Locals named like what new, new_slice, scratch, regions and vec emit. Should print 7 4 2 9 and exit 0.
+import "std/print.rin"
+import "std/vec.rin"
+level: region;
+frame: region in level;
+S: struct = { v: i32; }
+main: proc() -> i32 = {
+    memops_arena_push: i32 = 1;
+    memops_arena_mark: i32 = 2;
+    memops_arena_rewind: i32 = 3;
+    memops_arena_clear: i32 = 4;
+    memops_arena: i32 = 5;
+    vec_i32_push: i32 = 6;
+    slice_i32: i32 = 7;
+    arena: i32 = 8;
+    level: region = {
+    frame: region = {
+        p: *S in frame = new<S>(frame);
+        p*.v = 7;
+        xs: []i32 in frame = new_slice<i32>(frame, 4);
+        v: *vec<i32> in frame = vec<i32>make(frame, 2);
+        _ = vec<i32>push(v, 2);
+        scratch {
+            ys: []i32 in scratch = new_slice<i32>(scratch, 3);
+            ys[2] = 9;
+            printfmt("{} {} {} {}\n", p*.v, xs.length, vec<i32>at(v, 0)*, ys[2]);
+        }
+    }
+    }
+    return memops_arena_push + memops_arena_mark + memops_arena_rewind + memops_arena_clear + memops_arena + vec_i32_push + slice_i32 + arena - 36;
+}

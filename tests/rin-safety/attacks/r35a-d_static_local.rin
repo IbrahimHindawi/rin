@@ -1,0 +1,7 @@
+// A plain local named static_local. Should print 3.
+import "std/print.rin"
+main: proc() -> i32 = {
+    static_local: i32 = 3;
+    printfmt("{}\n", static_local);
+    return 0;
+}

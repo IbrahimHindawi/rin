@@ -1,0 +1,23 @@
+// A local proc pointer named alloca, which stdlib.h defines as a macro. Should print 99 then 7 (the level copy).
+import "std/print.rin"
+level: region global;
+S: struct = { v: i32; }
+make: proc(n: u64) -> *S in level = { return new<S>(level, { .v = cast(n, i32) }); }
+g: option<*S in level> = null;
+setup: proc() -> void = {
+    alloca: *proc(n: u64) -> *S in level = make;
+    p: *S in level = alloca(7);
+    p*.v = 7;
+    g = p;
+}
+clobber: proc() -> i32 = {
+    a: [256]i32 = {};
+    for (i: u64 = 0; i < 256; i += 1) { a[i] = 99; }
+    return a[3];
+}
+main: proc() -> i32 = {
+    setup();
+    printfmt("{}\n", clobber());
+    printfmt("{}\n", unwrap(g)*.v);
+    return 0;
+}

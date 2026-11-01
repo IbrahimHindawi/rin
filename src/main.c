@@ -26089,8 +26089,18 @@ static void local_names_scan(memops_arena *arena, string8 text, NameSet *used) {
             u64 start = i;
             while (i < text.length && c_ident_part((u8)text.data[i])) i++;
             string8 name = { (char *)text.data + start, i - start };
-            /* offsetof(T, field): what follows the type is a field. */
-            if (string8_equals_cstr(&name, "offsetof")) {
+            u64 after = i;
+            while (after < text.length && (text.data[after] == ' ' || text.data[after] == '\t')) after++;
+            bool called = after < text.length && text.data[after] == '(';
+            /* `INT8_C(x)` is a macro's wherever it is written, before C's scoping has a say: a local that is called
+               keeps its suffix, since no header can be read for what might be defined. An ordinary variable is never
+               followed by '(' and a function-like macro needs one. */
+            if (called && c_ends_in_local_suffix(name.data, name.length)) {
+                string8 plain = { name.data, name.length - 10 };
+                name_set_add(arena, used, plain);
+            }
+            /* offsetof(T, field): what follows the type is a field. As a field's own name it is only a word. */
+            if (called && !after_member && string8_equals_cstr(&name, "offsetof")) {
                 i32 parens = 0;
                 while (i < text.length) {
                     if (text.data[i] == '(') parens++;
@@ -26140,6 +26150,26 @@ static bool local_name_is_taken_anyway(string8 name) {
         "mprotect", "sysconf", "abort", "exit", "printf", "fprintf", "stderr", "stdout", "stdin",
         /* windows.h's macros, for a program that includes it: `#define small char`. */
         "near", "far", "small", "hyper", "interface", "pascal", "cdecl",
+        /* Words a C standard or a compiler mode takes. */
+        "asm", "typeof", "typeof_unqual", "nullptr", "constexpr", "unix", "linux", "alignas", "static_assert",
+        "thread_local", "noreturn",
+        /* What std/core.h defines. */
+        "Gigabytes",
+        "Kilobytes",
+        "Megabytes",
+        "cast",
+        "enumdecl",
+        "enumdef",
+        "haikal_alignof",
+        "null",
+        "primdecl",
+        "static_global",
+        "static_internal",
+        "static_local",
+        "structdecl",
+        "structdef",
+        "uniondecl",
+        "uniondef",
     };
     for (u64 i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
         if (string8_equals_cstr(&name, words[i])) return true;

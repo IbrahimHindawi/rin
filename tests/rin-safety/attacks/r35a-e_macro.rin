@@ -1,0 +1,10 @@
+// A program's own header: #define LOG(x) (counter += (x)), reached from a body beside a local named counter.
+cinclude "e_macro.h"
+import "std/print.rin"
+LOG: proc[external](x: i32) -> i32 = {};
+main: proc() -> i32 = {
+    counter: i32 = 10;
+    _ = LOG(1);
+    printfmt("{}\n", counter);
+    return 0;
+}

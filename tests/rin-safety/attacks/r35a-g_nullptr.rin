@@ -1,0 +1,7 @@
+// A plain local named nullptr. Should print 3.
+import "std/print.rin"
+main: proc() -> i32 = {
+    nullptr: i32 = 3;
+    printfmt("{}\n", nullptr);
+    return 0;
+}

@@ -1,0 +1,12 @@
+// The same, with an instance's C name. Should print 1 (pick returns its argument).
+import "std/print.rin"
+S: struct = { offsetof: i32; }
+pick: proc<T>(x: T) -> T = { return x; }
+other: proc(x: i32) -> i32 = { return 99; }
+main: proc() -> i32 = {
+    s: S = {};
+    pick_i32: *proc(x: i32) -> i32 = other;
+    y: i32 = s.offsetof + pick<i32>(1);
+    printfmt("{}\n", y);
+    return pick_i32(0) - 99;
+}

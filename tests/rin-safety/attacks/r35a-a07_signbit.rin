@@ -1,0 +1,8 @@
+// A parameter proc pointer named signbit. Should print 42.
+import "std/print.rin"
+answer: proc(x: f64) -> i32 = { return 42; }
+use: proc(signbit: *proc(x: f64) -> i32) -> i32 = { return signbit(1.5); }
+main: proc() -> i32 = {
+    printfmt("{}\n", use(answer));
+    return 0;
+}

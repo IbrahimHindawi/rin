@@ -1,0 +1,20 @@
+// Names in a for clause, a case, an array length and a designator's index, beside locals hiding nothing. Should print 3 2 8 1.
+import "std/print.rin"
+M: const u64 = 2;
+E: enum = { A, B, C }
+g: i32 = 8;
+pick: proc(e: E) -> i32 = {
+    switch (e) {
+        case E.A: { return 1; }
+        case E.B: { n: i32 = 2; return n; }
+        case E.C: { return 3; }
+    }
+    return 0;
+}
+main: proc() -> i32 = {
+    n: i32 = 0;
+    for (i: i32 = 0; i < 3; i += 1) { n += 1; }
+    arr: [M]i32 = { 1, 2 };
+    printfmt("{} {} {} {}\n", n, pick(E.B), g, arr[0]);
+    return 0;
+}

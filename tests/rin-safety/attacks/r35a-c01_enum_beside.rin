@@ -1,0 +1,18 @@
+// Enum members named by a switch and a value, beside locals of the same name in nearby scopes. Should print 2 5 1.
+import "std/print.rin"
+E: enum = { A, B, C }
+pick: proc(e: E) -> i32 = {
+    switch (e) {
+        case E.A: { C: i32 = 1; return C; }
+        case E.B: { return 2; }
+        case E.C: { return 3; }
+    }
+    return 0;
+}
+main: proc() -> i32 = {
+    x: E = E.B;
+    if (x == E.B) { A: i32 = 5; printfmt("{} {} ", pick(x), A); }
+    y: E = E.A;
+    printfmt("{}\n", pick(y));
+    return 0;
+}

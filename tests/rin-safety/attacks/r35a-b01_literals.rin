@@ -1,0 +1,16 @@
+// Quotes, braces and marker text in literals. Should print: 34 123 125 / count$rin_local /*rin_end*/ /*rin_body*/ 3 / x$rin_local\ / /*rin_body*/ / it's "quoted" y$rin_local
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: u8 = cast('"', u8);
+    b: u8 = cast('{', u8);
+    e: u8 = cast('}', u8);
+    printfmt("{} {} {}\n", a, b, e);
+    count: i32 = 3;
+    printfmt("count$rin_local /*rin_end*/ /*rin_body*/ {}\n", count);
+    print_cstr("x$rin_local\\");
+    printfmt("\n");
+    print_cstr("/*rin_body*/\n");
+    print_cstr("it's \"quoted\" y$rin_local");
+    printfmt("\n");
+    return 0;
+}

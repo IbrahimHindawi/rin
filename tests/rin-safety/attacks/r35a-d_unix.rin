@@ -1,0 +1,7 @@
+// A plain local named unix. Should print 3.
+import "std/print.rin"
+main: proc() -> i32 = {
+    unix: i32 = 3;
+    printfmt("{}\n", unix);
+    return 0;
+}

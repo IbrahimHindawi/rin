@@ -159,8 +159,9 @@ only be read by std's readers, with no call that could write beside it in any pl
 at. This used to ask whether such a proc could write the buffer, and that question had holes (round 25).
 
 A local or parameter `x` is `x` in C if that name is used for nothing else in the C written for the program, and
-`x$rin_local` if it is, since rin cannot spell a dollar. So a local cannot hide anything the generated C says by name,
-and a debugger shows its plain name unless it clashes. `$` in a name is a GNU C extension, which clang and gcc take and
+`x$rin_local` if it is, since rin cannot spell a dollar. A local that is called keeps the suffix too, because `name(` is
+what makes a function-like macro fire. So a local cannot hide anything the generated C says by name, and a debugger shows
+an ordinary variable's plain name unless it clashes. `$` in a name is a GNU C extension, which clang and gcc take and
 `-pedantic-errors` refuses. What the checker or the generated C reads by name, `printfmt`, `unwrap`,
 `new`, `cstr_of`, `print_cstr`, `print_enum`, is not a program's to name.
 

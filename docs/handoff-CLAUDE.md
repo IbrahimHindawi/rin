@@ -109,7 +109,7 @@ the pass, in one place: extend `sh_value_regions`, `sh_place_memory` or one of t
 
 Next, in the order that pays:
 
-1. Strangers, in a VM. The crash-containment test is off the list, by the user's decision.
+1. Strangers, in a VM. This is what the sprint could not do: nobody outside has tested any of it. The crash-containment test is off the list, by the user's decision.
 2. Threads, last.
 
 std's `unsafe { }` is narrowed: `python tests/rin_trusted_lines.py` gives 353 lines safe code can reach, down from
@@ -117,14 +117,17 @@ std's `unsafe { }` is narrowed: `python tests/rin_trusted_lines.py` gives 353 li
 invariant if called from outside is `proc[static]`; a public view that reaches uninitialized slots is a hole, and
 the suites will not catch it: this one was found by reading the patch, and `attacks/r25b-*` now hold it.
 
-Thirty attack rounds have run. Rounds five to twenty each found dozens of holes in the old rules, all closed. Against the
-second pass: round 21 found six (two causes, closed) and none in std; rounds 22 and 23 found nothing inside the claim in
-fifty-one realistic programs and two rounds on the pass, and ten programs outside it (an `unsafe` block weakening the checks
-around it, closed). The pass has mostly converged, and the rules beside it have not. Rounds 25 to 30, aimed at those, found about thirty causes in
-about 1,400 programs: a bit over half are the checker and C disagreeing, since the pass works on a lowered form and the emitter
-still walks the syntax tree (`docs/regions-v2.md`). Round 30 also found one in the pass, so a quiet round says only that it found
-nothing where it looked. A local keeps its plain name in C, and is `name$rin_local` only where that name is used for something else, which removed the local-name family; prefer that kind of fix, and give a deleted
-rule its own round, because it may be doing a second job. The checked build is the sanitizer build plus a quarantine in
+Thirty-five attack rounds have run. Rounds five to twenty each found dozens of holes in the old rules, all closed. Against the
+second pass, rounds 21 to 24 found little, because they aimed at the pass. Rounds 25 to 35 aimed at the rules beside it and at
+each new change, found about forty causes in about 1,600 programs, and all are closed. About half were the checker and C
+disagreeing, since the pass works on a lowered form and the emitter walks the syntax tree. Round 33 was the first with no memory
+error, and round 35 then found two in that day's change, so the rounds have not converged. A quiet round says only that it found
+nothing where it looked. Every change to the emitter gets a round of its own, and so does a deleted rule, which may be doing a second
+job. The promise is in `docs/soundness.md` (any accepted program that faults is a bug) and what is open is in `docs/known-holes.md`.
+
+A local keeps its plain name in C, and is `name$rin_local` where that name is used for something else or the local is called
+(`local_names_scan`). Calls, binary operators, conditions and assignments run in rin's order, not C's (`emit_expr_in_order`).
+`run_rin_vm.py --cc gcc` builds with gcc in the guest. The checked build is the sanitizer build plus a quarantine in
 `memops_arena_clear` (`memops_os_quarantine`): a reset region is not reused until a budget has gone by, so a stale
 pointer into it meets poison (`poison/021`).
 Run a fresh round per new rule, and `tests/gen_rin_safe.py` with `run_rin_vm.py --compare`. Verify with a script

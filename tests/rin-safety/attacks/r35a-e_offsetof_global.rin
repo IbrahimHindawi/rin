@@ -1,0 +1,11 @@
+// A global named offsetof. Should print 3 and 1.
+import "std/print.rin"
+offsetof: i32 = 3;
+pick: proc<T>(x: T) -> T = { return x; }
+other: proc(x: i32) -> i32 = { return 99; }
+main: proc() -> i32 = {
+    pick_i32: *proc(x: i32) -> i32 = other;
+    printfmt("{}\n", offsetof);
+    printfmt("{}\n", pick<i32>(1));
+    return pick_i32(0) - 99;
+}
