@@ -61,7 +61,10 @@ inline it is not. The same goes for a stale pointer passed beside a call that gr
 - Anything since round 32, which attacked the left-to-right change and `$rin_local`.
 - Threads: the claim is single-threaded.
 - `gcc`: the safety suites and the attack corpus are run with clang, and only the course check runs with `gcc` on Linux.
-- Long runs of the engine under the sanitizers: its smoke test is short, and is not a sanitizer build.
+- Real play of the engine under the sanitizers. Its own code has run under ASan and UBSan with no reports: every level
+  from 0 to 50, briefly, and one level for about 14,000 ticks. All of that was random input with no level change during
+  a run, so `reset level` going from one level to the next has not been exercised this way, and neither have the editors.
+  The vendor libraries were not instrumented.
 
 ## Outside the claim
 
