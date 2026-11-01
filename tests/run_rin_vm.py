@@ -7,7 +7,7 @@
 
 By default the VM is a WSL2 distro, with no window: the host checks and translates, and the C goes
 in over stdin. The guest has no Windows drives and no way to start a Windows program (see
-/etc/wsl.conf there), and 8 GiB of memory with no swap (~/.wslconfig). It builds with its own clang
+/etc/wsl.conf there), and 8 GiB of memory with no swap (~/.wslconfig). It builds with its own clang, or gcc with --cc gcc
 and runs each program as an unprivileged user with no network, in its own namespaces and cgroup.
 Results come back over stdout as data, and only under names the host asked for.
 
@@ -131,7 +131,7 @@ def compile_one(item):
         builds.append((["-O2", *common], f"{stem}__o2"))
     made = []
     for flags, out in builds:
-        done = subprocess.run(["clang", *flags, "-o", f"bin/{out}"], user=uid, group=uid, text=True, errors="replace",
+        done = subprocess.run([job["cc"], *flags, "-o", f"bin/{out}"], user=uid, group=uid, text=True, errors="replace",
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         if done.returncode != 0:
             say(stage="cc", name=stem, text=done.stdout[:800])
@@ -193,6 +193,8 @@ say(stage="done")
 
 # Warnings are noise here, but a wrong type must stay the error it is by default: the emitter
 # getting one wrong is a bug to see, and silencing it makes a binary that means nothing.
+# gcc takes neither clang's blanket switch nor its names for these.
+GCC_QUIET = ["-w", "-Werror=int-conversion", "-Werror=incompatible-pointer-types"]
 C_QUIET = ["-Wno-everything", "-Werror=int-conversion", "-Werror=incompatible-pointer-types", "-Wno-error=incompatible-pointer-types-discards-qualifiers",
            "-Werror=incompatible-function-pointer-types", "-Werror=implicit-function-declaration"]
 # float-cast-overflow is not in `undefined`, and a float reaching an integer without rin's
@@ -272,11 +274,11 @@ def wait_for_guest(results: Path, deadline: float) -> str:
     return "timed out"
 
 
-def run_in_wsl(stems: list[str], compare: set[str], gen: Path, results: Path, timeout: int) -> tuple[str, list[str]]:
+def run_in_wsl(stems: list[str], compare: set[str], gen: Path, results: Path, timeout: int, cc: str = "clang") -> tuple[str, list[str]]:
     """Sends the C in and writes what comes back where the sandbox guest would have. The guest is
     what is under test, so its lines are data: only a name we asked for gets a file."""
     expected = set(stems) | {f"{stem}__o2" for stem in compare}
-    job = {"uid": WSL_RUNNER_UID, "timeout": timeout, "memory": GUEST_MEMORY, "runners": GUEST_RUNNERS, "asan": ASAN, "quiet": C_QUIET,
+    job = {"uid": WSL_RUNNER_UID, "timeout": timeout, "memory": GUEST_MEMORY, "runners": GUEST_RUNNERS, "asan": ASAN, "quiet": C_QUIET if cc == "clang" else GCC_QUIET, "cc": cc,
            "programs": [{"stem": stem, "compare": stem in compare} for stem in stems]}
     # No shell on the way in: `--exec`, or wsl hands this line to a shell that expands it first.
     script = "rm -rf /var/tmp/rin_vm && mkdir -p /var/tmp/rin_vm && cd /var/tmp/rin_vm && tar -xf - && exec python3 -u guest.py"
@@ -455,8 +457,8 @@ def main() -> int:
             print("rin-vm: a sandbox is already running; Windows allows one at a time")
             return 1
     host_cc = args.cc if args.sandbox else None
-    if not args.sandbox and args.cc != "clang":
-        print(f"rin-vm: the WSL guest builds with its own clang, so --cc {args.cc} does nothing there; use --sandbox for it")
+    if not args.sandbox and args.cc not in ("clang", "gcc"):
+        print(f"rin-vm: the WSL guest has clang and gcc, not {args.cc}")
         return 1
 
     # Named by run, so a results folder still locked by the last sandbox cannot get in the way.
@@ -513,7 +515,7 @@ def main() -> int:
             run(["taskkill", "/F", "/IM", image])
     else:
         refused: list[str] = []
-        state, uncompiled = run_in_wsl(sorted(built), set(compared), gen, results, args.timeout)
+        state, uncompiled = run_in_wsl(sorted(built), set(compared), gen, results, args.timeout, args.cc)
         print(f"rin-vm: guest {state}")
         for name in uncompiled:
             # No binary exists, so nothing ran and nothing went wrong at run time; a control must run.

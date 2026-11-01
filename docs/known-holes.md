@@ -62,8 +62,11 @@ inline it is not. The same goes for a stale pointer passed beside a call that gr
 
 - Anything since round 32, which attacked the left-to-right change and `$rin_local`.
 - Threads: the claim is single-threaded.
-- `gcc`: the safety suites and the attack corpus are run with clang, and the WSL guest has only clang. Only the course
-  check runs with `gcc`, on Linux, so a local spelled with `$` and the left-to-right temporaries are unproven there.
+- `gcc` on the engine and on Windows. In the VM, gcc 16 builds and runs the generated programs, the clean-by-design
+  attacks and the accept programs at -O0 with sanitizers and at -O2, with no reports, and prints what clang prints on all
+  300 generated programs. One control is not caught under gcc: a read after a mark rewound by hand in `unsafe`
+  (`poison/003`), which is a weaker check and not a hole. Clang on Windows, where arguments used to run right to left, is
+  only covered by the engine and the course.
 - Real play of the engine under the sanitizers. Its own code has run under ASan and UBSan with no reports: every level
   from 0 to 50 briefly, one level for about 14,000 ticks, and the scripted playtest, which goes through the upgrade menu
   and from level 0 to level 1. That is one level change, not a run through the game, and the input was random or scripted.
