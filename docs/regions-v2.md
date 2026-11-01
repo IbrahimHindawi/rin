@@ -297,6 +297,25 @@ casts both operands of every operation whose type rin knows to that type before 
 (`emit_binary_expr`, `typed`), so `u8 | i8` is computed as `u8`, and a shift's left operand is its own
 width. What C still decides: an operation on an enum or a C typedef, where rin has no width to name.
 
+## The checked build, as planned
+
+Defence in depth for what no round has found. In a checked build (`RIN_CHECKED`, the build the engine runs
+in debug), every checked pointer and slice carries two words beside its address: the id of the region it
+points into and that region's epoch at the time it was made. A region's epoch is a counter in its arena,
+bumped by `reset` and by a block's end for a region the block opened. A dereference or an index compares the
+pointer's epoch with the region's current one, and stops the program with the pointer's origin when they
+differ. The stack is region 0 with the frame's depth as its epoch, so a dangling pointer to a local stops too.
+
+What it needs in the emitter: a `rin_ptr<T>` representation for `*T`, `option<*T>` and `[]T` in checked
+builds, set where pointers are made (`new`, `new_slice`, `x&`, a subrange, a `vec` or `table` accessor's
+result in std, a region's `make`), read where they are used (deref, index, the slice's data for C), and
+unwrapped at every external call and at every `^T` conversion. What it costs: two words per pointer and a
+compare per dereference, in checked builds only; release builds keep plain pointers. What it does not
+cover: raw pointers, and anything an external proc keeps.
+
+It is not a replacement for the pass: the pass refuses at compile time, the checked build stops at run
+time, and the second is there for the day the first is wrong.
+
 ## What this still is not
 
 Not a proof. It is an instance of a known system, regions with a lexical order plus liveness,
