@@ -1,0 +1,37 @@
+5 5
+x 0 4 1
+y 4 4 1
+z 8 4 0
+in_it 12 8 0
+many 20 8 0
+2 0
+1
+0
+0
+x
+y
+2
+2
+99
+3
+inner 2
+no record for a builtin
+x
+nothing starts at 1
+1
+many
+past the end
+the last
+a struct has no values
+an enum has no fields
+an empty struct has none
+0
+red 2
+green -7
+blue -6
+green
+?
+-6
+123
+1 0
+0 1

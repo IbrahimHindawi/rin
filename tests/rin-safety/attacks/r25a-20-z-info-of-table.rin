@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/reflect.rin"
+import "std/vec.rin"
+import "std/cstr.rin"
+pt: struct = { x: i32; y: i32; }
+color: enum = { a, b }
+wrap: struct = { r: reflect; }
+level: region global;
+main: proc() -> i32 = { f: option<*const reflect_field> = reflect_field_at(pt<>&, 0); if (f != null) { i: option<*const reflect> = reflect_field_info(f); printfmt("{}\n", i == null); } return 0; }

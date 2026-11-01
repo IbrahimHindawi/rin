@@ -258,3 +258,6 @@ r22b-009-text-layout-run.rin
 r22b-010-asset-stream-staged.rin
 r22b-011-streaming-reset-staging.rin
 r23a-002-unsafe-cast-raw-ptr-to-bare-launders-scratch-into-level.rin
+r25a-18-y4-oob-checked.rin
+r25a-19-y5-subrange.rin
+r25a-20-z-info-of-table.rin

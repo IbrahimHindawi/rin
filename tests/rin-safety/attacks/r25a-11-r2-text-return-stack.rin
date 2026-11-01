@@ -1,0 +1,10 @@
+import "std/print.rin"
+import "std/reflect.rin"
+import "std/vec.rin"
+import "std/cstr.rin"
+pt: struct = { x: i32; y: i32; }
+color: enum = { a, b }
+wrap: struct = { r: reflect; }
+level: region global;
+bad: proc() -> []const char = { line: [8]char = {}; return reflect_text(cstr_of(line)); }
+main: proc() -> i32 = { printfmt("{}\n", bad().length); return 0; }

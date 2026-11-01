@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/reflect.rin"
+import "std/vec.rin"
+import "std/cstr.rin"
+pt: struct = { x: i32; y: i32; }
+color: enum = { a, b }
+wrap: struct = { r: reflect; }
+level: region global;
+main: proc() -> i32 = { x: [4]char = {}; x[0] = 65; x[1] = 65; x[2] = 65; x[3] = 65; printfmt("{}\n", reflect_text(x).length); return 0; }

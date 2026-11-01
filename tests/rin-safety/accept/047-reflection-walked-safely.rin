@@ -1,0 +1,71 @@
+// Reflection as safe code walks it: the tables as slices, nothing unsafe. Every lookup is checked by the bounds of
+// the table the compiler emitted, and the answers are what the tables say.
+import "std/print.rin"
+import "std/reflect.rin"
+
+inner: struct = { a: u8; b: f32; }
+thing: struct = {
+    x: i32 @ "save,editor";
+    y: i32 @ "save editor";
+    z: i32;
+    in_it: inner @ "hidden";
+    many: [4]u16;
+}
+color: enum = { red = 2, green = -7, blue }
+blank: struct = {}
+
+main: proc() -> i32 = {
+    t: *const reflect = thing<>&;
+    fields: []const reflect_field in permanent = reflect_field_slice(t);
+    printfmt("{} {}\n", fields.length, reflect_field_count(t));
+    for (i: u64 = 0; i < fields.length; i += 1) {
+        f: *const reflect_field = fields[i]&;
+        printfmt("{} {} {} {}\n", f*.name, f*.offset, f*.size, reflect_field_has_attr(f, "save"));
+    }
+    printfmt("{} {}\n", reflect_count_fields_with_attr(t, "save"), reflect_count_fields_with_attr(t, "sav"));
+    printfmt("{}\n", reflect_field_has_attr(fields[0]&, "editor"));
+    printfmt("{}\n", reflect_field_has_attr(fields[0]&, ""));
+    printfmt("{}\n", reflect_field_has_attr(fields[2]&, "save"));
+
+    walk: option<*const reflect_field> = reflect_next_field_with_attr(t, "save", null);
+    n: i32 = 0;
+    while (walk != null) {
+        printfmt("{}\n", walk*.name);
+        walk = reflect_next_field_with_attr(t, "save", walk);
+        n += 1;
+    }
+    printfmt("{}\n", n);
+
+    printfmt("{}\n", reflect_find_field_index(t, "z", 99));
+    printfmt("{}\n", reflect_find_field_index(t, "nope", 99));
+    printfmt("{}\n", reflect_field_index(t, fields[3]&, 99));
+    info: option<*const reflect> = reflect_find_field_info(t, "in_it");
+    if (info != null) { printfmt("{} {}\n", info*.name, reflect_field_count(info)); }
+    if (reflect_find_field_info(t, "x") == null) { printfmt("no record for a builtin\n"); }
+    by: option<*const reflect_field> = reflect_find_field_containing_offset(t, 2);
+    if (by != null) { printfmt("{}\n", by*.name); }
+    if (reflect_find_field_by_offset(t, 1) == null) { printfmt("nothing starts at 1\n"); }
+    printfmt("{}\n", reflect_count_fields_with_kind(t, reflect_field_kind_array));
+    arr: option<*const reflect_field> = reflect_find_field_with_kind(t, reflect_field_kind_array);
+    if (arr != null) { printfmt("{}\n", arr*.name); }
+
+    // Past the end, a miss and a wrong kind are answers, not reads.
+    if (reflect_field_at(t, 5) == null) { printfmt("past the end\n"); }
+    if (reflect_field_at(t, 4) != null) { printfmt("the last\n"); }
+    if (reflect_value_at(t, 0) == null) { printfmt("a struct has no values\n"); }
+    if (reflect_field_at(color<>&, 0) == null) { printfmt("an enum has no fields\n"); }
+    if (reflect_field_at(blank<>&, 0) == null) { printfmt("an empty struct has none\n"); }
+    printfmt("{}\n", reflect_field_count(blank<>&));
+
+    values: []const reflect_value in permanent = reflect_value_slice(color<>&);
+    for (i: u64 = 0; i < values.length; i += 1) {
+        printfmt("{} {}\n", values[i].name, values[i].value);
+    }
+    printfmt("{}\n", reflect_name_from_value_or(color<>&, -7, "?"));
+    printfmt("{}\n", reflect_name_from_value_or(color<>&, 77, "?"));
+    printfmt("{}\n", reflect_value_from_name(color<>&, "blue", 0));
+    printfmt("{}\n", reflect_value_from_name(color<>&, "pink", 123));
+    printfmt("{} {}\n", reflect_cstr_equal("abc", "abc"), reflect_cstr_equal("abc", "abd"));
+    printfmt("{} {}\n", reflect_cstr_equal("abc", "abcd"), reflect_cstr_equal("", ""));
+    return 0;
+}

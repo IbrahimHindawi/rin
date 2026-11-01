@@ -1,0 +1,9 @@
+import "std/print.rin"
+import "std/reflect.rin"
+import "std/vec.rin"
+import "std/cstr.rin"
+pt: struct = { x: i32; y: i32; }
+color: enum = { a, b }
+wrap: struct = { r: reflect; }
+level: region global;
+main: proc() -> i32 = { f: []const reflect_field in permanent = reflect_field_slice(pt<>&); c: *u64 = f.length&; c* = 1000; printfmt("{}\n", f[999].offset); return 0; }
