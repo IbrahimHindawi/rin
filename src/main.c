@@ -25132,10 +25132,12 @@ static void emit_proc_body(memops_arena *arena, string8 *out, ProcDecl *decl, Ty
         }
         emitted_body = &decl->body;
     }
+    emit_cstr(arena, out, "/*rin_body*/\n");
     for (i32 i = 0; i < emitted_body->length; i++) {
         emit_cstr(arena, out, "    ");
         emit_stmt(arena, out, (Stmt *)emitted_body->data[i], sub, generic_name);
     }
+    emit_cstr(arena, out, "/*rin_end*/\n");
     g_emit_in_body = false;
     g_emit_locals.length = 0;
     /* C's main returns 0 from its end; any other proc must say what it returns. */
@@ -25974,6 +25976,218 @@ static void collect_type_param_names(Program *prog, memops_arena *arena) {
             i++;
         }
     }
+}
+
+/* ---- A local's name in C.
+
+   Every local is written `name$rin_local`, which nothing else can be. Once all the C exists, the suffix comes off each
+   local whose plain name is used for nothing else in it, so a debugger shows `count` and takes `count` in a watch. This
+   is not a list of what a local might hide: it reads what was written. What it cannot read is the headers, so what they
+   depend on by name is below. Field names do not count, having a namespace of their own in C. */
+typedef struct NameSet { string8 *slots; u64 capacity; u64 count; } NameSet;
+
+static u64 name_set_hash(const u8 *data, u64 length) {
+    u64 h = 14695981039346656037ull;
+    for (u64 i = 0; i < length; i++) { h ^= data[i]; h *= 1099511628211ull; }
+    return h;
+}
+
+static void name_set_add(memops_arena *arena, NameSet *set, string8 name) {
+    if ((set->count + 1) * 2 > set->capacity) {
+        u64 capacity = set->capacity ? set->capacity * 2 : 4096;
+        string8 *slots = (string8 *)memops_arena_push_zero(arena, capacity * sizeof(string8), _Alignof(string8));
+        for (u64 i = 0; i < set->capacity; i++) {
+            if (!set->slots[i].length) continue;
+            u64 at = name_set_hash((const u8 *)set->slots[i].data, set->slots[i].length) & (capacity - 1);
+            while (slots[at].length) at = (at + 1) & (capacity - 1);
+            slots[at] = set->slots[i];
+        }
+        set->slots = slots;
+        set->capacity = capacity;
+    }
+    u64 at = name_set_hash((const u8 *)name.data, name.length) & (set->capacity - 1);
+    while (set->slots[at].length) {
+        if (string8_equals(&set->slots[at], &name)) return;
+        at = (at + 1) & (set->capacity - 1);
+    }
+    set->slots[at] = name;
+    set->count++;
+}
+
+static bool name_set_has(NameSet *set, string8 name) {
+    if (!set->capacity) return false;
+    u64 at = name_set_hash((const u8 *)name.data, name.length) & (set->capacity - 1);
+    while (set->slots[at].length) {
+        if (string8_equals(&set->slots[at], &name)) return true;
+        at = (at + 1) & (set->capacity - 1);
+    }
+    return false;
+}
+
+static bool c_ident_start(u8 c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; }
+static bool c_ident_part(u8 c) { return c_ident_start(c) || (c >= '0' && c <= '9') || c == '$'; }
+
+/* Past a comment, a string or a character literal starting at i, or i if there is none there. */
+static u64 c_skip_noise(string8 text, u64 i) {
+    u8 c = (u8)text.data[i];
+    if (c == '/' && i + 1 < text.length && text.data[i + 1] == '/') {
+        while (i < text.length && text.data[i] != '\n') i++;
+        return i;
+    }
+    if (c == '/' && i + 1 < text.length && text.data[i + 1] == '*') {
+        i += 2;
+        while (i + 1 < text.length && !(text.data[i] == '*' && text.data[i + 1] == '/')) i++;
+        return i + 2 < text.length ? i + 2 : text.length;
+    }
+    if (c == '"' || c == '\'') {
+        u64 j = i + 1;
+        while (j < text.length && (u8)text.data[j] != c && text.data[j] != '\n') j += text.data[j] == '\\' ? 2 : 1;
+        return j + 1 < text.length ? j + 1 : text.length;
+    }
+    return i;
+}
+
+static bool c_ends_in_local_suffix(const char *data, u64 length) {
+    return length > 10 && memcmp(data + length - 10, "$rin_local", 10) == 0;
+}
+
+/* What a local can clash with: every name at file scope, an enum's members, and every name in the body of a rin proc,
+   but a local's and a field's. Inside other braces is out of its reach: a struct's fields, a table's initializer, and
+   the compiler's own helpers, whose parameters are in another function. */
+static void local_names_scan(memops_arena *arena, string8 text, NameSet *used) {
+    u8 enum_brace[256];
+    i32 depth = 0;
+    i32 body_depth = -1; // the brace depth a rin body started at, or -1 outside one
+    bool enum_pending = false;
+    bool after_member = false;
+    bool line_start = true;
+    u64 i = 0;
+    while (i < text.length) {
+        u8 c = (u8)text.data[i];
+        if (c == '/' && i + 12 <= text.length && memcmp(text.data + i, "/*rin_body*/", 12) == 0) { body_depth = depth; i += 12; continue; }
+        if (c == '/' && i + 11 <= text.length && memcmp(text.data + i, "/*rin_end*/", 11) == 0) { body_depth = -1; i += 11; continue; }
+        u64 past = c_skip_noise(text, i);
+        if (past != i) { i = past; after_member = false; continue; }
+        if (c == '\n') { line_start = true; i++; continue; }
+        if (c == ' ' || c == '\t' || c == '\r') { i++; continue; }
+        if (c == '#' && line_start) {
+            /* `#line 12 "file"` and `#include`: the words are the preprocessor's. A #define's body counts. */
+            u64 j = i + 1;
+            while (j < text.length && (text.data[j] == ' ' || text.data[j] == '\t')) j++;
+            bool define = j + 6 <= text.length && memcmp(text.data + j, "define", 6) == 0;
+            if (!define) { while (i < text.length && text.data[i] != '\n') i++; continue; }
+            i = j + 6;
+            continue;
+        }
+        line_start = false;
+        if (c >= '0' && c <= '9') {
+            while (i < text.length && (c_ident_part((u8)text.data[i]) || text.data[i] == '.')) i++;
+            after_member = false;
+            continue;
+        }
+        if (c_ident_start(c)) {
+            u64 start = i;
+            while (i < text.length && c_ident_part((u8)text.data[i])) i++;
+            string8 name = { (char *)text.data + start, i - start };
+            /* offsetof(T, field): what follows the type is a field. */
+            if (string8_equals_cstr(&name, "offsetof")) {
+                i32 parens = 0;
+                while (i < text.length) {
+                    if (text.data[i] == '(') parens++;
+                    if (text.data[i] == ')' && --parens == 0) { i++; break; }
+                    i++;
+                }
+                after_member = false;
+                continue;
+            }
+            if (string8_equals_cstr(&name, "enum")) enum_pending = true;
+            bool reachable = depth == 0 || body_depth >= 0 || (depth <= 256 && enum_brace[depth - 1]);
+            if (reachable && !after_member && !c_ends_in_local_suffix(name.data, name.length)) name_set_add(arena, used, name);
+            after_member = false;
+            continue;
+        }
+        if (c == '.') { after_member = true; i++; continue; }
+        if (c == '-' && i + 1 < text.length && text.data[i + 1] == '>') { after_member = true; i += 2; continue; }
+        if (c == '{') {
+            if (depth < 256) enum_brace[depth] = enum_pending ? 1 : 0;
+            depth++;
+            enum_pending = false;
+        } else if (c == '}') {
+            if (depth > 0) depth--;
+        } else if (c == ';' || c == '(') {
+            enum_pending = false;
+        }
+        after_member = false;
+        i++;
+    }
+}
+
+/* What the headers and the C language mean by name, which no reading of the generated C would show. The macros in
+   std's headers declare no variable of their own, so a local cannot be caught by one's insides: what they can reach is
+   these, and std/core.h, reflect.h and memops_os.h are the headers to read if this list is ever in question. */
+static bool local_name_is_taken_anyway(string8 name) {
+    if (name.length == 0 || name.data[0] == '_') return true;
+    if (name.length >= 4 && memcmp(name.data, "rin_", 4) == 0) return true;
+    if (name_is_c_runtime_symbol(name) || ident_needs_c_mangle(name)) return true;
+    static const char *const words[] = {
+        "auto", "break", "case", "char", "const", "continue", "default", "do", "double", "else", "enum", "extern", "float",
+        "for", "goto", "if", "inline", "int", "long", "register", "restrict", "return", "short", "signed", "sizeof",
+        "static", "struct", "switch", "typedef", "union", "unsigned", "void", "volatile", "while", "bool", "true", "false",
+        "u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64", "f32", "f64", "b8", "b16", "b32", "b64", "c8", "usize", "isize", "str",
+        "size_t", "ptrdiff_t", "uintptr_t", "intptr_t", "uintmax_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t",
+        "int8_t", "int16_t", "int32_t", "int64_t", "va_list", "va_start", "va_arg", "va_end", "va_copy", "assert", "NULL",
+        "offsetof", "errno", "EOF", "alignof", "cast", "slice", "memset", "memcpy", "memmove", "memcmp", "mmap", "munmap",
+        "mprotect", "sysconf", "abort", "exit", "printf", "fprintf", "stderr", "stdout", "stdin",
+        /* windows.h's macros, for a program that includes it: `#define small char`. */
+        "near", "far", "small", "hyper", "interface", "pascal", "cdecl",
+    };
+    for (u64 i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
+        if (string8_equals_cstr(&name, words[i])) return true;
+    }
+    return false;
+}
+
+static bool string8_slice_is(string8 text, u64 at, const char *what) {
+    u64 length = strlen(what);
+    return at + length <= text.length && memcmp(text.data + at, what, length) == 0;
+}
+
+static string8 local_names_rewrite(memops_arena *arena, string8 text, NameSet *used) {
+    string8 out = string8_reserve(arena, text.length + 1);
+    u64 copied = 0;
+    u64 i = 0;
+    while (i < text.length) {
+        u8 marker = (u8)text.data[i];
+        if (marker == '/' && (string8_slice_is(text, i, "/*rin_body*/\n") || string8_slice_is(text, i, "/*rin_end*/\n"))) {
+            u64 length = string8_slice_is(text, i, "/*rin_body*/\n") ? 13 : 12;
+            string8_append_bytes(arena, &out, text.data + copied, i - copied);
+            i += length;
+            copied = i;
+            continue;
+        }
+        u64 past = c_skip_noise(text, i);
+        if (past != i) { i = past; continue; }
+        u8 c = (u8)text.data[i];
+        if (c_ident_start(c)) {
+            u64 start = i;
+            while (i < text.length && c_ident_part((u8)text.data[i])) i++;
+            if (c_ends_in_local_suffix(text.data + start, i - start)) {
+                string8 plain = { (char *)text.data + start, i - start - 10 };
+                if (!name_set_has(used, plain) && !local_name_is_taken_anyway(plain)) {
+                    string8_append_bytes(arena, &out, text.data + copied, start + plain.length - copied);
+                    copied = i;
+                }
+            }
+            continue;
+        }
+        if (c >= '0' && c <= '9') {
+            while (i < text.length && (c_ident_part((u8)text.data[i]) || text.data[i] == '.')) i++;
+            continue;
+        }
+        i++;
+    }
+    string8_append_bytes(arena, &out, text.data + copied, text.length - copied);
+    return out;
 }
 
 static void emit_program(memops_arena *arena, Program *prog, string8 *out) {
@@ -28577,6 +28791,20 @@ i32 main(i32 argc, char *argv[]) {
         if (!header_path) {
             header_path = derive_header_path(&arena, output_path);
         }
+    }
+
+    /* A local keeps its plain name wherever that name is free in everything written, headers for instances included. */
+    {
+        NameSet used = {0};
+        local_names_scan(&arena, output, &used);
+        if (emit_header) local_names_scan(&arena, header_output, &used);
+        Vec_string8 instance_names = Vec_string8_reserve(&arena, 8);
+        Vec_string8 instance_texts = Vec_string8_reserve(&arena, 8);
+        collect_native_monomorph_headers(&arena, &prog, &instance_names, &instance_texts);
+        for (i32 i = 0; i < instance_texts.length; i++) local_names_scan(&arena, instance_texts.data[i], &used);
+        output = local_names_rewrite(&arena, output, &used);
+        if (emit_header) header_output = local_names_rewrite(&arena, header_output, &used);
+        profile_mark("local names", &profile_last, profile_start);
     }
 
     if (!write_string8_to_file(output_path, output)) {

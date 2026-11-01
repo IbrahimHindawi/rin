@@ -375,7 +375,8 @@ a generic argument, specialising `vec<T>resize`, a plain proc colliding with a g
 
 The name rules were a family: a local hiding a proc, an enum member, a type, a generated type. They existed because
 a rin local was a C local of the same name, and rounds 26, 27 and 28 each found another member. A local is
-`name$rin_local` in C now, and rin cannot spell a dollar, so the family is gone: the rules were deleted, and every
+`name` in C if the C written uses that name for nothing else and `name$rin_local` if it does, which rin cannot spell, so
+the family is gone: the rules were deleted, and every
 attack program that had been refused by one was run in the VM and found harmless. The cost is the name a debugger
 shows. What is left of the family is what the compiler itself reads by name, `printfmt`, `unwrap` and so on, and the
 enum members it rewrites `E.a` to, which a program may not take; and a name at file scope, which shares the linker's
