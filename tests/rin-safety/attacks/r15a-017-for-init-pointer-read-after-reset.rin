@@ -1,0 +1,11 @@
+// a pointer in level declared in the init, reset in the body, read the second time round: the rule that catches this for a pointer declared above the for does not cover it: use-after-poison at q*
+import "std/print.rin"
+level: region global;
+main: proc() -> i32 = {
+    n: i32 = 0;
+    for (q: *i32 in level = new<i32>(level, 1); n < 3; n += 1) {
+        printfmt("{}\n", q*);
+        reset level;
+    }
+    return 0;
+}

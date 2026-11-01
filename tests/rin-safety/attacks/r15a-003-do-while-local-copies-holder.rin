@@ -1,0 +1,14 @@
+// as 001 in a do-while: stack-use-after-return at q*
+import "std/print.rin"
+f: proc(a: *i32, n: i32) -> *i32 = {
+    x: i32 = 7;
+    h: *i32 = a;
+    do {
+        c: *i32 = h;
+        n -= 1;
+        if (n == 1) { return c; }
+        h = x&;
+    } while (n > 0);
+    return a;
+}
+main: proc() -> i32 = { y: i32 = 1; q: *i32 = f(y&, 3); printfmt("{}\n", q*); return 0; }

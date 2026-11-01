@@ -1,0 +1,12 @@
+// as 022 for an option parameter, read by the test itself: stack-use-after-return at `if (q*)`
+import "std/print.rin"
+f: proc(a: option<*i32>) -> *option<*i32> = {
+    p: *option<*i32> = a&;
+    return p;
+}
+main: proc() -> i32 = {
+    y: i32 = 1;
+    q: *option<*i32> = f(y&);
+    if (q*) { printfmt("yes\n"); }
+    return 0;
+}

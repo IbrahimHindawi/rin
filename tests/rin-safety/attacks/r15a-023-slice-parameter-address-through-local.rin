@@ -1,0 +1,7 @@
+// as 022 for a slice parameter: the slice variable is gone, q*.length is stack-use-after-return
+import "std/print.rin"
+f: proc(a: []i32) -> *[]i32 = {
+    p: *[]i32 = a&;
+    return p;
+}
+main: proc() -> i32 = { y: [2]i32 = {1,2}; q: *[]i32 = f(y[0..2]); printfmt("{}\n", q*.length); return 0; }

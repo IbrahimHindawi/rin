@@ -1,0 +1,20 @@
+// As 010 through a parameter, and on the key side: poke sets hashmap's states, key_at hands back an unset pointer key, and it is null. UBSan null / ASan SEGV.
+import "std/hashmap.rin"
+import "std/print.rin"
+level: region global;
+hash: proc<*i32 in level>(p: *i32 in level) -> u64 = { return cast(p*, u64); }
+equal: proc<*i32 in level>(a: *i32 in level, b: *i32 in level) -> b32 = { return a* == b*; }
+poke: proc(s: []u8) -> void = {
+    for (i: u64 = 0; i < s.length; i += 1) { s[i] = 1; }
+}
+main: proc() -> i32 = {
+    m: *hashmap<*i32 in level, i32> in level = hashmap<*i32 in level, i32>make(level);
+    hashmap<*i32 in level, i32>set(m, new<i32>(level, 5), 1);
+    poke(m*.states);
+    total: i32 = 0;
+    for (i: u64 = hashmap<*i32 in level, i32>first(m); i < m*.capacity; i = hashmap<*i32 in level, i32>next(m, i)) {
+        total += hashmap<*i32 in level, i32>key_at(m, i)**;
+    }
+    printfmt("{}\n", total);
+    return 0;
+}

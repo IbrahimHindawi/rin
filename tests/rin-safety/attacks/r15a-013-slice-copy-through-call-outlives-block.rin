@@ -1,0 +1,19 @@
+// as 011 for slices through a call: r[0] after the block is stack-use-after-scope
+import "std/print.rin"
+id: proc(a: []i32) -> []i32 = { return a; }
+main: proc() -> i32 = {
+    y: [2]i32 = {1,2};
+    r: []i32 = y[0..2];
+    if (y[0] > 0) {
+        x: [2]i32 = {3,4};
+        q: []i32 = y[0..2];
+        i: i32 = 0;
+        while (i < 2) {
+            r = id(q);
+            q = x[0..2];
+            i += 1;
+        }
+    }
+    printfmt("{}\n", r[0]);
+    return 0;
+}

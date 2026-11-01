@@ -1,0 +1,10 @@
+// the read is in the for's step, the back-edge's own scan never runs for q: n += q* after the block is stack-use-after-scope
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: i32 = 1;
+    n: i32 = 0;
+    for (q: *i32 = y&; n < 3; n += q*) {
+        if (n >= 0) { x: i32 = 1; q = x&; }
+    }
+    return 0;
+}

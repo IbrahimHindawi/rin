@@ -101,11 +101,11 @@ level region, and its level meshes are released by the reset.
 
 Next, in the order that pays:
 
-1. Narrow std's `unsafe { }` bodies. The count of lines inside them is the honest measure of the trusted base.
+1. Narrow std's `unsafe { }` bodies. `python tests/rin_trusted_lines.py` gives the honest measure: the lines of it safe code can reach.
 2. Strangers, in a VM, and the crash-containment test (a terabyte-per-level recursion in the VM), which the user
    approves first because it can take the machine down with it if the VM's limits fail.
 3. Threads, last.
 
-Thirteen attack rounds have run. From round five on each found dozens of holes in safe code, and all are closed.
+Fifteen attack rounds have run. From round five on each found dozens of holes in safe code, and all are closed; the rounds are not slowing down.
 Run a fresh round per new rule, and `tests/gen_rin_safe.py` with `run_rin_vm.py --compare`. Verify with a script
 that fails on a missing line or a skipped program: a filtered log hid a failing suite here twice.

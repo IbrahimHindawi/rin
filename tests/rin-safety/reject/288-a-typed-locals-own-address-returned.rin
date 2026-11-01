@@ -1,0 +1,14 @@
+// expect: a returned pointer with
+// return_root_ok takes a root whose type names a region as the region's memory, but this root is the local holding the pointer, and p points at the local; empty, it has no regions for the region rule either: stack-use-after-return at `if (r*)`
+import "std/print.rin"
+level: region global;
+f: proc() -> *option<*i32 in level> = {
+    q: option<*i32 in level> = null;
+    p: *option<*i32 in level> = q&;
+    return p;
+}
+main: proc() -> i32 = {
+    r: *option<*i32 in level> = f();
+    if (r*) { printfmt("x\n"); }
+    return 0;
+}

@@ -1,0 +1,8 @@
+// as 022 through an identity call: stack-use-after-return at the read in main
+import "std/print.rin"
+id: proc(a: **i32) -> **i32 = { return a; }
+f: proc(a: *i32) -> **i32 = {
+    p: **i32 = id(a&);
+    return p;
+}
+main: proc() -> i32 = { y: i32 = 1; printfmt("{}\n", f(y&)**); return 0; }

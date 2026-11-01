@@ -74,7 +74,7 @@ memops_align_forward: proc(ptr: usize, align: usize) -> usize = {
    judge that caps address space refuses a reservation that size even though
    none of it is used, so a refusal halves the request until one fits, down to
    a megabyte. `reserved` says what was granted. */
-memops_arena_initialize: proc(arena: *memops_arena, reserve: u64 = max_alloc_size) -> void = {
+memops_arena_initialize: proc[unsafe](arena: *memops_arena, reserve: u64 = max_alloc_size) -> void = {
     arena*.pagesize = memops_os_page_size();
     size: u64 = memops_align_forward(cast(reserve, usize), cast(arena*.pagesize, usize));
     unsafe { arena*.base = memops_os_reserve(size); }
@@ -159,7 +159,7 @@ memops_arena_push_zero: proc[unsafe](arena: *memops_arena, alloc_size: u64, alig
     return p;
 }
 
-memops_arena_get_pos: proc(arena: *memops_arena) -> ^void = {
+memops_arena_get_pos: proc[unsafe](arena: *memops_arena) -> ^void = {
     unsafe { return arena*.base + arena*.used; }
 }
 

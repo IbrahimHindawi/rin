@@ -1,0 +1,17 @@
+// cstr_of(array) is a private copy on put's frame; hashmap<K, V>set keeps it after put returns, so cstr_length reads a dead frame. ASan: stack-use-after-return (or -scope) in cstr_length.
+import "std/hashmap.rin"
+import "std/cstr.rin"
+import "std/print.rin"
+level: region global;
+put: proc(m: *hashmap<i32, ^const c8>) -> void = {
+    a: [8]c8 = { 97, 98, 99, 0, 0, 0, 0, 0 };
+    hashmap<i32, ^const c8>set(m, 1, cstr_of(a));
+}
+noise: proc() -> i32 = { b: [64]i32 = {}; b[3] = 7; return b[3]; }
+main: proc() -> i32 = {
+    m: *hashmap<i32, ^const c8> in level = hashmap<i32, ^const c8>make(level);
+    put(m);
+    x: i32 = noise();
+    printfmt("{} {}\n", x, cstr_length(hashmap<i32, ^const c8>get_or(m, 1, "x")));
+    return 0;
+}

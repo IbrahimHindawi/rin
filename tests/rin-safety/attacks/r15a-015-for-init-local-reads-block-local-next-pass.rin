@@ -1,0 +1,10 @@
+// as 014 with the local in an inner block: stack-use-after-scope at q*
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: i32 = 1;
+    for (q: *i32 = y&; y < 3; y += 1) {
+        printfmt("{}\n", q*);
+        if (y > 0) { x: i32 = 7; q = x&; }
+    }
+    return 0;
+}

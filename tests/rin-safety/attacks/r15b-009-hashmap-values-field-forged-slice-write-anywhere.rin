@@ -1,0 +1,24 @@
+// As 008 with V a slice: an unset slot read from hashmap's values field is a '[]i32' with a pointer and a length the program chose, so the bounds check passes and the write lands at a chosen address. ASan: SEGV on the forged address at xs[0] = 1.
+import "std/hashmap.rin"
+import "std/print.rin"
+level: region global;
+fill: proc() -> void = {
+    a: []u64 in level = new_slice<u64>(level, 8192);
+    for (i: u64 = 0; i < 8192; i += 1) { a[i] = 0x4141414141414140'u64; }
+}
+write_it: proc() -> i32 = {
+    one: []i32 in level = new_slice<i32>(level, 1);
+    m: *hashmap<u64, []i32 in level> in level = hashmap<u64, []i32 in level>make(level);
+    hashmap<u64, []i32 in level>set(m, 1, one);
+    for (i: u64 = 0; i < m*.capacity; i += 1) {
+        xs: []i32 in level = m*.values[i];
+        xs[0] = 1;
+    }
+    return 0;
+}
+main: proc() -> i32 = {
+    fill();
+    reset level;
+    printfmt("{}\n", write_it());
+    return 0;
+}

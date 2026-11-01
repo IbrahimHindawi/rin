@@ -1,0 +1,12 @@
+// as 017 through a call that resets, writing: q[0] on the second pass is use-after-poison
+import "std/print.rin"
+level: region global;
+drop: proc() -> void = { reset level; }
+main: proc() -> i32 = {
+    n: i32 = 0;
+    for (q: []i32 in level = new_slice<i32>(level, 4); n < 3; n += 1) {
+        q[0] = n;
+        drop();
+    }
+    return 0;
+}

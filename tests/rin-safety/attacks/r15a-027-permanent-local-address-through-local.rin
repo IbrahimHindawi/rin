@@ -1,0 +1,12 @@
+// as 026 holding a value: permanent is what the region rule lets by unsaid, so q need not be empty: stack-use-after-return at `if (r*)`
+import "std/print.rin"
+f: proc() -> *option<*i32 in permanent> = {
+    q: option<*i32 in permanent> = new<i32>(permanent, 3);
+    p: *option<*i32 in permanent> = q&;
+    return p;
+}
+main: proc() -> i32 = {
+    r: *option<*i32 in permanent> = f();
+    if (r*) { printfmt("x\n"); }
+    return 0;
+}

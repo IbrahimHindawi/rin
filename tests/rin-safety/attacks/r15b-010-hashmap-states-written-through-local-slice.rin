@@ -1,0 +1,16 @@
+// The rule that std structs' fields are set only in their own file looks at the assignment's left side: a local copy of hashmap's states slice writes them anyway. An unset slot goes live, value_at's state check passes, and its '*V' holds a null '*i32'. UBSan null / ASan SEGV.
+import "std/hashmap.rin"
+import "std/print.rin"
+level: region global;
+main: proc() -> i32 = {
+    m: *hashmap<u64, *i32 in level> in level = hashmap<u64, *i32 in level>make(level);
+    hashmap<u64, *i32 in level>set(m, 1, new<i32>(level, 5));
+    s: []u8 = m*.states;
+    for (i: u64 = 0; i < s.length; i += 1) { s[i] = 1; }
+    total: i32 = 0;
+    for (i: u64 = hashmap<u64, *i32 in level>first(m); i < m*.capacity; i = hashmap<u64, *i32 in level>next(m, i)) {
+        total += hashmap<u64, *i32 in level>value_at(m, i)**;
+    }
+    printfmt("{}\n", total);
+    return 0;
+}

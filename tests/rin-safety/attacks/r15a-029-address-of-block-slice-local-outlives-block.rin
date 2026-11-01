@@ -1,0 +1,13 @@
+// as 028 for a slice local: r*.length after the block is stack-use-after-scope
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: [2]i32 = {1,2};
+    ys: []i32 = y[0..2];
+    r: *[]i32 = ys&;
+    if (y[0] > 0) {
+        q: []i32 = y[0..1];
+        r = q&;
+    }
+    printfmt("{}\n", r*.length);
+    return 0;
+}

@@ -1,0 +1,13 @@
+// no return in the loop at all: r = h is read once, top to bottom, when h is a; the second pass copies x's address into r, and the return after the loop checks only what pass one recorded: stack-use-after-return at q*
+import "std/print.rin"
+f: proc(a: *i32, n: i32) -> *i32 = {
+    x: i32 = 7;
+    h: *i32 = a;
+    r: *i32 = a;
+    for (i: i32 = 0; i < n; i += 1) {
+        r = h;
+        h = x&;
+    }
+    return r;
+}
+main: proc() -> i32 = { y: i32 = 1; q: *i32 = f(y&, 3); printfmt("{}\n", q*); return 0; }

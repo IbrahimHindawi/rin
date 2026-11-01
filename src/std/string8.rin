@@ -46,7 +46,7 @@ string8_reserve: proc[unsafe](arena: *memops_arena, capacity: u64) -> string8 = 
     return s;
 }
 
-string8_grow: proc(arena: *memops_arena, s: *string8, min_capacity: u64) -> void = {
+string8_grow: proc[unsafe](arena: *memops_arena, s: *string8, min_capacity: u64) -> void = {
     if (arena == null || s == null) {
         unsafe { printf("rin runtime: string8 grow invalid argument\n"); }
         exit(1);
@@ -172,7 +172,7 @@ path_to_cstr_temp: proc[unsafe](arena: *memops_arena, s: string8slice) -> ^char 
     return string8slice_to_cstr_temp(arena, s);
 }
 
-string8_append_byte: proc(arena: *memops_arena, s: *string8, byte: u8) -> void = {
+string8_append_byte: proc[unsafe](arena: *memops_arena, s: *string8, byte: u8) -> void = {
     string8_grow(arena, s, s*.length + 1);
     unsafe { s*.data[s*.length] = byte; }
     s*.length += 1;
@@ -197,13 +197,13 @@ string8_append_string8: proc[unsafe](arena: *memops_arena, s: *string8, src: str
     string8_append_bytes(arena, s, src.data, src.length);
 }
 
-string8_append_cstr: proc(arena: *memops_arena, s: *string8, cstr: ^const char) -> void = { unsafe {
+string8_append_cstr: proc[unsafe](arena: *memops_arena, s: *string8, cstr: ^const char) -> void = {
     if (cstr == null) {
         return;
     }
     count: u64 = cast(strlen(cstr), u64);
     string8_append_bytes(arena, s, cast(cstr, *const u8), count);
-} }
+}
 
 string8_clear: proc(s: *string8) -> void = {
     if (s == null) {

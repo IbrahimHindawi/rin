@@ -137,8 +137,8 @@ slice<T>zero: proc<T>(s: []T) -> void = { unsafe {
     if (s.length > 0) { memset(s.data, 0, sizeof(T) * s.length); }
 } }
 
-slice<T>to_array: proc<T>(arena: *memops_arena, s: slice<T>) -> array<T> = { unsafe {
+slice<T>to_array: proc[unsafe]<T>(arena: *memops_arena, s: slice<T>) -> array<T> = {
     out: array<T> = array<T>reserve(arena, s.length);
     slice<T>copy_to(out.data, s);
     return out;
-} }
+}

@@ -1,0 +1,12 @@
+// as 017 for a struct holding the pointer: s.p* on the second pass is use-after-poison
+import "std/print.rin"
+level: region global;
+h: struct = { p: *i32 in level; }
+main: proc() -> i32 = {
+    n: i32 = 0;
+    for (s: h = { new<i32>(level, 1) }; n < 3; n += 1) {
+        printfmt("{}\n", s.p*);
+        reset level;
+    }
+    return 0;
+}

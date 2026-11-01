@@ -1,0 +1,15 @@
+// as 001 in a while, c taken through a call: the declaration's call has h as its only source, recorded as a; the next pass returns x's address: stack-use-after-return at q*
+import "std/print.rin"
+id: proc(a: *i32) -> *i32 = { return a; }
+f: proc(a: *i32, n: i32) -> *i32 = {
+    x: i32 = 7;
+    h: *i32 = a;
+    while (n > 0) {
+        c: *i32 = id(h);
+        n -= 1;
+        if (n == 1) { return c; }
+        h = x&;
+    }
+    return a;
+}
+main: proc() -> i32 = { y: i32 = 1; q: *i32 = f(y&, 3); printfmt("{}\n", q*); return 0; }

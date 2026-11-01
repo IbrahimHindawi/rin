@@ -1,0 +1,17 @@
+// r takes q before q takes frame memory, so the frame's end, which kills by what each borrow came from, does not touch r; the second pass made r a frame pointer: use-after-poison at r*
+import "std/print.rin"
+level: region global;
+frame: region in level;
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    r: *i32 = a;
+    frame: region = {
+        q: *i32 = a;
+        for (i: i32 = 0; i < 2; i += 1) {
+            r = q;
+            q = new<i32>(frame, 2);
+        }
+    }
+    printfmt("{}\n", r*);
+    return 0;
+}

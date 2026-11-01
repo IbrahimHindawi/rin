@@ -1,0 +1,13 @@
+// cstr_of(slice) checked a terminator once; hashmap keeps the raw pointer, the terminator is overwritten, and cstr_length runs off the end of the 4-byte allocation. ASan: use-after-poison in cstr_length.
+import "std/hashmap.rin"
+import "std/cstr.rin"
+import "std/print.rin"
+level: region global;
+main: proc() -> i32 = {
+    s: []c8 in level = new_slice<c8>(level, 4);
+    m: *hashmap<i32, ^const c8> in level = hashmap<i32, ^const c8>make(level);
+    hashmap<i32, ^const c8>set(m, 1, cstr_of(s));
+    s[0] = 65; s[1] = 65; s[2] = 65; s[3] = 65;
+    printfmt("{}\n", cstr_length(hashmap<i32, ^const c8>get_or(m, 1, "x")));
+    return 0;
+}

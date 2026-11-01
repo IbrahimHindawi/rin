@@ -1,0 +1,13 @@
+// as 014 with a region block in the body: the second pass reads frame memory after its block: use-after-poison at q*
+import "std/print.rin"
+level: region global;
+frame: region in level;
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    n: i32 = 0;
+    for (q: *i32 = a; n < 3; n += 1) {
+        printfmt("{}\n", q*);
+        frame: region = { q = new<i32>(frame, 2); }
+    }
+    return 0;
+}

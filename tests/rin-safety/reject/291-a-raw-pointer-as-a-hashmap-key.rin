@@ -1,0 +1,19 @@
+// expect: a raw pointer lasts only
+// As 001, with the raw pointer as K: the map outlives scratch and key_at hands back a pointer to poisoned memory. ASan: use-after-poison in printf/print_cstr.
+import "std/hashmap.rin"
+import "std/fmt.rin"
+import "std/print.rin"
+hash: proc<^const c8>(x: ^const c8) -> u64 = { return 1; }
+equal: proc<^const c8>(a: ^const c8, b: ^const c8) -> b32 = { return a == b; }
+level: region global;
+main: proc() -> i32 = {
+    m: *hashmap<^const c8, i32> in level = hashmap<^const c8, i32>make(level);
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 8);
+        fmt_cstr(f, "abcdef");
+        hashmap<^const c8, i32>set(m, fmt_text(f), 1);
+    }
+    i: u64 = hashmap<^const c8, i32>first(m);
+    print_cstr(hashmap<^const c8, i32>key_at(m, i)*);
+    return 0;
+}

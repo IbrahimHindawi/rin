@@ -1,0 +1,13 @@
+// as 001 with an option narrowed in the condition: stack-use-after-return at q*
+import "std/print.rin"
+f: proc(a: *i32, n: i32) -> *i32 = {
+    x: i32 = 7;
+    h: option<*i32> = a;
+    for (i: i32 = 0; i < n; i += 1) {
+        c: option<*i32> = h;
+        if (i == 1 && c) { return c; }
+        h = x&;
+    }
+    return a;
+}
+main: proc() -> i32 = { y: i32 = 1; q: *i32 = f(y&, 3); printfmt("{}\n", q*); return 0; }

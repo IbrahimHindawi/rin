@@ -1,0 +1,11 @@
+// borrows_check_back_edge looks only below the state saved before for_init, so a pointer declared in the for's init is never held to the back edge: the second pass reads x after its scope: stack-use-after-scope at q*
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: i32 = 1;
+    for (q: *i32 = y&; y < 3; y += 1) {
+        printfmt("{}\n", q*);
+        x: i32 = 7;
+        q = x&;
+    }
+    return 0;
+}

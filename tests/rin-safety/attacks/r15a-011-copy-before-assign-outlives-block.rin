@@ -1,0 +1,16 @@
+// as 010 with a block's local: the end of the block kills q, taken from x, and not r, recorded from y; the second pass made r x's address: stack-use-after-scope at r*
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: i32 = 1;
+    r: *i32 = y&;
+    if (y > 0) {
+        x: i32 = 7;
+        q: *i32 = y&;
+        for (i: i32 = 0; i < 2; i += 1) {
+            r = q;
+            q = x&;
+        }
+    }
+    printfmt("{}\n", r*);
+    return 0;
+}

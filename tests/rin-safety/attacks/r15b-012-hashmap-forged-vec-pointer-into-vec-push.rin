@@ -1,0 +1,25 @@
+// A forged pointer from an unset hashmap slot (as 008) reaches a trusted std body: vec<i32>push reads and writes through a '*vec<i32>' that is 0x4141...40. ASan: SEGV inside vec_i32_push.
+import "std/hashmap.rin"
+import "std/vec.rin"
+import "std/print.rin"
+level: region global;
+fill: proc() -> void = {
+    a: []u64 in level = new_slice<u64>(level, 8192);
+    for (i: u64 = 0; i < 8192; i += 1) { a[i] = 0x4141414141414140'u64; }
+}
+go: proc() -> i32 = {
+    one: *vec<i32> in level = vec<i32>make(level, 1);
+    m: *hashmap<u64, *vec<i32> in level> in level = hashmap<u64, *vec<i32> in level>make(level);
+    hashmap<u64, *vec<i32> in level>set(m, 1, one);
+    for (i: u64 = 0; i < m*.capacity; i += 1) {
+        v: *vec<i32> in level = m*.values[i];
+        _ = vec<i32>push(v, 1);
+    }
+    return 0;
+}
+main: proc() -> i32 = {
+    fill();
+    reset level;
+    printfmt("{}\n", go());
+    return 0;
+}

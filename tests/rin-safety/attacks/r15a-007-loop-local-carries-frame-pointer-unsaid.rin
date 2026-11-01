@@ -1,0 +1,24 @@
+// as r14-008 through a declaration: return_says_its_region and the loop check see only a; the bare result takes the argument's region, level, and q* after the block is use-after-poison
+import "std/print.rin"
+level: region global;
+frame: region in level;
+boss: option<*i32 in frame> = null;
+f: proc(a: *i32, n: i32) -> *i32 = {
+    h: *i32 = a;
+    for (i: i32 = 0; i < n; i += 1) {
+        c: *i32 = h;
+        if (i == 1) { return c; }
+        h = unwrap(boss);
+    }
+    return a;
+}
+main: proc() -> i32 = {
+    a: *i32 in level = new<i32>(level, 1);
+    q: *i32 in level = a;
+    frame: region = {
+        boss = new<i32>(frame, 2);
+        q = f(a, 3);
+    }
+    printfmt("{}\n", q*);
+    return 0;
+}

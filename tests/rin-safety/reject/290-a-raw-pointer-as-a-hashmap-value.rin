@@ -1,0 +1,16 @@
+// expect: a raw pointer lasts only
+// hashmap<K, V> escapes the "raw pointer through a trusted generic" rule that vec and table hit: V holds fmt_text past scratch's end, and print_cstr reads poisoned memory. ASan: use-after-poison in printf/print_cstr.
+import "std/hashmap.rin"
+import "std/fmt.rin"
+import "std/print.rin"
+level: region global;
+main: proc() -> i32 = {
+    m: *hashmap<i32, ^const c8> in level = hashmap<i32, ^const c8>make(level);
+    scratch {
+        f: *fmt in scratch = fmt_make(scratch, 8);
+        fmt_cstr(f, "abcdef");
+        hashmap<i32, ^const c8>set(m, 1, fmt_text(f));
+    }
+    print_cstr(hashmap<i32, ^const c8>get_or(m, 1, "x"));
+    return 0;
+}

@@ -16881,6 +16881,13 @@ static bool path_overlaps(string8 a, string8 b) {
 
 static void type_collect_regions(Program *prog, TypeExpr *type, Vec_string8 *out, memops_arena *arena, i32 depth);
 static bool type_has_pointer_deep(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth);
+static bool type_scope_lookup_local(TypeScope *scope, string8 name);
+static string8 own_address_path(memops_arena *arena, string8 name) {
+    string8 own = string8_reserve(arena, name.length + 1);
+    string8_append_byte(arena, &own, '&');
+    string8_append_bytes(arena, &own, name.data, name.length);
+    return own;
+}
 static void borrow_paths_from_expr(Expr *init, TypeScope *scope, Program *prog, memops_arena *arena,
                                    Vec_string8 *out, Vec_string8 *out_regions) {
     if (!init) return;
@@ -16947,6 +16954,19 @@ static void borrow_paths_from_expr(Expr *init, TypeScope *scope, Program *prog, 
     if (init->kind == Expr_Addr && init->inner && init->inner->kind == Expr_Name && borrow_find(init->inner->name) &&
         !array_string8_contains(out, init->inner->name)) {
         Vec_string8_append(arena, out, init->inner->name);
+    }
+    if (init->kind == Expr_Addr) {
+        /* `p = a&` with a a pointer: p points at the variable, which is gone with its scope, and not at
+           what a points at. '&a' is that place; no variable has the name, so nothing vouches for it. */
+        Expr *place = init->inner;
+        while (place && place->kind == Expr_Field) place = place->base;
+        if (place && place->kind == Expr_Name && type_scope_lookup_local(scope, place->name)) {
+            TypeExpr *t = resolve_alias_type(prog, type_scope_lookup(scope, place->name));
+            if (t && t->kind != Type_Array && t->kind != Type_Region) {
+                string8 own = own_address_path(arena, place->name);
+                if (!array_string8_contains(out, own)) Vec_string8_append(arena, out, own);
+            }
+        }
     }
     string8 path = expr_path(init, arena);
     Borrow *root = borrow_find(path_root(path));
@@ -17183,6 +17203,7 @@ static void borrow_register_holder(string8 name, TypeExpr *type, Program *prog, 
 }
 
 static bool g_leaving_scope = false;
+static memops_arena *g_borrow_arena;
 
 /* `pq = q&`: what q holds is read through pq, so when q's target ends, pq has nothing good either. */
 static string8 path_root(string8 path);
@@ -17217,6 +17238,7 @@ static void borrows_leave_scope(i32 mark, Program *prog) {
         for (i32 i = mark; i < g_decl_names.length; i++) {
             TypeExpr *t = (TypeExpr *)g_decl_types.data[i];
             TypeExpr *r = resolve_alias_type(prog, t);
+            if (r && r->kind != Type_Region && g_borrow_arena) borrow_kill_written(own_address_path(g_borrow_arena, g_decl_names.data[i]));
             if (r && (r->kind == Type_Ptr || type_slice_elem(r) || r->kind == Type_Region)) continue;
             borrow_kill_written(g_decl_names.data[i]);
         }
@@ -17531,6 +17553,85 @@ static void borrows_prekill_body(Vec_voidptr *body, Program *prog, memops_arena 
     for (i32 i = 0; i < written.length; i++) borrow_kill_written(written.data[i]);
 }
 
+/* The next pass of a loop starts from what the last one left. Rather than check the body again, each local
+   it assigns starts out already holding everything the body can give it, followed until nothing more turns
+   up: `r = q; q = x&;` has r holding x from the top. A local declared in the body counts for the pass. */
+typedef struct LoopScan { Vec_voidptr assigns; Vec_voidptr decls; } LoopScan;
+static void loop_scan_visit(Stmt *s, void *ctx, memops_arena *arena) {
+    LoopScan *scan = (LoopScan *)ctx;
+    if (s->kind == Stmt_Assign && s->assign_op == Token_Equal && s->lhs && s->expr) ptr_array_append(arena, &scan->assigns, s);
+    if (s->kind == Stmt_Var && s->expr) ptr_array_append(arena, &scan->decls, s);
+}
+static void string8_vec_union(memops_arena *arena, Vec_string8 *into, Vec_string8 *from);
+static bool borrow_take_in(Borrow *b, Expr *value, TypeScope *scope, Program *prog, memops_arena *arena) {
+    Vec_string8 paths = Vec_string8_reserve(arena, 2);
+    Vec_string8 regions = Vec_string8_reserve(arena, 1);
+    borrow_paths_from_expr(value, scope, prog, arena, &paths, &regions);
+    bool changed = false;
+    for (i32 i = 0; i < paths.length; i++) {
+        string8 root = path_root(paths.data[i]);
+        if (string8_equals(&root, &b->name) || array_string8_contains(&b->paths, paths.data[i])) continue;
+        Vec_string8_append(arena, &b->paths, paths.data[i]);
+        changed = true;
+    }
+    for (i32 i = 0; i < regions.length; i++) {
+        if (array_string8_contains(&b->regions, regions.data[i])) continue;
+        Vec_string8_append(arena, &b->regions, regions.data[i]);
+        changed = true;
+    }
+    return changed;
+}
+static void borrows_seed_loop(Vec_voidptr *body, Stmt *step, TypeScope *scope, Program *prog, memops_arena *arena) {
+    if (!g_safe_body) return;
+    LoopScan scan = { ptr_array_reserve(arena, 8), ptr_array_reserve(arena, 8) };
+    for (i32 i = 0; i < body->length; i++) stmt_walk((Stmt *)body->data[i], null, loop_scan_visit, &scan, arena);
+    if (step) stmt_walk(step, null, loop_scan_visit, &scan, arena);
+    if (scan.assigns.length == 0) return;
+    TypeScope seen = type_scope_copy(arena, scope);
+    for (i32 i = 0; i < scan.decls.length; i++) {
+        Stmt *d = (Stmt *)scan.decls.data[i];
+        if (d->type) type_scope_add(arena, &seen, d->name, d->type);
+    }
+    /* A local that holds nothing yet, as `q: option<*T> = null`, has a record from here on. */
+    for (i32 i = 0; i < scan.assigns.length; i++) {
+        Stmt *a = (Stmt *)scan.assigns.data[i];
+        string8 root = path_root(expr_path(a->lhs, arena));
+        if (root.length == 0 || borrow_find(root) || !type_scope_lookup_local(scope, root)) continue;
+        if (type_has_pointer_deep(prog, type_scope_lookup(scope, root), arena, 0)) borrow_register(root, null, scope, prog, arena);
+    }
+    i32 mark = g_borrows.length;
+    for (i32 i = 0; i < scan.decls.length; i++) {
+        Stmt *d = (Stmt *)scan.decls.data[i];
+        Borrow *b = memops_arena_push_struct(arena, Borrow);
+        b->name = d->name;
+        b->paths = Vec_string8_reserve(arena, 2);
+        b->regions = Vec_string8_reserve(arena, 1);
+        string8 said = d->type ? type_region_of(prog, d->type) : (string8){0};
+        if (said.length > 0) Vec_string8_append(arena, &b->regions, said);
+        ptr_array_append(arena, &g_borrows, b);
+    }
+    for (i32 round = 0; round < 16; round++) {
+        bool changed = false;
+        for (i32 i = 0; i < scan.decls.length; i++) {
+            Stmt *d = (Stmt *)scan.decls.data[i];
+            if (borrow_take_in((Borrow *)g_borrows.data[mark + i], d->expr, &seen, prog, arena)) changed = true;
+        }
+        for (i32 i = 0; i < scan.assigns.length; i++) {
+            Stmt *a = (Stmt *)scan.assigns.data[i];
+            if (a->expr->kind == Expr_InitList && a->expr->args.length == 0) continue;
+            TypeExpr *place = infer_expr_type(a->lhs, &seen, prog, arena);
+            if (place && !type_has_pointer_deep(prog, place, arena, 0)) continue;
+            string8 root = path_root(expr_path(a->lhs, arena));
+            Borrow *b = root.length > 0 ? borrow_find(root) : null;
+            if (!b) continue;
+            if (borrow_take_in(b, a->expr, &seen, prog, arena)) changed = true;
+            b->retaken = true;
+        }
+        if (!changed) break;
+    }
+    g_borrows.length = mark;
+}
+
 /* Branches: what either branch kills stays dead after; what a branch brings
    back does not. */
 typedef struct BorrowState { i32 length; Vec_i32 dead; Vec_voidptr saved; } BorrowState;
@@ -17595,7 +17696,6 @@ static void borrows_restore(BorrowState *st) {
 }
 
 /* The state where several paths meet: dead on any of them is dead. */
-static memops_arena *g_borrow_arena;
 static void borrows_join_all(i32 length, Vec_voidptr *states) {
     g_borrows.length = length;
     for (i32 i = 0; i < length; i++) borrow_set_union(i, (BorrowState **)states->data, states->length, g_borrow_arena);
@@ -18266,6 +18366,7 @@ static bool expr_has_writing_call(Expr *e, Program *prog, memops_arena *arena) {
 /* `f(cstr_of(x))` for an x something else can reach: the callee reads until a terminator that
    was there when cstr_of looked. Nothing may run in between, and the callee must not be able
    to write x itself: std's readers do not, and a proc of the program's own must show it. */
+static bool type_has_const_member(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth);
 static void safety_check_open_cstr(ProcDecl *decl, Expr *call, TypeScope *scope, Program *prog, memops_arena *arena) {
     if (!g_safe_body || g_checking_std) return;
     if (!call->base && string8_equals_cstr(&call->name, "cstr_of")) return;
@@ -18284,8 +18385,12 @@ static void safety_check_open_cstr(ProcDecl *decl, Expr *call, TypeScope *scope,
                                "into a local array first", arg->line, arg->col);
             return;
         }
-        if (path_is_std(decl->source_path)) return;
-        bool writable = false;
+        bool runs_given_code = false;
+        for (i32 k = 0; k < decl->params.length; k++) {
+            if (type_is_proc_pointer(prog, ((Param *)decl->params.data[k])->type)) runs_given_code = true;
+        }
+        if (path_is_std(decl->source_path) && !runs_given_code) return;
+        bool writable = runs_given_code;
         for (i32 k = 0; k < decl->params.length; k++) {
             TypeExpr *pt = resolve_alias_type(prog, ((Param *)decl->params.data[k])->type);
             TypeExpr *elem = pt ? (pt->kind == Type_Ptr ? pt->elem : type_slice_elem(pt)) : null;
@@ -18639,6 +18744,20 @@ static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, m
     if (decl->is_variadic) {
         for (i32 i = decl->params.length; i < call->args.length; i++) {
             type_check_expr((Expr *)call->args.data[i], scope, prog, arena);
+        }
+    }
+    if (decl->is_generic && g_safe_body && !g_checking_std && (decl->answers_for_signature || decl->is_unsafe)) {
+        TypeSub given_sub = proc_call_sub_in_scope(arena, decl, call, type_arg, scope);
+        for (i32 k = 0; given_sub.has && k < given_sub.args.length; k++) {
+            TypeExpr *given = (TypeExpr *)given_sub.args.data[k];
+            TypeExpr *resolved = resolve_alias_type(prog, given);
+            if (resolved && resolved->kind == Type_Ptr && resolved->is_raw && !resolved->is_str) {
+                type_error_message("a raw pointer lasts only for a call, and this generic's trusted body may keep what it "
+                                   "is given: use a 'str', or an index", call->line, call->col);
+            }
+            if (type_has_const_member(prog, given, arena, 0)) {
+                type_error_message("this generic's trusted body writes its T as bytes, and T has a const member", call->line, call->col);
+            }
         }
     }
     if (decl->ret_type && type_arg && decl->is_generic) {
@@ -19668,6 +19787,9 @@ static void type_check_stmt_inner(
         BorrowState *before = borrows_save_ptr(arena);
         JumpCtx *ctx = jump_ctx_push(arena, true);
         if (s->for_init) type_check_stmt(s->for_init, &loop_scope, prog, return_type, current_proc, arena);
+        borrows_seed_loop(&s->for_body, s->for_step, &loop_scope, prog, arena);
+        /* What the init declared comes round again with the loop, as what was there before it does. */
+        i32 edge_length = g_borrows.length;
         /* The second time round, the body's and the step's kills have happened. */
         borrows_prekill_body(&s->for_body, prog, arena);
         if (s->for_step && g_safe_body) {
@@ -19697,7 +19819,7 @@ static void type_check_stmt_inner(
             for (i32 i = 0; i < written.length; i++) borrow_kill_written(written.data[i]);
         }
         borrows_leave_scope(decl_mark, prog);
-        borrows_check_back_edge(before->length, &ctx->conts, &s->for_body, s->for_cond, s->for_step, scope, s->line, s->col, arena);
+        borrows_check_back_edge(edge_length, &ctx->conts, &s->for_body, s->for_cond, s->for_step, &loop_scope, s->line, s->col, arena);
         /* After the loop: it ran no times, or its body ended, or it left early. */
         Vec_voidptr states = ptr_array_reserve(arena, 4);
         ptr_array_append(arena, &states, before);
@@ -19756,6 +19878,7 @@ static void type_check_stmt_inner(
         i32 decl_mark = g_decl_names.length;
         BorrowState *before = borrows_save_ptr(arena);
         JumpCtx *ctx = jump_ctx_push(arena, true);
+        borrows_seed_loop(&s->while_body, null, &loop_scope, prog, arena);
         borrows_prekill_body(&s->while_body, prog, arena);
         narrow_undo_assigned_in(&s->while_body, null, &loop_scope, arena);
         type_check_condition_narrowing(s->while_cond, scope, &loop_scope, null, prog, arena);
@@ -19914,6 +20037,7 @@ static void type_check_stmt_inner(
         BorrowState *before = borrows_save_ptr(arena);
         JumpCtx *ctx = s->kind == Stmt_DoWhile ? jump_ctx_push(arena, true) : null;
         if (s->kind == Stmt_DoWhile) {
+            borrows_seed_loop(&s->while_body, null, &loop_scope, prog, arena);
             borrows_prekill_body(&s->while_body, prog, arena);
             narrow_undo_assigned_in(&s->while_body, null, &loop_scope, arena);
         }

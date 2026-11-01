@@ -1,0 +1,16 @@
+// safety_check_open_cstr trusts any std callee not to write the buffer, but lower_bound calls the program's comparator with the raw pointer: cb overwrites the terminator through a global and then reads the string. ASan: use-after-poison in cstr_length.
+import "std/sort.rin"
+import "std/cstr.rin"
+import "std/print.rin"
+level: region global;
+gs: []c8 in level = {};
+cb: proc(a: ^const c8, b: ^const c8) -> b32 = {
+    gs[0] = 65; gs[1] = 65; gs[2] = 65; gs[3] = 65;
+    return cstr_length(b) > 0;
+}
+main: proc() -> i32 = {
+    gs = new_slice<c8>(level, 4);
+    xs: [1]^const c8 = { "a" };
+    printfmt("{}\n", lower_bound<^const c8>(xs, cstr_of(gs), cb));
+    return 0;
+}

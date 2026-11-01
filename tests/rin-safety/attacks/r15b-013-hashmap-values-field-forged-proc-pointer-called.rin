@@ -1,0 +1,26 @@
+// As 008 with V a proc pointer: an unset slot read from hashmap's values field is a '*proc() -> i32' holding bytes the program wrote before the reset, and safe code calls it. ASan: SEGV, a jump to the forged address 0x4141414141414140.
+import "std/hashmap.rin"
+import "std/print.rin"
+level: region global;
+callback: alias = *proc() -> i32;
+one: proc() -> i32 = { return 1; }
+fill: proc() -> void = {
+    a: []u64 in level = new_slice<u64>(level, 8192);
+    for (i: u64 = 0; i < 8192; i += 1) { a[i] = 0x4141414141414140'u64; }
+}
+call_them: proc() -> i32 = {
+    m: *hashmap<u64, callback> in level = hashmap<u64, callback>make(level);
+    hashmap<u64, callback>set(m, 1, one);
+    total: i32 = 0;
+    for (i: u64 = 0; i < m*.capacity; i += 1) {
+        f: callback = m*.values[i];
+        total += f();
+    }
+    return total;
+}
+main: proc() -> i32 = {
+    fill();
+    reset level;
+    printfmt("{}\n", call_them());
+    return 0;
+}

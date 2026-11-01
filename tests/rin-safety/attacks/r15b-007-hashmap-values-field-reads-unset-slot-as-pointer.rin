@@ -1,0 +1,15 @@
+// hashmap's values are a slice field safe code can read, and grow leaves unset slots as they were (memops_arena_push, not zeroed): a '*i32 in level' read from an unset slot is null, breaking "every non-null pointer is non-null". UBSan null / ASan SEGV at x*.
+import "std/hashmap.rin"
+import "std/print.rin"
+level: region global;
+main: proc() -> i32 = {
+    m: *hashmap<u64, *i32 in level> in level = hashmap<u64, *i32 in level>make(level);
+    hashmap<u64, *i32 in level>set(m, 1, new<i32>(level, 5));
+    total: i32 = 0;
+    for (i: u64 = 0; i < m*.capacity; i += 1) {
+        x: *i32 in level = m*.values[i];
+        total += x*;
+    }
+    printfmt("{}\n", total);
+    return 0;
+}

@@ -1,0 +1,17 @@
+// As 005 through upper_bound, where the pointer is the comparator's first argument, read by print_cstr after the terminator goes. ASan: use-after-poison in printf/print_cstr.
+import "std/sort.rin"
+import "std/cstr.rin"
+import "std/print.rin"
+level: region global;
+gs: []c8 in level = {};
+cb: proc(a: ^const c8, b: ^const c8) -> b32 = {
+    gs[0] = 65; gs[1] = 65; gs[2] = 65; gs[3] = 65;
+    print_cstr(a);
+    return 0;
+}
+main: proc() -> i32 = {
+    gs = new_slice<c8>(level, 4);
+    xs: [1]^const c8 = { "a" };
+    printfmt("{}\n", upper_bound<^const c8>(xs, cstr_of(gs), cb));
+    return 0;
+}

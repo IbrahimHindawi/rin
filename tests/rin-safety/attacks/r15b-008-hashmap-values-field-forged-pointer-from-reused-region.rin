@@ -1,0 +1,25 @@
+// hashmap's grow does not zero values, and a region's memory comes back after 'reset' with its old bytes: integers written before the reset are read as a '*i32 in level' from an unset slot after it. ASan: SEGV on the forged address 0x4141414141414140 at x*.
+import "std/hashmap.rin"
+import "std/print.rin"
+level: region global;
+fill: proc() -> void = {
+    a: []u64 in level = new_slice<u64>(level, 8192);
+    for (i: u64 = 0; i < 8192; i += 1) { a[i] = 0x4141414141414140'u64; }
+}
+read_it: proc() -> i32 = {
+    one: *i32 in level = new<i32>(level, 5);
+    m: *hashmap<u64, *i32 in level> in level = hashmap<u64, *i32 in level>make(level);
+    hashmap<u64, *i32 in level>set(m, 1, one);
+    total: i32 = 0;
+    for (i: u64 = 0; i < m*.capacity; i += 1) {
+        x: *i32 in level = m*.values[i];
+        total += x*;
+    }
+    return total;
+}
+main: proc() -> i32 = {
+    fill();
+    reset level;
+    printfmt("{}\n", read_it());
+    return 0;
+}

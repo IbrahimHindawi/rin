@@ -1,0 +1,11 @@
+// as 016 with scratch: use-after-poison at q*
+import "std/print.rin"
+main: proc() -> i32 = {
+    y: i32 = 1;
+    n: i32 = 0;
+    for (q: *i32 = y&; n < 3; n += 1) {
+        printfmt("{}\n", q*);
+        scratch { q = new<i32>(scratch, 2); }
+    }
+    return 0;
+}

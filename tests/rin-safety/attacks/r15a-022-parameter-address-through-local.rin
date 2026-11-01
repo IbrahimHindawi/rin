@@ -1,0 +1,7 @@
+// `return a&` is refused, but through a local the path's root is a, and return_root_ok asks only whether a is a pointer parameter: the parameter variable's own address comes back: stack-use-after-return at q**
+import "std/print.rin"
+f: proc(a: *i32) -> **i32 = {
+    p: **i32 = a&;
+    return p;
+}
+main: proc() -> i32 = { y: i32 = 1; q: **i32 = f(y&); printfmt("{}\n", q**); return 0; }
