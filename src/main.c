@@ -23375,6 +23375,96 @@ static string8 slice_const_source_name(memops_arena *arena, TypeExpr *slice, Typ
    `[]const T` through its converter, so the slice is evaluated once. Any other
    slice conversion is written field by field. */
 static i32 g_emit_unevaluated; // inside sizeof: C never runs it, so it needs no guards
+
+/* The order of evaluation is rin's: left to right. C leaves it open, and clang on Windows takes a call's arguments
+   right to left, so `f(g.p*.x, clear())` read the field on one target and not on another. */
+typedef struct OrderScan { bool call; bool holds; } OrderScan;
+static void visit_order_scan(Expr *e, void *ctx, memops_arena *arena) {
+    (void)arena;
+    OrderScan *scan = (OrderScan *)ctx;
+    if (e->kind == Expr_Call) scan->call = true;
+    /* A temporary in the block a temporary's value leaves: left where it is, in the statement's own block. */
+    if (e->kind == Expr_Addr && e->inner && (e->inner->kind == Expr_InitList || e->inner->kind == Expr_CompoundInit)) scan->holds = true;
+}
+
+static bool expr_is_order_free(Expr *e) {
+    if (!e) return true;
+    if (e->kind == Expr_Number || e->kind == Expr_String || e->kind == Expr_Char || e->kind == Expr_SizeofType ||
+        e->kind == Expr_AlignofType || e->kind == Expr_ZeroInit) return true;
+    if (e->kind == Expr_Name && string8_equals_cstr(&e->name, "null")) return true;
+    if (e->kind == Expr_Cast || e->kind == Expr_Unary) return expr_is_order_free(e->inner);
+    return false;
+}
+
+static bool operands_need_order(Expr **operands, i32 count, memops_arena *arena) {
+    i32 with_call = 0;
+    i32 not_free = 0;
+    for (i32 i = 0; i < count; i++) {
+        OrderScan scan = {0};
+        if (operands[i]) expr_walk(operands[i], visit_order_scan, &scan, arena);
+        if (scan.holds) return false;
+        if (scan.call) with_call++;
+        if (!expr_is_order_free(operands[i])) not_free++;
+    }
+    return with_call >= 1 && not_free >= 2;
+}
+
+/* Writes `__auto_type rin_tN = operand;` and answers with the name to read it by. */
+static i32 g_emit_order_temp;
+static Expr *emit_order_temp(memops_arena *arena, string8 *out, Expr *operand, TypeSub sub, string8 generic_name) {
+    if (expr_is_order_free(operand)) return operand;
+    char name[32];
+    snprintf(name, sizeof(name), "rin_t%d", ++g_emit_order_temp);
+    Expr *read = expr_new(arena, Expr_Name);
+    read->name = string8_from_cstr(arena, name);
+    read->line = operand->line;
+    read->col = operand->col;
+    read->checked = true;
+    read->names_no_local = true;
+    emit_cstr(arena, out, "__auto_type ");
+    emit_string8(arena, out, read->name);
+    emit_cstr(arena, out, " = ");
+    emit_expr_value(arena, out, operand, sub, generic_name);
+    emit_cstr(arena, out, "; ");
+    return read;
+}
+
+static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name);
+/* Answers whether it wrote the expression. */
+static bool emit_expr_in_order(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
+    if (g_emit_unevaluated) return false;
+    if (e->kind == Expr_Call && !call_is_new(e) && !call_is_must(e) && e->args.length >= 2 &&
+        !string8_equals_cstr(&e->name, "new_slice") && operands_need_order((Expr **)e->args.data, e->args.length, arena)) {
+        Vec_voidptr written = e->args;
+        Vec_voidptr reads = ptr_array_reserve(arena, written.length);
+        emit_cstr(arena, out, "({ ");
+        for (i32 i = 0; i < written.length; i++) {
+            ptr_array_append(arena, &reads, emit_order_temp(arena, out, (Expr *)written.data[i], sub, generic_name));
+        }
+        e->args = reads;
+        emit_expr(arena, out, e, sub, generic_name);
+        e->args = written;
+        emit_cstr(arena, out, "; })");
+        return true;
+    }
+    if (e->kind == Expr_Binary && e->op != Token_AmpAmp && e->op != Token_PipePipe) {
+        Expr *sides[2] = { e->left, e->right };
+        if (operands_need_order(sides, 2, arena)) {
+            emit_cstr(arena, out, "({ ");
+            Expr *left = e->left;
+            Expr *right = e->right;
+            e->left = emit_order_temp(arena, out, left, sub, generic_name);
+            e->right = emit_order_temp(arena, out, right, sub, generic_name);
+            emit_expr(arena, out, e, sub, generic_name);
+            e->left = left;
+            e->right = right;
+            emit_cstr(arena, out, "; })");
+            return true;
+        }
+    }
+    return false;
+}
+
 static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, string8 generic_name) {
     if (!e) return;
     /* The guards are written from what the checker decided. Where it never came, there is
@@ -23383,6 +23473,7 @@ static void emit_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub sub, s
         type_error_message("internal: the checker never saw this expression, so its guards are unknown; please report this", e->line, e->col);
         exit(1);
     }
+    if (emit_expr_in_order(arena, out, e, sub, generic_name)) return;
     if (e->coerce_to && !e->coerce_varies && !e->index_end && e->coerce_count.length == 0 && e->coerce_from) {
         string8 from = type_mangle(arena, e->coerce_from, sub);
         string8 widened = slice_const_source_name(arena, e->coerce_to, sub);

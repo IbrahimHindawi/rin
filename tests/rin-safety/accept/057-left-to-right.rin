@@ -1,0 +1,40 @@
+// Operands run left to right, on every target: C leaves it open, and clang on Windows takes arguments right to left.
+import "std/print.rin"
+S: struct = { a: i32; b: i32; }
+said: [16]i32 = {};
+n: u64 = 0;
+say: proc(v: i32) -> i32 = { said[n] = v; n += 1; return v; }
+show: proc() -> void = {
+    for (i: u64 = 0; i < n; i += 1) { printfmt("{} ", said[i]); }
+    printfmt("\n");
+    n = 0;
+}
+three: proc(a: i32, b: i32, c: i32) -> i32 = { return a * 100 + b * 10 + c; }
+make: proc(a: i32, b: i32) -> S = { return { .a = a, .b = b }; }
+g: i32 = 1;
+bump: proc() -> i32 = { g += 10; return g; }
+pair: proc(a: i32, b: i32) -> i32 = { return a * 100 + b; }
+main: proc() -> i32 = {
+    printfmt("{}\n", three(say(1), say(2), say(3)));
+    show();
+    printfmt("{}\n", say(7) - say(3));
+    show();
+    printfmt("{}\n", say(1) < say(2));
+    show();
+    printfmt("{}\n", three(say(1), three(say(2), say(3), say(4)), say(5)));
+    show();
+    printfmt("{}\n", make(say(4), say(5)).b);
+    show();
+    printfmt("{} {}\n", say(8), say(9));
+    show();
+    // A read beside a call happens where it is written.
+    printfmt("{}\n", pair(g, bump()));
+    printfmt("{}\n", pair(bump(), g));
+    printfmt("{}\n", g + bump());
+    printfmt("{}\n", bump() + g);
+    // Short circuits stay short.
+    if (say(0) != 0 && say(1) != 0) { printfmt("no\n"); }
+    show();
+    if (say(1) != 0 || say(2) != 0) { show(); }
+    return 0;
+}
