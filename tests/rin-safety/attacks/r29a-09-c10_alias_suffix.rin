@@ -1,0 +1,11 @@
+// An alias ending in __, hidden in C by a local of the stem: is it refused?
+import "std/print.rin"
+T__: alias = [100]u64;
+main: proc() -> i32 = {
+    a: [2]T__ = {};
+    b: [2]T__ = {};
+    T: [100000]u8 = {};
+    a = b;
+    printfmt("{}\n", sizeof(T));
+    return 0;
+}

@@ -1,0 +1,15 @@
+// rin: g[k] in the step is the global [2]i32, whose index is checked: expect a checked stop.
+import "std/print.rin"
+g: [2]i32 = {};
+k: u64 = 400000;
+use: proc(v: i32) -> void = { printfmt("read {}\n", v); }
+main: proc() -> i32 = {
+    s: [4]i32 = {};
+    for (i: i32 = 0; i < 1; use(g[k])) {
+        g: []i32 = s;
+        g[0] = 1;
+        i += 1;
+    }
+    printfmt("HOLE {}\n", g[0]);
+    return 0;
+}

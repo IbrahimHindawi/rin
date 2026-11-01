@@ -1,0 +1,8 @@
+import "std/print.rin"
+add: proc(x: i32) -> i32 = { return x + 2; }
+f: proc(v: i32) -> i32 = { return v; }
+main: proc() -> i32 = {
+    for (f: *proc(x: i32) -> i32 = f(1) > 0 ? add : add; false; ) { printfmt("no\n"); }
+    printfmt("ok\n");
+    return 0;
+}

@@ -1,0 +1,8 @@
+// E.a on the right is 7; the local spelled E_a is only declared by this line. Expect 7.
+import "std/print.rin"
+E: enum = { a = 7, }
+main: proc() -> i32 = {
+    E_a: i32 = cast(E.a, i32);
+    printfmt("{}\n", E_a);
+    return 0;
+}

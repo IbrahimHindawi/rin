@@ -1,0 +1,15 @@
+// As c01, with a write through the element's address.
+import "std/print.rin"
+g: [2]i32 = {};
+k: u64 = 400000;
+put: proc(p: *i32) -> void = { p* = 1; }
+main: proc() -> i32 = {
+    s: [4]i32 = {};
+    for (i: i32 = 0; i < 1; put(g[k]&)) {
+        g: []i32 = s;
+        g[0] = 1;
+        i += 1;
+    }
+    printfmt("HOLE\n");
+    return 0;
+}

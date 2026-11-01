@@ -1,0 +1,11 @@
+// a is [E._], three elements. A local E declared after it. i = 40000 must stop on the bounds check.
+import "std/print.rin"
+E: enum = { _ = 3, b = 4, }
+main: proc() -> i32 = {
+    a: [E._]i32 = {};
+    E: i32 = 500000;
+    i: u64 = 40000;
+    a[i] = 1;
+    printfmt("HOLE {} {}\n", a[0], E);
+    return 0;
+}

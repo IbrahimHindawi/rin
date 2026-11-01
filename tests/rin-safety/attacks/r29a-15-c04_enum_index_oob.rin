@@ -1,0 +1,10 @@
+// xs[E.b] with a local E_b beside it: expect "7 0"; never an access at 100000
+import "std/print.rin"
+E: enum = { a, b, }
+main: proc() -> i32 = {
+    xs: [E<>.count]i32 = {};
+    E_b: u64 = 100000;
+    xs[E.b] = 7;
+    printfmt("{} {}\n", xs[1], cast(E_b, i32) - 100000);
+    return 0;
+}

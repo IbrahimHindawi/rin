@@ -1,0 +1,9 @@
+// E.a in a comparison beside a local E_a: expect "same"
+import "std/print.rin"
+E: enum = { a = 7, b = 8, }
+main: proc() -> i32 = {
+    E_a: E = E.b;
+    v: E = E.b;
+    if (v == E.a) { printfmt("wrong\n"); } else { printfmt("same\n"); }
+    return cast(E_a, i32) - 8;
+}

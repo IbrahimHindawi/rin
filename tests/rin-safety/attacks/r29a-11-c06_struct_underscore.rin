@@ -1,0 +1,12 @@
+// A struct called _ : G<_> is G__ in C, and a local G is G__ too. An array copy's size is by the type.
+import "std/print.rin"
+_: struct = { a: i32; }
+G: struct<T> = { v: T; }
+main: proc() -> i32 = {
+    a: [2]G<_> = {};
+    b: [2]G<_> = {};
+    G: [100000]u8 = {};
+    a = b;
+    printfmt("{}\n", sizeof(G));
+    return 0;
+}

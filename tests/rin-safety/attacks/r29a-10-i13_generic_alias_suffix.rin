@@ -1,0 +1,12 @@
+// A generic instance of a type ending in __ : the instance's C name ends in __ too.
+import "std/print.rin"
+T__: alias = u64;
+G: struct<V> = { a: V; b: V; }
+main: proc() -> i32 = {
+    a: [2]G<T__> = {};
+    b: [2]G<T__> = {};
+    G_T: [100000]u8 = {};
+    a = b;
+    printfmt("{}\n", sizeof(G_T));
+    return 0;
+}

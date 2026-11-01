@@ -1,0 +1,11 @@
+// A local called _ is _ in C, and so is a struct called _. An array copy is by the type's size.
+import "std/print.rin"
+_: struct = { a: i32; }
+main: proc() -> i32 = {
+    a: [2]_ = {};
+    b: [2]_ = {};
+    _: [100000]u8 = {};
+    a = b;
+    printfmt("{}\n", sizeof(a));
+    return 0;
+}

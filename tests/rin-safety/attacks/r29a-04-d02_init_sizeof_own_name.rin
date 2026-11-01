@@ -1,0 +1,8 @@
+// rin: S on the right is the type (no local S yet), or this is refused. Expect 16.
+import "std/print.rin"
+S: struct = { a: u64; b: u64; }
+main: proc() -> i32 = {
+    S: u64 = sizeof(S);
+    printfmt("{}\n", S);
+    return 0;
+}

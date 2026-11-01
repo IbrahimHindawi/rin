@@ -1,0 +1,10 @@
+// A struct's value written with its type, in a local, a for and a do: the braces are checked by the list's own rule.
+import "std/print.rin"
+S: struct = { a: i32; }
+take: proc(s: S) -> i32 = { return s.a; }
+main: proc() -> i32 = {
+    y: S = S{ .a = 3 };
+    printfmt("{}\n", y.a);
+    printfmt("{}\n", take(S{ .a = 4 }));
+    return 0;
+}

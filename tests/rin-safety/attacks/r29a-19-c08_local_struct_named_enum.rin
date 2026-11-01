@@ -1,0 +1,9 @@
+// A local E, a struct with a field a, beside enum E with a member a. Rin's scoping: the local. Expect 50
+import "std/print.rin"
+E: enum = { a = 1, }
+S: struct = { a: i32; }
+main: proc() -> i32 = {
+    E: S = { .a = 50 };
+    printfmt("{}\n", E.a);
+    return 0;
+}

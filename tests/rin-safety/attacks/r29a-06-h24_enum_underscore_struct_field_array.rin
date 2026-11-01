@@ -1,0 +1,12 @@
+// A struct field [E._]; a local E, and an index into the field. Expect a checked stop at 40000.
+import "std/print.rin"
+E: enum = { _ = 3, b = 4, }
+P: struct = { a: [E._]i32; }
+g: P = {};
+main: proc() -> i32 = {
+    E: i32 = 500000;
+    i: u64 = 40000;
+    g.a[i] = 1;
+    printfmt("HOLE {}\n", E);
+    return 0;
+}

@@ -375,8 +375,13 @@ The name rules were a family: a local hiding a proc, an enum member, a type, a g
 a rin local was a C local of the same name, and rounds 26, 27 and 28 each found another member. A local is `name__`
 in C now, and a program's own names may not end that way, so the family is gone: the rules were deleted, and every
 attack program that had been refused by one was run in the VM and found harmless. The cost is the name a debugger
-shows. What is left of the family is what the compiler itself reads by name, `printfmt`, `unwrap` and so on, which a
-program may not take; and a name at file scope, which shares the linker's namespace with the C library.
+shows. What is left of the family is what the compiler itself reads by name, `printfmt`, `unwrap` and so on, and the
+enum members it rewrites `E.a` to, which a program may not take; and a name at file scope, which shares the linker's
+namespace with the C library. Round 29 attacked this change and found what it had opened: an enum member `_` whose C
+name is `E__`, an alias with the suffix, `E.a` reading a local `E_a` once that rule was deleted. It was closed by
+deciding the suffix on the C name and restoring the enum rule. Deleting a rule needs its own round, because a rule can
+be doing a second job. It also found two older holes, a `for` step checked again with the body's locals in scope, and a
+call in a local's initializer reaching the local.
 
 ## What this still is not
 

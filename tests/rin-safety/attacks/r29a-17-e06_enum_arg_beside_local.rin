@@ -1,0 +1,9 @@
+// A proc taking E, called with E.a beside a local E_a of another type: expect 7 and 300
+import "std/print.rin"
+E: enum = { a = 7, }
+one: proc(v: E) -> i32 = { return cast(v, i32); }
+main: proc() -> i32 = {
+    E_a: i32 = 300;
+    printfmt("{} {}\n", one(E.a), E_a);
+    return 0;
+}

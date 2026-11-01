@@ -1,0 +1,9 @@
+// E.a beside a local E_a: expect 1 then 99
+import "std/print.rin"
+E: enum = { a = 1, b = 2, }
+main: proc() -> i32 = {
+    E_a: i32 = 99;
+    v: E = E.a;
+    printfmt("{} {}\n", cast(v, i32), E_a);
+    return 0;
+}

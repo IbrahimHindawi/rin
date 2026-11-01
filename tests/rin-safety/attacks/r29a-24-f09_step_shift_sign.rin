@@ -1,0 +1,12 @@
+// The step shifts the global u32. A body local of that name is i32. Expect 1073741824.
+import "std/print.rin"
+x: u32 = 2147483648;
+n: u32 = 1;
+use: proc(v: u32) -> void = { printfmt("{}\n", v); }
+main: proc() -> i32 = {
+    for (i: i32 = 0; i < 1; use(cast(x shr n, u32))) {
+        x: i32 = 1;
+        i += x;
+    }
+    return 0;
+}

@@ -126,8 +126,9 @@ The rules below keep these true. The argument is an induction over execution: ea
 
 Three rules that are easy to miss, because they hold up the others:
 
-- **Names.** The emitted C spells types and the runtime by name in the scope of the code around them. A
-  local may not be named like a type or a runtime helper, nor a proc or global like the C library
+- **Names.** A local `x` is `x__` in C, so it hides nothing the emitted C spells by name, and a program's own names
+  may not end up with that suffix. A local may still not be what rin itself reads by name: an enum or the C name of
+  its member, `printfmt`, `unwrap` and the like. A proc or global may not be named like the C library
   (`safety_check_local_name`, `safety_check_program_names`).
 - **Directives.** A preprocessor line applies to the text of the C, under every rule here, so safe code has
   none: a constant is `N: const i32 = 4`, and C is handed its value. Any preprocessor line, above a field

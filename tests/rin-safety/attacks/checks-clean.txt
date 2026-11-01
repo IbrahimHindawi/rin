@@ -284,11 +284,11 @@ r5-e-014-sizeof-shadow-zero.rin
 r5-e-024-shadow-memops-bytes.rin
 r5-e-025-shadow-range-check.rin
 r5-e-034-shadow-f2i-helper.rin
-r7-a-089-enum-count-shadow-local.rin
-r7-a-090-enum-count-shadow-param.rin
-r7-a-226-enum-count-shadow-return-local.rin
-r7-a-227-enum-count-field-shadow.rin
 r28b-140-local-named-like-a-type.rin
 r28b-141-local-named-like-the-runtime.rin
-r28b-165-local-named-like-an-enum-member.rin
 r28b-327-a-local-named-as-an-instance.rin
+r29a-20-c01_step_index_varies.rin
+r29a-21-d19_step_write_varies.rin
+r29a-22-d18_step_range_varies.rin
+r29a-23-f08_step_field_varies.rin
+r29a-24-f09_step_shift_sign.rin

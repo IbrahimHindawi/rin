@@ -1,0 +1,11 @@
+// A generic with a tail of _ is f_i32__ in C; a local f_i32 is f_i32__ too. Expect 1 then 12
+import "std/print.rin"
+f<T>_: proc<T>(x: T) -> i32 = { return 1; }
+other: proc(x: i32) -> i32 = { return x + 10; }
+main: proc() -> i32 = {
+    f_i32: *proc(x: i32) -> i32 = other;
+    a: i32 = f<i32>_(2);
+    b: i32 = f_i32(2);
+    printfmt("{} {}\n", a, b);
+    return 0;
+}

@@ -1,0 +1,19 @@
+// The step runs where the body's locals have ended, so a name in it means what it means outside. So does a do's condition.
+import "std/print.rin"
+g: [2]i32 = { 5, 6 };
+total: i32 = 0;
+use: proc(v: i32) -> void = { total += v; }
+main: proc() -> i32 = {
+    for (k: u64 = 0; k < 2; use(g[k - 1])) {
+        g: i32 = 9;
+        k += 1;
+        if (g == 0) { break; }
+    }
+    printfmt("{}\n", total);
+    do {
+        total: i32 = 1;
+        if (total == 2) { break; }
+    } while (total > 100);
+    printfmt("{}\n", total);
+    return 0;
+}

@@ -1,0 +1,10 @@
+// f on the right is the proc f: no local f exists until this line ends. Expect 3.
+import "std/print.rin"
+add: proc(x: i32) -> i32 = { return x + 2; }
+f: proc(v: i32) -> i32 = { return v; }
+main: proc() -> i32 = {
+    f: *proc(x: i32) -> i32 = f(1) > 0 ? add : add;
+    g: *proc(x: i32) -> i32 = f;
+    printfmt("{}\n", g(1));
+    return 0;
+}

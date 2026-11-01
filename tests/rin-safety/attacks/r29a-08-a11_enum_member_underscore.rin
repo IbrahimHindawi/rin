@@ -1,0 +1,9 @@
+// An enum member named _ is E__ in C, as a local E is.
+import "std/print.rin"
+E: enum = { _ = 3, b = 4, }
+main: proc() -> i32 = {
+    E: i32 = 50;
+    v: i32 = cast(E._, i32);
+    printfmt("{} {}\n", v, E);
+    return 0;
+}

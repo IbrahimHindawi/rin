@@ -1,0 +1,17 @@
+// The step reads g.a[k], g the global whose a is [2]i32. A body local g has a slice a. Expect a checked stop.
+import "std/print.rin"
+level: region global;
+A: struct = { a: [2]i32; }
+B: struct = { a: []i32 in level; }
+g: A = {};
+k: u64 = 400000;
+use: proc(v: i32) -> void = { printfmt("read {}\n", v); }
+main: proc() -> i32 = {
+    for (i: i32 = 0; i < 1; use(g.a[k])) {
+        g: B = { .a = new_slice<i32>(level, 4) };
+        g.a[0] = 1;
+        i += 1;
+    }
+    printfmt("HOLE\n");
+    return 0;
+}

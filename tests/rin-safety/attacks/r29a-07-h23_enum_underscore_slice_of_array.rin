@@ -1,0 +1,10 @@
+// a is [E._]; the array becoming a slice beside a local E takes the local for its length.
+import "std/print.rin"
+E: enum = { _ = 3, b = 4, }
+sum: proc(v: []i32) -> u64 = { v[v.length - 1] = 1; return v.length; }
+main: proc() -> i32 = {
+    a: [E._]i32 = {};
+    E: i32 = 500000;
+    printfmt("HOLE? {} {}\n", sum(a), E);
+    return 0;
+}
