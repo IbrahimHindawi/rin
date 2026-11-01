@@ -123,7 +123,7 @@ fifty-one realistic programs and two rounds on the pass, and ten programs outsid
 around it, closed). The pass has mostly converged, and the rules beside it have not. Rounds 25 to 30, aimed at those, found about thirty causes in
 about 1,400 programs: a bit over half are the checker and C disagreeing, since the pass works on a lowered form and the emitter
 still walks the syntax tree (`docs/regions-v2.md`). Round 30 also found one in the pass, so a quiet round says only that it found
-nothing where it looked. A local is `name__` in C, which removed the local-name family; prefer that kind of fix, and give a deleted
+nothing where it looked. A local is `name$rin_local` in C, which removed the local-name family; prefer that kind of fix, and give a deleted
 rule its own round, because it may be doing a second job. The checked build is the sanitizer build plus a quarantine in
 `memops_arena_clear` (`memops_os_quarantine`): a reset region is not reused until a budget has gone by, so a stale
 pointer into it meets poison (`poison/021`).

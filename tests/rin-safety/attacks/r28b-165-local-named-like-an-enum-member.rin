@@ -1,4 +1,4 @@
-// Was refused: a local hid this name in C. A local is name__ now, so it is harmless, and the VM says so.
+// Was refused: a local hid this name in C. A local has its own name in C now, so it is harmless, and the VM says so.
 E: enum = { one = 1, }
 main: proc() -> i32 = {
     E_one: u64 = 100000;

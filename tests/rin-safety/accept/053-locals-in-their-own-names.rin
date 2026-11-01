@@ -1,4 +1,4 @@
-// A local is name__ in C: it shares a spelling with no global, and scopes end where they do in rin.
+// A local is name$rin_local in C: it shares a spelling with no global, and scopes end where they do in rin.
 import "std/print.rin"
 total: i32 = 100;
 other: i32 = 5;

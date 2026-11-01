@@ -312,3 +312,8 @@ r31a-17-c52_array_copy_field.rin
 r31a-18-o03_compound_read.rin
 r31a-19-c43_global_const_mixed.rin
 r31a-20-c44_case_const_mixed.rin
+r29a-09-c10_alias_suffix.rin
+r29a-10-i13_generic_alias_suffix.rin
+r29a-11-c06_struct_underscore.rin
+r29a-12-f06_struct_underscore_local_underscore.rin
+r29a-18-c07_proc_tail_underscore.rin

@@ -1,4 +1,0 @@
-// expect: a name ending in '__' is how the generated C spells a local
-// A local x is x__ in C, so a global of that name could be hidden by it.
-x__: i32 = 1;
-main: proc() -> i32 = { x: i32 = 2; return x + x__; }

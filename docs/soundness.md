@@ -126,8 +126,8 @@ The rules below keep these true. The argument is an induction over execution: ea
 
 Three rules that are easy to miss, because they hold up the others:
 
-- **Names.** A local `x` is `x__` in C, so it hides nothing the emitted C spells by name, and a program's own names
-  may not end up with that suffix. A local may still not be what rin itself reads by name: an enum or the C name of
+- **Names.** A local `x` is `x$rin_local` in C. Rin cannot spell a dollar, so it hides nothing the emitted C spells by
+  name. A local may still not be what rin itself reads by name: an enum or the C name of
   its member, `printfmt`, `unwrap` and the like. A proc or global may not be named like the C library
   (`safety_check_local_name`, `safety_check_program_names`).
 - **Directives.** A preprocessor line applies to the text of the C, under every rule here, so safe code has
@@ -143,8 +143,8 @@ only be read by std's readers, with no call that could write beside it in any pl
 (`safety_check_open_cstr`). A proc of the program's own takes a `[]const c8` instead, which has a length to stop
 at. This used to ask whether such a proc could write the buffer, and that question had holes (round 25).
 
-A local or parameter `x` is `x__` in C, and a program's own names may not end in two underscores, so a local cannot
-hide anything the generated C says by name. What the checker or the generated C reads by name, `printfmt`, `unwrap`,
+A local or parameter `x` is `x$rin_local` in C, and rin cannot spell a dollar, so a local cannot hide anything the
+generated C says by name. `$` in a name is a GNU C extension, which clang and gcc take and `-pedantic-errors` refuses. What the checker or the generated C reads by name, `printfmt`, `unwrap`,
 `new`, `cstr_of`, `print_cstr`, `print_enum`, is not a program's to name.
 
 What answers for a type operation is what was declared to: `hash: proc<ky>` answers for `hash<ky>`, and a plain

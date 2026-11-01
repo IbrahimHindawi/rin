@@ -1,4 +1,4 @@
-// Was refused: a local hid this name in C. A local is name__ now, so it is harmless, and the VM says so.
+// Was refused: a local hid this name in C. A local has its own name in C now, so it is harmless, and the VM says so.
 // sizeof(pair_u8_u8) in the local's scope would measure the local, and the slice would keep its full length.
 pair: struct<A, B> = { a: A; b: B; }
 main: proc() -> i32 = { pair_u8_u8: [1]u8 = {}; return cast(pair_u8_u8[0], i32); }

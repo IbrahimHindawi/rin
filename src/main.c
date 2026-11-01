@@ -16722,14 +16722,6 @@ static bool name_is_enum_member(Program *prog, string8 name) {
 }
 
 /* `slice_i32`, `ptr_entity`, `vec_ptr_entity`: what an instance of a type is called in C. */
-/* Names are joined with one underscore to make C's, so `_` makes two of them wherever it comes last: an enum's member
-   `_` is `E__`, a generic of a type `_` is `G__`, a generic proc's tail `_` is `f_i32__`. */
-static bool name_ends_in_local_suffix(string8 name) {
-    if (name.length == 1 && name.data[0] == '_') return true;
-    if (name.length >= 2 && name.data[name.length - 1] == '_' && name.data[name.length - 2] == '@') return true;
-    return name.length >= 2 && name.data[name.length - 1] == '_' && name.data[name.length - 2] == '_';
-}
-
 /* What an enum's value may mention: numbers, and the members of its own enum. */
 typedef struct EnumValueScan { EnumDecl *decl; bool bad; } EnumValueScan;
 static void visit_enum_value(Expr *e, void *ctx, memops_arena *arena) {
@@ -16814,7 +16806,6 @@ static void safety_check_local_name(Program *prog, string8 name, i32 line, i32 c
     else if (string8_ends_with_cstr(name, "_reflect")) why = "is what the generated C calls a type's reflection table";
     else if (name_is_enum_member_c(prog, name, arena)) why = "is how the checker spells an enum's member";
     else if (lookup_enum_decl(prog, name)) why = "is an enum's name, and E.a always means its member";
-    else if (name.length >= 2 && name.data[0] == '_' && name.data[1] == '_') why = "with the suffix a local takes could be one of C's own macros";
     else if (name_is_compilers(name)) why = "is read by name as rin's own";
     if (why) {
         char message[320];
@@ -16951,10 +16942,6 @@ static void safety_check_program_names(Program *prog, memops_arena *arena) {
             g_diag_source_path = p->source_path;
             type_error_message("this name is rin's own, and the checker reads a call to it as rin's", p->line, p->col);
         }
-        if (!path_is_std(p->source_path) && name_ends_in_local_suffix(p->name)) {
-            g_diag_source_path = p->source_path;
-            type_error_message("a name ending in '__' is how the generated C spells a local", p->line, p->col);
-        }
         if (p->no_move && !path_is_std(p->source_path)) {
             safety_error("'no_move' is std's: it is a promise about a body the checker cannot read", p->line, p->col);
         }
@@ -16969,45 +16956,7 @@ static void safety_check_program_names(Program *prog, memops_arena *arena) {
                                "call only procs that do the same", p->line, p->col);
         }
     }
-    /* A global, a type or a member named like a local's C name could be hidden by that local. */
-    for (i32 i = 0; i < prog->globals.length; i++) {
-        Stmt *g = (Stmt *)prog->globals.data[i];
-        if (!path_is_std(g->source_path) && name_ends_in_local_suffix(g->name)) {
-            g_diag_source_path = g->source_path;
-            type_error_message("a name ending in '__' is how the generated C spells a local", g->line, g->col);
-        }
-    }
-    for (i32 i = 0; i < prog->structs.length; i++) {
-        StructDecl *decl = (StructDecl *)prog->structs.data[i];
-        if (!path_is_std(decl->source_path) && name_ends_in_local_suffix(decl->name)) {
-            g_diag_source_path = decl->source_path;
-            type_error_message("a name ending in '__' is how the generated C spells a local", decl->line, decl->col);
-        }
-    }
-    for (i32 i = 0; i < prog->enums.length; i++) {
-        EnumDecl *decl = (EnumDecl *)prog->enums.data[i];
-        if (path_is_std(decl->source_path)) continue;
-        bool reserved = name_ends_in_local_suffix(decl->name);
-        for (i32 j = 0; j < decl->items.length; j++) {
-            if (name_ends_in_local_suffix(((EnumItem *)decl->items.data[j])->name)) reserved = true;
-        }
-        if (reserved) {
-            g_diag_source_path = decl->source_path;
-            type_error_message("a name ending in '__' is how the generated C spells a local", decl->line, decl->col);
-        }
-    }
     /* An enum's values reach C before anything else in the file, so they are what rin can compute by then. */
-    for (i32 i = 0; i < prog->aliases.length; i++) {
-        AliasDecl *decl = (AliasDecl *)prog->aliases.data[i];
-        if (!path_is_std(decl->source_path) && name_ends_in_local_suffix(decl->name)) {
-            type_error_message("a name ending in '__' is how the generated C spells a local", decl->line, decl->col);
-        }
-    }
-    for (i32 i = 0; i < prog->regions.length; i++) {
-        if (name_ends_in_local_suffix(prog->regions.data[i])) {
-            type_error_message("a name ending in '__' is how the generated C spells a local", 1, 1);
-        }
-    }
     for (i32 i = 0; i < prog->enums.length; i++) {
         EnumDecl *decl = (EnumDecl *)prog->enums.data[i];
         if (decl->is_external || path_is_std(decl->source_path)) continue;
@@ -22613,7 +22562,7 @@ static Vec_string8 *g_emit_global_regions = null;
 static Vec_string8 g_region_alias_names;
 static Vec_string8 g_region_alias_targets;
 
-/* A local is `name__` in C, and a program's own names may not end that way, so a local cannot hide anything the
+/* A local is `name$rin_local` in C. Nothing rin can spell contains a dollar, so a local cannot hide anything the
    generated C says by name: a proc, a type in a sizeof, an enum member, a constant in an array's length. */
 static Vec_string8 g_emit_locals;
 static bool g_emit_in_body;
@@ -22641,10 +22590,10 @@ static bool emit_name_is_local(string8 name) {
 }
 
 static string8 local_c_name(memops_arena *arena, string8 name) {
-    if (name.length == 0 || string8_equals_cstr(&name, "_")) return name;
-    string8 out = string8_reserve(arena, name.length + 2);
+    if (name.length == 0) return name;
+    string8 out = string8_reserve(arena, name.length + 10);
     string8_append_bytes(arena, &out, name.data, name.length);
-    string8_append_cstr(arena, &out, "__");
+    string8_append_cstr(arena, &out, "$rin_local");
     return out;
 }
 
