@@ -1,0 +1,10 @@
+import "std/print.rin"
+import "std/cstr.rin"
+big: [5000]c8 = {};
+h: struct = { buf: []c8 in permanent; }
+use: proc(s: ^const c8, w: h) -> i32 = {
+    for (i: u64 = 0; i < w.buf.length; i += 1) { w.buf[i] = 65; }
+    printfmt("{}\n", s);
+    return 0;
+}
+main: proc() -> i32 = { w: h = {.buf = big[0..5000]}; return use(cstr_of(big), w); }

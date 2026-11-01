@@ -1,0 +1,13 @@
+import "std/print.rin"
+import "std/fmt.rin"
+level: region global;
+h: struct = { buf: []c8 in level; }
+fill: proc(w: h) -> u64 = { for (i: u64 = 0; i < w.buf.length; i += 1) { w.buf[i] = 65; } return 1; }
+main: proc() -> i32 = {
+    b: []c8 in level = new_slice<c8>(level, 8);
+    w: h = {.buf = b};
+    f: *fmt in level = fmt_make(level, 64);
+    fmt_cstr_pad(f, cstr_of(b), fill(w));
+    printfmt("{}\n", fmt_text(f));
+    return 0;
+}

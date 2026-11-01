@@ -1,0 +1,12 @@
+// expect: this proc could overwrite the buffer cstr_of just checked
+// The writable slice is in a struct, so nothing in the signature shows it: a slice's cstr_of is std's to read.
+import "std/print.rin"
+import "std/cstr.rin"
+g: [8]c8 = {};
+h: struct = { buf: []c8 in permanent; }
+use: proc(s: ^const c8, w: h) -> i32 = {
+    for (i: u64 = 0; i < w.buf.length; i += 1) { w.buf[i] = 65; }
+    printfmt("{}\n", s);
+    return 0;
+}
+main: proc() -> i32 = { w: h = {.buf = g[0..8]}; return use(cstr_of(g[0..8]), w); }

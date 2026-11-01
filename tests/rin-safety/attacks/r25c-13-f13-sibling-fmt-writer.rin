@@ -1,0 +1,7 @@
+import "std/print.rin"
+import "std/fmt.rin"
+g: [8]c8 = {};
+h: struct = { buf: []c8 in permanent; }
+fill: proc(w: h) -> str = { for (i: u64 = 0; i < w.buf.length; i += 1) { w.buf[i] = 65; } return "x"; }
+level: region global;
+main: proc() -> i32 = { w: h = {.buf = g[0..8]}; f: *fmt in level = fmt_make(level, 64); d: []c8 in level = new_slice<c8>(level, 64); _ = fmt_cat2(d, cstr_of(g[0..8]), fill(w)); printfmt("{}\n", cstr_of(d)); return 0; }

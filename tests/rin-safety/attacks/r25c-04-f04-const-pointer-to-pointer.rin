@@ -1,0 +1,10 @@
+import "std/print.rin"
+import "std/cstr.rin"
+g: [8]c8 = {};
+use: proc(s: ^const c8, w: *const []c8 in permanent) -> i32 = {
+    b: []c8 = w*;
+    for (i: u64 = 0; i < b.length; i += 1) { b[i] = 65; }
+    printfmt("{}\n", s);
+    return 0;
+}
+main: proc() -> i32 = { w: []c8 in permanent = g[0..8]; return use(cstr_of(g[0..8]), w&); }

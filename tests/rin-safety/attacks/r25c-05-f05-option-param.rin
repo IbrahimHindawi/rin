@@ -1,0 +1,10 @@
+import "std/print.rin"
+import "std/cstr.rin"
+h: struct = { buf: [5000]c8; }
+use: proc(s: ^const c8, w: option<*h>) -> i32 = {
+    if (w) { for (i: u64 = 0; i < 5000; i += 1) { w*.buf[i] = 65; } }
+    printfmt("{}\n", s);
+    return 0;
+}
+level: region global;
+main: proc() -> i32 = { w: *h in level = new<h>(level); return use(cstr_of(w*.buf), w); }

@@ -1,0 +1,6 @@
+import "std/print.rin"
+import "std/cstr.rin"
+g: [8]c8 = {};
+h: struct = { buf: []c8 in permanent; }
+fill: proc(w: h) -> i32 = { for (i: u64 = 0; i < w.buf.length; i += 1) { w.buf[i] = 65; } return 1; }
+main: proc() -> i32 = { w: h = {.buf = g[0..8]}; printfmt("{} {}\n", cstr_of(g[0..8]), fill(w)); return 0; }

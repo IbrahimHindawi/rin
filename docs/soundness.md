@@ -74,7 +74,7 @@ The argument rests on these and checks none of them:
 |---|---|---|
 | The bodies of `unsafe { }` in std | Every safe program inherits the bug | Count them: `tests/run_rin_vm.py` runs the attacks against them |
 | `proc[no_move]` in std | It says a trusted body moves nothing, so pointers taken before the call stay good. Only std may say it | Read `vec<T>at`, `last` and `items` |
-| A raw C string safe code holds is terminated | `cstr_view` measures it by reading to the terminator. It is a literal, a `str`, or what `cstr_of` found a terminator in; `cstr_of` as an argument is copied first, so nothing can write that terminator away | `cstr_view`, in `slicecore.rin` |
+| A raw C string safe code holds is terminated | `cstr_view` measures it by reading to the terminator. It is a literal, a `str`, or what `cstr_of` found a terminator in. Of an array, `cstr_of` hands over a private copy; of a slice, only std's readers may read it, with nothing that could write beside it | `cstr_view`, in `slicecore.rin`, and `safety_check_open_cstr` |
 | A `reflect` is as the compiler emitted it | The slices in `reflect_field_slice` and `reflect_value_slice` take their length from its count. Safe code cannot make, hold by value or change one | Those two procs |
 | C the program links, and calls from `unsafe` | Anything | Per program |
 | What a program says of C: `proc[external]`, `proc[external_emit]`, `struct[external]`, a global with no value, `cinclude` | No checker can see past a declaration. `free: proc[external](p: u64)` is callable from safe code, and is a lie | Per program; they are excluded from the claim above |
@@ -138,8 +138,9 @@ Three rules that are easy to miss, because they hold up the others:
 
 C strings have a rule of their own. `cstr_of` finds a terminator, which is only good while nothing can
 overwrite it. For an array it hands back a private copy, which nothing else can reach. For a slice it may
-only be read by std, or by a proc that touches no global and has nothing to write through, with no writing
-call beside it (`safety_check_open_cstr`).
+only be read by std's readers, with no call that could write beside it in any place C gives no order to
+(`safety_check_open_cstr`). A proc of the program's own takes a `[]const c8` instead, which has a length to stop
+at. This used to ask whether such a proc could write the buffer, and that question had holes (round 25).
 
 ## What the emitted C assumes
 

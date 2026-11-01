@@ -265,3 +265,7 @@ r25b-16-a-overwrite-terminator.rin
 r25b-17-b-through-a-pointer.rin
 r25b-18-c-through-a-global.rin
 r25b-19-d-held-in-the-callee.rin
+r25c-32-beside-ternary-cond.rin
+r25c-33-beside-and-sequenced.rin
+r25c-34-beside-cstr-of-cstr-of.rin
+r25c-35-beside-fine-two-readers.rin

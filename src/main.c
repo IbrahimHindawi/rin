@@ -16936,6 +16936,14 @@ static void noalias_visit_expr(Expr *e, void *ctx, memops_arena *arena) {
     if (!any) *w->clean = false;
 }
 
+/* A static local keeps what it is given from one call to the next, as a global does. */
+static void noalias_visit_stmt(Stmt *s, void *ctx, memops_arena *arena) {
+    NoaliasWalk *w = (NoaliasWalk *)ctx;
+    if (s->kind == Stmt_Var && s->is_static && !(s->type && s->type->is_const && type_is_plain_data(w->prog, s->type, arena, 0))) {
+        *w->clean = false;
+    }
+}
+
 static void compute_proc_noalias(Program *prog, memops_arena *arena) {
     if (!g_safety) return;
     for (i32 i = 0; i < prog->procs.length; i++) {
@@ -16950,7 +16958,7 @@ static void compute_proc_noalias(Program *prog, memops_arena *arena) {
             if (!p->noalias_contained) continue;
             bool clean = true;
             NoaliasWalk w = { prog, p, &clean };
-            for (i32 j = 0; j < p->body.length; j++) stmt_walk((Stmt *)p->body.data[j], noalias_visit_expr, null, &w, arena);
+            for (i32 j = 0; j < p->body.length; j++) stmt_walk((Stmt *)p->body.data[j], noalias_visit_expr, noalias_visit_stmt, &w, arena);
             if (!clean) { p->noalias_contained = false; changed = true; }
         }
     }
@@ -17912,9 +17920,26 @@ static void visit_cstr_sibling(Expr *e, void *ctx, memops_arena *arena) {
     if (e->base) { *scan->writes = true; return; }
     if (call_is_new(e) || call_is_must(e) || call_name_is_builtin(e->name) || string8_equals_cstr(&e->name, "cstr_of")) return;
     ProcDecl *decl = lookup_proc_decl(scan->prog, e->name);
+    /* One of std's readers: it keeps nothing, and has been given nothing it can write through. */
+    if (decl && path_is_std(decl->source_path) && !decl->is_generic && !decl->is_variadic) {
+        bool reads = true;
+        for (i32 i = 0; i < decl->params.length; i++) {
+            TypeExpr *pt = resolve_alias_type(scan->prog, ((Param *)decl->params.data[i])->type);
+            TypeExpr *elem = pt ? (pt->kind == Type_Ptr ? pt->elem : type_slice_elem(pt)) : null;
+            if (elem ? !elem->is_const || type_is_proc_pointer(scan->prog, pt)
+                     : type_has_pointer_deep(scan->prog, pt, arena, 0) || pt->kind == Type_Region) reads = false;
+        }
+        if (reads) return;
+    }
     if (decl && decl->is_external && !proc_touches_pointers(scan->prog, decl)) return;
-    /* Touches no global, and has been given nothing to write through. */
-    if (decl && decl->noalias_contained && !proc_touches_pointers(scan->prog, decl)) return;
+    /* Touches no global, and has been given nothing to write through, in a struct or otherwise. */
+    if (decl && decl->noalias_contained && !proc_touches_pointers(scan->prog, decl)) {
+        bool given = false;
+        for (i32 i = 0; i < decl->params.length; i++) {
+            if (type_has_pointer_deep(scan->prog, ((Param *)decl->params.data[i])->type, arena, 0)) given = true;
+        }
+        if (!given) return;
+    }
     *scan->writes = true;
 }
 
@@ -18063,9 +18088,11 @@ static bool expr_has_writing_call(Expr *e, Program *prog, memops_arena *arena) {
     return writes;
 }
 
-/* `f(cstr_of(x))` for an x something else can reach: the callee reads until a terminator that
-   was there when cstr_of looked. Nothing may run in between, and the callee must not be able
-   to write x itself: std's readers do not, and a proc of the program's own must show it. */
+/* `f(cstr_of(x))` for an x something else can reach: the callee reads until a terminator that was there when
+   cstr_of looked. Nothing may run in between, and the callee must not be able to write x. That second part is not
+   worked out for a program's own proc, whose ways to reach x are not all in its signature: it takes a '[]const c8'
+   instead, which has a length to stop at. A generic of std's runs the program's hash and equal, so it is the
+   program's too. */
 static bool type_has_const_member(Program *prog, TypeExpr *type, memops_arena *arena, i32 depth);
 static void safety_check_open_cstr(ProcDecl *decl, Expr *call, TypeScope *scope, Program *prog, memops_arena *arena) {
     if (!g_safe_body || g_checking_std) return;
@@ -18080,27 +18107,25 @@ static void safety_check_open_cstr(ProcDecl *decl, Expr *call, TypeScope *scope,
                 return;
             }
         }
-        if (!decl) {
-            type_error_message("this call could overwrite the buffer cstr_of just checked before it reads it: copy it "
-                               "into a local array first", arg->line, arg->col);
-            return;
+        bool std_reader = decl && path_is_std(decl->source_path) && !decl->is_generic;
+        for (i32 k = 0; std_reader && k < decl->params.length; k++) {
+            if (type_is_proc_pointer(prog, ((Param *)decl->params.data[k])->type)) std_reader = false;
         }
-        bool runs_given_code = false;
-        for (i32 k = 0; k < decl->params.length; k++) {
-            if (type_is_proc_pointer(prog, ((Param *)decl->params.data[k])->type)) runs_given_code = true;
-        }
-        if (path_is_std(decl->source_path) && !runs_given_code) return;
-        bool writable = runs_given_code;
-        for (i32 k = 0; k < decl->params.length; k++) {
-            TypeExpr *pt = resolve_alias_type(prog, ((Param *)decl->params.data[k])->type);
-            TypeExpr *elem = pt ? (pt->kind == Type_Ptr ? pt->elem : type_slice_elem(pt)) : null;
-            if (elem && !elem->is_const) writable = true;
-        }
-        if (writable || !decl->noalias_contained) {
-            type_error_message("this proc could overwrite the buffer cstr_of just checked before it reads it: copy the text "
-                               "into a local array first, or take a '[]const c8'", arg->line, arg->col);
+        if (!std_reader) {
+            type_error_message("this proc could overwrite the buffer cstr_of just checked before it reads it: take a "
+                               "'[]const c8' and pass the slice, or copy the text into a local array first", arg->line, arg->col);
         }
         return;
+    }
+}
+
+/* The other places C gives no order to: one side may run between cstr_of and the read on the other. */
+static void safety_check_open_cstr_beside(Expr *a, Expr *b, TypeScope *scope, Program *prog, memops_arena *arena) {
+    if (!g_safe_body || g_checking_std || !a || !b) return;
+    if ((expr_has_open_cstr(a, scope, prog, arena) && expr_has_writing_call(b, prog, arena)) ||
+        (expr_has_open_cstr(b, scope, prog, arena) && expr_has_writing_call(a, prog, arena))) {
+        type_error_message("a call beside cstr_of could overwrite the terminator it just checked; run that call first "
+                           "and keep what it returns in a local", a->line, a->col);
     }
 }
 
@@ -18591,6 +18616,19 @@ static void type_check_expr(Expr *e, TypeScope *scope, Program *prog, memops_are
     if (e->kind == Expr_Call) {
         type_check_call(e, scope, prog, arena);
         return;
+    }
+    if (e->kind == Expr_Binary && e->op != Token_AmpAmp && e->op != Token_PipePipe) {
+        safety_check_open_cstr_beside(e->left, e->right, scope, prog, arena);
+    }
+    if (e->kind == Expr_Index && !e->index_end) {
+        safety_check_open_cstr_beside(e->base, e->index_expr, scope, prog, arena);
+    }
+    if (e->kind == Expr_InitList || e->kind == Expr_CompoundInit) {
+        for (i32 i = 0; i < e->args.length; i++) {
+            for (i32 j = i + 1; j < e->args.length; j++) {
+                safety_check_open_cstr_beside((Expr *)e->args.data[i], (Expr *)e->args.data[j], scope, prog, arena);
+            }
+        }
     }
     if (e->kind == Expr_Binary && (e->op == Token_AmpAmp || e->op == Token_PipePipe)) {
         /* `p && p*.x` as a value narrows as it does in an `if`: the right side
@@ -19229,6 +19267,9 @@ static void type_check_stmt(
         g_diag_source_path = s->source_path;
     }
     g_diag_import_chain = s->import_chain;
+    if (s->kind == Stmt_Assign) {
+        safety_check_open_cstr_beside(s->lhs, s->expr, scope, prog, arena);
+    }
     if (s->kind == Stmt_Goto || s->kind == Stmt_Label) {
         safety_error("goto and labels are not safe code: a jump can skip a test, a declaration or a kill; use a loop, "
                      "or put both in 'unsafe { }'", s->line, s->col);

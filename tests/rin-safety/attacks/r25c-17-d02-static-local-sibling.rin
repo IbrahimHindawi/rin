@@ -1,0 +1,12 @@
+// The same, as the call beside cstr_of.
+import "std/print.rin"
+import "std/cstr.rin"
+g: [8]c8 = {};
+box: proc(put: b32, x: []c8 in permanent) -> void = {
+    k: static []c8 in permanent = {};
+    if (put) { k = x; return; }
+    for (i: u64 = 0; i < k.length; i += 1) { k[i] = 65; }
+}
+fill: proc() -> i32 = { e: []c8 in permanent = {}; box(0, e); return 1; }
+two: proc(s: ^const c8, n: i32) -> i32 = { printfmt("{}\n", s); return n; }
+main: proc() -> i32 = { box(1, g[0..8]); _ = two(cstr_of(g[0..8]), fill()); return 0; }

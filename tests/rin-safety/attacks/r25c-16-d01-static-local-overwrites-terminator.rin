@@ -1,0 +1,16 @@
+// A proc with a static local counts as touching no global. It writes the terminator away between cstr_of and the read.
+import "std/print.rin"
+import "std/cstr.rin"
+g: [8]c8 = {};
+box: proc(put: b32, x: []c8 in permanent) -> void = {
+    k: static []c8 in permanent = {};
+    if (put) { k = x; return; }
+    for (i: u64 = 0; i < k.length; i += 1) { k[i] = 65; }
+}
+use: proc(s: ^const c8) -> i32 = {
+    e: []c8 in permanent = {};
+    box(0, e);
+    printfmt("{}\n", s);
+    return 0;
+}
+main: proc() -> i32 = { box(1, g[0..8]); return use(cstr_of(g[0..8])); }

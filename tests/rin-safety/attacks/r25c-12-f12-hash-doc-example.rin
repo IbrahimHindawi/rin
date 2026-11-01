@@ -1,0 +1,6 @@
+import "std/print.rin"
+import "std/hashmap.rin"
+point: struct = { x: i64; y: i64; }
+hash: proc<point>(p: point) -> u64 = { return hash<i64>(p.x * 31 + p.y); }
+equal: proc<point>(a: point, b: point) -> b32 = { return a.x == b.x && a.y == b.y; }
+main: proc() -> i32 = { return 0; }

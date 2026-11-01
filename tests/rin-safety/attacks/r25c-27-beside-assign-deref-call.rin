@@ -1,0 +1,12 @@
+import "std/print.rin"
+import "std/cstr.rin"
+import "std/fmt.rin"
+g: [8]c8 = {};
+h: struct = { buf: []c8 in permanent; }
+pair: struct = { a: u64; b: u64; }
+level: region global;
+fill: proc(w: h) -> u64 = { for (i: u64 = 0; i < w.buf.length; i += 1) { w.buf[i] = 65; } return 1; }
+fillg: proc() -> u64 = { for (i: u64 = 0; i < 8; i += 1) { g[i] = 65; } return 1; }
+pass: proc(s: ^const c8) -> ^const c8 = { return s; }
+at: proc(w: h, p: *u64) -> *u64 = { _ = fill(w); return p; }
+main: proc() -> i32 = { w: h = {.buf = g[0..8]}; n: u64 = 0; at(w, n&)* = cstr_length(cstr_of(g[0..8])); printfmt("{}\n", n); return 0; }

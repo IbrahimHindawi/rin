@@ -1,0 +1,7 @@
+// expect: a call beside cstr_of could overwrite the terminator
+// C gives the two sides of a sum no order, so the write may land between cstr_of and the read.
+import "std/print.rin"
+import "std/cstr.rin"
+g: [8]c8 = {};
+fill: proc() -> u64 = { for (i: u64 = 0; i < 8; i += 1) { g[i] = 65; } return 1; }
+main: proc() -> i32 = { x: u64 = cstr_length(cstr_of(g[0..8])) + fill(); printfmt("{}\n", x); return 0; }

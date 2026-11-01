@@ -1,0 +1,8 @@
+// expect: std calls this in the middle of an operation on a container
+// A static local keeps what it is given from one call to the next, as a global does, so a hash with one reaches things.
+import "std/hashmap.rin"
+key: struct = { x: i64; }
+hash: proc<key>(k: key) -> u64 = { seen: static i64 = 0; seen += k.x; return cast(seen, u64); }
+equal: proc<key>(a: key, b: key) -> b32 = { return a.x == b.x; }
+level: region global;
+main: proc() -> i32 = { m: *hashmap<key, i32> in level = hashmap<key, i32>make(level); k: key = {}; _ = hashmap<key, i32>set(m, k, 1); return 0; }
