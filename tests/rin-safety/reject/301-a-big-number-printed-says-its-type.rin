@@ -1,0 +1,6 @@
+// expect: needs its type said
+import "std/print.rin"
+main: proc() -> i32 = {
+    printfmt("{}\n", 5000000000);
+    return 0;
+}

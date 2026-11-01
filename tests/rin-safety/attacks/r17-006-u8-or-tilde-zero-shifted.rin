@@ -1,0 +1,8 @@
+// `~0` beside a u8 stays C's int -1, with no const_eval value for the fit check to refuse, so (x | ~0) is a negative int that rin calls u8: the unguarded shl shifts it. UBSan: left shift of negative value.
+import "std/print.rin"
+main: proc() -> i32 = {
+    x: u8 = 1;
+    w: u8 = (x | ~0) shl 4;
+    printfmt("{}\n", w);
+    return 0;
+}

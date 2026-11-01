@@ -1,0 +1,10 @@
+// The checker resolves a call by proc name before scope, so get() is the global's non-null *i32; C finds the local first, an option<*i32> pointer of the same C type that returns null. SEGV or UBSan null.
+import "std/print.rin"
+get: proc() -> *i32 in permanent = { return new<i32>(permanent, 1); }
+none: proc() -> option<*i32 in permanent> = { return null; }
+main: proc() -> i32 = {
+    get: *proc() -> option<*i32 in permanent> = none;
+    v: *i32 in permanent = get();
+    printfmt("{}\n", v*);
+    return 0;
+}

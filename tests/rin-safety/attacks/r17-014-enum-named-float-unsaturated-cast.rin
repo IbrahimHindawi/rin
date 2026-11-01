@@ -1,0 +1,9 @@
+// type_float_bits goes by name, so an enum called FLOAT is a float to arith_note: cast(f, FLOAT) gets code 1, no rin_f2i, and emits ((FLOAT)(f)), a double out of range into an enum. UBSan: float-cast-overflow.
+import "std/print.rin"
+FLOAT: enum = { A, B }
+main: proc() -> i32 = {
+    f: f64 = 1e30;
+    y: i32 = cast(cast(f, FLOAT), i32);
+    printfmt("{}\n", y);
+    return 0;
+}

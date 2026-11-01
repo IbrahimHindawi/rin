@@ -1,0 +1,10 @@
+// The same macro on a field: s.concat(a, b) becomes s.ab, reading a null option<*i32> as the non-null result of the call. SEGV or UBSan null.
+H: struct = { concat: *proc(x: i32, y: i32) -> *i32 in permanent; ab: option<*i32 in permanent>; }
+get: proc(x: i32, y: i32) -> *i32 in permanent = { return new<i32>(permanent, x + y); }
+main: proc() -> i32 = {
+    a: i32 = 1;
+    b: i32 = 2;
+    s: H = { .concat = get, .ab = null };
+    v: *i32 in permanent = s.concat(a, b);
+    return v*;
+}

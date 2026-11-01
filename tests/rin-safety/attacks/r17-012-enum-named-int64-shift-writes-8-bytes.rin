@@ -1,0 +1,10 @@
+// type_int_info goes by name before the program's declarations, so an enum called INT64 is "64 bits": `x shl= n` emits *(u64 *)&(x) on a 4-byte enum, reading and writing 8 bytes. ASan: stack-buffer-overflow (or UBSan misaligned load).
+import "std/print.rin"
+INT64: enum = { A = 1, B = 2 }
+main: proc() -> i32 = {
+    x: INT64 = INT64.A;
+    n: i32 = 3;
+    x shl= n;
+    printfmt("{}\n", cast(x, i32));
+    return 0;
+}

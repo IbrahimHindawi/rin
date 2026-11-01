@@ -1,0 +1,7 @@
+// The same through a minus: const_eval says -2 is an integer, so ((u32)(-2.0)) gets no saturating helper, and a negative float into an unsigned is undefined. UBSan: float-cast-overflow.
+import "std/print.rin"
+main: proc() -> i32 = {
+    c: u32 = cast(-2'f64, u32);
+    printfmt("{}\n", c);
+    return 0;
+}

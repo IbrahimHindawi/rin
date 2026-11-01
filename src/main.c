@@ -4567,6 +4567,10 @@ static void parse_struct_fields(Parser *p, StructDecl *decl) {
         if (parser_match(p, Token_Colon)) {
             Token *width_tok = parser_expect(p, Token_Number, "expected bitfield width after ':'");
             f->bit_width = token_to_string8(p->arena, width_tok);
+            if (g_safety && !path_is_std(g_source_path)) {
+                parser_error_token(p, width_tok, "a bitfield promotes the way C likes, not as its type says, and safe rin "
+                                                 "has none: use the whole integer and 'shr' and '&'");
+            }
         }
         if (parser_match(p, Token_At)) {
             Token *attr_tok = parser_expect(p, Token_String, "expected string literal after field attribute '@'");
@@ -14043,7 +14047,8 @@ static ConstVal const_eval(Expr *e) {
     if (e->kind == Expr_Number) {
         string8 digits = number_digits(e->number);
         ConstVal c = { .ok = true };
-        if (number_is_float_form(digits)) {
+        string8 literal_suffix = number_suffix_type(e->number);
+        if (number_is_float_form(digits) || string8_equals_cstr(&literal_suffix, "f32") || string8_equals_cstr(&literal_suffix, "f64")) {
             c.is_float = true;
             return c;
         }
@@ -16571,7 +16576,12 @@ static bool name_is_runtime(string8 name) {
 
 /* A proc or global replaces the C library's for everything linked, std included. */
 static bool name_is_c_runtime_symbol(string8 name) {
-    static const char *const exact[] = { "exit", "stdout", "memcmp", "strlen", "strcmp", "malloc", "free", "calloc", "realloc" };
+    static const char *const exact[] = { "exit", "stdout", "memcmp", "strlen", "strcmp", "malloc", "free", "calloc", "realloc",
+                                         "mprotect", "mmap", "munmap", "madvise", "sysconf", "getpagesize", "VirtualAlloc",
+                                         "VirtualFree", "VirtualProtect", "GetSystemInfo", "fopen", "fclose", "fread", "fwrite",
+                                         "fseek", "ftell", "fflush", "fputs", "fputc", "puts", "putchar", "snprintf", "vsnprintf",
+                                         "sprintf", "strncmp", "strcpy", "strncpy", "strchr", "strrchr", "strstr", "memchr",
+                                         "qsort", "bsearch", "getenv", "raise", "signal" };
     for (u64 i = 0; i < sizeof(exact) / sizeof(exact[0]); i++) {
         if (string8_equals_cstr(&name, exact[i])) return true;
     }
@@ -16650,6 +16660,27 @@ static void safety_check_directive_lines(Program *prog, Vec_string8 *lines, cons
     }
 }
 
+/* `vec<T>at` is `vec_i32_at` in C, and `hash<T>` is `hash_i32`. */
+static bool name_is_generated_proc(Program *prog, string8 name, memops_arena *arena) {
+    for (i32 i = 0; i < prog->procs.length; i++) {
+        ProcDecl *p = (ProcDecl *)prog->procs.data[i];
+        if (!p->is_generic) continue;
+        u64 at = p->name.length;
+        for (u64 k = 0; k < p->name.length; k++) {
+            if (p->name.data[k] == '@') { at = k; break; }
+        }
+        u64 tail = at < p->name.length ? p->name.length - at - 1 : 0;
+        if (name.length < at + tail + 2 || memcmp(name.data, p->name.data, at) != 0 || name.data[at] != '_') continue;
+        if (tail > 0) {
+            if (memcmp(name.data + name.length - tail, p->name.data + at + 1, tail) == 0 && name.data[name.length - tail - 1] == '_') return true;
+        } else {
+            string8 rest = { .data = name.data + at + 1, .length = name.length - at - 1 };
+            if (name_is_type(prog, rest, arena)) return true;
+        }
+    }
+    return false;
+}
+
 static void safety_check_local_name(Program *prog, string8 name, i32 line, i32 col, memops_arena *arena) {
     if (!g_safety || g_checking_std || name.length == 0) return;
     const char *why = null;
@@ -16659,6 +16690,7 @@ static void safety_check_local_name(Program *prog, string8 name, i32 line, i32 c
     else if (name_is_enum_member(prog, name)) why = "is what the generated C calls an enum's member, and an array's length may be spelled with it";
     else if (name_is_type(prog, name, arena)) why = "is a type, and the generated C spells the type by name wherever it needs its size";
     else if (name_is_generated_type(prog, name, arena)) why = "is what the generated C calls a type";
+    else if (name_is_generated_proc(prog, name, arena)) why = "is what the generated C may call a generic proc";
     else {
         for (i32 i = 0; i < prog->globals.length; i++) {
             Stmt *g = (Stmt *)prog->globals.data[i];
@@ -16691,6 +16723,28 @@ static void safety_check_program_names(Program *prog, memops_arena *arena) {
         if (g->is_external && !name_has_runtime_prefix(g->name)) continue;
         g_diag_source_path = g->source_path;
         type_error_message("this name belongs to rin's runtime, which the generated C calls by name", g->line, g->col);
+    }
+    {
+        TypeExpr probe = {0};
+        probe.kind = Type_Name;
+        i32 bits = 0;
+        bool is_signed = false;
+        for (i32 i = 0; i < prog->structs.length; i++) {
+            StructDecl *decl = (StructDecl *)prog->structs.data[i];
+            probe.name = decl->name;
+            if (!path_is_std(decl->source_path) && !decl->is_external && (type_int_info(&probe, &bits, &is_signed) || type_is_float(&probe))) {
+                g_diag_source_path = decl->source_path;
+                type_error_message("the compiler takes this name for a C number type: call the type something else", decl->line, decl->col);
+            }
+        }
+        for (i32 i = 0; i < prog->enums.length; i++) {
+            EnumDecl *decl = (EnumDecl *)prog->enums.data[i];
+            probe.name = decl->name;
+            if (!path_is_std(decl->source_path) && !decl->is_external && (type_int_info(&probe, &bits, &is_signed) || type_is_float(&probe))) {
+                g_diag_source_path = decl->source_path;
+                type_error_message("the compiler takes this name for a C number type: call the type something else", decl->line, decl->col);
+            }
+        }
     }
     for (i32 i = 0; i < prog->structs.length; i++) {
         StructDecl *decl = (StructDecl *)prog->structs.data[i];
@@ -18454,6 +18508,13 @@ static void safety_check_nullable_callee(Expr *call, TypeScope *scope, Program *
 
 static void type_check_call_inner(Expr *call, TypeScope *scope, Program *prog, memops_arena *arena);
 static void type_check_call(Expr *call, TypeScope *scope, Program *prog, memops_arena *arena) {
+    if (g_safe_body && !g_checking_std && !call->base && call->name.length > 0 && type_scope_lookup_local(scope, call->name)) {
+        TypeExpr *hidden_arg = null;
+        if (lookup_call_proc_decl(prog, call, scope, arena, &hidden_arg, null)) {
+            type_error_message("a local of this name hides the proc this call would mean to C: call the local something else",
+                               call->line, call->col);
+        }
+    }
     i32 outer_depth = g_init_list_depth;
     g_init_list_depth = 0;
     type_check_call_inner(call, scope, prog, arena);
@@ -19535,6 +19596,14 @@ static void type_check_stmt_inner(
         safety_error("a local named exit or abort would hide the proc that never returns", s->line, s->col);
     } else if (s->kind == Stmt_Var) {
         safety_check_local_name(prog, s->name, s->line, s->col, arena);
+        if (g_safe_body && !g_checking_std && s->expr) {
+            NameScan self = { s->name, false };
+            expr_walk(s->expr, visit_name_mentioned, &self, arena);
+            if (self.found) {
+                type_error_message("a local's value cannot mention its own name: in C it would read the local, not what is "
+                                   "outside it", s->line, s->col);
+            }
+        }
         if (s->is_static && !array_string8_contains(&g_addr_taken, s->name)) Vec_string8_append(arena, &g_addr_taken, s->name);
         if (s->is_static && !array_string8_contains(&g_static_locals, s->name)) Vec_string8_append(arena, &g_static_locals, s->name);
     }
@@ -21274,6 +21343,36 @@ static void rewrite_printfmt_call_stmt_inner(Stmt *stmt, TypeScope *scope, Progr
         return; // expanding would read past the supplied arguments
     }
 
+    for (u64 k = 0; g_safety && k + 1 < lit.length; k++) {
+        if (lit.data[k] != '\\') continue;
+        k++;
+        u32 value = 256;
+        if (lit.data[k] == 'x') {
+            value = 0;
+            for (u64 d = k + 1; d < lit.length; d++) {
+                u8 c = lit.data[d];
+                i32 v = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+                if (v < 0) break;
+                value = (value * 16 + (u32)v) & 0xff;
+            }
+        } else if (lit.data[k] >= '0' && lit.data[k] <= '7') {
+            value = 0;
+            for (u64 d = k; d < lit.length && d < k + 3 && lit.data[d] >= '0' && lit.data[d] <= '7'; d++) value = value * 8 + (lit.data[d] - '0');
+        }
+        if (value == '%') {
+            printfmt_error_at(stmt->source_path, fmt->line, fmt->col, "this escape spells a '%', which C's printf would read as a "
+                              "conversion: write the '%' itself");
+            return;
+        }
+    }
+    for (i32 k = 1; g_safety && k < call->args.length; k++) {
+        Expr *number = (Expr *)call->args.data[k];
+        ConstVal known = number->kind == Expr_Number ? const_eval(number) : (ConstVal){0};
+        string8 said = number->kind == Expr_Number ? number_suffix_type(number->number) : (string8){0};
+        if (known.ok && !known.is_float && said.length == 0 && (known.big || known.value > 2147483647 || known.value < -2147483648LL)) {
+            printfmt_error_at(stmt->source_path, number->line, number->col, "a number this size needs its type said, as 5000000000'i64");
+        }
+    }
     if (printfmt_try_single_call(arena, out, stmt, call, fmt, lit, scope, prog)) {
         return;
     }
@@ -21875,10 +21974,16 @@ static void emit_binary_expr(memops_arena *arena, string8 *out, Expr *e, TypeSub
         if (narrow) emit_cstr(arena, out, ")");
         return;
     }
-    emit_expr(arena, out, e->left, sub, generic_name);
-    emit_binary_op(arena, out, e->op);
     bool masked_shift = (e->op == Token_Keyword_Shl || e->op == Token_Keyword_Shr) &&
                         (e->shift_bits == 8 || e->shift_bits == 16 || e->shift_bits == 32 || e->shift_bits == 64);
+    if (masked_shift) {
+        char operand[32];
+        snprintf(operand, sizeof(operand), "((%c%d)(", e->shift_signed ? 'i' : 'u', (int)e->shift_bits);
+        emit_cstr(arena, out, operand);
+    }
+    emit_expr(arena, out, e->left, sub, generic_name);
+    if (masked_shift) emit_cstr(arena, out, "))");
+    emit_binary_op(arena, out, e->op);
     if (masked_shift) {
         /* `x shl n` shifts by n mod the width of x, as Rust does in release;
            in C a shift by the width or more is undefined. */
@@ -22370,10 +22475,12 @@ static void emit_expr_plain(memops_arena *arena, string8 *out, Expr *e, TypeSub 
             if (narrow) emit_cstr(arena, out, ")");
             return;
         }
-        if (e->op == Token_Bang) emit_cstr(arena, out, "!");
-        else if (e->op == Token_Minus) emit_cstr(arena, out, "-");
-        else if (e->op == Token_Tilde) emit_cstr(arena, out, "~");
+        if (e->op == Token_Bang) emit_cstr(arena, out, "!(");
+        else if (e->op == Token_Minus) emit_cstr(arena, out, "-(");
+        else if (e->op == Token_Tilde) emit_cstr(arena, out, "~(");
+        else emit_cstr(arena, out, "(");
         emit_expr(arena, out, e->inner, sub, generic_name);
+        emit_cstr(arena, out, ")");
         if (narrow) emit_cstr(arena, out, ")");
         return;
     }
@@ -22550,7 +22657,7 @@ static void emit_stmt(memops_arena *arena, string8 *out, Stmt *s, TypeSub sub, s
    declarator has no way to say `[4]`. */
 static void emit_size_of_type(memops_arena *arena, string8 *out, TypeExpr *type, TypeSub sub) {
     if (type && type->kind == Type_Array) {
-        emit_cstr(arena, out, "(");
+        emit_cstr(arena, out, "(u64)(");
         emit_string8(arena, out, type->array_count);
         emit_cstr(arena, out, ") * ");
         emit_size_of_type(arena, out, type->elem, sub);

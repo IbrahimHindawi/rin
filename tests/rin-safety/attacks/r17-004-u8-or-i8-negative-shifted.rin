@@ -1,0 +1,9 @@
+// rin types u8 | i8 as u8, so its shl goes unguarded, but C computes it in int: 1 | -1 is -1, and -1 << 1 is undefined. Only + - * shl are cast back to the narrow type. UBSan: left shift of negative value.
+import "std/print.rin"
+main: proc() -> i32 = {
+    x: u8 = 1;
+    y: i8 = -1;
+    z: u8 = (x | y) shl 1;
+    printfmt("{}\n", z);
+    return 0;
+}

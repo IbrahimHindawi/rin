@@ -1,0 +1,9 @@
+// -(-v*.length) emits `--v[0].length`, writing a vec's length from safe code. An empty vec's length wraps to 2^64-1, so vec<T>at passes its check and reads through a null data pointer: SEGV or UBSan null.
+import "std/print.rin"
+import "std/vec.rin"
+main: proc() -> i32 = {
+    v: *vec<i32> in permanent = vec<i32>make(permanent, 0);
+    n: u64 = -(-v*.length);
+    printfmt("{} {}\n", n, vec<i32>at(v, 5)*);
+    return 0;
+}

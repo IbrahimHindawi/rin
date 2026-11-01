@@ -1,0 +1,15 @@
+// `-(-x)` leaves x as it is, a shift works on the type rin says, and a float
+// literal with integer digits casts as a float does.
+import "std/print.rin"
+main: proc() -> i32 = {
+    x: u32 = 5;
+    y: u32 = -(-x);
+    printfmt("{} {}\n", x, y);
+    a: u8 = 1;
+    b: i8 = -1;
+    c: u8 = (a | b) shl 1;
+    printfmt("{}\n", c);
+    d: i32 = cast(3000000000'f64, i32);
+    printfmt("{}\n", d > 0);
+    return 0;
+}

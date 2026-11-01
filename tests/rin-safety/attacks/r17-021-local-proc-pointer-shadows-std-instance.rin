@@ -1,0 +1,11 @@
+// The instance's C name is free to take too: a local vec_i32_at replaces vec<i32>at for the C, and it returns null where the checker has std's non-null *T. SEGV or UBSan null.
+import "std/print.rin"
+import "std/vec.rin"
+none: proc(a: *vec<i32>, i: u64) -> option<*i32> = { return null; }
+main: proc() -> i32 = {
+    v: *vec<i32> in permanent = vec<i32>make(permanent, 1);
+    vec<i32>push(v, 1);
+    vec_i32_at: *proc(a: *vec<i32>, i: u64) -> option<*i32> = none;
+    printfmt("{}\n", vec<i32>at(v, 0)*);
+    return 0;
+}

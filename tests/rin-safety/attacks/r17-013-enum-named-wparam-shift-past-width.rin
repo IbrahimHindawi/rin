@@ -1,0 +1,10 @@
+// An enum called WPARAM is "u64" to type_int_info, so its shift is masked with 63 and goes plain, on what C holds in 32 bits: x << 40. A plainly named enum goes through RIN_ANY_INT and is fine. UBSan: shift exponent 40 is too large.
+import "std/print.rin"
+WPARAM: enum = { A = 1, B = 2 }
+main: proc() -> i32 = {
+    x: WPARAM = WPARAM.A;
+    n: i32 = 40;
+    y: WPARAM = x shl n;
+    printfmt("{}\n", cast(y, i32));
+    return 0;
+}

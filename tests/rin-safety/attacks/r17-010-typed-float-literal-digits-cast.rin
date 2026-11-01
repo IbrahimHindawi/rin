@@ -1,0 +1,7 @@
+// const_eval reads 3000000000'f64 by its digits as an integer, so the cast skips rin_f2i and emits ((i32)(3000000000.0)), which C leaves undefined. UBSan: float-cast-overflow.
+import "std/print.rin"
+main: proc() -> i32 = {
+    a: i32 = cast(3000000000'f64, i32);
+    printfmt("{}\n", a);
+    return 0;
+}

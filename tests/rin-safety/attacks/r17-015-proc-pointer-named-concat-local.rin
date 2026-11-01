@@ -1,0 +1,10 @@
+// core.h has `#define concat(a, b) a##b`, and concat is not a runtime name: a proc pointer of that name called as concat(a, b) becomes the C token `ab`, here a null option<*i32> that rin takes for the non-null result. SEGV or UBSan null.
+get: proc(x: i32, y: i32) -> *i32 in permanent = { return new<i32>(permanent, x + y); }
+main: proc() -> i32 = {
+    a: i32 = 1;
+    b: i32 = 2;
+    ab: option<*i32 in permanent> = null;
+    concat: *proc(x: i32, y: i32) -> *i32 in permanent = get;
+    v: *i32 in permanent = concat(a, b);
+    return v*;
+}

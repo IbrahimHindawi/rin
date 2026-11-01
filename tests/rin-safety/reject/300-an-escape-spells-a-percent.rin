@@ -1,0 +1,6 @@
+// expect: spells a '%'
+import "std/print.rin"
+main: proc() -> i32 = {
+    printfmt("\x25s\n");
+    return 0;
+}

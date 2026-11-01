@@ -1,0 +1,6 @@
+// mprotect is not on name_is_c_runtime_symbol's list, so a safe proc may replace the C library's for everything linked. memops_os_commit (Linux) calls it, so the arena's pages stay PROT_NONE while it believes them committed, and the first new writes to them: SEGV. Linux only: Windows commits with VirtualAlloc.
+mprotect: proc(a: ^void, n: usize, p: i32) -> i32 = { return 0; }
+main: proc() -> i32 = {
+    x: *i32 in permanent = new<i32>(permanent, 1);
+    return x*;
+}

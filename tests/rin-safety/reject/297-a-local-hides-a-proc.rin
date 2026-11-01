@@ -1,0 +1,7 @@
+// expect: hides the proc
+f: proc() -> i32 = { return 1; }
+g: proc() -> i32 = { return 2; }
+main: proc() -> i32 = {
+    f: *proc() -> i32 = g;
+    return f();
+}

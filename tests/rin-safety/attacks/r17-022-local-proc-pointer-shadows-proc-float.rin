@@ -1,0 +1,10 @@
+// The checker reads get() as the global's i32, so nothing converts; C's call returns the local's f64 and converts it implicitly: 1e30 into an int with no rin_f2i. UBSan: float-cast-overflow.
+import "std/print.rin"
+get: proc() -> i32 = { return 1; }
+big: proc() -> f64 = { return 1e30; }
+main: proc() -> i32 = {
+    get: *proc() -> f64 = big;
+    x: i32 = get();
+    printfmt("{}\n", x);
+    return 0;
+}

@@ -1,0 +1,7 @@
+// The octal spelling, and %n: printf writes the count through whatever is in the next argument's slot, a write through a pointer that was never passed. SEGV, or ASan's printf interceptor.
+import "std/print.rin"
+main: proc() -> i32 = {
+    x: i32 = 1;
+    printfmt("{} \045n \045n \045n \045n \045n \045n\n", x);
+    return 0;
+}

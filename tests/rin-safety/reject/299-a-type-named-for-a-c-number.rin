@@ -1,0 +1,3 @@
+// expect: C number type
+WPARAM: enum = { A }
+main: proc() -> i32 = { return 0; }

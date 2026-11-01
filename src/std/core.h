@@ -64,10 +64,7 @@ typedef str *strptr;
 #define Megabytes(N) ((u64)Kilobytes(N) * 1024)
 #define Gigabytes(N) ((u64)Megabytes(N) * 1024)
 
-#define stringify(s) #s
-#define concat(a, b) a##b
 // #define pi 3.141592f
-#define sizeofarray(array) (sizeof(array) / sizeof(array[0]))
 #define cast(T, V) (T)(V)
 
 #define primdecl(primname)
@@ -78,7 +75,6 @@ typedef str *strptr;
 #define structdecl(structname) typedef struct structname structname
 #define structdef(structname) typedef struct structname structname; struct structname
 
-#define template(...)
 
 /* For static inline helpers a file may never call. clang warns about an unused
    static inline function in the main file, and --single-file puts core.h

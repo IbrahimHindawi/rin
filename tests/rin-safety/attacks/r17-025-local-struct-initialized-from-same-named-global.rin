@@ -1,0 +1,18 @@
+// A struct with a non-null pointer in it: `S gt = gt;` leaves the pointer whatever was on the stack, and the checker believes the global's value is what is there. spray leaves a wild value at -O0. SEGV or UBSan misaligned.
+import "std/print.rin"
+S: struct = { a: *i32 in permanent; }
+gv: i32 = 1;
+gt: S = { .a = gv& };
+spray: proc(k: u64) -> u64 = {
+    a: u64 = k; b: u64 = k; c: u64 = k; d: u64 = k; e: u64 = k; f: u64 = k; g: u64 = k; h: u64 = k;
+    return a + b + c + d + e + f + g + h;
+}
+victim: proc() -> i32 = {
+    gt: S = gt;
+    return gt.a*;
+}
+main: proc() -> i32 = {
+    n: u64 = spray(0x4141414141414141);
+    printfmt("{} {}\n", n, victim());
+    return 0;
+}

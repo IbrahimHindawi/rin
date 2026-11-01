@@ -1,0 +1,7 @@
+// emit_size_of_type multiplies the lengths as C int literals before sizeof: (46341) * (46341) overflows, so an array copy's size is negative and then huge. UBSan: signed integer overflow; without it ASan: negative-size-param in memmove. Needs 2.2 GiB of arena.
+W: struct = { a: [46341][46341]u8; }
+main: proc() -> i32 = {
+    p: *W in permanent = new<W>(permanent);
+    p*.a = p*.a;
+    return 0;
+}

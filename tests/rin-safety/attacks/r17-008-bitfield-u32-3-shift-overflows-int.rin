@@ -1,0 +1,11 @@
+// A u32:3 bitfield promotes to int, and shift_signed is off because rin calls it unsigned: 7 << 31 in int, with no trip through u32. UBSan: left shift of 7 by 31 places cannot be represented in type int.
+import "std/print.rin"
+BF: struct = { c: u32 : 3; }
+main: proc() -> i32 = {
+    s: BF = {};
+    s.c = 7;
+    n: i32 = 31;
+    z: u32 = s.c shl n;
+    printfmt("{}\n", z);
+    return 0;
+}

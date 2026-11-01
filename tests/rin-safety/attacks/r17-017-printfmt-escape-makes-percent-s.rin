@@ -1,0 +1,7 @@
+// printfmt_append_escaped doubles a literal % but not `\x25`, which C turns into % after the fact: a format reading char pointers that were never passed. SEGV, or ASan's printf interceptor.
+import "std/print.rin"
+main: proc() -> i32 = {
+    x: i32 = 1;
+    printfmt("{} \x25s \x25s \x25s \x25s \x25s \x25s \x25s \x25s\n", x);
+    return 0;
+}

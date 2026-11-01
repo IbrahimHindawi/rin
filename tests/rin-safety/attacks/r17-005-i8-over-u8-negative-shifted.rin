@@ -1,0 +1,9 @@
+// rin types i8 / u8 as u8, but rin_idiv_i32 hands back an int, here -128, and / is not cast back: the unguarded shl shifts a negative. UBSan: left shift of negative value.
+import "std/print.rin"
+main: proc() -> i32 = {
+    x: u8 = 1;
+    y: i8 = -128;
+    z: u8 = (y / x) shl 1;
+    printfmt("{}\n", z);
+    return 0;
+}

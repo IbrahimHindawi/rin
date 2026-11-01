@@ -219,3 +219,14 @@ r5-c-023-stored-depth-global.rin
 r12-030-level-pointer-in-a-frame-global-over-reset.rin
 r12-031-level-slice-in-a-frame-global-over-block-end.rin
 r12-032-level-slice-in-frame-field-of-global-array.rin
+r17-001-negate-twice-wraps-slice-length.rin
+r17-002-negate-twice-wraps-vec-length.rin
+r17-003-negate-twice-wraps-vec-border.rin
+r17-004-u8-or-i8-negative-shifted.rin
+r17-005-i8-over-u8-negative-shifted.rin
+r17-006-u8-or-tilde-zero-shifted.rin
+r17-010-typed-float-literal-digits-cast.rin
+r17-011-negative-typed-float-literal-cast.rin
+r17-015-proc-pointer-named-concat-local.rin
+r17-016-proc-pointer-named-concat-field.rin
+r17-019-array-size-product-overflows-int.rin

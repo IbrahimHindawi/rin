@@ -1,0 +1,11 @@
+// A u32 bitfield narrower than int promotes to int in C, so arith_code's "unsigned, plain +" is wrong: 2147483647 + 2147483647 in int. UBSan: signed integer overflow. `*` and `+=` take the same path.
+import "std/print.rin"
+BF: struct = { a: u32 : 31; b: u32 : 31; }
+main: proc() -> i32 = {
+    s: BF = {};
+    s.a = 2147483647;
+    s.b = 2147483647;
+    x: u32 = s.a + s.b;
+    printfmt("{}\n", x);
+    return 0;
+}

@@ -1,0 +1,10 @@
+// clang promotes a u64:5 bitfield to int, but rin masks the shift for 64 bits: `s.d << (40 & 63)` shifts an int by 40. UBSan: shift exponent 40 is too large for 32-bit type int.
+import "std/print.rin"
+BF: struct = { d: u64 : 5; }
+main: proc() -> i32 = {
+    s: BF = {};
+    s.d = 31;
+    w: u64 = s.d shl 40;
+    printfmt("{}\n", w);
+    return 0;
+}
